@@ -1503,19 +1503,17 @@ enum LotOwnership {
 // a LOT means "Estate (facility)" (the load-bearing convention behind the cost predicate + verify).
 // SCALAR ownership (one Owner per lot); a future `LotOwnershipShare(ownerId, lotId, pct)` is the additive
 // fractional extension — do NOT build it, but Owner is shaped so adding it later is non-breaking.
-enum OwnerKind {
-  CUSTOM_CRUSH_CLIENT // a client whose wine we make under OUR bond (title differs, bond does not)
-  AP_PROPRIETOR // an Alternating-Proprietor client operating under their OWN bond (distinct BWN)
-}
-
 model Owner {
-  tenantId  String    @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
-  id        String    @id @default(cuid())
+  tenantId  String   @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
+  id        String   @id @default(cuid())
   name      String // the client/proprietor name (per-tenant unique)
-  kind      OwnerKind
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  // kind: the OwnerKind TS union ("CUSTOM_CRUSH_CLIENT" | "AP_PROPRIETOR"), stored as TEXT + validated in
+  // owner-core (NOT a Prisma/Postgres enum — mirrors ChangeOfTaxClassEvent's WineTaxClass string, dodging
+  // the Postgres enum-migration pain; a new kind is a code change, not an ALTER TYPE).
+  kind      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, name]) // per-tenant unique name
   @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — bond.ownerId references this
