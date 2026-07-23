@@ -591,6 +591,7 @@ model HarvestPick {
   createdById     String?
   createdByEmail  String
   note            String?
+  weighTagLineId  String? // Plan 093 Unit 9: the weigh-tag bin-line this pick came off (its owner/grower/block source). Composite FK -> weigh_tag_line(tenantId,id), onDelete Restrict (K11, raw-SQL).
   createdAt       DateTime           @default(now())
   harvestRecord   HarvestRecord      @relation(fields: [harvestRecordId], references: [id], onDelete: Cascade)
   // Phase 6: lots this pick was (partially) crushed into. A pick can feed several fermenters;
@@ -600,7 +601,69 @@ model HarvestPick {
   @@unique([tenantId, id])
   @@index([harvestRecordId, pickDate])
   @@index([tenantId])
+  @@index([tenantId, weighTagLineId]) // Plan 093 Unit 9
   @@map("harvest_pick")
+}
+
+// Plan 093 Unit 9 (custom-crush intake): weigh-tags. A weigh-tag is a per-TRUCK scale ticket
+// (gross/tare/net), NOT per-pick — one flatbed carries many bins from multiple growers for multiple
+// owners. The tag number is a gap-free, per-tenant, monotonic certificate; a tag is VOIDED, never deleted.
+// Owner/grower/block attach at the LINE (bin) level.
+
+// The per-tenant gap-free tag-number allocator (council: a counter row + SELECT ... FOR UPDATE, NOT
+// MAX(tagNumber)+1 which bounces/gaps under SERIALIZABLE + PgBouncer). One row per tenant.
+model WeighTagCounter {
+  tenantId   String @id // one row per tenant (the tenant IS the key)
+  nextNumber Int    @default(1)
+
+  @@map("weigh_tag_counter")
+}
+
+model WeighTag {
+  tenantId     String    @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
+  id           String    @id @default(cuid())
+  tagNumber    Int // per-tenant monotonic, gap-free certificate number (allocated via WeighTagCounter)
+  issuedAt     DateTime  @default(now())
+  weighmaster  String? // who weighed it in
+  truck        String? // truck / hauler identifier
+  grossKg      Decimal?  @db.Decimal(12, 3)
+  tareKg       Decimal?  @db.Decimal(12, 3)
+  netKg        Decimal?  @db.Decimal(12, 3)
+  voidedAt     DateTime? // void-not-delete (mirror LotTreatment); a voided tag stays visible + numbered
+  voidedReason String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lines        WeighTagLine[]
+
+  @@unique([tenantId, tagNumber]) // per-tenant unique certificate number
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — weigh_tag_line references this
+  @@index([tenantId])
+  @@map("weigh_tag")
+}
+
+model WeighTagLine {
+  tenantId             String   @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                   String   @id @default(cuid())
+  weighTagId           String // composite (tenantId, weighTagId) -> weigh_tag(tenantId, id), raw-SQL K11
+  binOrGroup           String? // the bin / group label on the ticket
+  growerId             String? // the grower that farmed this bin (composite FK -> grower)
+  ownerId              String? // the owner of this bin's fruit (composite FK -> owner); NULL + needsOwnerAssignment=false = Estate
+  blockId              String? // the vineyard block (composite FK -> vineyard_block)
+  netKg                Decimal? @db.Decimal(12, 3)
+  // Plan 093 Unit 9: receive-now-assign-later. A NULL ownerId is AMBIGUOUS (estate vs unkeyed); this flag
+  // disambiguates — true = unresolved (must be assigned before a pick from it can carry ownership to a
+  // lot; crush refuses it, Unit 10). The scale never blocks on a missing owner.
+  needsOwnerAssignment Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  weighTag             WeighTag @relation(fields: [weighTagId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — harvest_pick.weighTagLineId references this
+  @@index([tenantId])
+  @@index([tenantId, weighTagId])
+  @@index([tenantId, ownerId])
+  @@index([tenantId, growerId])
+  @@map("weigh_tag_line")
 }
 
 // ───────────────────────── Bulk / in-process wine ─────────────────────────
