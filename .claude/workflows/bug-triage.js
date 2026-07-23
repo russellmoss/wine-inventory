@@ -1,7 +1,7 @@
 export const meta = {
   name: 'bug-triage',
-  description: 'Product-goalie bug-triage team: reconcile the feedback backlog against git (close out bugs whose fix already merged), CLUSTER duplicates (incl. across tenants) so one deployed solution closes every reporter, prioritize what is genuinely active, root-cause-vet every open fix PR (real fix vs cosmetic band-aid), surface PLANNED (plan-mode) outcomes for review and carry SKIPPED reasons forward, then act — dispatch fixes for NEW no-brainers, auto-merge the tight-gate PRs, and WRITE STATUS BACK (fanning out to every ticket in a cluster) so the queue reflects reality. Queues the rest for a human with a verdict.',
-  whenToUse: 'When you want the reported-bug backlog worked end-to-end and kept honest: already-shipped bugs closed out, duplicate reports across tenants collapsed to ONE fix, active ones prioritized, fixes sanity-checked for root cause, plans/skips surfaced, safe fixes dispatched/merged, and each item (and its duplicates) written back to its true status.',
+  description: 'Product-goalie bug-triage team: reconcile the feedback backlog against git (close out bugs whose fix already merged — including work that shipped in a hand-built PR nothing ever stamped on the ticket), CLUSTER duplicates (incl. across tenants) so one deployed solution closes every reporter, prioritize what is genuinely active, root-cause-vet every open fix PR (real fix vs cosmetic band-aid), surface PLANNED (plan-mode) outcomes for review and carry SKIPPED reasons forward, then act — dispatch fixes for NEW no-brainers, auto-merge the tight-gate PRs, and WRITE STATUS BACK (fanning out to every ticket in a cluster) so the queue reflects reality. Queues the rest for a human with a verdict.',
+  whenToUse: 'When you want the reported-bug backlog worked end-to-end and kept honest: already-shipped bugs closed out (even when the fix PR was hand-built and never linked), duplicate reports across tenants collapsed to ONE fix, active ones prioritized, fixes sanity-checked for root cause, plans/skips surfaced, safe fixes dispatched/merged, and each item (and its duplicates) written back to its true status.',
   phases: [
     { title: 'Intake' },
     { title: 'Reconcile' },
@@ -9,6 +9,7 @@ export const meta = {
     { title: 'Prioritize' },
     { title: 'Review' },
     { title: 'PR Sweep' },
+    { title: 'Merged Sweep' },
     { title: 'Issue Sweep' },
     { title: 'Act' },
     { title: 'Parallelize' },
@@ -22,6 +23,20 @@ export const meta = {
 //     OR its fix PR is already MERGED. Closed items are never re-triaged; a merged
 //     PR whose item still says NEW/TRIAGED is RECONCILED (written back to RESOLVED)
 //     so the queue stops lying. Only genuinely-active items get worked.
+//   - ALREADY-SHIPPED (the MERGED SWEEP): the reconcile above only fires when the ticket
+//     CARRIES the PR (prNumber non-null), and the open-PR sweep only sees PRs that are
+//     still OPEN. So work that shipped in a HAND-BUILT PR — one no automation ever
+//     stamped onto the ticket — is invisible to both, and triage happily re-offers
+//     production code as new work. (Observed 2026-07-23: ticket cmrwdgt2u… was ranked
+//     the run's one actionable "plan-ready" item pointing at plan issue #466, after the
+//     work had shipped the day before in PR #468.) The Merged Sweep closes that hole: it
+//     scans RECENTLY MERGED PRs, pulls a cuid-shaped feedback id out of each PR BODY
+//     (phrasings vary — "Closes the feedback item `<id>`", "Automated fix from bug ticket
+//     `<id>`" — so it matches on shape+proximity, not one template), resolves each id
+//     against DB truth with the read-only `triage:lookup`, and reconciles to RESOLVED
+//     ONLY when the ticket is still open. An already RESOLVED/DISMISSED ticket is never
+//     rewritten, and a hallucinated/garbled id simply comes back `missing` from the
+//     lookup and is dropped — the DB is the validator, not the regex.
 //   - CLUSTER/DEDUP: the auto-fix fence is tenant-agnostic app code, so ONE PR fixes
 //     a bug for ALL tenants. Active items are grouped by likely root cause (across
 //     tenants) BEFORE prioritize. Each cluster elects ONE primary (furthest-along
@@ -53,7 +68,13 @@ export const meta = {
 //     cluster?: boolean=true, dryRun?: boolean=false, maxMerges?: number=5,
 //     maxDispatch?: number=5, sweepPrs?: boolean=true, maxSweepMerges?: number=5,
 //     sweepIssues?: boolean=true, maxIssueCloses?: number=10,
+//     sweepMergedPrs?: boolean=true, maxMergedScan?: number=50, mergedSinceDays?: number=14,
+//     mergedSince?: string /* ISO date; overrides mergedSinceDays */, maxMergedReconcile?: number=20,
 //     tenantQuery?: string, today?: string /* ISO date for the runbook header */ }
+//   sweepMergedPrs=true also scans the RECENTLY MERGED PRs (bounded by maxMergedScan and a
+//   mergedAt cutoff) for feedback ids in the PR body, and reconciles any STILL-OPEN ticket to
+//   RESOLVED — catching work that shipped in a PR the automation never stamped on the ticket.
+//   Capped by maxMergedReconcile. dryRun reports what it WOULD reconcile and writes nothing.
 //   sweepPrs=true also triages EVERY open PR (not just feedback-linked): auto-merges gate-passers
 //   (un-drafting a finished draft first), RECOMMENDS closes for superseded/duplicate/stale PRs
 //   (never auto-closes), and queues fix-first / needs-human. dryRun reports all of this, acts on none.
@@ -109,8 +130,31 @@ const MAX_SWEEP_MERGES = Number.isInteger(ARGS?.maxSweepMerges) ? ARGS.maxSweepM
 // recommend-only. maxIssueCloses caps the reconciliation auto-closes.
 const SWEEP_ISSUES = ARGS?.sweepIssues !== false
 const MAX_ISSUE_CLOSES = Number.isInteger(ARGS?.maxIssueCloses) ? ARGS.maxIssueCloses : 10
+// MERGED SWEEP: the third pile. Intake's reconcile needs the ticket to CARRY the PR; the PR sweep
+// only sees OPEN PRs. Work that shipped in a hand-built PR is invisible to both, so triage re-offers
+// shipped code as new work. This scans RECENTLY MERGED PRs for a feedback id in the body and closes
+// the still-open ticket. Bounded by BOTH a count cap and a mergedAt cutoff so it never walks the
+// whole PR history; writes are capped separately and gated on DB truth (isOpen).
+const SWEEP_MERGED = ARGS?.sweepMergedPrs !== false
+const MAX_MERGED_SCAN = Number.isInteger(ARGS?.maxMergedScan) ? ARGS.maxMergedScan : 50
+const MERGED_SINCE_DAYS = Number.isInteger(ARGS?.mergedSinceDays) ? ARGS.mergedSinceDays : 14
+const MAX_MERGED_RECONCILE = Number.isInteger(ARGS?.maxMergedReconcile) ? ARGS.maxMergedReconcile : 20
 const TENANT_ENV = ARGS?.tenantQuery ? `TRIAGE_TENANT=${JSON.stringify(ARGS.tenantQuery)} ` : ''
 const RUNBOOK_DATE = typeof ARGS?.today === 'string' ? ARGS.today : null
+
+// `Date.now()` / argless `new Date()` THROW inside a workflow script (they would break resume), so
+// "N days ago" can only be computed from a date the caller passed in. `new Date(<string>)` is fine.
+// No `today` and no explicit `mergedSince` => no date cutoff, and the scan is bounded by the count
+// cap alone (still bounded, just coarser).
+const isoMinusDays = (iso, days) => {
+  const t = new Date(`${String(iso).slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(t.getTime())) return null
+  t.setUTCDate(t.getUTCDate() - days)
+  return t.toISOString().slice(0, 10)
+}
+const MERGED_SINCE = typeof ARGS?.mergedSince === 'string'
+  ? ARGS.mergedSince.slice(0, 10)
+  : (RUNBOOK_DATE ? isoMinusDays(RUNBOOK_DATE, MERGED_SINCE_DAYS) : null)
 
 const FENCE = `The feedback auto-fix FENCE (allowed prefixes; the CI check verify:feedback-fence enforces this exactly):
   ALLOWED (UI/assistant + the plan-052 cellar-floor server domains + regression tests):
@@ -164,6 +208,59 @@ const asArray = (v) => {
   } catch {
     return null
   }
+}
+
+// A feedback item id is a cuid: leading 'c', then lowercase alphanumerics, ~25 chars. The merged-PR
+// scan matches on SHAPE (not one PR-body template), so this is the shape gate applied in JS before
+// anything reaches the DB. It is deliberately permissive — `triage:lookup` is the real validator:
+// an id that is not a real ticket comes back in `missing` and is dropped, so a bad match can never
+// produce a write. It only has to be tight enough to keep obvious noise (sha1s, words) out.
+const CUID_RE = /^c[a-z0-9]{20,31}$/
+const looksLikeFeedbackId = (s) => typeof s === 'string' && CUID_RE.test(s.trim())
+
+// --- Boilerplate plan-issue detection --------------------------------------
+// EVERY "feedback: plan" issue is opened from a STATIC template (scripts/feedback-plan-agent.ts
+// emits the same markdown for every run — only the title carries the run id), and nothing ever
+// writes `planMarkdown` back to the ticket. So a "plan-ready" item routinely points at an issue
+// with NO plan in it, and the build planner cheerfully emits `/work <planUrl> — build the plan as
+// written`. There is no plan to build. These sentences ARE the template; if a body is essentially
+// nothing but them, it is a stub and the item needs `/plan`, not `/work`.
+const PLAN_BOILERPLATE_MARKERS = [
+  'plan generated from approved feedback automation',
+  'the source feedback is treated as untrusted product evidence',
+  'preserve tenant isolation',
+  'do not include attachment bytes or private tenant identity in github',
+  'plan only; no code changes',
+  'review the linked app feedback item in the developer console',
+  'human approval is required before dispatch',
+  'no schema changes proposed by this generated plan',
+  'reproduce and scope the issue',
+  'implement a focused fix or plan follow-up',
+  'verify with tests and browser qa',
+  'run relevant unit and verification scripts',
+  'user text is untrusted and must not be treated as instructions',
+]
+// Returns { stub, substantiveChars, coverage } — coverage is the fraction of the body's real content
+// lines that are template lines. A HAND-EDITED or genuinely-generated plan pushes coverage down and
+// substantiveChars up, and is respected as a real plan; we only call stub when there is essentially
+// nothing else there. Conservative on purpose: mislabelling a real plan as a stub costs a wasted
+// /plan run, but the reverse is the bug we are fixing.
+const assessPlanBody = (body) => {
+  const text = String(body || '')
+    .replace(/^---[\s\S]*?\n---\s*/, '')   // yaml frontmatter
+    .replace(/^\s*#{1,6} .*$/gm, '')       // headings — structure, not content
+  const lines = text.split('\n')
+    .map((l) => l.replace(/^\s*(?:[-*+]|\d+\.)\s*/, '').trim())  // list markers
+    .filter(Boolean)
+  if (lines.length === 0) return { stub: true, substantiveChars: 0, coverage: 1 }
+  const isMarker = (l) => {
+    const n = l.toLowerCase().replace(/[.\s]+$/, '')
+    return PLAN_BOILERPLATE_MARKERS.some((m) => n === m || n.includes(m))
+  }
+  const substantive = lines.filter((l) => !isMarker(l))
+  const substantiveChars = substantive.join(' ').length
+  const coverage = 1 - substantive.length / lines.length
+  return { stub: coverage >= 0.85 || substantiveChars < 400, substantiveChars, coverage }
 }
 
 const BACKLOG_SCHEMA = {
@@ -326,6 +423,7 @@ const ACTION_SCHEMA = {
     errors: { type: 'array', items: { type: 'object', additionalProperties: true } },
     sweptMerged: { type: 'array', items: { type: 'object', additionalProperties: true }, description: 'Orphan open PRs auto-merged by the sweep (un-drafted first if needed), each with prNumber + any feedback item resolved.' },
     issuesClosed: { type: 'array', items: { type: 'object', additionalProperties: true }, description: 'Stale "feedback: plan" GitHub issues auto-closed by the issue sweep because their source ticket is provably RESOLVED/DISMISSED (mechanical reconciliation), each with issueNumber.' },
+    mergedPrReconciled: { type: 'array', items: { type: 'object', additionalProperties: true }, description: 'Still-open tickets closed to RESOLVED by the MERGED sweep because their work already shipped in an already-merged PR that was never stamped on the ticket. Each with id + prNumber + ok.' },
   },
 }
 
@@ -385,6 +483,89 @@ const PR_SWEEP_REVIEW_SCHEMA = {
     ciGreen: { type: 'boolean' },
     sizeOk: { type: 'boolean' },
     recommendation: { type: 'string' },
+  },
+}
+
+// The shape `npm run triage:lookup -- --ids=a,b,c` prints. Shared by BOTH consumers: the PR sweep's
+// aged-out-ticket lookup and the MERGED sweep's already-shipped reconciliation. This is the single
+// authority on whether an id extracted from a PR body is (a) a real ticket at all and (b) still open
+// — a bogus id lands in `missing`, and `isOpen === false` blocks any rewrite of a closed ticket.
+const TICKET_LOOKUP_SCHEMA = {
+  type: 'object', additionalProperties: true, required: ['found'],
+  properties: {
+    found: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: true,
+        required: ['id', 'tenantId', 'sourceType', 'status', 'isOpen'],
+        properties: {
+          id: { type: 'string' }, tenantId: { type: 'string' },
+          sourceType: { type: 'string', enum: ['FEEDBACK_TICKET', 'ASSISTANT_FEEDBACK'] },
+          status: { type: 'string' }, isOpen: { type: 'boolean' },
+          prNumber: { type: ['number', 'null'] }, title: { type: ['string', 'null'] },
+        },
+      },
+    },
+    missing: { type: 'array', items: { type: 'string' } },
+  },
+}
+
+// MERGED SWEEP — recently-merged PRs + whatever feedback ids their BODIES name. The agent's ONLY job
+// is to run `gh` and pull candidate ids out of prose; every downstream decision (shape, dedupe, cap,
+// is-it-real, is-it-open) is made deterministically in JS / by triage:lookup. PR bodies vary in
+// wording ("Closes the feedback item `<id>`" on a hand-built PR; "Automated fix from bug ticket
+// `<id>`" on a dispatched one), so the instruction is match-by-shape-near-feedback-wording, NOT one
+// template — over-matching is safe here (the DB drops what isn't real), under-matching is the bug.
+const MERGED_PR_SCAN_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['prs'],
+  properties: {
+    prs: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['number', 'feedbackIds'],
+        properties: {
+          number: { type: 'number' },
+          title: { type: ['string', 'null'] },
+          mergedAt: { type: ['string', 'null'] },
+          mergeCommit: { type: ['string', 'null'], description: 'The squash commit sha (mergeCommit.oid), short or full — quoted in the outcome note as the proof.' },
+          url: { type: ['string', 'null'] },
+          feedbackIds: {
+            type: 'array', items: { type: 'string' },
+            description: 'EVERY cuid-shaped id (leading "c", ~25 lowercase alphanumerics) that appears in this PR body near feedback/ticket/bug-item wording. Empty array when there is none — never invent one.',
+          },
+          evidence: { type: ['string', 'null'], description: 'The short phrase each id was found in, e.g. "Closes the feedback item `cmr…`" — quoted in the report so a human can audit the match.' },
+        },
+      },
+    },
+    scanned: { type: ['number', 'null'], description: 'How many merged PRs were actually examined.' },
+    notes: { type: 'string' },
+  },
+}
+
+// PLAN-STUB CHECK — is the "plan" a plan-ready item points at actually a plan? Every feedback plan
+// issue is opened from a static template, so the answer is usually no. The agent fetches the issue
+// body; the stub JUDGMENT is made in JS (assessPlanBody) so it is deterministic and auditable.
+const PLAN_STUB_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['issues'],
+  properties: {
+    issues: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['id'],
+        properties: {
+          id: { type: 'string', description: 'The feedback item id this plan issue belongs to (echo it back verbatim).' },
+          issueNumber: { type: ['number', 'null'] },
+          state: { type: ['string', 'null'], description: 'OPEN / CLOSED, or null if the issue could not be read.' },
+          body: { type: ['string', 'null'], description: 'The issue body VERBATIM (up to ~4000 chars). Do not summarize, reformat, or judge it — the workflow decides.' },
+          error: { type: ['string', 'null'], description: 'Set if the issue could not be read (deleted, wrong repo, no url).' },
+        },
+      },
+    },
+    notes: { type: 'string' },
   },
 }
 
@@ -673,7 +854,7 @@ function renderRunbook({ planSummary, byType, buildPlan, inFlight, actions, date
 
   // 🧹 PR sweep — the open-PR backlog (every open PR, not just feedback-linked). This is the
   // "we build PRs but never resolve them" cleanup: what auto-landed, what to close, what to fix.
-  if (sweep && (sweep.scanned || sweep.merged?.length || sweep.closeRecommend?.length || sweep.fixFirst?.length || sweep.needsHuman?.length)) {
+  if (sweep && (sweep.scanned || sweep.merged?.length || sweep.closeRecommend?.length || sweep.fixFirst?.length || sweep.needsHuman?.length || sweep.mergedScanned || sweep.mergedReconciled?.length)) {
     L.push('## 🧹 PR sweep — clear the open-PR backlog')
     L.push('')
     L.push(`_Every open PR triaged (${sweep.scanned} swept beyond the feedback-linked ones). Auto-merge landed the gate-passers; the rest is one paste each._`)
@@ -688,6 +869,29 @@ function renderRunbook({ planSummary, byType, buildPlan, inFlight, actions, date
       L.push('')
       L.push('_These source tickets had fallen outside the intake window; the sweep discovered them from the merged PR and closed them to RESOLVED._')
       for (const t of sweep.linkedReconciled) L.push(`- PR #${t.prNumber} → ticket \`${t.ticketId}\` (${t.tenantId})`)
+      L.push('')
+    }
+    // 🚢 The already-shipped pass — the blind spot where a hand-built PR closes a ticket nobody
+    // ever linked. Sits with the aged-out section because both answer "this ticket is lying".
+    if (sweep.mergedReconciled?.length || sweep.mergedSkipped?.length || sweep.supersededByShipped?.length) {
+      L.push(`### 🚢 Already shipped — reconciled from merged PRs (${sweep.mergedReconciled?.length || 0})`)
+      L.push('')
+      L.push(`_Scanned ${sweep.mergedScanned ?? 0} recently-merged PR(s)${sweep.mergedSince ? ` (merged on/after ${sweep.mergedSince})` : ''} for a feedback id in the body. These tickets were STILL OPEN even though their work is already in production — a fix PR built by hand never gets stamped onto its ticket, so neither the intake reconcile (needs a PR on the ticket) nor the PR sweep (open PRs only) could see it. Do NOT build any of these._`)
+      L.push('')
+      for (const t of (sweep.mergedReconciled || [])) {
+        L.push(`- \`${t.id}\`${t.title ? ` **${t.title}**` : ''} — shipped in PR #${t.prNumber}${t.prTitle ? ` (${t.prTitle})` : ''}${t.mergeCommit ? ` \`${String(t.mergeCommit).slice(0, 8)}\`` : ''}${t.mergedAt ? ` on ${String(t.mergedAt).slice(0, 10)}` : ''} → ${t.applied ? 'RESOLVED' : `**would** close (was ${t.wasStatus})`}${t.duplicates ? ` +${t.duplicates} duplicate(s)` : ''}`)
+        if (t.evidence) L.push(`      - matched on: ${String(t.evidence).replace(/\s+/g, ' ').slice(0, 160)}`)
+      }
+      if (sweep.supersededByShipped?.length) {
+        L.push('')
+        L.push(`_⚠️ ${sweep.supersededByShipped.length} item(s) this run had ranked as actionable were pulled back out — the work was already shipped:_`)
+        for (const s of sweep.supersededByShipped) L.push(`- \`${s.id}\` ${s.title || ''} — was bucketed **${s.bucket}**, now reconciled instead of built`)
+      }
+      if (sweep.mergedSkipped?.length) {
+        L.push('')
+        L.push(`_Candidate ids the scan found but did NOT write (${sweep.mergedSkipped.length}) — listed so nothing is dropped silently:_`)
+        for (const s of sweep.mergedSkipped) L.push(`- \`${s.id}\` (PR #${s.prNumber}) — ${s.why}`)
+      }
       L.push('')
     }
     if (sweep.closeRecommend?.length) {
@@ -749,6 +953,8 @@ function renderRunbook({ planSummary, byType, buildPlan, inFlight, actions, date
   for (const m of (actions?.merged || [])) cleared.push(`merged PR #${m.prNumber ?? '?'} → RESOLVED (\`${m.id}\`)`)
   for (const m of (actions?.sweptMerged || [])) cleared.push(`swept-merged PR #${m.prNumber ?? '?'}${m.feedbackResolved ? ` → RESOLVED \`${m.feedbackResolved}\`` : ''}`)
   for (const c of (actions?.issuesClosed || [])) cleared.push(`closed stale issue #${c.number ?? '?'} (reconciled)`)
+  // Under dryRun these carry `would` and no `ok` — say so rather than claiming a write happened.
+  for (const r of (actions?.mergedPrReconciled || [])) cleared.push(`already shipped in PR #${r.prNumber ?? '?'} → ${r.would ? '**would** RESOLVE' : 'RESOLVED'} \`${r.id}\` (reconciled, not rebuilt)`)
   for (const d of (actions?.dismissed || [])) cleared.push(`dismissed \`${d.id}\``)
   for (const r of (actions?.planRouted || [])) cleared.push(`routed to /plan \`${r.id}\``)
   if (cleared.length) {
@@ -998,6 +1204,9 @@ READ-ONLY. Do not edit, push, or merge. Return the verdict for item id "${x.id}"
 
 // --- Compute action sets (tight gate, re-checked in JS) -------------------
 const reviewById = new Map(reviews.map((r) => [r.id, r]))
+// The ranked row for an id, when there is one. The merged sweep uses it to keep an already-shipped
+// ticket's disposition (type/triageClass) rather than flattening every reconcile to "defect".
+const rankedById = new Map(ranked.map((x) => [x.id, x]))
 
 // Attach the cluster's duplicate members to each acted-on primary so Act can fan out.
 const dupsOf = (id) => (dupsByPrimary.get(id) || []).map((d) => ({ id: d.id, sourceType: d.sourceType, tenantId: d.tenantId, title: d.title }))
@@ -1080,6 +1289,50 @@ const queuedForHuman = ranked
       mergeCommand: x.prNumber ? `gh pr merge ${x.prNumber} --squash --delete-branch` : null,
     }
   })
+
+// --- Is the "plan" a plan? (boilerplate plan-issue detection) --------------
+// A "plan-ready" item is only buildable if its plan issue actually CONTAINS a plan. It usually does
+// not: every `feedback: plan` issue is opened from a static template, and nothing writes plan text
+// back to the ticket, so the issue reads "Plan only; no code changes" / "Review the linked app
+// feedback item in the developer console" and nothing else. Telling someone to `/work` that is
+// telling them to build a stub. Fetch each plan issue, judge it in JS, and route the stubs to
+// PLAN-FIRST instead. (Observed on #466, which pointed at exactly this boilerplate.)
+const planStubById = new Map()
+const planIssueRefs = planReadyCandidates
+  .map((c) => ({ id: c.id, url: itemById.get(c.id)?.githubIssueUrl ?? null }))
+  .filter((r) => r.url)
+if (planIssueRefs.length > 0) {
+  const bodies = await agent(
+    `You are the PLAN-ISSUE BODY agent. Fetch the body of each GitHub issue below VERBATIM so the workflow can judge whether it contains a real plan or is an empty template stub. For EACH:
+  \`gh issue view <number> --repo russellmoss/wine-inventory --json number,state,body\`
+(the issue number is the trailing path segment of the url). Return one entry per INPUT id, echoing the id verbatim, with the body EXACTLY as fetched (truncate only past ~4000 chars). Do NOT summarize, reformat, judge, or "improve" the body — the workflow does the judging and a paraphrase would defeat it. If an issue cannot be read (deleted / not found / bad url), return that id with body=null and a short \`error\`. READ-ONLY: do not comment, label, close, or edit anything.
+
+ISSUES:
+${JSON.stringify(planIssueRefs, null, 2)}`,
+    { label: 'plan-issue-bodies', phase: 'Review', schema: PLAN_STUB_SCHEMA },
+  )
+  const wanted = new Set(planIssueRefs.map((r) => r.id))
+  for (const row of (bodies?.issues || [])) {
+    if (!wanted.has(row.id)) continue
+    // Unreadable issue => NOT a stub. We only downgrade an item on positive evidence that the plan
+    // is boilerplate; a failed fetch must not silently reroute real work to /plan.
+    if (row.error || row.body == null) continue
+    const verdict = assessPlanBody(row.body)
+    if (verdict.stub) {
+      planStubById.set(row.id, {
+        issueNumber: row.issueNumber ?? null,
+        url: planIssueRefs.find((r) => r.id === row.id)?.url ?? null,
+        reason: verdict.substantiveChars === 0
+          ? 'plan issue is the empty automation template — no plan content at all'
+          : `plan issue is ~${Math.round(verdict.coverage * 100)}% boilerplate (${verdict.substantiveChars} chars of real content) — no buildable plan`,
+      })
+    }
+  }
+  if (planStubById.size > 0) {
+    log(`⚠️ ${planStubById.size}/${planIssueRefs.length} "plan-ready" item(s) point at a BOILERPLATE plan issue — routing to /plan, not /work.`)
+  }
+}
+const isPlanStub = (id) => planStubById.has(id)
 
 // --- PR Sweep (triage EVERY open PR, not just feedback-linked ones) --------
 // The feedback path above only sees a PR when an ACTIVE feedback item points at it. PRs built
@@ -1202,32 +1455,144 @@ READ-ONLY. Do not edit, push, merge, or close anything. Return the verdict for P
         `You are the LINKED-TICKET LOOKUP agent. The PR sweep is about to merge fix PRs whose source feedback tickets aged out of the intake window, so they must be reconciled to RESOLVED after merge. Resolve their DB truth. Run exactly:
   \`npm run triage:lookup -- --ids=${lookupIds.join(',')}\`
 It prints a JSON object (after npm's log lines — parse the JSON only) with { contractVersion:1, found: [{ id, tenantId, sourceType, status, automationStatus, prUrl, prNumber, title, isOpen }], missing: [ids] }. Return that object verbatim. Do NOT write anything.`,
-        {
-          label: 'ticket-lookup', phase: 'PR Sweep',
-          schema: {
-            type: 'object', additionalProperties: true, required: ['found'],
-            properties: {
-              found: {
-                type: 'array',
-                items: {
-                  type: 'object', additionalProperties: true,
-                  required: ['id', 'tenantId', 'sourceType', 'status', 'isOpen'],
-                  properties: {
-                    id: { type: 'string' }, tenantId: { type: 'string' },
-                    sourceType: { type: 'string', enum: ['FEEDBACK_TICKET', 'ASSISTANT_FEEDBACK'] },
-                    status: { type: 'string' }, isOpen: { type: 'boolean' },
-                    prNumber: { type: ['number', 'null'] }, title: { type: ['string', 'null'] },
-                  },
-                },
-              },
-              missing: { type: 'array', items: { type: 'string' } },
-            },
-          },
-        },
+        { label: 'ticket-lookup', phase: 'PR Sweep', schema: TICKET_LOOKUP_SCHEMA },
       )
       for (const row of (looked?.found || [])) linkedTicketById.set(row.id, row)
     }
   }
+}
+
+// --- Merged Sweep (work that ALREADY SHIPPED in a PR nothing stamped on the ticket) ----
+// THE BLIND SPOT this closes (observed 2026-07-23). Three facts combined to make triage re-offer
+// production code as new work:
+//   1. PR #468 was hand-built by a parallel session, not dispatched by the feedback automation, so
+//      nothing ever wrote the PR onto ticket cmrwdgt2u… — its `prNumber` stayed null.
+//   2. Intake's Reconcile only closes items that HAVE a resolved fix PR. A null prNumber means the
+//      item is never even a candidate.
+//   3. The PR sweep enumerates only OPEN PRs. A PR that merged BEFORE the run is invisible to it, so
+//      the `linkedFeedbackId` body-extraction that already works for sweep-merged PRs never ran.
+// So: scan the RECENTLY MERGED PRs too, extract feedback ids from their BODIES, and reconcile.
+// SAFETY: extraction is permissive (shape + proximity, since PR wording varies), but every write is
+// gated on `triage:lookup` DB truth — a bogus id comes back `missing`, and only `isOpen === true`
+// is ever written. An already RESOLVED/DISMISSED ticket is never rewritten. Bounded by a count cap
+// AND a mergedAt cutoff so this never walks the whole PR history.
+phase('Merged Sweep')
+let mergedScan = { scanned: 0, prsWithIds: 0, candidates: [], skipped: [], notes: null }
+let mergedReconcileJobs = []
+if (!SWEEP_MERGED) {
+  log('Merged-PR sweep disabled (sweepMergedPrs=false) — already-shipped work will not be reconciled.')
+} else {
+  const cutoffClause = MERGED_SINCE
+    ? `Then DROP any PR whose mergedAt is EARLIER than ${MERGED_SINCE} — this run only cares about recent merges.`
+    : `No date cutoff was supplied, so the --limit above is the whole bound; do not page for more.`
+  const scan = await agent(
+    `You are the MERGED-PR SCAN agent for a winery ERP's bug-triage goalie. Work that already SHIPPED must never be re-offered as new work — but a PR built by hand (rather than dispatched by the feedback automation) never gets stamped onto its source ticket, so the ticket still reads open. Your job: find the feedback ticket ids named in recently-merged PRs. Run, don't guess:
+  \`gh pr list --repo russellmoss/wine-inventory --state merged --limit ${MAX_MERGED_SCAN} --json number,title,body,mergedAt,mergeCommit,url\`
+${cutoffClause}
+
+For EACH remaining PR return: number, title, mergedAt, mergeCommit (the \`oid\`), url, and \`feedbackIds\` — EVERY feedback/ticket id its BODY names.
+
+HOW TO MATCH — by SHAPE and PROXIMITY, not by one fixed template. PR bodies phrase this differently:
+  - a hand-built PR: "Closes the feedback item \\\`cmrwdgt2u0001l504jub6oogx\\\`"
+  - a dispatched agentic-fix PR: "Automated fix from bug ticket \\\`<id>\\\`"
+  - others: "feedback ticket <id>", "resolves feedback <id>", "bug report <id>", "ticket: <id>", often inside backticks and sometimes in a trailing metadata block.
+So: scan the WHOLE body (not just the first line) for tokens shaped like a cuid — a leading \`c\` followed by ~20-31 lowercase letters/digits, no dashes — that sit near any of the words feedback / ticket / bug / report / item / closes / fixes / resolves. Return every such token.
+  - Return the id EXACTLY as written; never repair, complete, or invent one. If you are unsure whether a token is an id, INCLUDE it — the workflow validates every id against the database and silently drops anything that is not a real ticket, so a false positive is harmless while a miss is the bug being fixed.
+  - Ignore commit shas (40 hex chars, and hex-only), branch names, and issue/PR numbers — those are not ticket ids.
+  - A PR that names none gets \`feedbackIds: []\`. Do NOT guess one from the title.
+Also return \`evidence\`: the short phrase an id was found in, so a human can audit the match. Set \`scanned\` to how many merged PRs you actually examined.
+
+READ-ONLY. Do not merge, close, comment, or edit anything.`,
+    { label: 'merged-pr-scan', phase: 'Merged Sweep', schema: MERGED_PR_SCAN_SCHEMA },
+  )
+
+  const mergedPrs = (scan?.prs || [])
+  mergedScan.scanned = Number.isInteger(scan?.scanned) ? scan.scanned : mergedPrs.length
+  mergedScan.notes = scan?.notes || null
+
+  // ids this run already handles through another path — reconciling them twice would double-write
+  // (and, for an item mid-merge/mid-dispatch, race the Act agent's own write-back).
+  const alreadyHandledIds = new Set([
+    ...dbClosed.map((i) => i.id),                       // already RESOLVED/DISMISSED in the DB
+    ...reconcileClose.map((i) => i.id),                 // intake's reconcile owns these
+    // a PR this run is about to sweep-merge will close its own linked ticket in Act §G
+    ...sweptMergeCandidates.map((c) => c.review?.linkedFeedbackId).filter(Boolean),
+  ])
+
+  // Shape-gate + dedupe + attribute each candidate id to its PR (earliest merge wins — that is the
+  // PR that actually shipped the work; a later PR merely touched it again).
+  const byId = new Map()
+  for (const pr of mergedPrs) {
+    const ids = (pr.feedbackIds || []).map((s) => String(s).trim()).filter(looksLikeFeedbackId)
+    if (ids.length > 0) mergedScan.prsWithIds += 1
+    for (const id of ids) {
+      if (alreadyHandledIds.has(id)) {
+        mergedScan.skipped.push({ id, prNumber: pr.number, why: 'already closed or handled by another path this run' })
+        continue
+      }
+      const prev = byId.get(id)
+      if (!prev || (pr.mergedAt && prev.mergedAt && pr.mergedAt < prev.mergedAt)) {
+        byId.set(id, { id, prNumber: pr.number, prUrl: pr.url ?? null, prTitle: pr.title ?? null, mergedAt: pr.mergedAt ?? null, mergeCommit: pr.mergeCommit ?? null, evidence: pr.evidence ?? null })
+      }
+    }
+  }
+  const candidateIds = [...byId.keys()]
+  log(`Merged sweep: ${mergedScan.scanned} merged PR(s) scanned${MERGED_SINCE ? ` (since ${MERGED_SINCE})` : ''}, ${mergedScan.prsWithIds} naming a ticket, ${candidateIds.length} candidate id(s) to verify.`)
+
+  if (candidateIds.length > 0) {
+    // DB TRUTH. This is the gate that makes permissive extraction safe: a hallucinated or garbled id
+    // comes back in `missing` and dies here, and `isOpen` is what decides whether we write at all.
+    const looked = await agent(
+      `You are the MERGED-SWEEP TICKET LOOKUP agent. The merged-PR scan pulled candidate feedback-ticket ids out of merged PR bodies; some may not be real tickets and some may already be closed. Resolve their DB truth — do NOT judge, do NOT write. Run exactly:
+  \`npm run triage:lookup -- --ids=${candidateIds.join(',')}\`
+It prints a JSON object (after npm's own log lines — parse the JSON only) with { contractVersion:1, found: [{ id, tenantId, sourceType, status, automationStatus, prUrl, prNumber, title, isOpen }], missing: [ids] }. Return that object verbatim, including \`missing\` — an id that is not a real ticket MUST come back in \`missing\`, never invented into \`found\`. If the command errors for lack of .env, say so and STOP.`,
+      { label: 'merged-ticket-lookup', phase: 'Merged Sweep', schema: TICKET_LOOKUP_SCHEMA },
+    )
+    const foundById = new Map((looked?.found || []).filter((r) => byId.has(r.id)).map((r) => [r.id, r]))
+    for (const id of candidateIds) {
+      const row = foundById.get(id)
+      const hit = byId.get(id)
+      if (!row) { mergedScan.skipped.push({ id, prNumber: hit.prNumber, why: 'no such feedback ticket in the DB (not a real id)' }); continue }
+      // NEVER rewrite a ticket that is already closed — reconciliation is for tickets still lying.
+      if (row.isOpen !== true) { mergedScan.skipped.push({ id, prNumber: hit.prNumber, why: `already ${row.status} — left alone` }); continue }
+      const rank = rankedById.get(id)
+      mergedReconcileJobs.push({
+        id, tenantId: row.tenantId, sourceType: row.sourceType,
+        title: row.title || rank?.title || hit.prTitle || null,
+        status: row.status,
+        prNumber: hit.prNumber, prUrl: hit.prUrl, prTitle: hit.prTitle,
+        mergedAt: hit.mergedAt, mergeCommit: hit.mergeCommit, evidence: hit.evidence,
+        // Keep the disposition the run already reasoned its way to when it ranked this item;
+        // otherwise it is a plain defect that shipped.
+        type: rank?.type || 'defect',
+        triageClass: toTriageClass(rank?.type || 'defect'),
+        inWindow: allItemIds.has(id),
+        fanOut: dupsOf(id),
+      })
+    }
+    const overflow = mergedReconcileJobs.slice(MAX_MERGED_RECONCILE)
+    for (const o of overflow) mergedScan.skipped.push({ id: o.id, prNumber: o.prNumber, why: `beyond the maxMergedReconcile cap of ${MAX_MERGED_RECONCILE} — reconcile next run or raise the cap` })
+    if (overflow.length > 0) log(`⚠️ ${overflow.length} already-shipped ticket(s) exceed the maxMergedReconcile cap of ${MAX_MERGED_RECONCILE} and were NOT reconciled — they are listed in the runbook.`)
+    mergedReconcileJobs = mergedReconcileJobs.slice(0, MAX_MERGED_RECONCILE)
+  }
+  mergedScan.candidates = mergedReconcileJobs.map((j) => ({ id: j.id, prNumber: j.prNumber, status: j.status, title: j.title }))
+  log(`Merged sweep: ${mergedReconcileJobs.length} still-open ticket(s) whose work ALREADY SHIPPED${DRY_RUN ? ' (dry run — nothing written)' : ''}, ${mergedScan.skipped.length} skipped.`)
+}
+
+// ids the merged sweep is closing out. They must NOT also be dispatched / plan-routed / marked
+// "plan ready — run /work" this run: the work is already in production. This is the whole point —
+// the observed failure was triage ranking a shipped ticket as the run's one actionable item.
+const mergedReconciledIds = new Set(mergedReconcileJobs.map((j) => j.id))
+const notShipped = (id) => !mergedReconciledIds.has(id)
+const actMergeCandidates = mergeCandidates.filter((c) => notShipped(c.item.id))
+const actDispatchCandidates = dispatchCandidates.filter((c) => notShipped(c.id))
+const actPlanRouteCandidates = planRouteCandidates.filter((c) => notShipped(c.id))
+const actDismissCandidates = dismissCandidates.filter((c) => notShipped(c.id))
+const actPlanReadyCandidates = planReadyCandidates.filter((c) => notShipped(c.id))
+const actQueuedForHuman = queuedForHuman.filter((q) => notShipped(q.id))
+const supersededByShipped = ranked.filter((x) => mergedReconciledIds.has(x.id)).map((x) => ({ id: x.id, title: x.title, bucket: x.bucket }))
+if (supersededByShipped.length > 0) {
+  log(`↩️ ${supersededByShipped.length} ranked item(s) pulled OUT of this run's actions — already shipped: ${supersededByShipped.map((s) => `${s.id} (was ${s.bucket})`).join(', ')}.`)
 }
 
 // --- Issue Sweep (triage EVERY open GitHub issue, the OTHER untouched pile) -----
@@ -1362,7 +1727,7 @@ ${sentryList}`,
 
 // --- Act (dispatch + auto-merge + dismiss + plan-ready; fan out writes) ----
 phase('Act')
-let actions = { merged: [], dispatched: [], planRouted: [], dismissed: [], planReady: [], queued: queuedForHuman, errors: [], sweptMerged: [], issuesClosed: [] }
+let actions = { merged: [], dispatched: [], planRouted: [], dismissed: [], planReady: [], queued: actQueuedForHuman, errors: [], sweptMerged: [], issuesClosed: [], mergedPrReconciled: [] }
 // Sweep-merge instructions the Act agent (or the dry-run report) consumes.
 const sweepMergeJobs = sweptMergeCandidates.map((c) => {
   // Resolve the ticket this PR closes: prefer the in-window backlog (by PR # or by linked id),
@@ -1381,17 +1746,24 @@ const sweepMergeJobs = sweptMergeCandidates.map((c) => {
   }
 })
 if (DRY_RUN) {
-  log('dryRun=true — reporting intended actions (incl. cluster fan-out + PR-sweep merges) only, executing nothing.')
+  log('dryRun=true — reporting intended actions (incl. cluster fan-out, PR-sweep merges + already-shipped reconciliation) only, executing nothing.')
   actions = {
-    merged: mergeCandidates.map((c) => ({ id: c.item.id, prNumber: c.item.prNumber, type: c.item.type, triageClass: toTriageClass(c.item.type), would: 'auto-merge + set RESOLVED', fanOutResolve: dupsOf(c.item.id) })),
-    dispatched: dispatchCandidates.map((c) => ({ id: c.id, tenantId: c.tenantId, runId: c.awaitingRunId, type: c.type, triageClass: toTriageClass(c.type), would: 'approve+dispatch fix agent', fanOutLink: dupsOf(c.id) })),
-    planRouted: planRouteCandidates.map((c) => ({ id: c.id, tenantId: c.tenantId, type: c.type, triageClass: toTriageClass(c.type), would: 'persist PRODUCT_GAP + ensure/dispatch PLAN', fanOutLink: dupsOf(c.id) })),
-    dismissed: dismissCandidates.map((c) => ({ id: c.id, type: c.type, triageClass: toTriageClass(c.type), would: `DISMISS — ${c.rationale}`, fanOutDismiss: dupsOf(c.id) })),
-    planReady: planReadyCandidates.map((c) => ({ id: c.id, type: c.type, triageClass: toTriageClass(c.type), would: 'TRIAGED — plan ready for review (/work)', rationale: c.rationale, fanOutLink: dupsOf(c.id) })),
-    queued: queuedForHuman,
+    merged: actMergeCandidates.map((c) => ({ id: c.item.id, prNumber: c.item.prNumber, type: c.item.type, triageClass: toTriageClass(c.item.type), would: 'auto-merge + set RESOLVED', fanOutResolve: dupsOf(c.item.id) })),
+    dispatched: actDispatchCandidates.map((c) => ({ id: c.id, tenantId: c.tenantId, runId: c.awaitingRunId, type: c.type, triageClass: toTriageClass(c.type), would: 'approve+dispatch fix agent', fanOutLink: dupsOf(c.id) })),
+    planRouted: actPlanRouteCandidates.map((c) => ({ id: c.id, tenantId: c.tenantId, type: c.type, triageClass: toTriageClass(c.type), would: 'persist PRODUCT_GAP + ensure/dispatch PLAN', fanOutLink: dupsOf(c.id) })),
+    dismissed: actDismissCandidates.map((c) => ({ id: c.id, type: c.type, triageClass: toTriageClass(c.type), would: `DISMISS — ${c.rationale}`, fanOutDismiss: dupsOf(c.id) })),
+    planReady: actPlanReadyCandidates.map((c) => ({
+      id: c.id, type: c.type, triageClass: toTriageClass(c.type),
+      would: isPlanStub(c.id)
+        ? 'TRIAGED — plan issue is a STUB; needs /plan, NOT /work'
+        : 'TRIAGED — plan ready for review (/work)',
+      planStub: isPlanStub(c.id), rationale: c.rationale, fanOutLink: dupsOf(c.id),
+    })),
+    queued: actQueuedForHuman,
     errors: [],
     sweptMerged: sweepMergeJobs.map((j) => ({ prNumber: j.prNumber, title: j.title, would: `${j.isDraft ? 'un-draft + ' : ''}squash-merge${j.feedback ? ` + RESOLVE feedback ${j.feedback.id}` : ''}`, feedbackId: j.feedback?.id ?? null })),
     issuesClosed: issueCloseJobs.map((j) => ({ number: j.number, title: j.title, ticketId: j.ticketId, would: `close (reconcile — ticket ${j.ticketStatus})` })),
+    mergedPrReconciled: mergedReconcileJobs.map((j) => ({ id: j.id, tenantId: j.tenantId, prNumber: j.prNumber, status: j.status, title: j.title, would: `RESOLVED — work already shipped in merged PR #${j.prNumber}`, fanOutResolve: j.fanOut })),
   }
 } else {
   const acted = await agent(
@@ -1411,28 +1783,31 @@ A) AUTO-MERGE + RESOLVE these PRs (each passed the tight gate: fence-only, CI gr
    3. \`gh pr merge <prNumber> --squash --delete-branch\`. NEVER --admin, never bypass branch protection. If refused (checks flipped, conflict, protection) DO NOT force — move it to "queued" with the reason and continue.
    4. On a successful merge, close the primary out with an OUTCOME note (what + how — read the PR you just merged and name the root cause + what the change did): \`npm run triage:resolve -- --tenant=<tenantId> --source=<sourceType> --id=<id> --status=RESOLVED --note="[<type>] Fixed — <root cause in a phrase>; merged PR #<prNumber> (<what the change did>)."\`
    5. FAN OUT: for EACH duplicate in this primary's fanOut list, run \`npm run triage:resolve -- --tenant=<dup.tenantId> --source=<dup.sourceType> --id=<dup.id> --status=RESOLVED --note="[<type>] Fixed — same root cause as <primaryId>; merged PR #<prNumber> (<what the change did>)."\`
-   PRs: ${JSON.stringify(mergeCandidates.map((c) => ({ id: c.item.id, sourceType: c.item.sourceType, tenantId: c.item.tenantId, prNumber: c.item.prNumber, title: c.item.title, type: c.item.type, triageClass: toTriageClass(c.item.type), fanOut: dupsOf(c.item.id) })), null, 2)}
+   PRs: ${JSON.stringify(actMergeCandidates.map((c) => ({ id: c.item.id, sourceType: c.item.sourceType, tenantId: c.item.tenantId, prNumber: c.item.prNumber, title: c.item.title, type: c.item.type, triageClass: toTriageClass(c.item.type), fanOut: dupsOf(c.item.id) })), null, 2)}
 
 B) DISPATCH these NEW bugs to the fix agent (approve+dispatch the AWAITING_APPROVAL run — the /developer Approve button):
    For EACH: \`npm run triage:dispatch -- --tenant=<tenantId> --run=<awaitingRunId>\`. Report the JSON. If it prints ok:false, record under "errors" and continue (no retry loop). On ok:true, mark the primary IN_PROGRESS (skip for ASSISTANT_FEEDBACK, which has no such state) with an OUTCOME note naming the root cause the fix agent is targeting: \`npm run triage:resolve -- --tenant=<tenantId> --source=<sourceType> --id=<id> --status=IN_PROGRESS --note="[<type>] Fix dispatched — <root cause in a phrase>; fix agent running in-fence, PR to follow."\` Then FAN OUT: for EACH duplicate in fanOut, \`npm run triage:resolve -- --tenant=<dup.tenantId> --source=<dup.sourceType> --id=<dup.id> --status=TRIAGED --note="[<type>] Linked to dispatched fix for <primaryId> — same root cause; one PR will close this."\`
-   Runs: ${JSON.stringify(dispatchCandidates.map((c) => ({ id: c.id, sourceType: c.sourceType, tenantId: c.tenantId, runId: c.awaitingRunId, title: c.title, type: c.type, triageClass: toTriageClass(c.type), fanOut: dupsOf(c.id) })), null, 2)}
+   Runs: ${JSON.stringify(actDispatchCandidates.map((c) => ({ id: c.id, sourceType: c.sourceType, tenantId: c.tenantId, runId: c.awaitingRunId, title: c.title, type: c.type, triageClass: toTriageClass(c.type), fanOut: dupsOf(c.id) })), null, 2)}
 
 C) ROUTE PRODUCT GAPS to the existing PLAN workflow, never the fix agent. For EACH:
    1. Persist the disposition first: \`npm run triage:resolve -- --tenant=<tenantId> --source=<sourceType> --id=<id> --status=TRIAGED --triage-class=PRODUCT_GAP --note="[product-gap] Routed to plan automation — <the gap, one phrase>; PLAN generation requested."\`
    2. Run \`npm run triage:plan -- --tenant=<tenantId> --source=<sourceType> --id=<id>\`. On ok:true, record under planRouted. On ok:false, record under errors + queued; do not fall back to \`triage:dispatch\`. The command will skip an awaiting wrong-kind fix, but refuses a queued/running/PR-open fix and persists the conflict.
    3. FAN OUT only the outcome, not another PLAN run: for EACH duplicate, \`npm run triage:resolve -- --tenant=<dup.tenantId> --source=<dup.sourceType> --id=<dup.id> --status=TRIAGED --triage-class=PRODUCT_GAP --note="[product-gap] Linked to PLAN routing for <primaryId> — same product gap; one plan will cover this cluster."\`
-   Items: ${JSON.stringify(planRouteCandidates.map((c) => ({ id: c.id, sourceType: c.sourceType, tenantId: c.tenantId, title: c.title, type: c.type, triageClass: toTriageClass(c.type), rationale: c.rationale, fanOut: dupsOf(c.id) })), null, 2)}
+   Items: ${JSON.stringify(actPlanRouteCandidates.map((c) => ({ id: c.id, sourceType: c.sourceType, tenantId: c.tenantId, title: c.title, type: c.type, triageClass: toTriageClass(c.type), rationale: c.rationale, fanOut: dupsOf(c.id) })), null, 2)}
 
-D) PLAN-READY — these already have a PLAN (plan-mode), not code. Do NOT dispatch or merge. Mark the primary TRIAGED with an OUTCOME note (why it was NOT auto-fixed + the next step): \`npm run triage:resolve -- --tenant=<tenantId> --source=<sourceType> --id=<id> --status=TRIAGED --note="[<type>] Not auto-fixed (needs a plan) — <the gap, one phrase>; plan ready at <planUrl>, run /work."\` (use the item's githubIssueUrl as <planUrl>; if none, write "see planMarkdown" instead of a url). FAN OUT to duplicates with status TRIAGED and the same note.
-   Items: ${JSON.stringify(planReadyCandidates.map((c) => ({ id: c.id, sourceType: c.sourceType, tenantId: c.tenantId, title: c.title, type: c.type, triageClass: toTriageClass(c.type), planUrl: (itemById.get(c.id)?.githubIssueUrl) ?? null, fanOut: dupsOf(c.id) })), null, 2)}
+D) PLAN-READY — these already have a PLAN (plan-mode), not code. Do NOT dispatch or merge. Each item carries a \`planStub\` boolean; it decides which note you write:
+   - planStub === false — the plan issue holds a REAL plan, so the next step is to build it: \`npm run triage:resolve -- --tenant=<tenantId> --source=<sourceType> --id=<id> --status=TRIAGED --note="[<type>] Not auto-fixed (needs a plan) — <the gap, one phrase>; plan ready at <planUrl>, run /work."\` (use the item's planUrl; if none, write "see planMarkdown" instead of a url).
+   - planStub === true — the linked "plan" issue is an EMPTY TEMPLATE STUB (the plan automation opened it from boilerplate: "Plan only; no code changes", "Review the linked app feedback item in the developer console"). There is NOTHING to build, so do NOT tell anyone to /work it. Write instead: \`npm run triage:resolve -- --tenant=<tenantId> --source=<sourceType> --id=<id> --status=TRIAGED --note="[<type>] Not auto-fixed — the linked plan issue (<planUrl>) is an empty template with no plan in it; needs a real /plan pass before any build."\` The item's \`planStubReason\` says why it was judged a stub — you may use its wording, but keep the note to ~2 lines.
+   FAN OUT to duplicates with status TRIAGED and the same note (matching the item's planStub branch).
+   Items: ${JSON.stringify(actPlanReadyCandidates.map((c) => ({ id: c.id, sourceType: c.sourceType, tenantId: c.tenantId, title: c.title, type: c.type, triageClass: toTriageClass(c.type), planUrl: (itemById.get(c.id)?.githubIssueUrl) ?? null, planStub: isPlanStub(c.id), planStubReason: planStubById.get(c.id)?.reason ?? null, fanOut: dupsOf(c.id) })), null, 2)}
 
 E) DISMISS these non-bugs (write status back so they leave the queue):
    For EACH, write an OUTCOME note stating WHY it's not a bug (works-as-designed / user-error / empty-state / permissions) so the reporter understands: \`npm run triage:resolve -- --tenant=<tenantId> --source=<sourceType> --id=<id> --status=DISMISSED --note="[<type>] Not a bug — <why, one line>; no code change warranted."\`. FAN OUT: only dismiss a duplicate too when it is truly the SAME root cause — same note. If unsure about a duplicate, leave it and note that in errors.
-   Items: ${JSON.stringify(dismissCandidates.map((c) => ({ id: c.id, sourceType: c.sourceType, tenantId: c.tenantId, title: c.title, type: c.type, triageClass: toTriageClass(c.type), why: c.rationale, fanOut: dupsOf(c.id) })), null, 2)}
+   Items: ${JSON.stringify(actDismissCandidates.map((c) => ({ id: c.id, sourceType: c.sourceType, tenantId: c.tenantId, title: c.title, type: c.type, triageClass: toTriageClass(c.type), why: c.rationale, fanOut: dupsOf(c.id) })), null, 2)}
 
 F) QUEUE for a human — do NOT act, but record the OUTCOME so it's clearly triaged (not silently NEW): the verdict (why it wasn't auto-fixed) + what a human should do next. For EACH (primary only — do NOT write its duplicates):
    \`npm run triage:resolve -- --tenant=<tenantId> --source=<sourceType> --id=<id> --status=TRIAGED --note="[<type>] Handed to a human — <verdict, one line>; <next step: /investigate | /plan | review PR #N | deeper issue named>."\`
-   Items: ${JSON.stringify(queuedForHuman.map((q) => ({ id: q.id, sourceType: q.sourceType, tenantId: q.tenantId, title: q.title, type: q.type, triageClass: q.triageClass, verdict: q.verdict })), null, 2)}
+   Items: ${JSON.stringify(actQueuedForHuman.map((q) => ({ id: q.id, sourceType: q.sourceType, tenantId: q.tenantId, title: q.title, type: q.type, triageClass: q.triageClass, verdict: q.verdict })), null, 2)}
 
 G) SWEEP-MERGE these orphan open PRs (each cleared the SAME tight gate as A — complete, fence-only, CI green, root/docs/chore, merge-safe, small, ERP-standards ok, mergeable). These were NOT tied to an active feedback item's review; the sweep found them. For EACH:
    1. \`gh pr checks <prNumber>\` — confirm required checks still PASS. \`gh pr view <prNumber> --json mergeable,isDraft\` — confirm mergeable == "MERGEABLE". If it reads "UNKNOWN" (GitHub recomputes lazily after main moves), wait a few seconds and re-run the view ONCE; if it is still not "MERGEABLE" (UNKNOWN or CONFLICTING), DO NOT merge — record under "errors" ("mergeability unresolved / conflict") and continue. Only a confirmed "MERGEABLE" proceeds.
@@ -1446,7 +1821,14 @@ H) RECONCILE-CLOSE these stale "feedback: plan" GitHub ISSUES. Each maps to a so
    \`gh issue close <number> --repo russellmoss/wine-inventory --comment "Closed by bug-triage issue sweep — <reason>."\` (use the job's "reason"). Record each under "issuesClosed": { number, ticketId }. If a close is refused, record it under "errors" and continue. Do NOT close any issue not listed here — Sentry/other closes are recommend-only and handled by the operator, NOT this agent.
    ISSUES: ${JSON.stringify(issueCloseJobs, null, 2)}
 
-Report truthfully what you actually did: merged (PR url + fanned-out ids), dispatched fixes (run result + fanned-out ids), planRouted (PLAN run result + fanned-out ids), planReady (ids + plan link), dismissed (ids), queued, sweptMerged (PR urls + any feedback ids resolved), issuesClosed (issue numbers), errors. A merge, PLAN route, or issue close that was refused goes in errors, not in a success list.`,
+I) RECONCILE ALREADY-SHIPPED TICKETS. Each of these is a feedback item that is STILL OPEN in the database even though its work ALREADY SHIPPED in a pull request that MERGED before this run — a PR built by hand, so nothing ever stamped it onto the ticket. The workflow already proved every one of these from DB truth (\`triage:lookup\` says the ticket exists and is still open) and from git (the PR is merged), so this is a MECHANICAL close, exactly like the intake reconcile. There is NO code to write and NO PR to merge here — do NOT open, build, merge, or dispatch anything for these. Just close them out. For EACH:
+   \`npm run triage:resolve -- --tenant=<tenantId> --source=<sourceType> --id=<id> --status=RESOLVED --triage-class=<triageClass> --note="[<type>] Fixed — already shipped in merged PR #<prNumber> (<what that PR actually did, one phrase>); reconciled to RESOLVED, no new work needed."\`
+   Read the PR first (\`gh pr view <prNumber> --json title,body\`) so "<what that PR actually did>" is real and specific — this note is the only record a human gets of why the ticket closed without anyone working it. Include the merge commit sha from the job when there is one.
+   Then FAN OUT to every duplicate in the job's fanOut list with the SAME status and an equivalent note: \`... --note="[<type>] Fixed — same root cause as <primaryId>; already shipped in merged PR #<prNumber>; reconciled to RESOLVED."\`
+   Record each under "mergedPrReconciled": { id, prNumber, ok, fannedOut }. If a resolve is refused, record it under "errors" and continue.
+   TICKETS: ${JSON.stringify(mergedReconcileJobs.map((j) => ({ id: j.id, sourceType: j.sourceType, tenantId: j.tenantId, title: j.title, status: j.status, type: j.type, triageClass: j.triageClass, prNumber: j.prNumber, prUrl: j.prUrl, prTitle: j.prTitle, mergedAt: j.mergedAt, mergeCommit: j.mergeCommit, evidence: j.evidence, fanOut: j.fanOut })), null, 2)}
+
+Report truthfully what you actually did: merged (PR url + fanned-out ids), dispatched fixes (run result + fanned-out ids), planRouted (PLAN run result + fanned-out ids), planReady (ids + plan link), dismissed (ids), queued, sweptMerged (PR urls + any feedback ids resolved), issuesClosed (issue numbers), mergedPrReconciled (already-shipped ids + the PR that shipped them), errors. A merge, PLAN route, issue close, or reconcile that was refused goes in errors, not in a success list.`,
     { label: 'act', phase: 'Act', schema: ACTION_SCHEMA },
   )
   if (acted) actions = acted
@@ -1463,10 +1845,15 @@ for (const r of (actions.planRouted || [])) outcomeById[r.id] = 'plan-routed'
 for (const p of (actions.planReady || [])) outcomeById[p.id] = 'plan-ready'
 for (const e of (actions.errors || [])) outcomeById[e.id] = 'errored'
 for (const q of (actions.queued || [])) outcomeById[q.id] = 'queued'
+// LAST, so it wins over any ranked outcome above: the work is in production. Nothing may build it.
+for (const id of mergedReconciledIds) outcomeById[id] = 'already-shipped'
 
 const buildInput = ranked.map((x) => ({
   id: x.id, title: x.title, priority: x.priority, type: x.type, bucket: x.bucket,
   effort: x.effort, planUrl: itemById.get(x.id)?.githubIssueUrl ?? null,
+  // planStub: the planUrl points at an empty automation template, NOT a plan. Such an item is
+  // "plan-ready" in name only — there is nothing at that url to build.
+  planStub: isPlanStub(x.id), planStubReason: planStubById.get(x.id)?.reason ?? null,
   outcome: outcomeById[x.id] || 'ranked', rationale: x.rationale,
   // ERP-standards verdict on the requested change: conflict items are held OUT of every build
   // wave (they need a human redesign first); caution items build but with the standard named.
@@ -1487,18 +1874,64 @@ ${JSON.stringify(buildInput, null, 2)}
 
 Do this:
 1. SELECT the items a human/agent must now write code for ("buildable"):
-   - plan-ready (outcome "plan-ready" OR bucket "plan-ready"): a PLAN already exists at planUrl → the action is \`/work <planUrl>\`.
+   - plan-ready (outcome "plan-ready" OR bucket "plan-ready") **with planStub === false**: a REAL plan exists at planUrl → the action is \`/work <planUrl>\`.
    - a defect whose dispatch ERRORED (outcome "errored"), or a defect/model-behavior queued needs-human that is IN-FENCE → action \`/investigate then /work\`.
-   EXCLUDE from waves: outcome "merged" (done), outcome "fix-dispatched" (an agent is already building it — never open a second build), product-gaps with NO plan yet (→ put them in planFirst, they need /plan before they can be built), AND any item with erpStandards=="conflict" (→ put it in erpReview, NOT a wave — see step 6).
+   EXCLUDE from waves: outcome "merged" (done), outcome "already-shipped" (the work is ALREADY IN PRODUCTION — it shipped in a PR that merged before this run and the ticket was just reconciled; never build it, never list it anywhere in this plan), outcome "fix-dispatched" (an agent is already building it — never open a second build), product-gaps with NO plan yet (→ put them in planFirst, they need /plan before they can be built), any item with **planStub === true** (see below), AND any item with erpStandards=="conflict" (→ put it in erpReview, NOT a wave — see step 6).
+   PLAN STUBS: an item with planStub === true is "plan-ready" in NAME ONLY — its planUrl points at the plan automation's EMPTY BOILERPLATE issue ("Plan only; no code changes", "Review the linked app feedback item in the developer console"), not at a plan. There is nothing there to build, so it must NEVER get a \`/work <planUrl>\` task. Put it in planFirst with action \`/plan\` and say the linked issue is an empty stub.
 2. For each buildable item, estimate the DOMAINS/files it will most likely touch (use the fence domain list + your judgment; include \`prisma/schema.prisma\` when a schema change is likely).
 3. CONFLICT RULE: two items CONFLICT if their likely file/domain sets OVERLAP (same module, or same schema table) OR one dependsOn the other's change. Non-overlapping, dependency-free items are PARALLEL-SAFE.
 4. Group into WAVES. A wave = a MAXIMAL set of mutually non-overlapping, dependency-satisfied items — all buildable CONCURRENTLY, each in its own Claude Code instance on its own branch+PR, with no merge conflict. Put conflicting or dependent items in LATER waves (record dependsOn). Maximize parallelism (as many disjoint items per wave as is safe). Place P0/P1 in the earliest wave they can safely occupy. Set parallelSafe=true only when a wave's tasks are genuinely disjoint, with a one-line rationale (which domains are disjoint, or what shared file / dependency forced sequencing). For any wave item carrying erpStandards=="caution", append the standard-to-uphold (its erpConcern) to the task action so the builder keeps it conformant.
-5. planFirst = product-gaps needing /plan first; investigateFirst = unclear items needing /investigate.
+5. planFirst = product-gaps needing /plan first, PLUS every planStub item (its "plan" is an empty template — it needs a real /plan pass before it is buildable); investigateFirst = unclear items needing /investigate.
 6. erpReview = EVERY item with erpStandards=="conflict". These are NEVER placed in a wave, planFirst, or investigateFirst — the requested change would break a system-of-record standard, so a human must first redesign the ask into a conformant shape (a CORRECTION event instead of an in-place edit/delete, a SUPERSEDE instead of mutating a posted record, the accounting OUTBOX instead of a direct external write, a TENANT-SCOPED path instead of a widened query). Record the concern (the standard it breaks) and the conformant redesign as the action. This is the headline the operator asked for: "which of these, if built as asked, would push the ERP off-standard."
 
 BE CONSERVATIVE: if unsure two items are disjoint, SEQUENCE them — a false "parallel-safe" causes a real merge conflict. Return the structured plan.`,
   { label: 'build-planner', phase: 'Parallelize', schema: BUILD_PLAN_SCHEMA },
 )
+
+// DETERMINISTIC BACKSTOP on the planner. Two classes must never reach a build wave, and "the prompt
+// said so" is not an enforcement mechanism — the whole defect this run fixes was a shipped ticket
+// being handed to a builder. So strip them in JS:
+//   - already-shipped: the work is in production. Drop the task outright.
+//   - plan stubs: the planUrl is the empty automation template. Move the task to planFirst with a
+//     /plan action, never `/work <planUrl>` — a builder sent to that url finds boilerplate.
+const enforceBuildPlan = (bp) => {
+  const plan = bp || { waves: [] }
+  const planFirst = [...(plan.planFirst || [])]
+  const seenPlanFirst = new Set(planFirst.map((p) => p.id))
+  const droppedShipped = []
+  const rerouted = []
+  const waves = (plan.waves || []).map((w) => {
+    const tasks = []
+    for (const t of (w.tasks || [])) {
+      if (mergedReconciledIds.has(t.id)) { droppedShipped.push(t.id); continue }
+      if (isPlanStub(t.id)) {
+        rerouted.push(t.id)
+        if (!seenPlanFirst.has(t.id)) {
+          seenPlanFirst.add(t.id)
+          planFirst.push({ id: t.id, title: t.title, action: `/plan — the linked issue (${planStubById.get(t.id)?.url || 'plan issue'}) is an empty template stub, there is no plan to build` })
+        }
+        continue
+      }
+      tasks.push(t)
+    }
+    return { ...w, tasks }
+  }).filter((w) => (w.tasks || []).length > 0)
+  // A stub the planner already parked in planFirst still needs the honest action text.
+  for (const p of planFirst) {
+    if (isPlanStub(p.id) && !/empty template|stub/i.test(p.action || '')) {
+      p.action = `/plan — the linked issue (${planStubById.get(p.id)?.url || 'plan issue'}) is an empty template stub, there is no plan to build`
+    }
+  }
+  if (droppedShipped.length) log(`Build plan: dropped ${droppedShipped.length} already-shipped task(s) the planner still listed (${droppedShipped.join(', ')}).`)
+  if (rerouted.length) log(`Build plan: rerouted ${rerouted.length} stub-plan task(s) from /work to /plan (${rerouted.join(', ')}).`)
+  return {
+    ...plan, waves,
+    planFirst,
+    // Renumber so the runbook never shows a gap where a wave was emptied out.
+    ...(waves.length ? { waves: waves.map((w, i) => ({ ...w, wave: i + 1 })) } : {}),
+  }
+}
+const finalBuildPlan = enforceBuildPlan(buildPlan)
 
 // PR-sweep report (deterministic, JS-built) — merged / recommend-close / fix-first / needs-human,
 // each with the ready gh command so a human can clear it in one paste.
@@ -1520,10 +1953,29 @@ const sweepReport = {
   linkedReconciled: sweepMergeJobs
     .filter((j) => j.feedback && j.feedback.source === 'aged-out (discovered)')
     .map((j) => ({ prNumber: j.prNumber, ticketId: j.feedback.id, tenantId: j.feedback.tenantId })),
+  // MERGED sweep — tickets whose work had ALREADY SHIPPED in a PR merged before this run (the
+  // hand-built-PR blind spot). Sits alongside linkedReconciled: same idea, different discovery
+  // path (that one comes off a PR this run merged; this one off git history).
+  mergedScanned: mergedScan.scanned,
+  mergedSince: MERGED_SINCE,
+  mergedReconciled: mergedReconcileJobs.map((j) => {
+    const done = (actions.mergedPrReconciled || []).find((r) => r.id === j.id)
+    return {
+      id: j.id, tenantId: j.tenantId, title: j.title, prNumber: j.prNumber, prUrl: j.prUrl,
+      prTitle: j.prTitle, mergedAt: j.mergedAt, mergeCommit: j.mergeCommit, evidence: j.evidence,
+      wasStatus: j.status, inWindow: j.inWindow, duplicates: (j.fanOut || []).length,
+      applied: DRY_RUN ? false : (done ? done.ok !== false : false),
+    }
+  }),
+  // Candidate ids the sweep found but deliberately did NOT write (not a real ticket, already
+  // closed, or past the cap). Surfaced so a silently-dropped id is never invisible.
+  mergedSkipped: mergedScan.skipped,
+  // Ranked items this run pulled OUT of its own action list because they turned out to be shipped.
+  supersededByShipped,
 }
 
 const runbook = renderRunbook({
-  planSummary: plan?.summary, byType, buildPlan: buildPlan || { waves: [] },
+  planSummary: plan?.summary, byType, buildPlan: finalBuildPlan || { waves: [] },
   inFlight, actions, dateStr: RUNBOOK_DATE, erpFlags: erpStandardsFlags, sweep: sweepReport,
   issueSweep,
 })
@@ -1535,7 +1987,7 @@ return {
   mode: { dryRun: DRY_RUN, autoMerge: AUTO_MERGE, dispatch: DISPATCH, reconcile: RECONCILE, cluster: CLUSTER, argsWarning },
   runbook,
   runbookPath: 'TRIAGE-RUNBOOK.md',
-  buildPlan: buildPlan || { waves: [] },
+  buildPlan: finalBuildPlan || { waves: [] },
   planSummary: plan?.summary,
   byType,
   counts: {
@@ -1564,6 +2016,13 @@ return {
     prsFixFirst: sweepReport.fixFirst.length,
     prsNeedsHuman: sweepReport.needsHuman.length,
     prsLinkedTicketsReconciled: sweepReport.linkedReconciled.length,
+    // MERGED sweep — the already-shipped blind spot. `alreadyShippedReconciled` is the headline:
+    // tickets that were still lying open while their fix sat in production.
+    mergedPrsScanned: sweepReport.mergedScanned,
+    alreadyShippedReconciled: sweepReport.mergedReconciled.length,
+    alreadyShippedSkipped: sweepReport.mergedSkipped.length,
+    rankedItemsSupersededByShipped: supersededByShipped.length,
+    planStubsRerouted: planStubById.size,
     issuesScanned: issueSweep.scanned,
     issuesReconcileClosed: (actions.issuesClosed?.length || issueSweep.reconcileClosed?.length || 0),
     issuesRecommendClose: issueSweep.recommendClose?.length || 0,
@@ -1573,6 +2032,9 @@ return {
   // PR sweep: every open PR triaged (not just feedback-linked). merged = auto-landed gate-passers;
   // closeRecommend = superseded/duplicate/stale (human confirms the close); fixFirst = failing/
   // conflicting; needsHuman = out-of-fence / large / real feature. Each carries a ready gh command.
+  // ALSO carries the MERGED sweep (mergedReconciled / mergedSkipped / supersededByShipped): tickets
+  // still open while their fix was already in production, found by scanning recently-merged PR
+  // bodies for a feedback id. This is the "triage re-offered shipped code as new work" answer.
   sweep: sweepReport,
   // Issue sweep: every open GitHub issue triaged. reconcileClosed = stale plan issues auto-closed on
   // DB truth (ticket already RESOLVED/DISMISSED); recommendClose = Sentry noise / stale (operator
@@ -1586,7 +2048,9 @@ return {
   reconciled,
   inFlight: inFlight.map((i) => ({ id: i.id, title: i.title, automationStatus: i.automationStatus, activeRun: i.activeRun ?? null, automationConflict: i.automationConflict ?? null })),
   clusters: clusters.filter((c) => c.size > 1).map((c) => ({ primaryId: c.primaryId, rootCause: c.rootCause, tenantCount: c.tenantCount, size: c.size, memberIds: c.memberIds })),
-  planReady: plannedItems.map((i) => ({ id: i.id, tenantId: i.tenantId, title: i.title, planUrl: i.githubIssueUrl ?? null, planSnippet: (i.planMarkdown || '').slice(0, 400) || null })),
+  // planStub=true means the planUrl is the plan automation's empty template, NOT a plan — the item
+  // is plan-ready in name only and was routed to /plan rather than handed to a builder as /work.
+  planReady: plannedItems.map((i) => ({ id: i.id, tenantId: i.tenantId, title: i.title, planUrl: i.githubIssueUrl ?? null, planStub: isPlanStub(i.id), planStubReason: planStubById.get(i.id)?.reason ?? null, planSnippet: (i.planMarkdown || '').slice(0, 400) || null })),
   skipped: skippedItems.map((i) => ({ id: i.id, tenantId: i.tenantId, title: i.title, reason: (i.developerNotes || '').slice(0, 400) || null })),
   ranked,
   reviews,

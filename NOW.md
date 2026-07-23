@@ -7,6 +7,12 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**`/bug-triage` re-offered SHIPPED code as new work — FIXED, awaiting human merge ([PR #478](https://github.com/russellmoss/wine-inventory/pull/478)).**
+New **Merged Sweep** phase + boilerplate-plan-issue detection. `.claude/workflows/` is outside the
+auto-fix fence, so #478 needs a human merge. Details under ✅ Done recently.
+
+<details><summary>Previous objective — PLAN 091 voice pronunciation (done, in prod)</summary>
+
 **PLAN 091 — voice pronunciation. DONE. #464 RESOLVED, in prod (#474 + #477, squash `b2dcd70e`).**
 Russell's verdict on the phoneme build: "WAY better than what we had."
 Plan: [2026-07-23-091-…](docs/plans/2026-07-23-091-feat-voice-pronunciation-lexicon-plan.md).
@@ -33,6 +39,8 @@ overrides on top (mirror `KnowledgeSource` — resolve globals at READ time, do 
 into tenants, or you repeat the SYSTEM_TEMPLATES gap). Speech→phoneme is the risky step:
 propose candidates, let the ear confirm. Also: `toSpeakable` runs client-side too, so
 per-tenant rules mean moving lexicon application into the speak route only.
+
+</details>
 
 ## 🔭 Also in flight
 
@@ -541,6 +549,33 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **`/bug-triage` re-offered PRODUCTION CODE as new work — FIXED ([PR #478](https://github.com/russellmoss/wine-inventory/pull/478), needs a human merge).**
+  Ticket `cmrwdgt2u…` ("assistant should read a vessel's/lot's operation history") was ranked the
+  run's ONE actionable plan-ready item, pointing at plan issue #466 — a day AFTER the work shipped in
+  #468 (`query-operations.ts`, `operation-history.ts`, 30 tests, 7 goldens).
+  🔎 **Three facts had to combine:** (1) #468 was **hand-built by a parallel session**, so nothing
+  stamped the PR on the ticket — `prNumber` stayed null; (2) **Reconcile only closes items that HAVE
+  a resolved fix PR**, so a null prNumber is never even a candidate; (3) **the PR sweep lists only
+  `--state open`**, so a PR that merged BEFORE the run is invisible and the `linkedFeedbackId`
+  body-extraction (which already works for sweep-merged PRs) never ran on it.
+  Fix = a new **Merged Sweep** phase: scan recently-merged PRs, pull cuid-shaped ids out of the PR
+  BODY by **shape + proximity** to feedback/ticket wording (phrasings differ — ``Closes the feedback
+  item `<id>` `` vs ``Automated fix from bug ticket `<id>` ``), validate via the read-only
+  `triage:lookup`, reconcile to RESOLVED **only if `isOpen`**, fan out to cluster duplicates.
+  ⚠️ **Permissive extraction is safe because `triage:lookup` is a TOTAL VALIDATOR** — a bogus id
+  comes back `missing`, so the DB is the gate, not the regex. Bounded by `maxMergedScan` (50) + a
+  `mergedAt` cutoff from the `today` arg (workflow scripts **cannot call `Date.now()`**, so no
+  `today` = count cap only).
+  🔻 **Anything reconciled is pulled OUT of the run's own action lists AND build waves** — enforced
+  in JS after the build planner returns, because "the prompt said not to" is not enforcement, and
+  handing a builder shipped work was the actual defect.
+  🔻 **Second bug in the same area: every `feedback: plan` issue is a TEMPLATE STUB.**
+  `scripts/feedback-plan-agent.ts` emits identical boilerplate for every run and nothing ever writes
+  `planMarkdown` back, so "plan-ready" routinely means an empty issue — and the build planner was
+  emitting `/work <planUrl> — build the plan as written` for it. Now judged by a boilerplate-coverage
+  test (real/hand-edited plans respected; an unreadable issue is never downgraded) and stubs route to
+  `/plan`.
+
 - **`/bug-triage` `counts.reconciled` reported 390 for 1 item — FIXED (PR #459).** The Reconcile agent
   alone ran with a bare `{ additionalProperties: true }` schema, so `{ results: "<json string>" }`
   validated and the counts builder took `.length` of the STRING. Fixed at both altitudes:
@@ -834,7 +869,14 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-23 — **`/bug-triage` `counts.reconciled` fixed (PR #459).** A count reported
+_Last updated: 2026-07-23 — **`/bug-triage` reconcile blind spot closed (PR #478, needs a human
+merge).** Triage ranked a ticket as the run's one actionable item a day after the work shipped in a
+hand-built PR #468: nothing stamped the PR on the ticket, Reconcile needs a PR on the ticket, and the
+PR sweep lists only OPEN PRs. New **Merged Sweep** scans merged PRs for a feedback id in the body,
+validates it through `triage:lookup` (a bogus id comes back `missing` — the DB is the gate, not the
+regex), and reconciles only if still open; reconciled items are stripped from the run's actions and
+build waves in JS. Also: every `feedback: plan` issue is a static TEMPLATE STUB, so "plan-ready" now
+routes stubs to `/plan` instead of `/work`. Prior: **`counts.reconciled` fixed (PR #459).** A count reported
 390 for one reconciled item because the Reconcile agent's schema was bare enough
 (`additionalProperties: true`) to accept a stringified array, so `.length` counted CHARACTERS. Fixed at
 the schema AND the call site. ⚠️ `dryRun: true` gates the Reconcile agent out entirely, so a dry run can
