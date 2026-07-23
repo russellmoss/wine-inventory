@@ -7,20 +7,26 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 091 — voice pronunciation lexicon (issue #464). AT A DECISION STOP, awaiting Russell.**
-Branch `claude/pronunciation-issue-ticket-c5cff3`, 4 commits, not pushed.
+**PLAN 091 — voice pronunciation lexicon. MERGED + IN PROD (#474, squash `f578dada`).**
+⚠️ **Issue #464 is NOT fixed — the lexicon table shipped EMPTY, so this is a no-op for users.**
 Plan: [2026-07-23-091-…](docs/plans/2026-07-23-091-feat-voice-pronunciation-lexicon-plan.md).
 Audit: [docs/kb-eval/pronunciation-lexicon-audit.md](docs/kb-eval/pronunciation-lexicon-audit.md).
 
-DONE — Units 3/4 (lexicon matcher wired into `toSpeakable`, single-pass alternation,
-idempotency + no-cascade guards, table ships EMPTY), Unit 1 (mined 575 candidates from
-36,931 chunks + Demo Variety/CellarMaterial), Unit 2 (screen built). 170 tests green.
+Landed: the matcher (single-pass alternation, longest-match-first, accent-tolerant,
+idempotency + no-cascade guards) wired LAST in `toSpeakable` after `normalizeUnits`;
+the miner (575 candidates from 36,931 chunks + Demo vocabulary, 26,320 dropped and
+logged); the rejected screen, kept as a documented negative result. 3,642 tests green.
 
-⛔ **BLOCKED: the TTS→STT screen does not work, and it is structural.** Scribe repairs the
-mispronunciation it is supposed to detect — Syrah, Saccharomyces, Gewürztraminer, Viognier,
-Riesling and Brettanomyces ALL passed, while correctly-said `cellar` "failed" as the
-homophone *seller*. Knock-on: **Unit 7's objective before/after number is gone**; the ear
-pass is the only gate left. Russell chooses: ranked listening pass vs. curated-list-first.
+⛔ **The TTS→STT screen does NOT work and it is structural — do not rebuild it.** Scribe's
+job is to output the word you MEANT regardless of pronunciation, which is exactly the
+signal being measured. It missed Syrah, Saccharomyces, Gewürztraminer, Viognier, Riesling
+and Brettanomyces, and flagged a correctly-said `cellar` as the homophone *seller*.
+Knock-on: **the objective before/after number is gone**; the ear is the only gate.
+
+▶️ **NEXT, and it needs Russell, not an agent:** play
+`pronunciation-sample.mp3` (regenerate any time with `npm run sample:pronunciation`),
+report which of the 27 numbers sound wrong. Only those get a rule — a rule on a word
+that was already right can only move it one direction. Then Units 5/6 write the table.
 
 ## 🔭 Also in flight
 
