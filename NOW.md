@@ -7,11 +7,26 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**PLAN 091 — voice pronunciation lexicon (issue #464). AT A DECISION STOP, awaiting Russell.**
+Branch `claude/pronunciation-issue-ticket-c5cff3`, 4 commits, not pushed.
+Plan: [2026-07-23-091-…](docs/plans/2026-07-23-091-feat-voice-pronunciation-lexicon-plan.md).
+Audit: [docs/kb-eval/pronunciation-lexicon-audit.md](docs/kb-eval/pronunciation-lexicon-audit.md).
+
+DONE — Units 3/4 (lexicon matcher wired into `toSpeakable`, single-pass alternation,
+idempotency + no-cascade guards, table ships EMPTY), Unit 1 (mined 575 candidates from
+36,931 chunks + Demo Variety/CellarMaterial), Unit 2 (screen built). 170 tests green.
+
+⛔ **BLOCKED: the TTS→STT screen does not work, and it is structural.** Scribe repairs the
+mispronunciation it is supposed to detect — Syrah, Saccharomyces, Gewürztraminer, Viognier,
+Riesling and Brettanomyces ALL passed, while correctly-said `cellar` "failed" as the
+homophone *seller*. Knock-on: **Unit 7's objective before/after number is gone**; the ear
+pass is the only gate left. Russell chooses: ranked listening pass vs. curated-list-first.
+
+## 🔭 Also in flight
+
 **PLAN 090 — UNITS 1-10 DONE (18 commits, NOT pushed). RE-INDEX COMPLETE (606 docs), DIFF JUDGED.**
 Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md).
 Verdict: [docs/kb-eval/DIFF-090.md](docs/kb-eval/DIFF-090.md). `verify:knowledge-base` **21/0**.
-
-## 🔭 Also in flight
 
 **IVES Technical Reviews — LIVE and MERGED (#465).** 209 docs / 3,316 chunks, default-ON for both
 tenants, **209/209 dated (100%)** vs ~31% corpus-wide. Default-on is the MEASURED position: staged
