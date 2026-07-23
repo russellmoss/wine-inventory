@@ -18,6 +18,7 @@ import {
   type TimelineItem,
   type VesselKind,
 } from "@/lib/lot/timeline";
+import { getWineryTimeZone } from "@/lib/settings/data";
 import { detectStuck } from "@/lib/ferment/stuck";
 import { reversibilityForOperation } from "@/lib/ledger/reverse";
 import { operationSupplementalNote } from "@/lib/cellar/edit-policy";
@@ -505,7 +506,11 @@ export async function getLotDetail(id: string): Promise<LotDetail | null> {
   const brixReadings = panels.flatMap((p) =>
     p.readings.filter((r) => r.analyte === "BRIX").map((r) => ({ observedAt: p.observedAt, brix: Number(r.value) })),
   );
-  const stuckRes = detectStuck(brixReadings, { afState: lot.afState as AlcoholicFermState });
+  // See monitor-data: the stall window buckets by day, so it follows the winery's calendar.
+  const stuckRes = detectStuck(brixReadings, {
+    afState: lot.afState as AlcoholicFermState,
+    timeZone: (await getWineryTimeZone()) ?? undefined,
+  });
   const stuck =
     brixReadings.length > 0
       ? { stuck: stuckRes.stuck, reason: stuckRes.reason, latestBrix: stuckRes.latestBrix }

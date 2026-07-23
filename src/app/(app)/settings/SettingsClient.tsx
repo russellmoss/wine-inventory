@@ -16,6 +16,7 @@ import { Commerce7ConnectionCard, type Commerce7ConnectionSummary } from "./Comm
 import { Commerce7MappingCard } from "./Commerce7MappingCard";
 import { NamingTemplateCard } from "./NamingTemplateCard";
 import { VoiceRecognitionCard } from "./VoiceRecognitionCard";
+import { WineryTimeZoneCard } from "./WineryTimeZoneCard";
 import { KnowledgeSourcesCard } from "./KnowledgeSourcesCard";
 import type { SourceSetting } from "@/lib/knowledge/subscriptions";
 
@@ -54,6 +55,8 @@ export function SettingsClient({
   commerce7,
   voice,
   knowledgeSources,
+  wineryTimeZone,
+  timeZoneOptions,
 }: {
   sparklingEnabled: boolean;
   pushVendorsToQbo: boolean;
@@ -66,6 +69,8 @@ export function SettingsClient({
   commerce7: Commerce7ConnectionSummary | null;
   voice: VoiceSettingsView;
   knowledgeSources: SourceSetting[];
+  wineryTimeZone: string | null;
+  timeZoneOptions: string[];
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(sparklingEnabled);
@@ -272,6 +277,9 @@ export function SettingsClient({
           {costMsg && <span style={{ color: "var(--positive)", fontSize: 14 }}>{costMsg}</span>}
         </div>
       </Card>
+
+      {/* The clock planned work is read against — due times, the due-today lanes, the assistant's "today". */}
+      <WineryTimeZoneCard initial={wineryTimeZone} zones={timeZoneOptions} />
 
       <VoiceRecognitionCard initial={voice} />
 

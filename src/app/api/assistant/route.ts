@@ -12,6 +12,8 @@ import {
 } from "@/lib/assistant/conversations";
 import { buildReplayMessages, windowReplayRows } from "@/lib/assistant/replay";
 import { generateTitle } from "@/lib/assistant/title";
+import { getWineryTimeZone } from "@/lib/settings/data";
+import { resolveOperatingTimeZone } from "@/lib/work-orders/due-at";
 
 // Node runtime + the Vercel ceiling: the tool-use loop makes several model
 // round-trips, so give it room. Responses stream as NDJSON so the UI sees text
@@ -47,11 +49,11 @@ export async function POST(req: Request) {
   // half-enable it. Text chat omits it and behaves exactly as before.
   const isVoice = (body as { voice?: unknown })?.voice === true;
 
-  // The viewer's IANA timezone. The server runs in UTC, so this is the only way "tomorrow at 9am" can be
-  // resolved against the winery's own clock. Validated (and defaulted to UTC) downstream, so a junk or
-  // missing value degrades to exactly the old behaviour rather than failing the turn.
+  // The viewer's IANA timezone, sent by the client. The server runs in UTC, so without a wall-clock
+  // reference "tomorrow at 9am" is unresolvable. Validated downstream, so a junk or missing value
+  // degrades rather than failing the turn.
   const rawTz = (body as { timeZone?: unknown })?.timeZone;
-  const timeZone = typeof rawTz === "string" && rawTz.length > 0 && rawTz.length <= 64 ? rawTz : undefined;
+  const viewerTimeZone = typeof rawTz === "string" && rawTz.length > 0 && rawTz.length <= 64 ? rawTz : undefined;
 
   const lastUserMessage = messages[messages.length - 1].content;
 
@@ -116,6 +118,19 @@ export async function POST(req: Request) {
       }
 
       try {
+        // The clock this turn is reasoned on. The WINERY's configured zone wins — "issue it for 9am"
+        // means the crew's 9am, and an owner asking from another country must not silently plan work
+        // on their own clock. Resolved HERE rather than inside runAssistant so the loop stays free of
+        // DB reads (its tests construct it without a database). Best-effort: a settings hiccup falls
+        // back to the viewer's zone, which is what shipped before this setting existed.
+        let wineryTimeZone: string | null = null;
+        try {
+          wineryTimeZone = await getWineryTimeZone();
+        } catch {
+          /* unset or unavailable → the viewer's own zone */
+        }
+        const timeZone = resolveOperatingTimeZone(wineryTimeZone, viewerTimeZone);
+
         const run = await runAssistant({ user, messages: replayed, send, voice: isVoice, timeZone });
         // Persist when there is text OR any tool call. A turn that emitted only a card has no text;
         // dropping it (the old `run.text.trim()` gate) threw away exactly the tool evidence replay

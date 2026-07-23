@@ -514,6 +514,37 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **The winery has its own CLOCK — `AppSettings.timeZone`** (follow-on to the due-TIME feature below,
+  asked for by Russell: "is this timezone-aware, or is it a setting?"). It was neither: #472 resolved a
+  requested wall clock against the **viewer's browser**, which is right for a crew standing in the
+  winery and wrong for anyone reading from elsewhere. Work is planned where the wine is, so the winery
+  now gets a configured zone that WINS over the reader's, for everything place-bound: WO due entry +
+  display, the assistant's tools and its "today", the overdue/due-today lanes, and the ferment
+  stall-detector's day bucketing (which had a `timeZone` param since Phase 6 that nobody ever passed).
+  • **NULLABLE on purpose** — unset means "not configured" and every reader falls back to the viewer's
+  own zone, i.e. exactly #472's behaviour. The migration changes nothing for any existing tenant.
+  • 🔻 **A pre-existing UTC bug, now fixed:** `buckets.ts` computed day boundaries with
+  `getFullYear/getMonth/getDate` = SERVER-local = UTC in prod. A WO due 9pm Eastern is 01:00Z the next
+  day, so it read **"upcoming" on the very evening the crew had to do it.**
+  • 🔻 **I caused a real regression and the test suite caught it, not the linter:** putting
+  `getWineryTimeZone()` inside `runAssistant` added a DB read to the assistant's hot path and **tripled
+  the suite's wall clock (31s → 96s)**, because that loop is deliberately DB-free so its tests can
+  construct it without a database. Resolved in the ROUTE instead; suite back to 31s. If an assistant
+  test starts timing out, look for a new await in `run.ts` before blaming the flake.
+  • ⚠️ **`Intl.supportedValuesOf("timeZone")` omits bare `UTC` and the whole `Etc/*` family**, so the
+  canonical list has to add UTC back or the resolver's own fallback is unstorable. And the write gate
+  is stricter than the read gate for a reason: **`"EST"` formats fine and is a FIXED −5 with no daylight
+  rule** — a winery that stored it would run an hour off for eight months. Only ids Intl enumerates.
+  • ⚠️ **`react-hooks/set-state-in-effect` is an ERROR here** — it bit both the seeded-due localization
+  and the settings card's live clock. Both became `useSyncExternalStore`; the clock's `getSnapshot` must
+  return the time **rounded down to the tick**, since a raw `Date.now()` re-renders forever.
+  Gates: tsc 0, eslint 0, **vitest 3583/0**, `verify:invariants` 37/37, `verify:naming` 25/25,
+  `next build` clean. Browser-QA'd on Demo in the sharpest case — winery set to Los Angeles while the
+  viewer sat in New York, on a night when the two were on **different calendar days**: the settings card
+  showed both clocks, the builder defaulted to the winery's Jul 22 (not the viewer's Jul 23), the
+  assistant resolved "tomorrow" on the winery's calendar, and both paths stored **16:00Z = 9:00 AM PDT**
+  where the previous WO #62 sits at 13:00Z = 9am EDT. Demo restored to unset; QA WOs cancelled.
+
 - **Work orders take a requested TIME of day, not just a date** (feedback `cmrwkmapf…`, Demo,
   FEATURE_REQUEST). Reporter was issuing a 30-min pumpover on T7 and wanted it "tomorrow at 9am":
   the duration was capturable, the clock time was not, and the cap-management flow took **no due

@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   combineDateAndTime,
   formatDueAt,
+  isCanonicalTimeZone,
+  isRealTimeZone,
+  listCanonicalTimeZones,
   normalizeTimeZone,
   parseClockTime,
   parseDueAt,
+  resolveOperatingTimeZone,
+  zoneAbbreviation,
   toDateTimeLocalValue,
   toDueInputs,
   zonedClock,
@@ -192,6 +197,75 @@ describe("toDueInputs", () => {
     const due = parseDueAt(combineDateAndTime(date, time), LA);
     expect(due?.at.toISOString()).toBe(stored.toISOString());
     expect(due?.hasTime).toBe(true);
+  });
+});
+
+describe("resolveOperatingTimeZone", () => {
+  it("prefers the winery's configured clock — work is planned where the wine is", () => {
+    expect(resolveOperatingTimeZone("Asia/Thimphu", LA)).toBe("Asia/Thimphu");
+  });
+
+  it("falls back to the viewer when the winery has not configured one (the default)", () => {
+    expect(resolveOperatingTimeZone(null, LA)).toBe(LA);
+    expect(resolveOperatingTimeZone(undefined, LA)).toBe(LA);
+    expect(resolveOperatingTimeZone("", LA)).toBe(LA);
+  });
+
+  it("ignores a bogus stored zone rather than silently meaning UTC", () => {
+    expect(resolveOperatingTimeZone("Mars/Olympus_Mons", LA)).toBe(LA);
+  });
+
+  it("ends at UTC when neither is usable", () => {
+    expect(resolveOperatingTimeZone(null, null)).toBe("UTC");
+    expect(resolveOperatingTimeZone(null, "nonsense")).toBe("UTC");
+  });
+});
+
+describe("isRealTimeZone (read-side safety net)", () => {
+  it("accepts anything Intl can format with, so a page render never throws", () => {
+    expect(isRealTimeZone(LA)).toBe(true);
+    expect(isRealTimeZone("UTC")).toBe(true);
+    expect(isRealTimeZone("PST")).toBe(true); // deliberately permissive: a legacy alias still formats
+    expect(isRealTimeZone("Mars/Olympus_Mons")).toBe(false);
+    expect(isRealTimeZone("")).toBe(false);
+    expect(isRealTimeZone(null)).toBe(false);
+  });
+});
+
+describe("isCanonicalTimeZone (write-side gate)", () => {
+  it("accepts canonical IANA ids", () => {
+    expect(isCanonicalTimeZone(LA)).toBe(true);
+    expect(isCanonicalTimeZone("Asia/Thimphu")).toBe(true);
+    expect(isCanonicalTimeZone("UTC")).toBe(true);
+  });
+
+  it("REFUSES legacy abbreviations — 'EST' is a fixed -5 with no daylight rule", () => {
+    // The footgun this gate exists for: "EST" formats fine and would sit an hour off for eight months
+    // of the year. "America/New_York" is the same place, done right.
+    expect(isRealTimeZone("EST")).toBe(true);
+    expect(isCanonicalTimeZone("EST")).toBe(false);
+    expect(isCanonicalTimeZone("PST")).toBe(false);
+    expect(isCanonicalTimeZone("Mars/Olympus_Mons")).toBe(false);
+    expect(isCanonicalTimeZone(null)).toBe(false);
+  });
+
+  it("enumerates a real zone list, with UTC added back", () => {
+    const zones = listCanonicalTimeZones();
+    expect(zones.length).toBeGreaterThan(100);
+    expect(zones).toContain(LA);
+    // Intl omits bare UTC (it's a link, not a zone), but it is this module's fallback value, so it
+    // has to be storable or the resolver's own default would be unrepresentable.
+    expect(zones).toContain("UTC");
+  });
+});
+
+describe("zoneAbbreviation", () => {
+  it("labels the zone so a reader elsewhere isn't misled", () => {
+    const summer = new Date("2026-07-23T16:00:00.000Z");
+    const winter = new Date("2026-01-23T17:00:00.000Z");
+    expect(zoneAbbreviation(summer, LA)).toBe("PDT");
+    expect(zoneAbbreviation(winter, LA)).toBe("PST"); // DST-aware, not a stored string
+    expect(zoneAbbreviation(summer, "UTC")).toBe("UTC");
   });
 });
 

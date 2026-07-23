@@ -14,6 +14,16 @@ export interface LocalTimeProps {
   /** Rendered for an absent/invalid date. */
   invalidText?: string;
   className?: string;
+  /**
+   * Format once, identically on the server and the client — skip the re-render into the viewer's
+   * locale/timezone.
+   *
+   * For when the caller has already pinned an EXPLICIT `options.timeZone` (e.g. the winery's operating
+   * zone, which the server knows). There is no mismatch to repair in that case, and re-rendering would
+   * actively break the intent by swapping in the viewer's locale conventions for a value that is
+   * deliberately not viewer-relative.
+   */
+  fixed?: boolean;
 }
 
 function fmt(d: Date, mode: Mode, options: Intl.DateTimeFormatOptions | undefined, locale?: string, timeZone?: string): string {
@@ -32,7 +42,7 @@ function fmt(d: Date, mode: Mode, options: Intl.DateTimeFormatOptions | undefine
  * timezone (en-US / UTC), so the two HTML strings are byte-identical; then a mount effect re-renders in the
  * viewer's real locale + timezone. `suppressHydrationWarning` is a backstop, not the mechanism.
  */
-export function LocalTime({ value, mode = "datetime", options, invalidText = "", className }: LocalTimeProps) {
+export function LocalTime({ value, mode = "datetime", options, invalidText = "", className, fixed = false }: LocalTimeProps) {
   const d = new Date(value);
   const valid = !Number.isNaN(d.getTime());
 
@@ -47,7 +57,13 @@ export function LocalTime({ value, mode = "datetime", options, invalidText = "",
 
   if (!valid) return <span className={className}>{invalidText}</span>;
 
-  const text = mounted ? fmt(d, mode, options) : fmt(d, mode, options, "en-US", "UTC");
+  // `fixed`: the caller pinned the zone itself, so both renders already agree — format once with a
+  // stable locale and leave it alone. Otherwise do the usual SSR-safe swap into the viewer's settings.
+  const text = fixed
+    ? fmt(d, mode, options, "en-US")
+    : mounted
+      ? fmt(d, mode, options)
+      : fmt(d, mode, options, "en-US", "UTC");
   return (
     <time className={className} dateTime={d.toISOString()} suppressHydrationWarning>
       {text}

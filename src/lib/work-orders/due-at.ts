@@ -224,3 +224,78 @@ export function browserTimeZone(): string {
     return "UTC";
   }
 }
+
+/**
+ * The clock a piece of PLANNED work is read against.
+ *
+ * The winery's configured zone wins, because a work order is a place-bound instruction: a 9am pumpover
+ * means the crew's 9am, not the reader's. When the winery hasn't configured one (`AppSettings.timeZone`
+ * is null — the default) this falls back to the viewer's own zone, which is exactly the behaviour that
+ * shipped in #472, so an unconfigured tenant sees no change.
+ *
+ * This is NOT for "when did this happen to me" timestamps — audit rows, message times, activity feeds
+ * are correctly viewer-local and should keep using LocalTime directly.
+ */
+export function resolveOperatingTimeZone(
+  wineryTimeZone: string | null | undefined,
+  viewerTimeZone?: string | null,
+): string {
+  if (isRealTimeZone(wineryTimeZone)) return wineryTimeZone.trim();
+  return normalizeTimeZone(viewerTimeZone);
+}
+
+/**
+ * Whether a string names a zone Intl can format with. The READ-side safety net: a value that got into
+ * the column somehow still degrades to the fallback instead of throwing on a page render.
+ *
+ * Deliberately permissive — it accepts legacy aliases like "PST". Use `isCanonicalTimeZone` to decide
+ * what may be STORED.
+ */
+export function isRealTimeZone(timeZone: string | null | undefined): timeZone is string {
+  if (typeof timeZone !== "string" || timeZone.trim() === "") return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timeZone.trim() }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a string is a CANONICAL IANA zone id — the write-side gate.
+ *
+ * Stricter than `isRealTimeZone` for a concrete reason: Intl also accepts legacy abbreviations, and
+ * some of them are FIXED-offset with no daylight rule. `"EST"` formats happily and stays at UTC-5 all
+ * year, so a winery that stored it would silently run an hour off for eight months. `"America/New_York"`
+ * is the same place done right. Only ids Intl itself enumerates are allowed in.
+ */
+export function isCanonicalTimeZone(timeZone: string | null | undefined): timeZone is string {
+  if (typeof timeZone !== "string" || timeZone.trim() === "") return false;
+  return listCanonicalTimeZones().includes(timeZone.trim());
+}
+
+/**
+ * Every canonical IANA zone id this runtime knows (~418), plus `UTC`.
+ *
+ * `Intl.supportedValuesOf("timeZone")` deliberately omits the whole `Etc/*` family AND bare `UTC` —
+ * they are links, not zones. But `UTC` is this module's documented fallback value, so refusing to
+ * store it would make the resolver's own default unrepresentable. It is added back explicitly.
+ */
+export function listCanonicalTimeZones(): string[] {
+  try {
+    const supported = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf;
+    const zones = typeof supported === "function" ? supported("timeZone") : [];
+    return zones.includes("UTC") ? zones : ["UTC", ...zones];
+  } catch {
+    return ["UTC"];
+  }
+}
+
+/** The short zone label for an instant ("PDT", "GMT+6") — shown where a reader may not share the zone. */
+export function zoneAbbreviation(at: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: normalizeTimeZone(timeZone),
+    timeZoneName: "short",
+  }).formatToParts(at);
+  return parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+}

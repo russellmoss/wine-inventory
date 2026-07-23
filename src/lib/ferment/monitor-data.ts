@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getWineryTimeZone } from "@/lib/settings/data";
 import { detectStuck } from "@/lib/ferment/stuck";
 import type { AlcoholicFermState, MalolacticState, LotForm } from "@/lib/ledger/vocabulary";
 
@@ -62,9 +63,12 @@ export async function loadFermentSeries(lotId: string): Promise<FermentSeries | 
   }
   const points = [...byPanel.values()].sort((a, b) => a.observedAt.localeCompare(b.observedAt));
 
+  // Day-bucketing collapses multiple readings per day, so "a day" must be the WINERY's day — on the
+  // server's UTC clock an evening reading rolls into tomorrow and the stall window reads a day short.
+  const fermentTimeZone = (await getWineryTimeZone()) ?? undefined;
   const stuckRes = detectStuck(
     points.filter((p) => p.brix != null).map((p) => ({ observedAt: p.observedAt, brix: p.brix as number })),
-    { afState: lot.afState as AlcoholicFermState },
+    { afState: lot.afState as AlcoholicFermState, timeZone: fermentTimeZone },
   );
 
   // Recent non-voided additions/fining on this lot (yeast, MLF culture, bentonite, tannin, …).

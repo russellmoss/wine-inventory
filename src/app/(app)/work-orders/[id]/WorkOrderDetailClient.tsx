@@ -42,7 +42,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
             {wo.priority && wo.priority !== "NORMAL" ? `${wo.priority.charAt(0)}${wo.priority.slice(1).toLowerCase()} priority · ` : ""}
             {wo.locationName ? `${wo.locationName} · ` : ""}
             {wo.assigneeEmail ? `Assigned to ${wo.assigneeEmail} · ` : ""}
-            {wo.dueAt ? <>Due <DueAt value={wo.dueAt} hasTime={wo.dueAtHasTime} /></> : "Unscheduled"}
+            {wo.dueAt ? <>Due <DueAt value={wo.dueAt} hasTime={wo.dueAtHasTime} showZone /></> : "Unscheduled"}
             {wo.startedByEmail ? ` · in progress by ${wo.startedByEmail}` : ""}
           </div>
         </div>
