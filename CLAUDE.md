@@ -41,6 +41,26 @@ Key routing rules:
 - Visual audit, design polish -> invoke design-review
 - Architecture review -> invoke plan-eng-review
 
+## Data-model parity with the incumbents (read before schema/domain work)
+
+`docs/architecture/data_model_coalescence.md` is the canonical reference for **where our data
+model should align with Vintrace + InnoVint** (the two battle-tested incumbents) and where we
+**deliberately diverge** (the moat). **Before adding or changing a domain model** — lots, vessels,
+operations, work orders, blending, compliance/bond/tax, cost, parties/intake — check it:
+- Where BOTH incumbents **coalesce** on a shape, align to it (their convergence is load-bearing —
+  they each hit the same wall). Don't re-derive a shape they already solved.
+- Where they **diverge**, it's a choice, not a mandate — decide deliberately.
+- Where WE diverge on purpose (append-only correction-as-event, immutable lineage DAG, DB-RLS,
+  auto barrel depreciation, 5000.24/CBMA), **keep it and market it** — never "align" a moat away.
+
+The doc carries a **GTM-ordered** pipeline (P0–P3 by custom-crush onboarding criticality, council-
+reviewed) that maps into `ROADMAP.md` §"Data-model coalescence backlog". Keep it current as items ship.
+Two standing rules from the review: **(1) assistant coverage is part of the definition of done** —
+`verify:ai-native` fails on a core with no tool, so a cellar-floor `build-new` isn't done until it has
+a tool + golden eval (wet-hands → a tool; desk-with-coffee → GUI; domain-composite, not one tool per
+micro-core). **(2) On the live tenant, anything with an FK / RLS / uniqueness / event-write is
+backfill-then-enforce**, never a bare additive migration.
+
 ## Design System
 Always read DESIGN.md before making any visual or UI decisions.
 All font choices, colors, spacing, and aesthetic direction are defined there

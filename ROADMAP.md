@@ -1678,3 +1678,63 @@ capture surface is built, don't relitigate per phase:
 - **Offline / degraded mode** — cellars have poor wifi; capture must tolerate it
   (queue-and-sync). Decide the approach when the first heavy floor surface ships (Phase 6).
 - **Sticky context** — don't re-select block/vessel for every entry in a sequence.
+
+---
+
+## Data-model coalescence backlog (incumbent parity — audit 2026-07-23)
+
+A full 8-domain audit compared our data model against **Vintrace + InnoVint** (the battle-tested
+incumbents), then **council-reviewed** (Codex + Gemini, 2026-07-23 —
+`docs/architecture/council-review-coalescence.md`). Canonical report + GTM-ordered pipeline:
+**`docs/architecture/data_model_coalescence.md`** (referenced from `CLAUDE.md`). The principle: align
+where BOTH incumbents coalesce (load-bearing convergence), keep our deliberate divergences (the moat),
+and don't re-derive shapes they already solved. Each item is `build-new` or `align-retroactively`;
+`⚠️` touches the live lot/ledger spine (**backfill-then-enforce**, not a bare additive migration).
+
+**Council reframed two things:** (1) sequence by **custom-crush onboarding criticality (P0–P3)**, NOT
+build-risk — ownership + intake (weigh-tags) + billing-visibility first, polish deferred/killed; the
+pipeline in the doc is now GTM-ordered. (2) **Assistant coverage is part of the definition of done** —
+`verify:ai-native` fails on a core with no tool, so every cellar-floor `build-new` carries `+asst`
+(wet-hands → a tool; desk-with-coffee → GUI; domain-composite, mind the ~40-tool selection cliff).
+⭐ **Open partner-validation question: fractional ownership** (JV / facility-cut) — kept scalar for now
+(matches InnoVint; RLS stays a column compare), design the Owner entity for additive fractional
+extension, confirm with the design partner before finalizing.
+
+**Killed for MVP / deferred (council):** graphical tank map, drag-drop calendar (whiteboards + a list
+suffice at harvest); indirect-overhead allocation + backdating lock (Excel handles the first billing
+cycle — capture DIRECT cost + CostLine.visibility only); state tax class + TTB audit CSV (generate in
+Dec when audits run). GTM priority (P0–P3) cuts ACROSS the mapped-phase list below.
+
+**Mapped into existing phases:**
+- **23 (RBAC/ownership):** `Owner` entity (replace the `LotOwnership` enum), `CHANGE_OWNERSHIP` op,
+  bond derivation owner-precedence + location-default, `CostLine.visibility` split. ⚠️ (plan 092).
+- **20 (vineyard):** first-class **`Grower`** entity + grower FK on Vineyard/Block (the STRONGEST
+  both-incumbent gap — replaces free-text `VineyardDetail.manager`), **AVA/appellation** field
+  (never flows to the bottle today), fruit-purchase **contract** entity.
+- **30 (harvest):** **weigh-tag/weighmaster** certificate (monotonic, void-not-delete) + tare/bin
+  **weigh-groups** (gross/tare/net); owner/grower/sold refs on `HarvestPick`. ⚠️
+- **18 (cellar floor):** vessel **physical-location** sub-model (`storageArea`/`posX`/`posY`/`dims`),
+  graphical **tank map**, dip-chart calibration.
+- **11 (labor/cost):** **indirect-overhead allocation writer** (spread $ across N lots by volume /
+  $/lot / $/gal, as-of — both incumbents' central COGS action; our toggles exist, nothing writes the
+  line), cost-period **backdating lock**, per-op labor auto-cost. ⚠️
+- **14 (compliance):** **Bill of Lading** generator off `TRANSFER_IN_BOND` (InnoVint table-stakes —
+  we own every input), **State Alcohol Category** / dual federal-state tax class (we're federal-only),
+  InnoVint-style **TTB audit CSV**, §A **line-25** posting, **`deriveTaxState`** projection.
+
+**Standalone quick wins (not tied to a big phase — run as compound-engineering units, low/no schema
+risk, high leverage):** `deriveTaxState` (S), wire PACKAGING into the bottling cost snapshot
+(`packagingCost=0` today, M), blend-trial **predicted-analysis** (S), WO task **effective-time
+"as-of"** (M), vessel **archive-not-delete** guard (S), cost enum add-values `STORAGE`/`FREIGHT`/`OTHER`
+(S), first-class **`Tag`** model + blend-inheritance (M), vessel types **KEG/BIN** (S), **drag-drop
+scheduling calendar** UI (M), a guarded **lightweight in-place edit** for trivial no-downstream ops (S).
+
+**Fix-forward:** the `analysis/incumbent-teardown/*` + crosswalk docs are STALE — un-tag the built
+items (transfer-in-bond, `Bond`, lifecycle writers, `NamingTemplate`, tax-class events) and correct
+the BOL "both weak — moat" mis-tag (InnoVint ships a full BOL — table-stakes).
+
+**Do NOT align away the moat** (keep + market): append-only correction-as-event ledger, immutable
+lineage DAG, append-only rename, one-lot-per-vessel (which is PARITY — both incumbents enforce it),
+auto-symmetric cross-tax-class posting, auto barrel depreciation, TTB 5000.24 + CBMA (neither has it),
+the WO immediate-write + review gate, and the confirmed unbuilt differentiators (`CostLine.visibility`,
+DB-enforced RLS owner scope, the client "Your wine" home).
