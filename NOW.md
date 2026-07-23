@@ -541,6 +541,23 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **`/bug-triage` `counts.reconciled` reported 390 for 1 item — FIXED (PR #459).** The Reconcile agent
+  alone ran with a bare `{ additionalProperties: true }` schema, so `{ results: "<json string>" }`
+  validated and the counts builder took `.length` of the STRING. Fixed at both altitudes:
+  `RECONCILE_SCHEMA` types `results` as a real array (so StructuredOutput rejects a stringified answer
+  and the model retries), plus an `asArray()` parse at the call site that falls back to the
+  deterministic one-row-per-item list rather than a bogus count. Audited every sibling count — all
+  other array-bearing agent fields are already typed arrays under `additionalProperties: false`, so
+  Reconcile was the only loose contract.
+  ⚠️ **`dryRun: true` gates the Reconcile agent out entirely**, so a dry run can NEVER exercise this
+  path (it returns 0/0) — verify with a harness over the committed source, not a dry run. Proof:
+  1 item → `counts.reconciled = 1`.
+  🔎 **The `.gitattributes` LF pin this branch originally carried was DROPPED on rebase — #458
+  (`ebf52f31`) already landed it on `main`.** Worth knowing why it looked missing: the pin only
+  applies at CHECKOUT, so a worktree created BEFORE it landed still hands the Workflow tool CRLF and
+  `/bug-triage` still refuses to launch there. Fix per-worktree with
+  `perl -pi -e 's/\r\n/\n/g' .claude/workflows/bug-triage.js`, not with another pin.
+
 - **The winery has its own CLOCK — `AppSettings.timeZone`** (follow-on to the due-TIME feature below,
   asked for by Russell: "is this timezone-aware, or is it a setting?"). It was neither: #472 resolved a
   requested wall clock against the **viewer's browser**, which is right for a crew standing in the
@@ -817,7 +834,12 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-22 — **PLAN 090 UNITS 1-9 DONE (12 commits, unpushed); the PRODUCTION RE-INDEX
+_Last updated: 2026-07-23 — **`/bug-triage` `counts.reconciled` fixed (PR #459).** A count reported
+390 for one reconciled item because the Reconcile agent's schema was bare enough
+(`additionalProperties: true`) to accept a stringified array, so `.length` counted CHARACTERS. Fixed at
+the schema AND the call site. ⚠️ `dryRun: true` gates the Reconcile agent out entirely, so a dry run can
+NEVER exercise that path — verify with a harness over the committed source, not a dry run.
+Prior: **PLAN 090 UNITS 1-9 DONE (12 commits, unpushed); the PRODUCTION RE-INDEX
 IS RUNNING** (osu-owri + wbi + lvwo, 616 docs, ~4h at observed rate). Unit 10 (the before/after diff)
 is blocked on it finishing. **The lesson of this plan is that the code fix was the easy part** — making
 it reach the data took THREE separate silent no-ops, each of which would have produced a green,

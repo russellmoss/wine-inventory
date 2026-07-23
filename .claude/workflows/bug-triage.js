@@ -151,6 +151,21 @@ Conformance levels to assign:
   - "caution"  — it TOUCHES a governed area and could go off-standard if built naively; buildable, but the builder MUST be told the standard to uphold (name it). NOT a blocker.
   - "conflict" — what's ASKED FOR can only be satisfied by breaking a standard above (e.g. "let me delete/edit a past ledger entry", "make the executed op editable in place", "sync inventory FROM Commerce7 as truth"). The reported pain is real but the requested SOLUTION is non-standard; it needs a human to redesign the ask into a conformant shape (correction event, supersede, outbox) BEFORE any build. A conflict is NEVER auto-dispatched, auto-merged, or placed in a parallel build wave.`
 
+// An agent field that is SUPPOSED to be an array but may arrive as a JSON string (a model
+// satisfying a loose schema by stringifying its answer). Returns a real array, or null when the
+// value is absent/unparseable so the caller can keep its deterministic fallback. Without this,
+// `someAgentResult.field.length` silently counts CHARACTERS, not elements.
+const asArray = (v) => {
+  if (Array.isArray(v)) return v
+  if (typeof v !== 'string') return null
+  try {
+    const parsed = JSON.parse(v)
+    return Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 const BACKLOG_SCHEMA = {
   type: 'object', additionalProperties: false,
   required: ['contractVersion', 'items'],
@@ -467,6 +482,34 @@ const SENTRY_TRIAGE_SCHEMA = {
   },
 }
 
+// RECONCILE — one row per merged-but-open item the agent wrote back to RESOLVED. The `results`
+// array MUST be a real array: it was previously an untyped `additionalProperties: true` object, so
+// the agent satisfied the schema by returning the run's JSON as a STRING and `counts.reconciled`
+// reported that string's character length (390 for a single item) instead of the item count.
+const RECONCILE_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['results'],
+  properties: {
+    results: {
+      type: 'array',
+      description: 'One entry per item, in the order processed — the JSON each `triage:resolve` run printed, normalized.',
+      items: {
+        type: 'object', additionalProperties: true,
+        required: ['id', 'ok'],
+        properties: {
+          id: { type: 'string' },
+          ok: { type: 'boolean', description: 'true if the resolve command reported success for this item.' },
+          prNumber: { type: ['number', 'null'] },
+          title: { type: ['string', 'null'] },
+          status: { type: ['string', 'null'], description: 'The status the item was written to (RESOLVED on success).' },
+          error: { type: ['string', 'null'], description: 'For ok=false: what the command reported.' },
+        },
+      },
+    },
+    notes: { type: 'string' },
+  },
+}
+
 // Build-conflict planner: which actionable items can be BUILT concurrently (disjoint
 // files/domains, no dependency) vs must be sequenced. Powers TRIAGE-RUNBOOK.md so a fleet
 // of Claude Code instances can clear the backlog in parallel without merge conflicts.
@@ -766,14 +809,17 @@ if (reconcileClose.length > 0 && RECONCILE && !DRY_RUN) {
   const r = await agent(
     `You are the RECONCILE agent. These bug items each have a fix PR that is ALREADY MERGED, but their status never got written back — so the queue shows them as still-open. Close each one out to RESOLVED so the backlog reflects reality. For EACH item run exactly:
   \`npm run triage:resolve -- --tenant=<tenantId> --source=<sourceType> --id=<id> --status=RESOLVED --note="[defect] Fixed (reconciled) — fix PR #<prNumber> already merged; closing out to match reality."\`
-Report the JSON each prints. Do nothing else.
+Report one entry per ITEM in \`results\` — an ARRAY of objects, never a JSON string — carrying that item's id, whether the resolve succeeded (\`ok\`), and the prNumber/title. Do nothing else.
 
 ITEMS:
 ${JSON.stringify(reconcileClose.map((i) => ({ id: i.id, sourceType: i.sourceType, tenantId: i.tenantId, prNumber: i.prNumber, title: i.title })), null, 2)}`,
-    { label: 'reconcile', phase: 'Reconcile', schema: { type: 'object', additionalProperties: true } },
+    { label: 'reconcile', phase: 'Reconcile', schema: RECONCILE_SCHEMA },
   )
   reconciled = reconcileClose.map((i) => ({ id: i.id, prNumber: i.prNumber, title: i.title }))
-  if (r) reconciled = r.results || reconciled
+  // `asArray` is the belt to the schema's braces: if a future model still hands back a stringified
+  // array, we parse it rather than counting its characters (the `counts.reconciled = 390` defect).
+  const agentResults = asArray(r?.results)
+  if (agentResults) reconciled = agentResults
 } else if (reconcileClose.length > 0) {
   log(`${reconcileClose.length} merged-but-open item(s) would be reconciled (skipped: ${DRY_RUN ? 'dryRun' : 'reconcile=false'}).`)
 }
