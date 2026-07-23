@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { LocalTime } from "@/components/ui";
 import type { WorkOrderPrintView, WorkOrderPrintTask } from "@/lib/work-orders/data";
+import { DueAt } from "@/components/work-orders/DueAt";
 
 // Phase 9.1 (Unit 6): the printable / Save-as-PDF work-order sheet. Token-driven (print.css), one WO per
 // sheet, page-break-inside:avoid per task box (A12). Values are RESOLVED to human labels server-side
@@ -76,7 +77,10 @@ export function PrintClient({ wo, workOrderId, printedAt }: { wo: WorkOrderPrint
           <div style={metaCell}><div style={metaLabel}>Issued by</div>{wo.issuedByEmail ?? "—"}</div>
           <div style={metaCell}><div style={metaLabel}>Assigned to</div>{wo.assigneeEmail ?? "—"}</div>
           <div style={metaCell}><div style={metaLabel}>Issued</div>{fmtDate(wo.issuedAt)}</div>
-          <div style={metaCell}><div style={metaLabel}>Due</div>{fmtDate(wo.dueAt)}</div>
+          {/* The crew works off the printout, so the requested time of day has to survive printing. */}
+          <div style={metaCell}><div style={metaLabel}>Due</div>
+            <DueAt value={wo.dueAt} hasTime={wo.dueAtHasTime} dateOptions={{ year: "numeric", month: "long", day: "numeric" }} />
+          </div>
         </div>
 
         {wo.instructions ? (

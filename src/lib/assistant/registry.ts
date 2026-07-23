@@ -20,6 +20,12 @@ export type ToolContext = {
    * EXPLICIT "take me there" (auto-navigate) vs incidental (render a link).
    */
   lastUserMessage?: string;
+  /**
+   * The VIEWER's IANA timezone, sent by the chat client. The server runs in UTC, so without this a
+   * requested "tomorrow at 9am" would be resolved against the wrong clock and land hours off. Tools that
+   * accept a wall-clock date/time resolve it in this zone; absent or bogus, it falls back to UTC.
+   */
+  timeZone?: string;
 };
 
 export type AssistantTool = {

@@ -100,6 +100,7 @@ export type MyWorkOrderRow = {
   title: string;
   status: string;
   dueAt: string | null; // ISO
+  dueAtHasTime: boolean; // was a TIME of day requested, or just a date?
   updatedAt: string; // ISO
 };
 

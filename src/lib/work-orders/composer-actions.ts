@@ -41,6 +41,7 @@ export type CreateAndIssueInput = {
   assigneeId?: string | null;
   assigneeEmail?: string | null;
   dueAt?: Date | null;
+  dueAtHasTime?: boolean;
   autoFinalize?: boolean;
   perTaskOverrides?: Record<string, unknown>[];
   taskBuilds?: { taskType: string; title?: string; values: Record<string, unknown> }[];

@@ -180,6 +180,7 @@ export async function createWorkOrderFromTemplateCore(
     assigneeId?: string | null;
     assigneeEmail?: string | null;
     dueAt?: Date | null;
+    dueAtHasTime?: boolean;
     scheduledFor?: Date | null;
     autoFinalize?: boolean;
     perTaskOverrides?: Record<string, unknown>[];
@@ -208,6 +209,7 @@ export async function createWorkOrderFromTemplateCore(
     assigneeId: input.assigneeId,
     assigneeEmail: input.assigneeEmail,
     dueAt: input.dueAt,
+    dueAtHasTime: input.dueAtHasTime,
     scheduledFor: input.scheduledFor,
     autoFinalize: input.autoFinalize,
     templateVersionId: version.id, // snap the version onto the instance (immutable thereafter)

@@ -47,6 +47,12 @@ export async function POST(req: Request) {
   // half-enable it. Text chat omits it and behaves exactly as before.
   const isVoice = (body as { voice?: unknown })?.voice === true;
 
+  // The viewer's IANA timezone. The server runs in UTC, so this is the only way "tomorrow at 9am" can be
+  // resolved against the winery's own clock. Validated (and defaulted to UTC) downstream, so a junk or
+  // missing value degrades to exactly the old behaviour rather than failing the turn.
+  const rawTz = (body as { timeZone?: unknown })?.timeZone;
+  const timeZone = typeof rawTz === "string" && rawTz.length > 0 && rawTz.length <= 64 ? rawTz : undefined;
+
   const lastUserMessage = messages[messages.length - 1].content;
 
   const encoder = new TextEncoder();
@@ -110,7 +116,7 @@ export async function POST(req: Request) {
       }
 
       try {
-        const run = await runAssistant({ user, messages: replayed, send, voice: isVoice });
+        const run = await runAssistant({ user, messages: replayed, send, voice: isVoice, timeZone });
         // Persist when there is text OR any tool call. A turn that emitted only a card has no text;
         // dropping it (the old `run.text.trim()` gate) threw away exactly the tool evidence replay
         // needs, so the next turn would look like the assistant answered a write request with nothing.

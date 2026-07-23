@@ -11,6 +11,7 @@ import { unwrap } from "@/lib/action-result";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { resolveDoseUnit } from "@/lib/cellar/additions-math";
 import { resolveAdditiveFrom } from "./additive-resolve";
+import { DUE_AT_SCHEMA_PROPERTIES, dueClause, dueFromCommitArgs, dueProposalArgs, resolveDueAt } from "./due-at-args";
 
 // Assistant multi-vessel WO tool — issue ONE work order with one OPERATION task per vessel across a
 // list of vessels ("top barrels 1-5", "filter tanks 3, 4 and 7", "add 30 g/hL KMBS to barrels 1-8").
@@ -48,12 +49,13 @@ type RawInput = {
   title?: unknown;
   assigneeEmail?: unknown;
   dueDate?: unknown;
+  dueTime?: unknown;
 };
 
 export const issueOperationWoTool: AssistantTool = {
   name: "issue_operation_wo",
   description:
-    "Issue ONE work order that fans out across MULTIPLE vessels — one task per vessel — for a whole-vessel cellar operation: topping, filtration, an addition, or a fining. Use when the user wants a single work order covering several tanks/barrels at once ('top barrels 1 through 5', 'filter tanks 3, 4 and 7', 'add 30 g/hL KMBS to barrels 1-8'). Give the operation and the list of vessels in plain language; for an addition or fining also give the material + dose. This is the tool for multi-vessel selection — NOT create_work_order (that clones a fixed template and can't fan out) and NOT issue_cap_management_wo (that's cap work: punchdown/pumpover/cold-soak). Two-vessel racking is not supported here. Optionally set an assignee email, due date, and title. Does NOT save immediately — returns a preview to confirm.",
+    "Issue ONE work order that fans out across MULTIPLE vessels — one task per vessel — for a whole-vessel cellar operation: topping, filtration, an addition, or a fining. Use when the user wants a single work order covering several tanks/barrels at once ('top barrels 1 through 5', 'filter tanks 3, 4 and 7', 'add 30 g/hL KMBS to barrels 1-8'). Give the operation and the list of vessels in plain language; for an addition or fining also give the material + dose. This is the tool for multi-vessel selection — NOT create_work_order (that clones a fixed template and can't fan out) and NOT issue_cap_management_wo (that's cap work: punchdown/pumpover/cold-soak). Two-vessel racking is not supported here. Optionally set an assignee email, a due date (plus dueTime for a requested clock time, e.g. 'tomorrow at 9am' → dueDate + dueTime '09:00'), and a title. Does NOT save immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -72,11 +74,11 @@ export const issueOperationWoTool: AssistantTool = {
       note: { type: "string", description: "Optional note for the crew, applied to every task." },
       title: { type: "string", description: "Optional work-order title (defaults to a sensible one)." },
       assigneeEmail: { type: "string", description: "Email of the crew member this work order is assigned to (optional)." },
-      dueDate: { type: "string", description: "Due date as YYYY-MM-DD (resolve relative dates like 'tomorrow' to a date). Optional." },
+      ...DUE_AT_SCHEMA_PROPERTIES,
     },
     required: ["operation", "vessels"],
   },
-  async run(_ctx, rawInput) {
+  async run(ctx, rawInput) {
     const input = (rawInput ?? {}) as RawInput;
     const operation = typeof input.operation === "string" ? input.operation.toUpperCase() : "";
     if (!isOperation(operation)) throw new Error(`Pick an operation: ${OPERATIONS.join(", ")}.`);
@@ -99,7 +101,7 @@ export const issueOperationWoTool: AssistantTool = {
 
     const note = typeof input.note === "string" && input.note.trim() ? input.note.trim() : null;
     const assigneeEmail = typeof input.assigneeEmail === "string" && input.assigneeEmail.trim() ? input.assigneeEmail.trim() : null;
-    const dueDate = typeof input.dueDate === "string" && input.dueDate.trim() ? input.dueDate.trim() : null;
+    const due = resolveDueAt(input.dueDate, input.dueTime, ctx.timeZone);
 
     // Per-operation extras: TOPPING may carry a shared source vessel + planned volume; ADDITION/FINING
     // need a resolved additive (id) + a planned dose. The exact weigh-out happens on the floor.
@@ -145,8 +147,7 @@ export const issueOperationWoTool: AssistantTool = {
         : `${OP_TITLE[operation]} — ${count} ${count === 1 ? "vessel" : "vessels"}`;
 
     const asgClause = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
-    const dueClause = dueDate ? `, due ${dueDate}` : "";
-    const preview = `Issue a ${OP_TITLE[operation].toLowerCase()} work order: ${verb} ${vesselList}${detail}${asgClause}${dueClause}. One task per vessel (${count}); the crew records each on the floor.`;
+    const preview = `Issue a ${OP_TITLE[operation].toLowerCase()} work order: ${verb} ${vesselList}${detail}${asgClause}${dueClause(due)}. One task per vessel (${count}); the crew records each on the floor.`;
 
     // Sign the fully-resolved task builds so the committer does no re-resolution (ids are pinned here).
     const tasks: TaskBuild[] = resolved.map((v) => ({
@@ -163,7 +164,7 @@ export const issueOperationWoTool: AssistantTool = {
       title,
       tasks,
       ...(assigneeEmail ? { assigneeEmail } : {}),
-      ...(dueDate ? { dueDate } : {}),
+      ...dueProposalArgs(due),
     });
     return { needsConfirmation: true, preview, token };
   },
@@ -172,12 +173,12 @@ export const issueOperationWoTool: AssistantTool = {
 export const commitIssueOperationWo: Committer = async (_user, args) => {
   const title = String(args.title);
   const assigneeEmail = args.assigneeEmail == null ? null : String(args.assigneeEmail);
-  const dueAt = args.dueDate ? new Date(String(args.dueDate)) : null;
+  const { dueAt, dueAtHasTime } = dueFromCommitArgs(args);
   const builds = (Array.isArray(args.tasks) ? args.tasks : []) as TaskBuild[];
   if (builds.length === 0) throw new Error("This work order has no tasks.");
 
   const tasks = instantiateTaskBuilds(builds, await resolveTaskVocabulary());
-  const created = unwrap(await createWorkOrderAction({ title, tasks, assigneeEmail, dueAt }));
+  const created = unwrap(await createWorkOrderAction({ title, tasks, assigneeEmail, dueAt, dueAtHasTime }));
   unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
 
   const asgSuffix = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";

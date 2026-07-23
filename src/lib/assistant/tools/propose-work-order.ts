@@ -29,6 +29,27 @@ import {
 } from "@/lib/work-orders/nl-proposal";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials-shared";
 import type { ChoiceRequest } from "../assistant-events";
+import { combineDateAndTime, normalizeTimeZone } from "@/lib/work-orders/due-at";
+
+/**
+ * Fold the model's separate `dueDate` + `dueTime` into the single wall-clock string the NL draft carries,
+ * and stamp the zone it was spoken in (the viewer's) so the committer resolves it to the right instant —
+ * the server runs in UTC, where a 9am request would land hours off.
+ *
+ * Idempotent, because a picker RESUME re-enters here with an already-folded `dueDate` and its own
+ * `dueTimeZone`: `combineDateAndTime` passes a wall clock through untouched, and an existing zone wins.
+ */
+function withResolvedDue(raw: RawInput & Record<string, unknown>, timeZone: string | undefined): Record<string, unknown> {
+  const dueDate = combineDateAndTime(
+    typeof raw.dueDate === "string" ? raw.dueDate : null,
+    typeof raw.dueTime === "string" ? raw.dueTime : null,
+  );
+  return {
+    ...raw,
+    dueDate: dueDate ?? null,
+    dueTimeZone: typeof raw.dueTimeZone === "string" ? raw.dueTimeZone : normalizeTimeZone(timeZone),
+  };
+}
 
 const DOSE_UNITS = ["g/hL", "mg/L", "ppm", "g/L", "mL/L", "g", "kg", "mL", "L", "oz", "lb", "fl oz", "gal"] as const;
 
@@ -37,6 +58,7 @@ type RawInput = {
   title?: unknown;
   assigneeEmail?: unknown;
   dueDate?: unknown;
+  dueTime?: unknown;
   tasks?: unknown;
   intents?: unknown;
 };
@@ -73,6 +95,7 @@ function inputForPinnedMaterial(draft: NlWorkOrderDraft, index: number, material
     title: draft.title,
     ...(draft.assigneeEmail ? { assigneeEmail: draft.assigneeEmail } : {}),
     ...(draft.dueDate ? { dueDate: draft.dueDate } : {}),
+    ...(draft.dueTimeZone ? { dueTimeZone: draft.dueTimeZone } : {}),
     tasks,
   };
 }
@@ -92,6 +115,7 @@ function inputForPinnedPackaging(draft: NlWorkOrderDraft, index: number, itemIdx
     title: draft.title,
     ...(draft.assigneeEmail ? { assigneeEmail: draft.assigneeEmail } : {}),
     ...(draft.dueDate ? { dueDate: draft.dueDate } : {}),
+    ...(draft.dueTimeZone ? { dueTimeZone: draft.dueTimeZone } : {}),
     tasks,
   };
 }
@@ -149,6 +173,7 @@ function inputForPinnedBlock(draft: NlWorkOrderDraft, index: number, block: Scop
     title: draft.title,
     ...(draft.assigneeEmail ? { assigneeEmail: draft.assigneeEmail } : {}),
     ...(draft.dueDate ? { dueDate: draft.dueDate } : {}),
+    ...(draft.dueTimeZone ? { dueTimeZone: draft.dueTimeZone } : {}),
     tasks,
   };
 }
@@ -198,6 +223,7 @@ function inputForPinnedEquipment(draft: NlWorkOrderDraft, index: number, eq: Equ
     title: draft.title,
     ...(draft.assigneeEmail ? { assigneeEmail: draft.assigneeEmail } : {}),
     ...(draft.dueDate ? { dueDate: draft.dueDate } : {}),
+    ...(draft.dueTimeZone ? { dueTimeZone: draft.dueTimeZone } : {}),
     tasks,
   };
 }
@@ -246,6 +272,7 @@ function inputForPinnedAssignee(draft: NlWorkOrderDraft, index: number, member: 
     title: draft.title,
     ...(draft.assigneeEmail ? { assigneeEmail: draft.assigneeEmail } : {}),
     ...(draft.dueDate ? { dueDate: draft.dueDate } : {}),
+    ...(draft.dueTimeZone ? { dueTimeZone: draft.dueTimeZone } : {}),
     tasks,
   };
 }
@@ -335,6 +362,7 @@ export const proposeWorkOrderTool: AssistantTool = {
       title: { type: "string", description: "Optional work-order title." },
       assigneeEmail: { type: "string", description: "Optional assignee email. Only pass a real email the user named — NEVER guess or construct one. If the user named a person but you do not know their email, omit this field and call the tool anyway: the card renders as a draft naming the assignee as unresolved, which is correct. An invented email is not." },
       dueDate: { type: "string", description: "Optional due date as YYYY-MM-DD. Resolve relative dates deterministically before passing." },
+      dueTime: { type: "string", description: "Optional requested TIME of day on that date, 24-hour HH:mm (e.g. '09:00' for 9am). Omit it when the user only gave a day. Requires dueDate." },
       tasks: {
         type: "array",
         maxItems: 25,
@@ -414,7 +442,7 @@ export const proposeWorkOrderTool: AssistantTool = {
     if (raw.schemaVersion != null && raw.schemaVersion !== NL_WORK_ORDER_SCHEMA_VERSION) {
       return "This work-order proposal is stale. Regenerate it before confirming.";
     }
-    const draft = canonicalizeNlWorkOrderDraft(raw);
+    const draft = canonicalizeNlWorkOrderDraft(withResolvedDue(raw, ctx.timeZone));
     const choice = await materialChoiceIfNeeded(draft);
     if (choice) return choice;
     const blockChoice = await resolveWeighInBlocks(ctx.user, draft);
@@ -446,6 +474,7 @@ function commitArgs(raw: Record<string, unknown>): NlWorkOrderCommitArgs {
     title: String(raw.title ?? "Natural-language work order"),
     assigneeEmail: raw.assigneeEmail == null ? null : String(raw.assigneeEmail),
     dueDate: raw.dueDate == null ? null : String(raw.dueDate),
+    dueTimeZone: raw.dueTimeZone == null ? null : String(raw.dueTimeZone),
     taskBuilds,
     fingerprint: String(raw.fingerprint ?? ""),
   };
@@ -501,10 +530,12 @@ export const commitProposeWorkOrder: Committer = async (user, rawArgs) => {
   const taskBuilds = tenantId ? await revalidateSignedIds(tenantId, args.taskBuilds) : args.taskBuilds;
   const taskCount = taskBuilds.length;
 
+  const { dueAt, dueAtHasTime } = dueAtFromCommitArgs(args);
   const created = unwrap(await createWorkOrderFromBuildsAction({
     title: args.title,
     assigneeEmail: args.assigneeEmail,
-    dueAt: dueAtFromCommitArgs(args),
+    dueAt,
+    dueAtHasTime,
     taskBuilds,
     readinessFingerprint: args.fingerprint,
   }));

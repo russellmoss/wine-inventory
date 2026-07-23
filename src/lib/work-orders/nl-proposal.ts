@@ -93,6 +93,8 @@ export type NlWorkOrderDraft = {
   title: string;
   assigneeEmail: string | null;
   dueDate: string | null;
+  /** IANA zone the wall clock in `dueDate` was spoken in (viewer's). Null = UTC. */
+  dueTimeZone: string | null;
   intents: NlWorkOrderIntent[];
   /**
    * Tasks that could not be canonicalized. A draft with ANY partial is never `ready`, so it can never
@@ -165,6 +167,8 @@ export type WorkOrderProposalDetails = {
   title: string;
   assigneeEmail: string | null;
   dueDate: string | null;
+  /** IANA zone the wall clock in `dueDate` was spoken in (viewer's). Null = UTC. */
+  dueTimeZone: string | null;
   status: ProposalStatus;
   stateReadAt: string;
   tasks: ProposedTask[];
@@ -185,6 +189,8 @@ export type NlWorkOrderCommitArgs = {
   title: string;
   assigneeEmail: string | null;
   dueDate: string | null;
+  /** IANA zone the wall clock in `dueDate` was spoken in (viewer's). Null = UTC. */
+  dueTimeZone: string | null;
   taskBuilds: TaskBuild[];
   fingerprint: string;
 };
@@ -313,7 +319,8 @@ export function canonicalizeNlWorkOrderDraft(raw: unknown): NlWorkOrderDraft {
   const title = cleanString(obj.title) ?? titleFromIntents(intents);
   const assigneeEmail = cleanString(obj.assigneeEmail);
   const dueDate = cleanString(obj.dueDate);
-  return { schemaVersion: 2, sourceText, title, assigneeEmail, dueDate, intents, partials };
+  const dueTimeZone = cleanString(obj.dueTimeZone);
+  return { schemaVersion: 2, sourceText, title, assigneeEmail, dueDate, dueTimeZone, intents, partials };
 }
 
 /**
@@ -730,6 +737,7 @@ export function proposalDetails(proposal: WorkOrderProposal): WorkOrderProposalD
     title: proposal.title,
     assigneeEmail: proposal.assigneeEmail,
     dueDate: proposal.dueDate,
+    dueTimeZone: proposal.dueTimeZone,
     status: proposal.status,
     stateReadAt: proposal.stateReadAt,
     tasks: proposal.tasks,

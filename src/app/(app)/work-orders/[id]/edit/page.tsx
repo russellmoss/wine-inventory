@@ -45,7 +45,10 @@ export default async function EditWorkOrderPage({ params }: { params: Promise<{ 
     leadEmail: wo.assigneeEmail ?? "",
     priority: wo.priority || "NORMAL",
     locationId: wo.locationId ?? "",
-    dueAt: wo.dueAt ? wo.dueAt.slice(0, 10) : "",
+    // Hand the raw instant + its precision to the client, which localizes it to the viewer's timezone on
+    // mount — the server can't know that zone, and slicing the ISO string here would drop the time of day.
+    dueAtIso: wo.dueAt,
+    dueAtHasTime: wo.dueAtHasTime,
     dependsOn: wo.dependsOn,
   };
 

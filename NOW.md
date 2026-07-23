@@ -514,6 +514,33 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Work orders take a requested TIME of day, not just a date** (feedback `cmrwkmapf…`, Demo,
+  FEATURE_REQUEST). Reporter was issuing a 30-min pumpover on T7 and wanted it "tomorrow at 9am":
+  the duration was capturable, the clock time was not, and the cap-management flow took **no due
+  date at all**. Fixed across every authoring path — builder + template form, the edit page, and
+  all five assistant tools (`issue_cap_management_wo` gains `dueDate`/`dueTime` from zero;
+  `create_work_order`, `issue_operation_wo`, `manage_work_order` schedule, `propose_work_order`).
+  • 🔻 **`dueAt` was ALWAYS a DateTime — the column was never the blocker, every writer just fed it a
+  date.** The genuinely new data is the requested PRECISION: an instant cannot distinguish "the 23rd"
+  from "the 23rd at midnight", and midnight work is real at harvest, so it can't be inferred. Hence
+  `work_order.dueAtHasTime` (migration `20260722030000_…`, additive, `false` default = correct for
+  every legacy row). Without it, a date-only WO would render "12:00 AM" and read as real scheduling.
+  • 🔻 **The load-bearing bug is TIMEZONE, and it would have shipped silently.** The server runs UTC,
+  so resolving "9am" there puts a California crew's pumpover at 2am. The viewer's IANA zone is now
+  threaded from both `/api/assistant` call sites → `ToolContext.timeZone`, the wall clock resolves to
+  an instant **at propose time**, and the INSTANT is what the confirm token carries (the committer
+  can't re-resolve it differently). Same fix corrects the prompt's "today", which was UTC-derived and
+  already off by one for anyone west of Greenwich after ~5pm.
+  • ⚠️ **`datetime-local` is the obvious control and it's WRONG here** — it rejects a date-only value
+  (renders blank), so it cannot represent the WOs that already exist or let anyone clear a time set by
+  mistake. Two controls; an empty time IS the date-only state.
+  • 🔎 **Intl renders only the fields you name** — passing `hour`+`minute` alone to `toLocaleString`
+  silently dropped the date, so the detail page read "Due 9:00 AM". Caught in the browser, not by tsc.
+  Gates: tsc 0, eslint 0, **vitest 3571/0** (38 new), `verify:invariants` 37/37, `verify:naming` 25/25,
+  `verify:ai-native` green, `next build` clean. Proven on Demo end-to-end BOTH ways — builder UI and
+  the assistant card ("due 2026-07-23 at 9:00 AM") — with a DB read-back showing `13:00Z / hasTime=true`
+  = 9:00 AM Eastern, beside the reporter's own WO #60 still at `dueAt=null`. QA fixtures cancelled.
+
 - **Confirmed action cards no longer stick, and the next card actually comes up** (feedback
   `cmrwiky4p…`, Demo). Reporter issued two nutrient work orders in one turn (Day 1 Fermaid-O, Day 2
   DAP); confirming the first left it on screen at full height and the second never surfaced. **Three

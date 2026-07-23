@@ -14,6 +14,7 @@ import { WorkOrderReadinessPanel } from "@/components/work-orders/WorkOrderReadi
 import { VesselMultiSelect } from "./VesselMultiSelect";
 import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPicker";
 import { materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
+import { browserTimeZone, combineDateAndTime, formatDueAt, parseDueAt } from "@/lib/work-orders/due-at";
 
 type Picker = { id: string; label: string; unit?: string | null; kind?: string | null; category?: string | null; subcategory?: string | null; onHand?: number | null; volumeL?: number | null; capacityL?: number | null };
 type Template = { id: string; name: string; isSystem: boolean; spec: unknown };
@@ -92,6 +93,7 @@ export function NewWorkOrderClient({
   );
   const [title, setTitle] = React.useState("");
   const [dueAt, setDueAt] = React.useState(todayLocal()); // default to today (editable)
+  const [dueTime, setDueTime] = React.useState(""); // optional time of day; empty = date-only
   const [assigneeEmail, setAssigneeEmail] = React.useState("");
   const [autoFinalize, setAutoFinalize] = React.useState(false);
   const [overrides, setOverrides] = React.useState<Record<number, Record<string, unknown>>>({});
@@ -311,17 +313,26 @@ export function NewWorkOrderClient({
 
   const hasTasks = taskBuilds.length > 0;
   const readinessBlocked = hasTasks && readiness?.status === "blocked";
+  // Echo the due date back the way it will be stored, so a mistyped time is caught before issuing.
+  const dueSummary = React.useMemo(() => {
+    const due = parseDueAt(combineDateAndTime(dueAt, dueTime), browserTimeZone());
+    return due ? formatDueAt(due.at, due.hasTime, browserTimeZone()) : "";
+  }, [dueAt, dueTime]);
 
   function submit() {
     setError(null);
     if (!templateId) { setError("Pick a template."); return; }
     if (taskBuilds.length === 0) { setError("Add at least one task."); return; }
     if (readinessBlocked) { setError("Resolve the blocking issues above before issuing."); return; }
+    // Resolve the due wall clock in the VIEWER's timezone — "9am" has to mean 9am to the crew, not 9am
+    // wherever the server happens to run. An empty time control keeps the order date-only.
+    const due = parseDueAt(combineDateAndTime(dueAt, dueTime), browserTimeZone());
     const payload = {
       templateId,
       title: title.trim() || undefined,
       assigneeEmail: assigneeEmail.trim() || null,
-      dueAt: dueAt ? new Date(dueAt) : null,
+      dueAt: due?.at ?? null,
+      dueAtHasTime: due?.hasTime ?? false,
       autoFinalize,
       taskBuilds,
       readinessFingerprint: readiness?.fingerprint ?? null,
@@ -362,7 +373,14 @@ export function NewWorkOrderClient({
 
           <Input label="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={template?.name} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <label style={labelStyle}>Due date<input type="date" style={field} value={dueAt} onChange={(e) => setDueAt(e.target.value)} /></label>
+            {/* Date + an OPTIONAL time of day — cellar work is planned by clock time ("9am pumpover").
+                Leaving the time blank keeps the order date-only. */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 0.8fr", gap: 8 }}>
+              <label style={labelStyle}>Due date<input type="date" style={field} value={dueAt} onChange={(e) => setDueAt(e.target.value)} /></label>
+              <label style={labelStyle}>Time (optional)
+                <input type="time" style={field} value={dueTime} disabled={!dueAt} onChange={(e) => setDueTime(e.target.value)} aria-label="Requested time of day" />
+              </label>
+            </div>
             {/* Pick the assignee from tenant members (value = email) so the backend can resolve it to a
                 real user id — a WO assigned by member drives their inbox bucket + notification. */}
             <label style={labelStyle}>Assignee (optional)
@@ -434,7 +452,7 @@ export function NewWorkOrderClient({
           {/* Effect summary above the CTA (design review): who/when + what happens on confirm. */}
           {hasTasks ? (
             <div style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--paper-100)", borderRadius: "var(--radius-md)", padding: "8px 10px" }}>
-              {taskBuilds.length} task{taskBuilds.length === 1 ? "" : "s"} · {assigneeEmail.trim() ? `assigned to ${assigneeEmail.trim()}` : "unassigned"} · {dueAt ? `due ${dueAt}` : "no due date"}.{" "}
+              {taskBuilds.length} task{taskBuilds.length === 1 ? "" : "s"} · {assigneeEmail.trim() ? `assigned to ${assigneeEmail.trim()}` : "unassigned"} · {dueSummary ? `due ${dueSummary}` : "no due date"}.{" "}
               {lockedVessel ? "Creating & issuing now reserves supply/capacity and sends it to the crew." : "Creates a draft you can review before issuing."}
             </div>
           ) : null}

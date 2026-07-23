@@ -107,6 +107,8 @@ export type CreateWorkOrderInput = {
   assigneeId?: string | null;
   assigneeEmail?: string | null;
   dueAt?: Date | null;
+  /** Whether `dueAt` carries a requested TIME of day, or only a date (see lib/work-orders/due-at.ts). */
+  dueAtHasTime?: boolean;
   scheduledFor?: Date | null;
   // Plan 053 B8: ERP planning fields (validated by the action layer; persisted as-is).
   priority?: string | null;
@@ -183,6 +185,8 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
         assigneeId,
         assigneeEmail: input.assigneeEmail ?? null,
         dueAt: input.dueAt ?? null,
+        // Only meaningful alongside a dueAt — a WO with no due date is never "due at a time".
+        dueAtHasTime: input.dueAt ? input.dueAtHasTime ?? false : false,
         scheduledFor: input.scheduledFor ?? null,
         priority: input.priority ?? null,
         estimatedDurationMin: input.estimatedDurationMin ?? null,
@@ -324,10 +328,10 @@ export async function assignWorkOrderCore(
   return { workOrderId: updated.id, number: updated.number, status: updated.status };
 }
 
-/** Set/replace the due date + scheduled date. */
+/** Set/replace the due date (+ optional time of day) + scheduled date. */
 export async function scheduleWorkOrderCore(
   actor: LedgerActor,
-  input: { workOrderId: string; dueAt?: Date | null; scheduledFor?: Date | null },
+  input: { workOrderId: string; dueAt?: Date | null; dueAtHasTime?: boolean; scheduledFor?: Date | null },
 ): Promise<WorkOrderResult> {
   const wo = await prisma.workOrder.findUnique({ where: { id: input.workOrderId }, select: { id: true, number: true, status: true } });
   if (!wo) throw new ActionError("That work order no longer exists.");
@@ -339,6 +343,9 @@ export async function scheduleWorkOrderCore(
       where: { id: wo.id },
       data: {
         dueAt: input.dueAt !== undefined ? input.dueAt : undefined,
+        // Reschedules travel with their own precision: moving a WO to a bare date must CLEAR a
+        // previously-requested time, or the detail page would keep showing the old clock time.
+        dueAtHasTime: input.dueAt !== undefined ? (input.dueAt ? input.dueAtHasTime ?? false : false) : undefined,
         scheduledFor: input.scheduledFor !== undefined ? input.scheduledFor : undefined,
       },
       select: { id: true, number: true, status: true },

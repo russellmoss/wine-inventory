@@ -27,7 +27,7 @@ export async function listMyWorkOrders(
         where: { assigneeId: userId, ...statusWhere },
         orderBy: { updatedAt: "desc" },
         take: 100,
-        select: { id: true, number: true, title: true, status: true, dueAt: true, updatedAt: true },
+        select: { id: true, number: true, title: true, status: true, dueAt: true, dueAtHasTime: true, updatedAt: true },
       });
       return rows.map((r) => ({
         id: r.id,
@@ -35,6 +35,7 @@ export async function listMyWorkOrders(
         title: r.title,
         status: r.status,
         dueAt: r.dueAt ? r.dueAt.toISOString() : null,
+        dueAtHasTime: r.dueAtHasTime,
         updatedAt: r.updatedAt.toISOString(),
       }));
     },
