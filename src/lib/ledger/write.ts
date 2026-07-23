@@ -191,6 +191,17 @@ export async function writeLotOperation(
     volumeL: num(r.volumeL),
   }));
 
+  // Plan 093 Unit 4: `ownerId` is a maintained PROJECTION onto the ledger-spine descendant rows — each
+  // row carries ITS lot's CURRENT ownerId. Read the column here, ONCE. ⚠️ NEVER re-derive owner from
+  // lineage (the composition fold walks ancestors; the owner MUST NOT): re-deriving would let the next
+  // blend silently undo a CHANGE_OWNERSHIP by resurrecting an ancestor's old owner (eng-review P1 +
+  // council). Scalar — one owner per lot; a NULL ownerId = Estate (facility). Descendant rows inherit the
+  // lot's owner as-is; the originating lot's owner is set at the lot.create sites (Unit 4b).
+  const spineLotIds = [...new Set(input.lines.map((l) => l.lotId))];
+  const ownerRows = await tx.lot.findMany({ where: { id: { in: spineLotIds } }, select: { id: true, ownerId: true } });
+  const ownerByLot = new Map(ownerRows.map((l) => [l.id, l.ownerId]));
+  const ownerOf = (lotId: string): string | null => ownerByLot.get(lotId) ?? null;
+
   // Fold validates non-negative + dust-sweeps, yielding the target projection.
   const next = foldLines(currentBalances, input.lines);
 
@@ -235,6 +246,7 @@ export async function writeLotOperation(
         tenantId,
         operationId: op.id,
         lotId: l.lotId,
+        ownerId: ownerOf(l.lotId), // Plan 093 Unit 4: projection of the lot's current owner (never lineage)
         vesselId: l.vesselId,
         deltaL: l.deltaL,
         reason: l.reason ?? null,
@@ -274,7 +286,7 @@ export async function writeLotOperation(
       await tx.vesselLot.update({ where: { id: existing.id }, data: { volumeL: target.volumeL } });
     } else {
       await tx.vesselLot.create({
-        data: { tenantId, vesselId: target.vesselId, lotId: target.lotId, volumeL: target.volumeL },
+        data: { tenantId, vesselId: target.vesselId, lotId: target.lotId, volumeL: target.volumeL, ownerId: ownerOf(target.lotId) },
       });
     }
     // Phase 8b (Unit 8): capture the before/after for the barrel-fill fold below (vessel-bearing keys).
@@ -282,6 +294,7 @@ export async function writeLotOperation(
       barrelAffected.push({
         vesselId: (target?.vesselId ?? existing?.vesselId) as string,
         lotId: (target?.lotId ?? existing?.lotId) as string,
+        ownerId: ownerOf((target?.lotId ?? existing?.lotId) as string), // Plan 093 Unit 4
         beforeL: existing ? num(existing.volumeL) : 0,
         afterL: target ? target.volumeL : 0,
       });
@@ -335,6 +348,7 @@ export async function writeLotOperation(
           data: {
             tenantId,
             lotId,
+            ownerId: ownerOf(lotId), // Plan 093 Unit 4: projection of the bottled lot's current owner
             bottleCount: next.bottleCount,
             volumeL: next.volumeL,
             nominalFillMl: input.bottleState.nominalFillMl,

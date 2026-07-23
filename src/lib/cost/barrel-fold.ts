@@ -16,6 +16,7 @@ const EPS = 1e-6;
 export type BarrelAffected = {
   vesselId: string;
   lotId: string;
+  ownerId?: string | null; // Plan 093 Unit 4: the lot's current owner, projected onto the BarrelFill
   beforeL: number;
   afterL: number;
 };
@@ -59,6 +60,7 @@ export async function foldBarrelFills(
         data: {
           barrelAssetId: asset.id,
           lotId: a.lotId,
+          ownerId: a.ownerId ?? null, // Plan 093 Unit 4: projection of the lot's current owner
           fillNumber,
           volumeL: a.afterL,
           capacityL,
