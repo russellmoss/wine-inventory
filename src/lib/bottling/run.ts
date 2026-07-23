@@ -255,7 +255,9 @@ async function reverseBottlingTx(tx: Prisma.TransactionClient, runId: string, ac
           ? await nextLotCode(tx, { vintage: s.vintage, vineyardAbbr: vineyard.abbreviation, varietyAbbr: variety.abbreviation })
           : `LOT-${s.vintage ?? "NV"}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
       const lot = await tx.lot.create({
-        data: { code, form: "WINE", originVarietyId: s.varietyId, originVineyardId: s.vineyardId, vintageYear: s.vintage },
+        // Plan 093: this recovery path mints a lot from a source SPEC (not a source lot) when the id went
+        // missing; no owner is known here, so Estate (NULL). A real source-lot bottling inherits elsewhere.
+        data: { code, form: "WINE", originVarietyId: s.varietyId, originVineyardId: s.vineyardId, vintageYear: s.vintage, ownerId: null },
         select: { id: true, code: true },
       });
       lotId = lot.id;

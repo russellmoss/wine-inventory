@@ -1,4 +1,12 @@
-import type { CostComponent, LotOwnership, Prisma } from "@prisma/client";
+import type { CostComponent, Prisma } from "@prisma/client";
+import { isBillableOwner, type OwnerKind } from "@/lib/owner/data";
+
+// Plan 093 Unit 3: billability is resolved from the first-class Owner (via lot.ownerId), NOT the
+// LotOwnership enum column (kept only as a to-be-dropped mirror). This literal union replaces the Prisma
+// `LotOwnership` type on the cost surface so the eventual enum-drop (contract migration) doesn't break the
+// cost layer. A NULL ownerId = Estate (facility). AP_PROPRIETOR maps to ESTATE for THIS estate cost
+// roll-up (its cost is not billed-back the custom-crush way — see isBillableOwner; AP cost is a follow-on).
+type CostOwnership = "ESTATE" | "CUSTOM_CRUSH_CLIENT";
 import { prisma } from "@/lib/prisma";
 import { rollupCost, round8, type CostEvent, type Completeness, type LotCost, type LotVolume } from "@/lib/cost/rollup";
 import { isComponentCapitalized, COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
@@ -63,7 +71,7 @@ export type LotCostResult = LotCost & {
   /** Phase 8 U16 (D19): the root lot's ownership. CUSTOM_CRUSH_CLIENT lot cost is billed to the client,
    * NOT capitalized to estate inventory — its direct cost lines are suppressed from this estate roll-up
    * (they remain recorded for billing). Lets the cost surface label a client-owned lot. */
-  ownership: LotOwnership;
+  ownership: CostOwnership;
 };
 
 /**
@@ -89,7 +97,7 @@ export async function computeLotCost(rootId: string, dbArg?: CostDb, asOf?: Date
     }),
     db.vesselLot.findMany({ where: { lotId: { in: lotIds } }, select: { lotId: true, volumeL: true } }),
     db.bottledLotState.findMany({ where: { lotId: { in: lotIds } }, select: { lotId: true, volumeL: true } }),
-    db.lot.findMany({ where: { id: { in: lotIds } }, select: { id: true, ownership: true } }),
+    db.lot.findMany({ where: { id: { in: lotIds } }, select: { id: true, ownerId: true } }),
   ]);
 
   // Phase 8b (Unit 8, D7): accrue-to-date barrel cost for wine STILL in a barrel. A closed fill already
@@ -104,8 +112,23 @@ export async function computeLotCost(rootId: string, dbArg?: CostDb, asOf?: Date
   // Phase 8 U16 (D19): client-owned (custom-crush) lots don't capitalize to estate inventory — their
   // direct cost lines are billed back, so suppress them from THIS estate roll-up (still recorded in the
   // DB for billing). Enforced here at the single capitalization authority, not scattered across cores.
-  const ownershipByLot = new Map<string, LotOwnership>(ownerRows.map((l) => [l.id, l.ownership]));
-  const isBillable = (lotId: string) => ownershipByLot.get(lotId) === "CUSTOM_CRUSH_CLIENT";
+  // Resolve billability from the first-class Owner (lot.ownerId → Owner.kind). Two-step, not a Prisma
+  // include: the ownerId FK is raw-SQL (K11), so there is no `lot.owner` relation to join. A NULL ownerId
+  // = Estate/facility (not billable). Behaviour is identical to the old enum for all-estate data.
+  const ownerIdByLot = new Map<string, string | null>(ownerRows.map((l) => [l.id, l.ownerId]));
+  const ownerIds = [...new Set([...ownerIdByLot.values()].filter((x): x is string => x != null))];
+  const kindByOwnerId = new Map<string, OwnerKind>();
+  if (ownerIds.length) {
+    const owners = await db.owner.findMany({ where: { id: { in: ownerIds } }, select: { id: true, kind: true } });
+    for (const o of owners) kindByOwnerId.set(o.id, o.kind as OwnerKind);
+  }
+  const ownerOf = (lotId: string): { kind: OwnerKind } | null => {
+    const oid = ownerIdByLot.get(lotId);
+    if (!oid) return null;
+    const kind = kindByOwnerId.get(oid);
+    return kind ? { kind } : null;
+  };
+  const isBillable = (lotId: string) => isBillableOwner(ownerOf(lotId));
 
   const events: CostEvent[] = [];
   for (const c of costLines) {
@@ -164,7 +187,9 @@ export async function computeLotCost(rootId: string, dbArg?: CostDb, asOf?: Date
     stranded: 0,
   };
   const maxCostOpId = Math.max(0, ...costLines.map((c) => c.operationId), ...transfers.map((t) => t.operationId));
-  const ownership = ownershipByLot.get(rootId) ?? "ESTATE";
+  // Derive the label from the resolved owner (billable client → CUSTOM_CRUSH_CLIENT, else ESTATE) rather
+  // than reading the enum column. Behaviour-identical for estate data; AP maps to ESTATE for this roll-up.
+  const ownership: CostOwnership = isBillable(rootId) ? "CUSTOM_CRUSH_CLIENT" : "ESTATE";
   return { ...target, maxCostOpId, policyVersion: settings.policyVersion, ownership };
 }
 
@@ -177,7 +202,7 @@ export type CostLineRow = { operationId: number; component: CostComponent; amoun
 export type TransferRow = { operationId: number; fromLotId: string; toLotId: string; transferredVolumeL: number; transferredCost: number };
 export type LotCostView = {
   lotId: string;
-  ownership: LotOwnership;
+  ownership: CostOwnership;
   totalCost: number;
   volumeL: number;
   costPerL: number | null;

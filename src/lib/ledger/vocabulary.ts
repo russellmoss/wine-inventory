@@ -37,7 +37,8 @@ export const OPERATION_TYPES = [
   // ── Phase 2: bond + tax-class model (BOND-1 / TAXPAID-1) ──
   "TRANSFER_IN_BOND", // move wine across bonds — one balanced op, symmetric removed(§A15/§B9)/received(§A7/§B3)
   "RETURN_TO_BOND", // refund-flagged re-admission of tax-paid wine (§B4) — the ONLY way past the TAXPAID-1 terminal state
-  // CHANGE_OWNERSHIP is DEFERRED (Phase-2 OQ-1: needs alternate-proprietor logic) — not in this list.
+  // ── Plan 093: custom-crush proprietor change ──
+  "CHANGE_OWNERSHIP", // change of PROPRIETOR (ownerId). CONDITIONAL: same bond = title-only (ZERO TTB); host↔AP = title + transfer-in-bond
 ] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
 

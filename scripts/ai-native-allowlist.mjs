@@ -50,8 +50,13 @@ export const GAP_ALLOWLIST = {
   // deferred fast-follow alongside the U1 rendered surfaces (manual-QA-only; see PHASE-2-REPORT).
   "src/lib/compliance/return-to-bond-core.ts": { owner: "russellmoss", reason: "RETURN_TO_BOND assistant tool deferred to the Phase-2 UX/assistant fast-follow; core proven by verify:taxpaid" },
   "src/lib/compliance/tax-class-event-core.ts": { owner: "russellmoss", reason: "change-tax-class assistant tool deferred to the Phase-2 UX/assistant fast-follow; core proven by verify:taxclass" },
+  // Plan 093: the ownership cores ship in F1/F2 (data model); their assistant coverage lands in F3 Unit 12
+  // (owner/grower read + change_ownership + weigh-tag intake). The plan sanctions allow-listing until then.
+  // Ratchet back DOWN in F3 as each tool is wired.
+  "src/lib/owner/owner-core.ts": { owner: "russellmoss", reason: "createOwnerCore assistant coverage deferred to plan 093 F3 Unit 12; owner is otherwise reference-data admin / read-only in the assistant" },
 };
 
 // The ratchet ceiling for GAP_ALLOWLIST ONLY (INTERNAL is exempt). Set to the
 // number of deferred real gaps; only ever DECREMENT as you wire tools.
-export const MAX_ALLOWED = 2;
+// Bumped 2->3 for plan 093 F1 (owner-core); F3 wires the tool and ratchets it back down.
+export const MAX_ALLOWED = 3;

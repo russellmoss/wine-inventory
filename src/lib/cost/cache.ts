@@ -1,6 +1,7 @@
 import type { CostBasisCompleteness, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { computeLotCost, maxCostOpIdFor, type LotCostResult } from "@/lib/cost/data";
+import { getOwnerCore, costOwnershipLabel } from "@/lib/owner/data";
 
 // Phase 8 (Unit 5) — the LAZY, VERSIONED cache over the roll-up authority (D4). LotCostState is NOT an
 // invariant projection; the DAG recompute (cost/data.ts computeLotCost) is the authority and this row
@@ -34,9 +35,11 @@ export async function getLotCost(lotId: string, opts: { forceRecompute?: boolean
       const currentPolicyVersion = settings?.costingPolicyVersion ?? 1;
       const maxOpId = await maxCostOpIdFor(lotId);
       if (!isCacheStale(cache.computedThroughOpId, maxOpId, cache.basisVersion, currentPolicyVersion)) {
-        // ownership isn't cost-derived (not stored on LotCostState) — fetch it for the label. The
-        // cached totalCost is already correctly suppressed for a custom-crush lot (U16, at compute).
-        const lot = await prisma.lot.findUnique({ where: { id: lotId }, select: { ownership: true } });
+        // ownership isn't cost-derived (not stored on LotCostState) — resolve it for the label from the
+        // first-class Owner (lot.ownerId → Owner), NOT the LotOwnership enum column (Plan 093 Unit 3).
+        // The cached totalCost is already correctly suppressed for a custom-crush lot (U16, at compute).
+        const lot = await prisma.lot.findUnique({ where: { id: lotId }, select: { ownerId: true } });
+        const owner = await getOwnerCore(lot?.ownerId ?? null);
         return {
           lotId,
           totalCost: Number(cache.totalCost),
@@ -48,7 +51,7 @@ export async function getLotCost(lotId: string, opts: { forceRecompute?: boolean
           stranded: 0,
           maxCostOpId: cache.computedThroughOpId,
           policyVersion: cache.basisVersion,
-          ownership: lot?.ownership ?? "ESTATE",
+          ownership: costOwnershipLabel(owner),
         };
       }
     }

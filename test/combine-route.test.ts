@@ -99,21 +99,14 @@ describe("decideCombineRoute", () => {
       expect(d).toMatchObject({ ok: true, mode: "NEW_BLEND" });
     });
 
-    it("differing ownership is refused outright — a client's wine never joins estate wine", () => {
+    it("a cross-OWNER absorb is ALLOWED — the minority is billed at execution, never refused (Plan 093 Unit 6)", () => {
+      // Council C2 reversed the old "ownership-mismatch" refusal: refusing this deadlocked the daily
+      // topping op (facility wine into a client barrel). The receiving/resident owner dominates the scalar
+      // result; the consumed minority owner's fraction is captured as a pending BILLABLE_WINE_CONSUMED at
+      // execution (blend-core), not blocked here. Bond/form/ferment/tax still gate (below).
       const client = lot({ lotId: "L-CC", lotCode: "24-CC-1", ownership: "CUSTOM_CRUSH_CLIENT" });
       const d = decideCombineRoute({ destResidentLots: [PINOT], incoming: [client] });
-      expect(d.ok).toBe(false);
-      if (!d.ok) {
-        expect(d.reason).toBe("ownership-mismatch");
-        expect(d.requires).toBeUndefined(); // no escape — this one is not a blend decision
-      }
-    });
-
-    it("ownership cannot be escaped with NEW_BLEND either", () => {
-      const client = lot({ lotId: "L-CC", lotCode: "24-CC-1", ownership: "CUSTOM_CRUSH_CLIENT" });
-      const d = decideCombineRoute({ destResidentLots: [PINOT], incoming: [client], explicit: "NEW_BLEND" });
-      expect(d.ok).toBe(false);
-      if (!d.ok) expect(d.reason).toBe("ownership-mismatch");
+      expect(d).toMatchObject({ ok: true, mode: "ABSORB", residentLotId: "L-PINOT" });
     });
 
     it("differing bond is refused — that is a bond-to-bond transfer, not a rack", () => {
@@ -166,7 +159,7 @@ describe("decideCombineRoute", () => {
   describe("refusal copy speaks the winery's language", () => {
     const refusals = [
       decideCombineRoute({ destResidentLots: [PINOT], incoming: [lot({ lotId: "L-P", lotCode: "24-PORT", taxClass: "B_16_21" })] }),
-      decideCombineRoute({ destResidentLots: [PINOT], incoming: [lot({ lotId: "L-C", lotCode: "24-CC", ownership: "CUSTOM_CRUSH_CLIENT" })] }),
+      // (a cross-owner incoming is no longer a refusal — Plan 093 Unit 6; it's allowed + billed)
       decideCombineRoute({ destResidentLots: [PINOT], incoming: [lot({ lotId: "L-M", lotCode: "24-MUST", form: "MUST" })] }),
       decideCombineRoute({ destResidentLots: [PINOT, CAB], incoming: [CAB] }),
     ];

@@ -52,7 +52,7 @@ export async function disgorgementCore(actor: LedgerActor, input: DisgorgementIn
 
   const parent = await prisma.bottledLotState.findUnique({
     where: { lotId: input.lotId },
-    include: { lot: { select: { code: true, status: true, afState: true, mlfState: true, originVineyardId: true, originVarietyId: true, originBlockId: true, originSubblockId: true, vintageYear: true, provenanceComplete: true, sourceVineyards: { select: { vineyardId: true } } } } },
+    include: { lot: { select: { code: true, status: true, afState: true, mlfState: true, originVineyardId: true, originVarietyId: true, originBlockId: true, originSubblockId: true, vintageYear: true, provenanceComplete: true, ownerId: true, sourceVineyards: { select: { vineyardId: true } } } } }, // ownerId: Plan 093 Unit 4b (disgorged child inherits)
   });
   if (!parent) throw new ActionError("That lot isn't an en-tirage bottle lot.");
   if (parent.lot.status !== "ACTIVE") throw new ActionError(`Lot is ${parent.lot.status.toLowerCase()}.`);
@@ -107,6 +107,7 @@ export async function disgorgementCore(actor: LedgerActor, input: DisgorgementIn
         originSubblockId: l.originSubblockId,
         vintageYear: l.vintageYear,
         provenanceComplete: l.provenanceComplete,
+        ownerId: l.ownerId, // Plan 093 Unit 4b
       },
       select: { id: true, code: true },
     });

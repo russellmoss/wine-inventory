@@ -155,6 +155,7 @@ export async function splitLotInPlaceTx(
       carbonation: true,
       taxAbvOverride: true,
       ownership: true,
+      ownerId: true, // Plan 093 Unit 4b: the child inherits the parent's owner (single-parent split)
       sourceVineyards: { select: { vineyardId: true } },
     },
   });
@@ -264,6 +265,7 @@ export async function splitLotInPlaceTx(
         carbonation: parent.carbonation,
         taxAbvOverride: parent.taxAbvOverride,
         ownership: parent.ownership,
+        ownerId: parent.ownerId, // Plan 093 Unit 4b
         provenanceComplete: parent.provenanceComplete,
         sublotTag: c.sublotTag,
       },

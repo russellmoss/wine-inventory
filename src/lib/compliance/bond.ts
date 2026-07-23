@@ -75,7 +75,8 @@ export async function getPrimaryBond(client: DbClient = prisma as unknown as DbC
 /**
  * Resolve the authoritative bond id of each lot as-of `asOf`, batched (no N+1 — mirrors
  * resolveClassesForLots at generate.ts:85). Precedence per lot:
- *   1. the destBondId of its most-recent bond-moving line ≤ asOf (the ledger is authority);
+ *   0. AP-owner precedence: if the lot's owner (ownerId) has its own bond (Bond.ownerId), that wins (Unit 7);
+ *   1. else the destBondId of its most-recent bond-moving line ≤ asOf (the ledger is authority);
  *   2. else its single/unanimous parent's derived bond as-of the lineage event (lineage-child rule);
  *   3. else the tenant's primary bond (legacy / origination fallback).
  * Returns Map<lotId, bondId> covering every input id.
@@ -84,15 +85,36 @@ export async function resolveBondsForLots(
   lotIds: string[],
   asOf: Date,
   client: DbClient = prisma as unknown as DbClient,
-  _depth = 0,
+  opts: { skipOwnerPrecedence?: boolean; _depth?: number } = {},
 ): Promise<Map<string, string>> {
+  const _depth = opts._depth ?? 0;
   const out = new Map<string, string>();
   const ids = [...new Set(lotIds)].filter(Boolean);
   if (ids.length === 0) return out;
 
-  // 1. Direct: the latest line that stamped a dest bond for the lot (the position it moved onto).
+  // 0. AP-owner precedence (Plan 093 Unit 7): a lot owned by an Alternating-Proprietor client sits on
+  //    THAT owner's own bond (distinct BWN), which takes precedence over the ledger/lineage/primary order
+  //    below ("AP owner-bond always wins" — both incumbents). The Owner→bond link is Bond.ownerId. Resolved
+  //    lots are excluded from the direct/lineage/fallback steps so this precedence holds.
+  //    `skipOwnerPrecedence` computes the owner-INDEPENDENT base bond — CHANGE_OWNERSHIP (Unit 5) uses it to
+  //    compare the bond a lot would sit on under a hypothetical new owner (base + that owner's AP bond).
+  if (!opts.skipOwnerPrecedence) {
+    const lotOwners = await client.lot.findMany({ where: { id: { in: ids } }, select: { id: true, ownerId: true } });
+    const ownerIds = [...new Set(lotOwners.map((l) => l.ownerId).filter((x): x is string => x != null))];
+    if (ownerIds.length > 0) {
+      const ownerBonds = await client.bond.findMany({ where: { ownerId: { in: ownerIds } }, select: { id: true, ownerId: true } });
+      const bondByOwner = new Map(ownerBonds.map((b) => [b.ownerId as string, b.id]));
+      for (const l of lotOwners) {
+        const b = l.ownerId ? bondByOwner.get(l.ownerId) : undefined;
+        if (b) out.set(l.id, b);
+      }
+    }
+  }
+
+  // 1. Direct: the latest line that stamped a dest bond for the lot (the position it moved onto). Skips
+  //    lots already resolved by AP precedence (step 0) so that bond wins.
   const bondLines = await client.lotOperationLine.findMany({
-    where: { lotId: { in: ids }, destBondId: { not: null }, operation: { observedAt: { lte: asOf } } },
+    where: { lotId: { in: ids.filter((id) => !out.has(id)) }, destBondId: { not: null }, operation: { observedAt: { lte: asOf } } },
     select: { lotId: true, destBondId: true, operation: { select: { observedAt: true, id: true } } },
   });
   const latest = new Map<string, { bondId: string; observedAt: Date; opId: number }>();
@@ -123,7 +145,7 @@ export async function resolveBondsForLots(
       const parentIds = [...new Set(edges.map((e) => e.parentLotId))];
       // Resolve parents as-of the earliest lineage event that produced any child (bounded by asOf) —
       // the child inherits the bond the parent sat on when it split off, not a later parent transfer.
-      const parentBonds = await resolveBondsForLots(parentIds, asOf, client, _depth + 1);
+      const parentBonds = await resolveBondsForLots(parentIds, asOf, client, { ...opts, _depth: _depth + 1 });
       const byChild = new Map<string, Set<string>>();
       for (const e of edges) {
         const pb = parentBonds.get(e.parentLotId);
@@ -149,8 +171,8 @@ export async function resolveBondsForLots(
 }
 
 /** Single-lot convenience wrapper over resolveBondsForLots. */
-export async function deriveBond(lotId: string, asOf: Date, client: DbClient = prisma as unknown as DbClient): Promise<string> {
-  const map = await resolveBondsForLots([lotId], asOf, client);
+export async function deriveBond(lotId: string, asOf: Date, client: DbClient = prisma as unknown as DbClient, opts: { skipOwnerPrecedence?: boolean } = {}): Promise<string> {
+  const map = await resolveBondsForLots([lotId], asOf, client, opts);
   const bondId = map.get(lotId);
   if (!bondId) throw new ActionError("Could not resolve a bond for that lot.", "CONFLICT");
   return bondId;

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
+import { voidBillableConsumptionForOp } from "@/lib/owner/billable-consumption-core";
 import { round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import { planCorrection, type LedgerLine, type VesselLotBalance } from "@/lib/ledger/math";
@@ -216,6 +217,9 @@ export async function correctBlendCore(actor: LedgerActor, input: { operationId:
       // Keep the child row + lineage + source set for audit; just mark it corrected (D6 append-only).
       await tx.lot.update({ where: { id: plan.childLotId }, data: { status: "CORRECTED" } });
     }
+
+    // Plan 093 Unit 6: void any pending cross-owner billing this blend recorded (append-only: status→VOID).
+    await voidBillableConsumptionForOp(tx, op.id);
 
     await writeAudit(tx, { ...actor, action: "STOCK_MOVEMENT", entityType: "LotOperation", entityId: String(opId), summary });
     return opId;
