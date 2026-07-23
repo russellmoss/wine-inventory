@@ -38,6 +38,9 @@ real status**. You approve the plan once and read the box score.
 2. **Reconcile** — a bug whose PR already **merged** but still reads NEW/TRIAGED is
    written back to **RESOLVED** — so the queue stops lying. Already-closed and
    in-flight (fix agent still running, no PR yet) items are set aside, not re-worked.
+   ⚠️ This step only fires when the ticket **carries** the PR. Work that shipped in a
+   **hand-built** PR (nothing stamped it on the ticket) is caught later, by the
+   **Merged Sweep** — see step 6b.
 3. **Cluster (dedup)** — groups the active items by **one shared root cause**, including
    **across tenants** (the fence is tenant-agnostic app code, so ONE PR fixes all).
    Each cluster elects a **primary** (furthest-along wins: open-PR > PLANNED >
@@ -69,6 +72,16 @@ real status**. You approve the plan once and read the box score.
    finished draft first), **close** (superseded / duplicate / stale — *recommend only*, never
    auto-closed), **fix-first** (failing CI or conflicting), **needs-human** (out-of-fence, large, a
    real feature). Same root-cause + ERP-standards reviewer. See "The PR sweep" below. `sweepPrs=false` skips it.
+6b. **Merged sweep — "did this already ship?"** The step above sees only **open** PRs, and Reconcile
+   (step 2) sees only PRs the ticket **carries**. A fix built **by hand** — by a parallel session, not
+   dispatched by the feedback automation — lands in neither: nothing writes the PR onto the ticket, so
+   the ticket keeps reading open while the code is in production, and triage cheerfully re-offers it as
+   new work. So this step scans the **recently merged** PRs, pulls a cuid-shaped feedback id out of each
+   PR **body** (matched by shape + proximity to feedback/ticket wording, because phrasings vary —
+   `Closes the feedback item \`<id>\`` on a hand-built PR, `Automated fix from bug ticket \`<id>\`` on a
+   dispatched one), resolves each id against DB truth with `triage:lookup`, and reconciles it to
+   **RESOLVED only if it is still open**. Any such item is also **pulled back out of this run's own
+   action list and build waves** — you never build what already shipped. See "The merged sweep" below.
 7. **Issue sweep** — the OTHER pile that accumulates untouched: **every open GitHub issue**. Two
    classes. **`feedback: plan` issues** (opened by the plan automation) are **auto-reconciled CLOSED**
    when their source ticket is provably RESOLVED/DISMISSED — a mechanical close on DB truth, since the
@@ -192,6 +205,56 @@ RESOLVED/DISMISSED). This is what stops "the fix merged but the ticket sat open 
 the runbook's **🔗 Aged-out tickets reconciled** line and the `sweep.linkedReconciled` /
 `prsLinkedTicketsReconciled` fields.
 
+## The merged sweep — "this already shipped, stop offering it as work"
+
+**The blind spot (observed 2026-07-23).** Triage ranked ticket `cmrwdgt2u…` ("Assistant should be able
+to read a vessel's/lot's full operation history") as the run's **one actionable plan-ready item**,
+pointing at plan issue #466 — a day *after* the work shipped in **PR #468** (`query-operations.ts`,
+`operation-history.ts`, 30 unit tests, registered with 7 golden eval cases). It offered production code
+as new work. Three facts combined:
+
+1. PR #468 was **hand-built by a parallel session**, not dispatched by the feedback automation, so
+   nothing wrote the PR onto the ticket — its `prNumber` stayed `null`.
+2. **Reconcile** only closes items that HAVE a resolved fix PR. A null `prNumber` means it was never
+   even a candidate.
+3. The **PR sweep** enumerates only `--state open`. A PR that merged *before* the run is invisible to
+   it, so the `linkedFeedbackId` body-extraction that already works for sweep-merged PRs never ran.
+
+**What the merged sweep does.** Scans `gh pr list --state merged` (bounded — see the args), extracts
+every cuid-shaped id near feedback/ticket wording from each PR **body**, resolves them with the
+read-only `npm run triage:lookup`, and reconciles the still-open ones to **RESOLVED** through the same
+`triage:resolve` write-back + outcome-note stamping as every other close, **fanning out to cluster
+duplicates** like any other reconcile.
+
+Why permissive extraction is safe: `triage:lookup` is a **total validator**. An id that isn't a real
+ticket comes back in `missing` and is dropped, and only `isOpen === true` is ever written — an already
+RESOLVED/DISMISSED ticket is **never** rewritten. Over-matching costs nothing; under-matching is the
+bug. Every dropped candidate is still listed in the runbook, so nothing disappears silently.
+
+Bounded by `maxMergedScan` (50 PRs) **and** a `mergedAt` cutoff (`today` − `mergedSinceDays`, default
+14 days; `mergedSince` overrides), so it never walks the whole PR history. Writes are capped separately
+by `maxMergedReconcile` (20); overflow is reported, not silently dropped. `dryRun` reports what it
+**would** reconcile and writes nothing. `sweepMergedPrs=false` skips it.
+
+Reported under the runbook's **🚢 Already shipped — reconciled from merged PRs** section (alongside
+🔗 Aged-out), the `sweep.mergedReconciled` / `sweep.mergedSkipped` / `sweep.supersededByShipped`
+fields, and the counts `mergedPrsScanned` / `alreadyShippedReconciled` / `alreadyShippedSkipped` /
+`rankedItemsSupersededByShipped`.
+
+## "Plan-ready" is often a STUB — check before telling anyone to `/work` it
+
+Every `feedback: plan` GitHub issue is opened from a **static template**
+(`scripts/feedback-plan-agent.ts` emits identical markdown for every run — only the title carries the
+run id), and nothing ever writes `planMarkdown` back to the ticket. So a "plan-ready" item routinely
+points at an issue whose entire content is boilerplate — "Plan only; no code changes", "Review the
+linked app feedback item in the developer console" — with no plan in it. #466 was exactly this.
+
+The workflow now **fetches each plan issue and judges it in JS** (a boilerplate-coverage test, so a
+hand-edited or genuinely-generated plan is respected as real, and an issue that can't be read is
+*never* downgraded on a failed fetch). A stub is routed to **plan-first (`/plan`)**, not
+`/work <planUrl>` — enforced deterministically after the build planner returns, not merely asked for
+in the prompt. Surfaced as `planReady[].planStub` / `planStubReason` and the `planStubsRerouted` count.
+
 ## The issue sweep — we open issues but never close them
 
 The PR sweep clears built-but-unresolved PRs; the **issue sweep** clears the open-**issue** pile that
@@ -267,8 +330,17 @@ Claude Code instance with the task's `do:` command (`/work <planUrl>`, `/investi
      `sweepIssues` (default `true` — also triage EVERY open GitHub issue: auto-close stale
      `feedback: plan` issues on DB truth, recommend-close Sentry noise; `false` skips it),
      `maxIssueCloses` (10 — cap on issue reconciliation auto-closes),
+     `sweepMergedPrs` (default `true` — also scan RECENTLY MERGED PRs for feedback ids and
+     reconcile tickets whose work already shipped in a PR nothing stamped on them; `false`
+     skips it), `maxMergedScan` (50 — merged PRs examined), `mergedSinceDays` (14 — the
+     `mergedAt` cutoff, counted back from `today`), `mergedSince` (an ISO date that overrides
+     `mergedSinceDays`), `maxMergedReconcile` (20 — cap on already-shipped write-backs),
      `tenantQuery` (limit to one tenant), `today` (an ISO date string,
      e.g. `2026-07-18`, stamped into the runbook header — pass the current date).
+   - ⚠️ **`today` also bounds the merged sweep.** Workflow scripts cannot call `Date.now()`,
+     so "the last 14 days" can only be computed from a date you pass in. Omit `today` and the
+     merged scan falls back to the `maxMergedScan` count cap alone — still bounded, just coarser.
+     Pass the current date.
    - **Run from the wine-inventory repo checkout that has `.env`** (the main repo) — a
      bare `.claude/worktrees/*` checkout has no `.env`/`node_modules` and the scripts
      fail there.
@@ -283,11 +355,12 @@ Claude Code instance with the task's `do:` command (`/work <planUrl>`, `/investi
      so they see the plan + runbook before anything lands.
 2. **Run the team:**
    ```
-   Workflow({ name: 'bug-triage', args: { autoMerge, dispatch, reconcile, cluster, dryRun, maxMerges, maxDispatch, sweepPrs, sweepIssues, maxIssueCloses, tenantQuery, today } })
+   Workflow({ name: 'bug-triage', args: { autoMerge, dispatch, reconcile, cluster, dryRun, maxMerges, maxDispatch, sweepPrs, sweepIssues, maxIssueCloses, sweepMergedPrs, maxMergedScan, mergedSinceDays, maxMergedReconcile, tenantQuery, today } })
    ```
    (If the name doesn't resolve, fall back to the repo-relative path:
    `Workflow({ scriptPath: '.claude/workflows/bug-triage.js', args })`.)
-   It runs Intake → Reconcile → Cluster → Prioritize → Review → PR Sweep → **Issue Sweep** → Act →
+   It runs Intake → Reconcile → Cluster → Prioritize → Review → PR Sweep → **Merged Sweep** →
+   **Issue Sweep** → Act →
    **Parallelize** → Report in the background and returns `status` (`done` | `dry-run` | `empty`) with
    `mode` (the resolved flags + any `argsWarning`), `runbook` (the rendered
    `TRIAGE-RUNBOOK.md` markdown), `buildPlan` (the structured parallel waves),
@@ -338,6 +411,17 @@ Claude Code instance with the task's `do:` command (`/work <planUrl>`, `/investi
      auto-closed**), **fix-first** (`sweep.fixFirst` — failing/conflicting), and **needs-human**
      (`sweep.needsHuman` — out-of-fence/large/feature, with a ready `gh pr merge`). Surface the
      recommend-close list prominently — that's usually the bulk of the pileup.
+   - **🚢 Already shipped** (`sweep.mergedReconciled`, counts `mergedPrsScanned`/
+     `alreadyShippedReconciled`/`alreadyShippedSkipped`/`rankedItemsSupersededByShipped`) — tickets
+     that were still open while their fix sat in production, found by scanning merged PR bodies.
+     Report each as "ticket → shipped in PR #N", and **call out `sweep.supersededByShipped`
+     explicitly**: those are items this run had already ranked as actionable before discovering the
+     work was done. That number is the honest measure of how much re-offered work the sweep caught —
+     do not bury it. Also mention `sweep.mergedSkipped` if non-empty (candidate ids found but not
+     written: not a real ticket / already closed / past the cap).
+   - **🧭 Plan stubs** (`planReady[].planStub`, count `planStubsRerouted`) — "plan-ready" items whose
+     linked issue is the plan automation's empty template. Say plainly that these need `/plan`, NOT
+     `/work` — a builder sent to that url finds boilerplate, not a plan.
    - **🗂️ Issue sweep** (`issueSweep`, counts `issuesScanned`/`issuesReconcileClosed`/
      `issuesRecommendClose`/`issuesRouteBug`/`issuesKept`) — the open-ISSUE-backlog cleanup, the
      answer to "the GitHub issues are piling up — deal with them." Report: **auto-closed**
@@ -406,6 +490,14 @@ A PR auto-merges **only if ALL** hold (any miss → queued):
   out-of-fence diff is never merged. **Closes are recommend-only** — the sweep hands you the reason +
   the `gh pr close` command and you confirm; it never auto-closes a PR. `dryRun` reports the whole
   sweep and lands nothing.
+- **The merged sweep never rewrites a closed ticket, and never builds what shipped.** Ids scraped from
+  merged PR bodies are *candidates*, not truth: each is resolved through the read-only
+  `triage:lookup`, an id that is not a real ticket is dropped (it comes back `missing`), and only a
+  ticket with `isOpen === true` is written — an already RESOLVED/DISMISSED one is left exactly as it
+  is. Anything it reconciles is also **removed from this run's dispatch/plan-route/plan-ready lists
+  and from every build wave** (enforced in JS after the build planner runs, not just asked for in the
+  prompt), because the code is already in production. Every candidate it declines to write is still
+  listed, so nothing vanishes silently. `dryRun` reports the whole pass and writes nothing.
 - **The issue sweep clears the open-issue pile — auto-closes ONLY on provable reconciliation.** Every
   open GitHub issue is triaged. The ONLY issues it closes itself are stale `feedback: plan` issues
   whose source ticket is provably RESOLVED/DISMISSED — a mechanical close on DB truth (the map comes
@@ -448,8 +540,10 @@ A PR auto-merges **only if ALL** hold (any miss → queued):
   triage:{list,dispatch,plan,resolve,lookup,issues}`. They ship to `main` via PR — run the skill from
   the repo checkout. `triage:list` surfaces the plan (`planMarkdown`/`planPresent`) and
   plan/skip counts the Cluster + plan-ready steps rely on. `triage:lookup -- --ids=a,b,c` is a
-  read-only cross-tenant by-id lookup (no per-tenant cap) the PR sweep uses to find + reconcile a
-  merged PR's source ticket when it aged out of `triage:list`'s window. `triage:issues` is the
+  read-only cross-tenant by-id lookup (no per-tenant cap) used by BOTH the PR sweep (to reconcile a
+  merged PR's source ticket that aged out of `triage:list`'s window) and the MERGED sweep (to validate
+  every id scraped from a merged PR body — an unknown id comes back `missing`, which is what makes
+  permissive extraction safe). `triage:issues` is the
   read-only, uncapped, cross-tenant plan-issue↔ticket resolver the ISSUE sweep uses: it inverts the
   `githubIssueUrl` column into `{ issueNumber → ticket status }` so a stale `feedback: plan` issue can
   be reconciled shut even though the issue's own text names only the plan-run id, not the ticket.
