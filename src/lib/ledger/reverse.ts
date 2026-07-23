@@ -10,6 +10,7 @@ import { reverseBottlingRun } from "@/lib/bottling/run";
 import { reverseTransformCore } from "@/lib/transform/reverse";
 import { correctBlendCore } from "@/lib/blend/blend-correct";
 import { reverseTransferInBondCore } from "@/lib/compliance/transfer-in-bond-core";
+import { reverseChangeOwnershipCore } from "@/lib/owner/change-ownership-core";
 import { downstreamLineageChild, laterTouchedBlockers } from "@/lib/ledger/reverse-guard";
 
 // Universal reversal layer (plan 024a). A single place that knows how to walk any reversible
@@ -88,6 +89,9 @@ export function reversibilityOf(type: OperationType): ReversibilityVerdict {
   if (type === "BLEND") return { reversible: true, family: "blend" };
   // Phase 2 (BOND-1): a TRANSFER_IN_BOND reverses via its own bond-swapping corrector (both bonds).
   if (type === "TRANSFER_IN_BOND") return { reversible: true, family: "bond" };
+  // Plan 093: a CHANGE_OWNERSHIP reverses by re-applying the inverse ownership change (mirrors the bond
+  // delta — title-only reverses title-only with no TTB; a TIB reverses as the mirror TIB).
+  if (type === "CHANGE_OWNERSHIP") return { reversible: true, family: "bond" };
   // Phase 2 (TAXPAID-1): the tax-paid boundary is terminal — never re-admit via the generic reverser.
   if (type === "REMOVE_TAXPAID")
     return { reversible: false, code: "taxpaid-terminal", reason: "Tax-paid removals are final for TTB. To bring wine back into bond, record a Return-to-Bond (refund) instead." };
@@ -375,6 +379,12 @@ export async function reverseOperationCore(actor: LedgerActor, input: { operatio
       return { reversedOperationId: opId, reversedType: op.type, lotId: r.childLotId || anyLotId, correctionId: r.operationId, message: r.message };
     }
     case "bond": {
+      // Plan 093: CHANGE_OWNERSHIP reverses via its own inverse-re-application; TRANSFER_IN_BOND via the
+      // Phase-2 bond-swap corrector.
+      if (op.type === "CHANGE_OWNERSHIP") {
+        const r = await reverseChangeOwnershipCore(actor, { operationId: opId, note: input.note });
+        return { reversedOperationId: opId, reversedType: op.type, lotId: r.lotId || anyLotId, correctionId: r.correctionId, message: r.message };
+      }
       const r = await reverseTransferInBondCore(actor, { operationId: opId, note: input.note });
       return { reversedOperationId: opId, reversedType: op.type, lotId: r.lotId || anyLotId, correctionId: r.correctionId, message: r.message };
     }
