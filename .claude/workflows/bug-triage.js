@@ -887,10 +887,23 @@ function renderRunbook({ planSummary, byType, buildPlan, inFlight, actions, date
         L.push(`_⚠️ ${sweep.supersededByShipped.length} item(s) this run had ranked as actionable were pulled back out — the work was already shipped:_`)
         for (const s of sweep.supersededByShipped) L.push(`- \`${s.id}\` ${s.title || ''} — was bucketed **${s.bucket}**, now reconciled instead of built`)
       }
-      if (sweep.mergedSkipped?.length) {
+      // Split the skips by whether they still need something. An over-cap skip is a ticket that is
+      // STILL OPEN and still lying — genuinely unfinished work. Everything else is a benign no-op
+      // (already closed / another phase owns it / not a real id). Listing them together buries the
+      // one class a human has to act on.
+      const skips = (sweep.mergedSkipped || [])
+      const UNFINISHED = new Set(['over-cap', 'lookup-inconclusive'])
+      const actionableSkips = skips.filter((s) => UNFINISHED.has(s.class))
+      const benignSkips = skips.filter((s) => !UNFINISHED.has(s.class))
+      if (actionableSkips.length) {
         L.push('')
-        L.push(`_Candidate ids the scan found but did NOT write (${sweep.mergedSkipped.length}) — listed so nothing is dropped silently:_`)
-        for (const s of sweep.mergedSkipped) L.push(`- \`${s.id}\` (PR #${s.prNumber}) — ${s.why}`)
+        L.push(`_⚠️ **${actionableSkips.length} already-shipped candidate(s) were NOT reconciled** — either past the cap (still open) or left unverified by the lookup. Rerun the sweep, or raise \`maxMergedReconcile\`:_`)
+        for (const s of actionableSkips) L.push(chk(`\`${s.id}\` (shipped in PR #${s.prNumber}) — ${s.why}`))
+      }
+      if (benignSkips.length) {
+        L.push('')
+        L.push(`_Candidate ids the scan found but did NOT write (${benignSkips.length}) — no action needed, listed so nothing is dropped silently:_`)
+        for (const s of benignSkips) L.push(`- \`${s.id}\` (PR #${s.prNumber}) — ${s.why}`)
       }
       L.push('')
     }
@@ -1512,12 +1525,23 @@ READ-ONLY. Do not merge, close, comment, or edit anything.`,
 
   // ids this run already handles through another path — reconciling them twice would double-write
   // (and, for an item mid-merge/mid-dispatch, race the Act agent's own write-back).
-  const alreadyHandledIds = new Set([
-    ...dbClosed.map((i) => i.id),                       // already RESOLVED/DISMISSED in the DB
-    ...reconcileClose.map((i) => i.id),                 // intake's reconcile owns these
+  // A MAP, not a Set: each of these three paths is a DIFFERENT reason, and the skip list is the
+  // audit trail for "why didn't you touch this ticket?". Collapsing them to one string ("already
+  // closed or handled by another path") makes every skip unfalsifiable — a reader can't tell an
+  // already-RESOLVED ticket from one another phase is mid-write on. Name the actual reason.
+  const alreadyHandled = new Map()
+  for (const i of dbClosed) {
+    alreadyHandled.set(i.id, { why: `already ${i.status} in the DB — left alone`, class: 'db-closed' })
+  }
+  for (const i of reconcileClose) {
+    // intake's Reconcile owns these: the ticket CARRIES a merged PR, so it closes them itself.
+    alreadyHandled.set(i.id, { why: `intake Reconcile is already closing it (its own fix PR #${i.prNumber} is merged)`, class: 'intake-reconcile' })
+  }
+  for (const c of sweptMergeCandidates) {
+    const linked = c.review?.linkedFeedbackId
     // a PR this run is about to sweep-merge will close its own linked ticket in Act §G
-    ...sweptMergeCandidates.map((c) => c.review?.linkedFeedbackId).filter(Boolean),
-  ])
+    if (linked) alreadyHandled.set(linked, { why: `PR #${c.pr.number} is being sweep-merged this run and will close it (Act §G)`, class: 'sweep-merge' })
+  }
 
   // Shape-gate + dedupe + attribute each candidate id to its PR (earliest merge wins — that is the
   // PR that actually shipped the work; a later PR merely touched it again).
@@ -1526,8 +1550,9 @@ READ-ONLY. Do not merge, close, comment, or edit anything.`,
     const ids = (pr.feedbackIds || []).map((s) => String(s).trim()).filter(looksLikeFeedbackId)
     if (ids.length > 0) mergedScan.prsWithIds += 1
     for (const id of ids) {
-      if (alreadyHandledIds.has(id)) {
-        mergedScan.skipped.push({ id, prNumber: pr.number, why: 'already closed or handled by another path this run' })
+      const handled = alreadyHandled.get(id)
+      if (handled) {
+        mergedScan.skipped.push({ id, prNumber: pr.number, why: handled.why, class: handled.class })
         continue
       }
       const prev = byId.get(id)
@@ -1549,12 +1574,18 @@ It prints a JSON object (after npm's own log lines — parse the JSON only) with
       { label: 'merged-ticket-lookup', phase: 'Merged Sweep', schema: TICKET_LOOKUP_SCHEMA },
     )
     const foundById = new Map((looked?.found || []).filter((r) => byId.has(r.id)).map((r) => [r.id, r]))
+    // `missing` is the lookup's POSITIVE statement that an id is not a ticket. An id in neither
+    // `found` nor `missing` is a DIFFERENT thing: the lookup did not answer for it (truncated reply,
+    // partial parse). Calling that "not a real ticket id" asserts something we did not verify — and
+    // a wrong-but-confident skip reason is worse than a vague one, because it closes off inquiry.
+    const missingIds = new Set((looked?.missing || []).map((s) => String(s).trim()))
     for (const id of candidateIds) {
       const row = foundById.get(id)
       const hit = byId.get(id)
-      if (!row) { mergedScan.skipped.push({ id, prNumber: hit.prNumber, why: 'no such feedback ticket in the DB (not a real id)' }); continue }
+      if (!row && missingIds.has(id)) { mergedScan.skipped.push({ id, prNumber: hit.prNumber, why: 'no such feedback ticket in the DB — the extracted token is not a real ticket id', class: 'not-a-ticket' }); continue }
+      if (!row) { mergedScan.skipped.push({ id, prNumber: hit.prNumber, why: 'the ticket lookup returned neither a record NOR a `missing` entry for this id — status unverified, so nothing was written; rerun to confirm', class: 'lookup-inconclusive' }); continue }
       // NEVER rewrite a ticket that is already closed — reconciliation is for tickets still lying.
-      if (row.isOpen !== true) { mergedScan.skipped.push({ id, prNumber: hit.prNumber, why: `already ${row.status} — left alone` }); continue }
+      if (row.isOpen !== true) { mergedScan.skipped.push({ id, prNumber: hit.prNumber, why: `already ${row.status} — left alone`, class: 'db-closed' }); continue }
       const rank = rankedById.get(id)
       mergedReconcileJobs.push({
         id, tenantId: row.tenantId, sourceType: row.sourceType,
@@ -1571,12 +1602,14 @@ It prints a JSON object (after npm's own log lines — parse the JSON only) with
       })
     }
     const overflow = mergedReconcileJobs.slice(MAX_MERGED_RECONCILE)
-    for (const o of overflow) mergedScan.skipped.push({ id: o.id, prNumber: o.prNumber, why: `beyond the maxMergedReconcile cap of ${MAX_MERGED_RECONCILE} — reconcile next run or raise the cap` })
+    for (const o of overflow) mergedScan.skipped.push({ id: o.id, prNumber: o.prNumber, why: `beyond the maxMergedReconcile cap of ${MAX_MERGED_RECONCILE} — STILL OPEN and still needs reconciling; rerun or raise the cap`, class: 'over-cap' })
     if (overflow.length > 0) log(`⚠️ ${overflow.length} already-shipped ticket(s) exceed the maxMergedReconcile cap of ${MAX_MERGED_RECONCILE} and were NOT reconciled — they are listed in the runbook.`)
     mergedReconcileJobs = mergedReconcileJobs.slice(0, MAX_MERGED_RECONCILE)
   }
   mergedScan.candidates = mergedReconcileJobs.map((j) => ({ id: j.id, prNumber: j.prNumber, status: j.status, title: j.title }))
-  log(`Merged sweep: ${mergedReconcileJobs.length} still-open ticket(s) whose work ALREADY SHIPPED${DRY_RUN ? ' (dry run — nothing written)' : ''}, ${mergedScan.skipped.length} skipped.`)
+  const skipTally = mergedScan.skipped.reduce((a, s) => { const k = s.class || 'other'; a[k] = (a[k] || 0) + 1; return a }, {})
+  const skipDetail = Object.entries(skipTally).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'
+  log(`Merged sweep: ${mergedReconcileJobs.length} still-open ticket(s) whose work ALREADY SHIPPED${DRY_RUN ? ' (dry run — nothing written)' : ''}; skipped ${mergedScan.skipped.length} (${skipDetail}).`)
 }
 
 // ids the merged sweep is closing out. They must NOT also be dispatched / plan-routed / marked
@@ -2021,6 +2054,10 @@ return {
     mergedPrsScanned: sweepReport.mergedScanned,
     alreadyShippedReconciled: sweepReport.mergedReconciled.length,
     alreadyShippedSkipped: sweepReport.mergedSkipped.length,
+    // The subset that is NOT a benign no-op: still-open tickets the cap pushed past, plus any the
+    // lookup never answered for. Non-zero means the sweep left real work undone — distinct from
+    // "skipped because there was nothing to do".
+    alreadyShippedNotReconciled: sweepReport.mergedSkipped.filter((s) => s.class === 'over-cap' || s.class === 'lookup-inconclusive').length,
     rankedItemsSupersededByShipped: supersededByShipped.length,
     planStubsRerouted: planStubById.size,
     issuesScanned: issueSweep.scanned,
