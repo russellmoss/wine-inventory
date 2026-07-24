@@ -314,6 +314,14 @@ win available: it collapses coordinate magnitude from ~1e6 m to ~1e2 m, and sinc
 with magnitude, that is roughly **four decimal digits of headroom for free**. Neither council model
 raised it; it came from the library research, where it is the technique JSCAD uses.
 
+✅ **Both halves measured on 2026-07-24, `proj4@2.20.9` installed.** Round-trip WGS84 → UTM → WGS84 at
+two real vineyard latitudes: **UTM 18N (Finger Lakes) error 0.00 mm; UTM 46N (Bhutan) error
+1.46e-6 mm** — six orders inside the sub-millimetre requirement, so the projection is *not* a
+meaningful error source and Unit 5 can attribute any disagreement to the clipper. Recentring headroom
+confirmed: **ULP at a 705,000 m easting = 1.57e-10 m; at ~1e2 m recentred ≈ 2.2e-14 m** — the ~4
+orders the plan claims. (A demo recentring all the way to 0.1 m showed ~6 orders, but ~1e2 m is the
+realistic block-extent magnitude, so **4 is the number to quote.**)
+
 Then fix **ε_geom** — an absolute epsilon in recentred projected metres, applied to vertex snapping and
 degenerate-edge rejection **inside the clipper**. Proposed: **1e-6 m (1 µm)**, justified three ways —
 ULP at recentred magnitude ~1e2 m is ≈1.4e-14 m, so 1 µm sits ~8 orders above round-off; it is 7 orders
