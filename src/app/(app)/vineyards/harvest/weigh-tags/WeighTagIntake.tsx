@@ -105,7 +105,7 @@ export function WeighTagIntake({ owners, growers, blocks, recent }: { owners: Re
       {issued ? (
         <Card style={{ borderColor: "var(--accent)", background: "var(--accent-soft)" }}>
           <strong style={tabular}>Weigh-tag #{issued.tagNumber} issued.</strong>{" "}
-          {issued.needs > 0 ? <span style={{ color: "var(--text-secondary)" }}>{issued.needs} line{issued.needs === 1 ? "" : "s"} need an owner assigned.</span> : <span style={{ color: "var(--text-secondary)" }}>All lines assigned.</span>}
+          {issued.needs > 0 ? <span style={{ color: "var(--text-secondary)" }}>{issued.needs} line{issued.needs === 1 ? " needs" : "s need"} an owner assigned.</span> : <span style={{ color: "var(--text-secondary)" }}>All lines assigned.</span>}
         </Card>
       ) : null}
 
@@ -201,26 +201,47 @@ export function WeighTagIntake({ owners, growers, blocks, recent }: { owners: Re
 function RecentRow({ tag }: { tag: RecentTag }) {
   const [voiding, setVoiding] = React.useState(false);
   const [voided, setVoided] = React.useState(tag.voided);
-  async function doVoid() {
-    const reason = window.prompt(`Void weigh-tag #${tag.tagNumber}? Give a reason (it stays visible, never deleted):`);
-    if (!reason || !reason.trim()) return;
+  const [confirming, setConfirming] = React.useState(false);
+  const [reason, setReason] = React.useState("");
+  const [err, setErr] = React.useState<string | null>(null);
+
+  async function confirmVoid() {
+    if (!reason.trim()) { setErr("Give a reason."); return; }
+    setErr(null);
     setVoiding(true);
     try {
       const res = await voidWeighTag({ weighTagId: tag.id, reason: reason.trim() });
-      if (res.ok) setVoided(true);
-      else window.alert(res.error);
+      if (res.ok) { setVoided(true); setConfirming(false); }
+      else setErr(res.error);
+    } catch {
+      setErr("Couldn't void the tag — try again.");
     } finally {
       setVoiding(false);
     }
   }
+
   return (
-    <tr style={{ borderTop: "1px solid var(--border-subtle)", opacity: voided ? 0.55 : 1, textDecoration: voided ? "line-through" : "none" }}>
-      <td style={{ padding: "8px 10px 8px 0", ...tabular, fontWeight: 600 }}>{tag.tagNumber}</td>
-      <td style={{ padding: "8px 10px" }}>{tag.truck ?? "—"}</td>
-      <td style={{ padding: "8px 10px", ...tabular }}>{tag.lineCount}</td>
-      <td style={{ padding: "8px 10px", textAlign: "right", ...tabular }}>{tag.netKg == null ? "—" : tag.netKg.toLocaleString()}</td>
-      <td style={{ padding: "8px 10px" }}>{voided ? "Voided" : tag.needsAssignmentCount > 0 ? `${tag.needsAssignmentCount} to assign` : "Assigned"}</td>
-      <td style={{ padding: "8px 0 8px 10px", textAlign: "right" }}>{voided ? null : <Button variant="ghost" size="sm" onClick={doVoid} disabled={voiding}>{voiding ? "Voiding…" : "Void"}</Button>}</td>
-    </tr>
+    <>
+      <tr style={{ borderTop: "1px solid var(--border-subtle)", opacity: voided ? 0.55 : 1, textDecoration: voided ? "line-through" : "none" }}>
+        <td style={{ padding: "8px 10px 8px 0", ...tabular, fontWeight: 600 }}>{tag.tagNumber}</td>
+        <td style={{ padding: "8px 10px" }}>{tag.truck ?? "—"}</td>
+        <td style={{ padding: "8px 10px", ...tabular }}>{tag.lineCount}</td>
+        <td style={{ padding: "8px 10px", textAlign: "right", ...tabular }}>{tag.netKg == null ? "—" : tag.netKg.toLocaleString()}</td>
+        <td style={{ padding: "8px 10px" }}>{voided ? "Voided" : tag.needsAssignmentCount > 0 ? `${tag.needsAssignmentCount} to assign` : "Assigned"}</td>
+        <td style={{ padding: "8px 0 8px 10px", textAlign: "right" }}>{voided ? null : <Button variant="ghost" size="sm" onClick={() => setConfirming((c) => !c)}>Void</Button>}</td>
+      </tr>
+      {confirming && !voided ? (
+        <tr>
+          <td colSpan={6} style={{ padding: "0 0 10px 0" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "var(--surface-sunken)", padding: 10, borderRadius: "var(--radius-md)" }}>
+              <span style={{ color: "var(--text-secondary)", fontSize: "var(--text-body-sm)" }}>Void #{tag.tagNumber} (it stays visible, never deleted):</span>
+              <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" size="sm" error={err ?? undefined} style={{ flex: 1, minWidth: 160 }} />
+              <Button variant="secondary" size="sm" onClick={confirmVoid} disabled={voiding}>{voiding ? "Voiding…" : "Confirm void"}</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setConfirming(false); setErr(null); }}>Cancel</Button>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }
