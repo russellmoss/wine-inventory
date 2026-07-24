@@ -51,6 +51,12 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "plan 093: transfer a client lot back to the winery (Estate)",
   },
   {
+    utterance: "Weigh-tag: truck 7, bin 1 is 500 kg for Vega Wines, bin 2 is 300 kg estate",
+    tool: "log_weigh_tag",
+    args: { truck: "7", bins: [{ bin: "bin 1", netKg: 500, owner: "Vega Wines" }, { bin: "bin 2", netKg: 300, owner: "estate" }] },
+    note: "plan 093: per-truck weigh-tag with per-bin owners (wet-hands intake)",
+  },
+  {
     utterance: "Brix came in at 22 on the Grenache block today",
     tool: "log_brix",
     args: { brixValue: 22, variety: "Grenache" },
