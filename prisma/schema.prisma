@@ -358,21 +358,54 @@ model Variety {
 // gap. Distinct from Owner (who OWNS the wine): a grower sells fruit that a client then owns. `isEstate`
 // flags the winery's own vineyards. Full AGENTS.md 9-step (tenant_isolation RLS, etc.).
 model Grower {
-  tenantId  String   @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
-  id        String   @id @default(cuid())
-  name      String // grower / farm name (per-tenant unique)
-  company   String? // legal entity, if different from the display name
-  contact   String? // free-text contact (phone/email/person)
-  address   String?
-  isEstate  Boolean  @default(false) // the winery's own vineyard (estate fruit), vs a third-party grower
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  tenantId    String   @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
+  id          String   @id @default(cuid())
+  name        String // grower / farm name (per-tenant unique)
+  company     String? // legal entity, if different from the display name
+  contact     String? // LEGACY free-text contact (phone/email/person). Plan 095 backfills this into the
+  // structured fields below and stops writing it; kept for provenance, never a new-data target.
+  // Plan 095: Vendor-parity contact fields. phone/email/contactName are REQUIRED in the setup UI but stay
+  // nullable at the DB so the backfill + non-UI paths (assistant, seed) never hard-error (mirrors Vendor).
+  contactName String? // primary contact person
+  phone       String? // primary phone
+  email       String? // primary email
+  address     String?
+  // Plan 095: a THIRD-PARTY grower is paid like a vendor, so it links to a Vendor row (auto-created +
+  // QBO-synced) via this plain ref — composite FK -> vendor(tenantId,id) in raw SQL (K11), NO Prisma
+  // relation (mirrors Vineyard.growerId). NULL for estate growers (isEstate) — you don't pay yourself.
+  vendorId    String?
+  isEstate    Boolean  @default(false) // the winery's own vineyard (estate fruit), vs a third-party grower
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@unique([tenantId, name]) // per-tenant unique name
   @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — vineyard/block growerId references this
   @@index([tenantId])
+  @@index([tenantId, vendorId]) // Plan 095: composite FK -> vendor(tenantId,id)
   @@map("grower")
+}
+
+// Plan 095: additional contacts attached to a grower (0..N, beyond the grower's own primary contact),
+// mirroring VendorContact. Tenant-scoped + RLS-forced (Phase 12). `growerId` is a PLAIN ref pinned by a
+// composite (tenantId, growerId) FK in raw SQL (K11) — NO Prisma relation.
+model GrowerContact {
+  tenantId  String   @default("")
+  id        String   @id @default(cuid())
+  growerId  String // plain ref → grower.id (composite-tenant FK in raw SQL, K11)
+  name      String
+  role      String? // e.g. "Vineyard manager", "Owner", "Accounts"
+  phone     String?
+  mobile    String?
+  email     String?
+  isPrimary Boolean  @default(false) // at most one primary per grower (enforced in the core)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, id]) // composite-tenant-FK target parity + K11
+  @@index([tenantId])
+  @@index([tenantId, growerId])
+  @@map("grower_contact")
 }
 
 model Vineyard {

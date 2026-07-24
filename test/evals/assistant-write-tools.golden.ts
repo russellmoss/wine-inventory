@@ -750,6 +750,18 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "MERGE duplicate vendors (Plan 072); 'keep' is the survivor, 'remove' is the loser — distinct from create_vendor",
   },
   {
+    utterance: "Add a grower called Bien Nacido Vineyard, contact Nick, 805-555-1000",
+    tool: "create_grower",
+    args: { name: "Bien Nacido Vineyard", contactName: "Nick", phone: "805-555-1000" },
+    note: "CREATE a grower (Plan 095) — the farm that GROWS/SELLS the fruit; name required. Distinct from create_vendor (a supplier you buy from).",
+  },
+  {
+    utterance: "Set up a new fruit grower, Sunny Slope Ranch, email grapes@sunnyslope.com",
+    tool: "create_grower",
+    args: { name: "Sunny Slope Ranch", email: "grapes@sunnyslope.com" },
+    note: "grower, not a vendor/supplier and not the wine's owner — a third-party grower is auto-linked as a vendor by the tool, but the TOOL is create_grower",
+  },
+  {
     utterance: "Add a unit called drum that's 200 kg",
     tool: "create_custom_unit",
     args: { name: "drum", dimension: "mass", amount: 200, referenceUnit: "kg" },

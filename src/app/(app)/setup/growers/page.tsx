@@ -14,5 +14,5 @@ export default async function GrowersPage() {
   if (!isTenantAdminLike(user)) notFound();
 
   const growers = await listGrowersCore();
-  return <GrowersAdmin growers={growers.map((g) => ({ id: g.id, name: g.name, company: g.company, contact: g.contact, isEstate: g.isEstate, isActive: g.isActive }))} />;
+  return <GrowersAdmin growers={growers} />;
 }
