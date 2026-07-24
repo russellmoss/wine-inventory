@@ -63,6 +63,7 @@
     "verify:work-orders-enhancements": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders-enhancements.ts",
     "verify:work-orders-transform": "tsx --conditions=react-server --env-file=.env scripts/verify-work-orders-transform.ts",
     "verify:group-rack-progressive": "tsx --conditions=react-server --env-file=.env scripts/verify-group-rack-progressive.ts",
+    "verify:gis-coverage": "tsx scripts/gis-p0-validate-coverage.ts",
     "verify:naming": "tsx --env-file=.env scripts/verify-naming.ts",
     "verify:one-lot-per-vessel": "tsx --env-file=.env scripts/verify-one-lot-per-vessel.ts",
     "verify:owner-model": "tsx --conditions=react-server --env-file=.env scripts/verify-owner-model.ts",
@@ -127,7 +128,10 @@
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate",
     "verify:kb-register": "tsx --env-file=.env scripts/verify-kb-register.ts",
-    "crawl:ives": "tsx --env-file=.env scripts/crawl-ives.ts"
+    "crawl:ives": "tsx --env-file=.env scripts/crawl-ives.ts",
+    "verify:gis-stats": "tsx scripts/gis-p0-validate-stats.ts",
+    "verify:gis-live": "tsx --conditions=react-server --env-file=.env scripts/gis-p0-live-scene.ts",
+    "verify:gis-measure": "tsx --conditions=react-server --env-file=.env scripts/gis-p0-measure.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

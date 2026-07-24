@@ -67,19 +67,41 @@ Hybrid planning model, same as prior large programs:
 12. **Security:** SSRF allowlist for any raster fetch, strict upload validation, short-lived
     authorized asset access, provider tokens server-side only, no signed URLs or farm geometry in
     logs (brief §18).
-13. **Radiometric honesty across time and terrain.** Sentinel-2 processing baseline 04.00
-    (Jan 2022) introduced a BOA_ADD_OFFSET of −1000; every Process API request **pins
-    `harmonizeValues`** and records it plus the scene's processing baseline in provenance —
-    otherwise cross-date NDVI drifts for non-physical reasons, corrupting the "trends beat
-    snapshots" promise. SCL is 20 m while B04/B08 are 10 m: the SCL **resampling method is pinned
-    (nearest) and recorded**, or masks won't reproduce at planting edges. On steep terrain (the
-    live Bhutan tenant is the most exposed user), slope/aspect illumination differences show up as
-    fake within-planting "patterns" under relative scaling — the display layer must be able to say
-    so (P3 advisory); actual terrain correction stays in the Later bucket until validated.
+13. **Radiometric honesty across time and terrain.** ⚠️ **CORRECTED BY P0 (2026-07-24).** The
+    intent below is right; the original mechanism was wrong and is superseded.
+    - **The baseline guard is `units: "REFLECTANCE"`, NOT `harmonizeValues`.** In REFLECTANCE units
+      Sentinel Hub applies the BOA_ADD_OFFSET (−1000, baseline 04.00, Jan 2022) itself, regardless of
+      the flag. Un-harmonised NDVI errs by **−0.257 at vigorous canopy** versus −0.057 on bare soil —
+      largest exactly where the product earns its keep, and NOT a constant, so it cannot be
+      calibrated out after the fact.
+    - **`harmonizeValues` must be pinned FALSE.** It only controls whether negative reflectance is
+      clamped to zero, and clamping is harmful: a clamped B04 = 0 drives NDVI to a fabricated exactly
+      1.0. Negative reflectance over deep shadow is real data.
+    - **The processing baseline is NOT available from the Process API.** `inputMetadata.serviceVersion`
+      is Sentinel Hub's service version, not the ESA baseline. Provenance requires a second call to
+      the CDSE **STAC** catalogue (`processing:version`), cross-checked against the `_N####_` token in
+      the SAFE product id.
+    - **SCL must be requested in `DN` units**, in a `units` array parallel to `bands`. It is a
+      classification band; `REFLECTANCE` is a hard 400, and two separate input objects is also a 400
+      ("Dataset with id: 1 not found").
+    - **`resx`/`resy` are in the units of the REQUESTED CRS.** Pinning the native 10 m grid requires a
+      METRIC output CRS; under CRS84 `resx: 10` asks for 10 degrees and CDSE refuses it.
+    - Resampling: SCL is 20 m while B04/B08 are 10 m, and NEAREST (already the CDSE default) is pinned
+      and recorded, because bilinear on a classifier yields values that are not classes.
+    - On steep terrain (the live Bhutan tenant is the most exposed user), slope/aspect illumination
+      shows up as fake within-planting "patterns" under relative scaling; the display layer must be
+      able to say so (P3 advisory). Actual terrain correction stays in the Later bucket.
 
 ## 3. Architecture posture
 
-**Working hypothesis (to be proven or killed in Phase 0): the no-worker architecture.**
+**VERDICT (P0, 2026-07-24): GO. The no-worker architecture is PROVEN and adopted.** See
+[ADR 0009](../architecture/decisions/0009-vineyard-intelligence-no-worker-architecture.md) and
+`docs/GIS/phases/`. At realistic scale (~50 ha estate, 20 blocks): **390 ms** compute, **451 MB** peak
+RSS, clipping sub-quadratic in vertices (10x -> 5.3x) and nearly flat in block count (10x -> 1.5x).
+Coverage validated **cell-by-cell** against `exactextract` across 292 cells. The tightest number is
+memory, not time — see the scale-register tripwire.
+
+**Original working hypothesis (now proven):**
 
 Vineyards are tiny AOIs — a 50 ha vineyard at 10 m Sentinel resolution is ~5,000 pixels. Therefore:
 
@@ -313,7 +335,7 @@ done until its slice of the relevant §22 narrative can be demonstrated live on 
 
 | Phase | Wave/Lane | Status | Plan | PRs | Report |
 | --- | --- | --- | --- | --- | --- |
-| P0 spike | 0 | ⬜ not started | — | — | — |
+| P0 spike | 0 | 🟩 shipped | [094](../plans/2026-07-24-094-spike-vineyard-intelligence-p0-plan.md) | `spike/vi-p0-no-worker` | [phase-0](phases/phase-0-report.md) |
 | P1 planting geometry | 1A | ⬜ not started | — | — | — |
 | P4 soil cards | 1B | ⬜ not started | — | — | — |
 | POF offline foundation | 1C | ⬜ not started | — | — | — |

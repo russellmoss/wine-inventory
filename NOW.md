@@ -7,6 +7,36 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**P0 COMPLETE — VERDICT: GO on the no-worker architecture.** All 16 units on
+`spike/vi-p0-no-worker` (pushed, **no PR yet**). Runbook §7 ledger flipped to 🟩.
+[ADR 0009](docs/architecture/decisions/0009-vineyard-intelligence-no-worker-architecture.md) ·
+[phase report](docs/GIS/phases/phase-0-report.md). 3891 tests green.
+
+At realistic scale (~50 ha, 20 blocks): **390 ms** compute, **451 MB** peak RSS, against
+pre-committed limits of 5000 ms / 512 MB. Clipping sub-quadratic in vertices (10×→5.3×), nearly flat
+in blocks (10×→1.5×). Coverage validated **cell-by-cell** vs `exactextract` (292 cells, max 2.95e-8,
+every non-zero diff explained by the ORACLE's float32). Live scene: 342×342 px, 767 KB, 2153 ms,
+0.892 PU, 80.8% valid, block NDVI means 0.281–0.709.
+
+⛔ **Five things not to re-derive** (all now corrected in runbook rule §2.13 itself):
+1. **`harmonizeValues` is BACKWARDS.** Baseline guard is `units:"REFLECTANCE"`; the flag only clamps
+   negatives, and clamping fabricates `NDVI = 1.0`. Pin it **false**.
+2. **Baseline is NOT in the Process API** — needs a CDSE **STAC** `processing:version` call.
+3. **`resx:10` under CRS84 = 10 DEGREES** → "3504.23 m/px exceeds 1500". Needs a METRIC CRS.
+4. **SCL must be `DN`**, in a `units` ARRAY parallel to `bands`. Two input objects → "Dataset with
+   id: 1 not found".
+5. **Weighted type-7 quantiles IGNORE their weights** (median 50.5 for `[1×9, 100×1]`). Pinned the
+   midpoint form instead.
+
+⚠️ **Constraint is MEMORY, not time** — 451/512 MB. Scale-register tripwire at 400 MB or ~2M px.
+⚠️ Free tier binds on **REQUESTS** (10k/mo), not PU → one estate-wide raster, clipped N ways.
+Dev-only Python tools: `pip install exactextract numpy tifffile`. Runtime deps 22→23 (`proj4` only).
+
+▶️ **NEXT:** `/review` then `/ship` the branch (16 units, no PR yet). Then Wave 1 opens:
+**P1 planting geometry ⚡ P4 soil cards ⚡ POF offline** — P4 and POF never depended on this verdict.
+
+<details><summary>Planning + council + repo cleanup (done)</summary>
+
 **Vineyard Intelligence P0 — plan 094 WRITTEN + COUNCIL-REVIEWED, not yet built.**
 Plan: [2026-07-24-094-…](docs/plans/2026-07-24-094-spike-vineyard-intelligence-p0-plan.md) (16 units).
 Council: [council-feedback-094](docs/plans/council-feedback-094-vineyard-intelligence-p0.md).
@@ -58,6 +88,8 @@ Also: `.env.bak-20260724-081051` holds secrets — gitignored, delete when comfo
 
 ▶️ **NEXT:** push + PR the three commits, then `/work` the plan. P4 (soil) and POF (offline) do **not**
 depend on P0's verdict and can start anytime.
+
+</details>
 
 <details><summary>Previous objective — /bug-triage merged-sweep fix (done, live on main)</summary>
 

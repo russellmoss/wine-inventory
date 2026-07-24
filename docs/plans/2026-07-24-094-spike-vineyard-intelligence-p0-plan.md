@@ -1,7 +1,7 @@
 ---
 title: Vineyard Intelligence P0 — spike: prove or kill the no-worker architecture
 type: spike
-status: council-revised
+status: completed
 date: 2026-07-24
 branch: spike/vi-p0-no-worker
 depth: deep

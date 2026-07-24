@@ -41,3 +41,4 @@ What this makes easy, what it makes hard, and any entry added to [[scale-registe
 - [[0006-inbox-notifications]] — discrete notifications over live buckets, per-user RLS via the `app.user_id` GUC, one badge (plan 068).
 - [[0007-knowledge-base-rag-global-corpus-tenant-subscriptions]] — RAG not fine-tuning; GLOBAL corpus + per-tenant source subscriptions, fail-closed (plan 079).
 - [[0008-one-lot-per-vessel]] — a vessel holds ONE lot, a lot may occupy many vessels; identity is decided at the moment of combination (plan 088; LEDGER-12).
+- [[0009-vineyard-intelligence-no-worker-architecture]] — Vineyard Intelligence runs with no geospatial worker; hand-rolled Sutherland-Hodgman clipping validated cell-by-cell against exactextract, UTM + recentring, proj4 scoped to the spike (plan 094).

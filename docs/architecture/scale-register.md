@@ -261,3 +261,12 @@ TEMPLATE — copy this block for each new decision:
 
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*
+
+### Vineyard Intelligence raster math runs in-process, with no geospatial worker (plan 094 / ADR 0009)
+- **Choice:** Sentinel Hub returns a small estate-wide raster; fractional coverage, zonal statistics, NDVI, colour and the RGBA transform all run as pure TypeScript in a normal request. No queue, no GDAL worker, no COG pyramid, no tile server, no PostGIS.
+- **Fine until:** a ~50 ha estate with 20 blocks costs **390 ms** of compute and **451 MB** peak RSS. Clipping is sub-quadratic in vertices (10x vertices -> 5.3x) and nearly flat in block count (10x blocks -> 1.5x), because one raster is fetched and clipped N ways.
+- **What breaks:** **memory before time.** Peak RSS of 451 MB against a 512 MB function limit is the tightest measured number, driven by the 500 ha / 1.17M-pixel stress case rather than realistic scale. A genuinely large estate, or several concurrent requests in one instance, hits the memory ceiling long before the wall clock.
+- **Mitigation (DONE):** estate-wide fetch rather than per-block (also the quota-correct shape — the free tier binds on 10,000 REQUESTS/month, not processing units); per-ring bbox prefilter in `src/lib/gis/coverage.ts` so a high-vertex block is not clipped against the whole raster; float32 rasters rather than float64 on the wire.
+- **Tripwire:** peak RSS above **400 MB** at realistic scale, OR any estate whose raster exceeds ~2M pixels. Either means the next step is streaming the raster in tiles rather than holding it whole — and the pure math modules move unchanged, which is why rule 2.4 exists.
+- **Also measured, in a real browser (Unit 13):** the raster -> RGBA -> canvas -> Leaflet paint blocks the main thread for **151 ms** at estate scale and **2098 ms** at 500 ha. Running it in a browser rather than jsdom found a 6x bug (a per-pixel array allocation in the palette lookup, now a LUT). At 500 ha, ~60% of the block is `percentileDomain` allocating one object per sample - a typed-array quantile path is the cheapest fix, and moving the transform to a Web Worker is the next one, which the pure modules already permit.
+- **Status:** 🟢 fine for now (measured 2026-07-24; `npm run verify:gis-measure` re-runs the sweep, `docs/GIS/phases/p0-render.md` records the paint)

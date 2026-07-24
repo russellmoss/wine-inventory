@@ -40,6 +40,7 @@ import {
 } from "@/lib/map/google-tiles";
 import { loadWaybackReleases, type WaybackRelease } from "@/lib/map/wayback";
 import { wireAttributionRefresh } from "@/lib/map/attribution-refresh";
+import { isVineyardPolygon, type PolygonGeometry as GisPolygonGeometry } from "@/lib/gis/geometry";
 
 const ESRI_IMAGERY_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -166,23 +167,15 @@ export interface SatelliteMapProps {
   };
 }
 
-/** Minimal GeoJSON Polygon shape (a linear ring of [lng, lat] positions). */
-type PolygonGeometry = { type: "Polygon"; coordinates: number[][][] };
-
-function isPolygonGeometry(g: unknown): g is PolygonGeometry {
-  if (!g || typeof g !== "object") return false;
-  const geo = g as { type?: unknown; coordinates?: unknown };
-  if (geo.type !== "Polygon" || !Array.isArray(geo.coordinates)) return false;
-  const ring = geo.coordinates[0];
-  if (!Array.isArray(ring) || ring.length < 4) return false;
-  return ring.every(
-    (pt) =>
-      Array.isArray(pt) &&
-      pt.length >= 2 &&
-      Number.isFinite(pt[0]) &&
-      Number.isFinite(pt[1]),
-  );
-}
+/**
+ * Polygon shape + guard now come from the canonical, unit-tested module in `@/lib/gis/geometry`
+ * rather than a private copy here. That module is pure (no Leaflet, no DOM, no `server-only`), so it
+ * imports cleanly into this client component. The local guard used to inspect only the outer ring;
+ * `isVineyardPolygon` covers MultiPolygon too, which the brief's geometry model requires.
+ */
+type PolygonGeometry = GisPolygonGeometry;
+const isPolygonGeometry = (g: unknown): g is PolygonGeometry =>
+  isVineyardPolygon(g) && g.type === "Polygon";
 
 /** Warm wine location pin — a divIcon so we never depend on Leaflet's (404-prone) marker assets. */
 function makePinIcon(): L.DivIcon {

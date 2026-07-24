@@ -510,3 +510,12 @@ TEMPLATE — copy for each new invariant / finding:
 
 ---
 *Seeded 2026-07-02 from the live RLS/auth setup. The security-posture loop keeps it honest — see [[AUTOMATION]].*
+
+### Satellite egress is locked to three hardcoded Copernicus origins, and the token never reaches a log (plan 094 / ADR 0009)
+- `src/lib/gis/satellite/config.ts` declares the identity, Process and STAC hosts as `as const` HTTPS constants. They are never derived from a request header, mirroring the QBO posture. `isAllowedOrigin()` is the guard for any URL that arrives IN a provider response, which is the attacker-influenceable case.
+- Every outbound call sets `redirect: "error"`, so a redirect cannot silently move the request off an allowlisted origin.
+- `CDSE_CLIENT_ID` / `CDSE_CLIENT_SECRET` are server-only (`import "server-only"`), fail closed via `loadSatelliteConfig()`, and are never `NEXT_PUBLIC_`. The access token is cached IN MEMORY only and never persisted.
+- **A token-endpoint failure never includes the response body**, because that body can echo credentials back. Pinned by a test. The Process API is deliberately different: a 400 there describes a malformed request and IS surfaced, because it is not credential-bearing and is useless to debug otherwise. Different endpoints, different rules.
+- Rasters are stored as **private** blobs with `addRandomSuffix`, under the existing `<pathPrefix>/<tenantId>/` convention, and read back through an authenticated path. Range requests on a private blob were confirmed to return HTTP 206, so a range-indexed layout is available without making anything public.
+- P0 writes **no database rows at all**, so the spike carried no tenancy risk. That posture ends at P1, where the Phase-12 tenancy checklist applies in full to `VineyardPlantingArea` and every derived product.
+- **Status:** 🟢 (measured and pinned 2026-07-24; `npm run verify:gis-live` exercises the real egress path)
