@@ -7,6 +7,22 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**Grower module → Vendor parity (plan 095, ticket #489) — ALL 8 UNITS BUILT, verification-pending.**
+On `claude/grower-module-assistant-27c689` (9 commits, no PR yet). Decision (context-ledger,
+`grower` domain): Grower stays standalone; **third-party growers auto-link to a QBO-synced Vendor,
+estate growers don't** (link-if-name-exists). Built: schema + 2 migrations (backfill-then-enforce
+`GrowerContact`, full 9-step RLS) · read/shared + sanitizer · write core (contacts + vendor link) ·
+actions + QBO push · `create_grower` tool + golden + allowlist (grower-core out of INTERNAL,
+`verify:ai-native` GREEN + coverage doc regen'd) · `/setup/growers` multi-contact UI · isolation cases.
+[Plan 095](docs/plans/2026-07-24-095-feat-grower-module-vendor-parity-plan.md) carries the verify runbook.
+
+⚠️ **Built here but NOT verified** — this worktree has no node_modules/.env; local .env = prod.
+▶️ **NEXT:** run the plan's **Verification runbook in the MAIN checkout** (db:generate → tsc/lint/test →
+verify:ai-native/naming → **db:migrate on prod (backfill-then-enforce)** → verify-tenant-isolation →
+Demo-Winery manual QA), then `/review` + `/ship`.
+
+<details><summary>Vineyard Intelligence P0 — GO verdict (done, unshipped)</summary>
+
 **P0 COMPLETE — VERDICT: GO on the no-worker architecture.** All 16 units on
 `spike/vi-p0-no-worker` (pushed, **no PR yet**). Runbook §7 ledger flipped to 🟩.
 [ADR 0009](docs/architecture/decisions/0009-vineyard-intelligence-no-worker-architecture.md) ·
@@ -88,6 +104,8 @@ Also: `.env.bak-20260724-081051` holds secrets — gitignored, delete when comfo
 
 ▶️ **NEXT:** push + PR the three commits, then `/work` the plan. P4 (soil) and POF (offline) do **not**
 depend on P0's verdict and can start anytime.
+
+</details>
 
 </details>
 
