@@ -58,6 +58,15 @@ export const INTERNAL = {
       "capability. Growers are READ by the assistant (they ride entities/query) but authored in Setup.",
     coveredBy: "/setup/growers admin screen (create/rename/deactivate)",
   },
+  "src/lib/plantingArea/migration-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "VI-P1: migration-by-union is a one-time, REVIEWED, all-or-nothing setup step — the grower eyeballs " +
+      "each proposed parent over satellite imagery ('did we bridge a road?') before confirming. That review " +
+      "is a map-and-click flow, not a natural-language capability (coalescence 'desk-with-coffee → GUI'). The " +
+      "conversational surface for planting structure (READ) is covered by describe_planting_structure.",
+    coveredBy: "planting-setup migration review UI + describe_planting_structure (read)",
+  },
 };
 
 // Temporary — real gaps deferred with a tracked reason. Ratcheted by MAX_ALLOWED.

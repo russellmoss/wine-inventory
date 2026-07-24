@@ -136,4 +136,14 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     tool: "query_custom_units",
     args: {},
   },
+  {
+    utterance: "What planting areas does Russian River Ranch have?",
+    tool: "describe_planting_structure",
+    args: { vineyard: "Russian River Ranch" },
+  },
+  {
+    utterance: "Are any blocks in Home Ranch unassigned to a planting area?",
+    tool: "describe_planting_structure",
+    args: { vineyard: "Home Ranch" },
+  },
 ];
