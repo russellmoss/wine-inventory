@@ -42,12 +42,22 @@ not document this, so it is a measured fact, and Unit 10's 120 s skew is 6.7% of
 item is now CONFIRMED: private blob + `Range` → HTTP 206** (put 464 ms, ranged GET 4 B in 327 ms, probe
 deleted) — so a range-indexed raster layout on Blob is viable and Unit 12 shrinks to latency only.
 
-⚠️ **Remaining Unit 0 blocker: `docs/GIS/` is UNTRACKED in the main checkout** (`?? docs/GIS/`) — the
-runbook and brief are not in git, so every artifact above cites a file that exists to nobody else.
-Not committed here because committing was not asked for. Also pending: `npm ci` + add `proj4`.
+✅ **Unit 0 fully CLEARED (2026-07-24).** Three commits on `claude/vineyard-intelligence-phase-defad5`,
+**not yet pushed / no PR**:
+`931595b0` docs/GIS tracked · `eb09ecf8` plan 094 + council · `7a5647ea` proj4.
+`npm ci` restored this worktree (688 pkgs; leaflet/@geoman-io/@turf/polyclip-ts/@types/geojson were in
+the lockfile but absent from disk). `proj4@2.20.9` + `@types/proj4` added — round-trip error **0.00 mm
+(UTM 18N) / 1.46e-6 mm (UTM 46N)**, and recentring headroom measured at **ULP 1.57e-10 m @ 705 km
+easting vs ~2.2e-14 m recentred** (the ~4 digits Unit 2 claims). `tsc --noEmit` clean;
+**3,660 tests green**, 0 failures.
 
-▶️ **NEXT:** commit `docs/GIS/`, `npm ci` + `proj4`, then `/work` the plan. P4 (soil) and POF (offline)
-do **not** depend on P0's verdict and can start anytime.
+⚠️ **`docs/GIS/` was committed to THIS BRANCH, not `main`** — the main checkout is in **DETACHED HEAD**
+at `6082be2a` (a commit there would dangle), and `main` is checked out in the
+`virginia-fruit-ipm-knowledge-8ba0f8` worktree. The detached HEAD is pre-existing and worth fixing.
+Also: `.env.bak-20260724-081051` holds secrets — gitignored, delete when comfortable.
+
+▶️ **NEXT:** push + PR the three commits, then `/work` the plan. P4 (soil) and POF (offline) do **not**
+depend on P0's verdict and can start anytime.
 
 <details><summary>Previous objective — /bug-triage merged-sweep fix (done, live on main)</summary>
 
