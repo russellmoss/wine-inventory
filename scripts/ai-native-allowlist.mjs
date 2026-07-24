@@ -51,13 +51,9 @@ export const INTERNAL = {
       "(change a lot's owner) has its own tool + core (change_ownership → changeOwnershipCore).",
     coveredBy: "/setup/clients admin screen (create/rename/deactivate)",
   },
-  "src/lib/grower/grower-core.ts": {
-    owner: "russellmoss",
-    reason:
-      "Plan 093: managing Growers is reference-data admin (desk-with-coffee GUI), like vendors — not a chat " +
-      "capability. Growers are READ by the assistant (they ride entities/query) but authored in Setup.",
-    coveredBy: "/setup/growers admin screen (create/rename/deactivate)",
-  },
+  // Plan 095: grower-core is NO LONGER internal — it now has a first-class assistant tool (create_grower →
+  // createGrowerAction → createGrowerWithSync → createGrowerCore). The ticket (#489) made growers a
+  // conversational capability like vendors, so the core is reachable and needs no exemption.
   "src/lib/plantingArea/migration-core.ts": {
     owner: "russellmoss",
     reason:
@@ -75,12 +71,13 @@ export const GAP_ALLOWLIST = {
   // deferred fast-follow alongside the U1 rendered surfaces (manual-QA-only; see PHASE-2-REPORT).
   "src/lib/compliance/return-to-bond-core.ts": { owner: "russellmoss", reason: "RETURN_TO_BOND assistant tool deferred to the Phase-2 UX/assistant fast-follow; core proven by verify:taxpaid" },
   "src/lib/compliance/tax-class-event-core.ts": { owner: "russellmoss", reason: "change-tax-class assistant tool deferred to the Phase-2 UX/assistant fast-follow; core proven by verify:taxclass" },
-  // Plan 093: owner-core + grower-core RATCHETED OUT of the gap list — they're now GUI-covered (INTERNAL,
-  // /setup/clients + /setup/growers). Back to the pre-093 baseline of 2 deferred gaps.
+  // Plan 093: owner-core RATCHETED OUT of the gap list — it's now GUI-covered (INTERNAL, /setup/clients).
+  // Plan 095: grower-core now has a real tool (create_grower) — reachable, no exemption needed.
 };
 
 // The ratchet ceiling for GAP_ALLOWLIST ONLY (INTERNAL is exempt). Set to the
 // number of deferred real gaps; only ever DECREMENT as you wire tools.
-// Plan 093 fully ratcheted back to the pre-093 baseline (2): weigh-tag-core wired (log_weigh_tag),
-// owner-core + grower-core reclassified INTERNAL (GUI-covered, /setup/clients + /setup/growers).
+// Plan 093 ratcheted to baseline (2): weigh-tag-core wired (log_weigh_tag), owner-core reclassified INTERNAL.
+// Plan 095: grower-core moved from INTERNAL to reachable (create_grower tool) — INTERNAL is uncounted, so
+// MAX_ALLOWED is unchanged.
 export const MAX_ALLOWED = 2;

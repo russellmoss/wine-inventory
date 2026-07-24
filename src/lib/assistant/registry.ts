@@ -119,6 +119,7 @@ import { queryMaterialsTool } from "./tools/query-materials";
 import { createCustomUnitTool } from "./tools/create-custom-unit";
 import { queryCustomUnitsTool } from "./tools/query-custom-units";
 import { createVendorTool } from "./tools/create-vendor";
+import { createGrowerTool } from "./tools/create-grower";
 import { mergeVendorsTool } from "./tools/merge-vendors";
 import { queryVendorsTool } from "./tools/query-vendors";
 import { ingestDocumentsTool } from "./tools/ingest-documents";
@@ -193,6 +194,7 @@ const ALL_TOOLS: AssistantTool[] = [
   createCustomUnitTool,
   queryCustomUnitsTool,
   createVendorTool,
+  createGrowerTool,
   mergeVendorsTool,
   ingestDocumentsTool,
   queryRecentIntakesTool,
