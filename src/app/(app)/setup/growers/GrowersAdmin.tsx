@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, Button, Input, Eyebrow, Badge, Modal } from "@/components/ui";
 import { GrowerForm, growerToForm, growerFormToInput, growerFormValid, emptyGrowerForm, type GrowerFormValue } from "@/components/growers/GrowerForm";
 import { createGrower, updateGrower } from "./actions";
+import { unwrap } from "@/lib/action-result";
 import type { GrowerRow } from "@/lib/grower/data";
 
 // Plan 093 follow-on / Plan 095: manage Growers (the party that farmed the fruit) at Vendor parity. Add/edit
@@ -27,7 +28,10 @@ export function GrowersAdmin({ growers }: { growers: GrowerRow[] }) {
   }, [query, growers]);
 
   function toggleActive(g: GrowerRow) {
-    updateGrower({ id: g.id, isActive: !g.isActive }).then(() => router.refresh());
+    updateGrower({ id: g.id, isActive: !g.isActive }).then((raw) => {
+      try { unwrap(raw); } catch { /* toggle is low-stakes; a failed toggle just no-ops the refresh below */ }
+      router.refresh();
+    });
   }
 
   return (
@@ -118,13 +122,16 @@ function GrowerModal({ mode, grower, open, onClose, onDone }: {
     setBusy(true);
     try {
       const input = growerFormToInput(form);
-      const res = mode === "add"
+      const raw = mode === "add"
         ? await createGrower(input)
         : await updateGrower({ id: grower!.id, ...input });
+      // unwrap() re-throws a server-side ActionError (redaction-safe); the inner result carries a
+      // core-level validation failure (e.g. a duplicate name) as { ok:false, error }.
+      const res = unwrap(raw);
       if (!res.ok) { setError(res.error); return; }
       onDone();
-    } catch {
-      setError("Couldn't save the grower — try again.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save the grower — try again.");
     } finally {
       setBusy(false);
     }
