@@ -7,11 +7,57 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**Vineyard Intelligence P0 — plan 094 WRITTEN + COUNCIL-REVIEWED, not yet built.**
+Plan: [2026-07-24-094-…](docs/plans/2026-07-24-094-spike-vineyard-intelligence-p0-plan.md) (16 units).
+Council: [council-feedback-094](docs/plans/council-feedback-094-vineyard-intelligence-p0.md).
+P0 is the Wave-0 solo gate — `P1←P0`, `P2←P0+P1` — proving or killing the **no-worker** architecture.
+
+Both reviewers **confirmed** the load-bearing claim (fractional coverage is polygon ∩ *convex* rect,
+so hand-rolled Sutherland–Hodgman is exact, zero deps) and both said the first draft's *instrument*
+would have blessed a wrong architecture. Six structural fixes folded in; Russell chose all three
+recommended options (add `proj4` for the spike · estate-wide fetch · prove the canvas paint in P0).
+
+⛔ **Five things not to re-derive:**
+1. **`harmonizeValues` does the OPPOSITE of what runbook §2.13 says.** In REFLECTANCE units the BOA
+   offset is applied *regardless*; the flag only clamps negatives to zero → clamped `B04=0` yields a
+   fabricated `NDVI = 1.0`. Real guard = pin `units: "REFLECTANCE"` + `harmonizeValues: **false**`.
+   **Runbook §2.13 + §5 need correcting (Unit 15).**
+2. **The processing baseline is NOT in the Process API response.** `inputMetadata.serviceVersion` is
+   Sentinel Hub's service version, not the ESA baseline. Use the CDSE **STAC** `processing:version`.
+3. **Free tier binds on REQUESTS (10k/mo), not PU** — a 50 ha request is ~0.038 PU. Per-block fetching
+   burns 50 requests per look; **one estate-wide raster = 1 request**. Hence the fetch-shape decision.
+4. **S-H exactness has a ULP precondition.** Clipping must *assign* the exact edge scalar
+   (`intersect.x = pixel_max_x`), never lerp it — else U-shape bridges stop cancelling and area leaks
+   **silently**. And Unit 1 must *reject* self-touching/self-intersecting rings: signed area is
+   algebraic, not geometric, for those.
+5. **`polyclip-ts` is the WRONG fallback** (was in the first draft). `setPrecision` is process-global
+   with never-reset snap trees, 3–5× slower when set, and a *larger* epsilon can make failures worse.
+   Fallback is **`jsts`** (real `PrecisionModel` + snap-rounding).
+
+✅ **Unit 0 credentials CLEARED + verified live (2026-07-24).** CDSE `client_credentials` grant works
+(~0.6–1.2 s); 📌 **`expires_in = 1800 s` (30 min)**, confirmed against the JWT `exp − iat` — CDSE does
+not document this, so it is a measured fact, and Unit 10's 120 s skew is 6.7% of it.
+`BLOB_READ_WRITE_TOKEN` already existed in Vercel (store connected 9 d ago) and was pulled into local
+`.env` append-only after a `.env.bak-<ts>` backup (47 → 48 vars). 🎯 **The research's one UNVERIFIED
+item is now CONFIRMED: private blob + `Range` → HTTP 206** (put 464 ms, ranged GET 4 B in 327 ms, probe
+deleted) — so a range-indexed raster layout on Blob is viable and Unit 12 shrinks to latency only.
+
+⚠️ **Remaining Unit 0 blocker: `docs/GIS/` is UNTRACKED in the main checkout** (`?? docs/GIS/`) — the
+runbook and brief are not in git, so every artifact above cites a file that exists to nobody else.
+Not committed here because committing was not asked for. Also pending: `npm ci` + add `proj4`.
+
+▶️ **NEXT:** commit `docs/GIS/`, `npm ci` + `proj4`, then `/work` the plan. P4 (soil) and POF (offline)
+do **not** depend on P0's verdict and can start anytime.
+
+<details><summary>Previous objective — /bug-triage merged-sweep fix (done, live on main)</summary>
+
 **`/bug-triage` re-offered SHIPPED code as new work — FIXED and LIVE on `main` ([PR #478](https://github.com/russellmoss/wine-inventory/pull/478), squash `0b649b74`).**
 New **Merged Sweep** phase + boilerplate-plan-issue detection. `.claude/workflows/` is outside the
-auto-fix fence, so #478 took an owner merge rather than the automation. Details under ✅ Done recently.
+auto-fix fence, so #478 took an owner merge rather than the automation.
 ⚠️ **A worktree only picks this up on a fresh checkout** — sibling worktrees still carry the OLD
 `bug-triage.js`. Run `/bug-triage` from a checkout at `origin/main`.
+
+</details>
 
 <details><summary>Previous objective — PLAN 091 voice pronunciation (done, in prod)</summary>
 
@@ -871,7 +917,12 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-23 — **`/bug-triage` reconcile blind spot closed and LIVE on `main` (PR #478,
+_Last updated: 2026-07-24 — **Vineyard Intelligence P0 planned + council-reviewed (plan 094, 16 units).**
+Both reviewers confirmed the convex-window/Sutherland–Hodgman reframe and both rejected the first draft's
+instrument; six fixes folded in. Three corrections not to re-derive: `harmonizeValues` is backwards in
+runbook §2.13, the processing baseline needs a STAC call, and the free tier binds on requests not PU.
+Blocked on Unit 0 — `docs/GIS/` is untracked, and there are no CDSE credentials or blob token in `.env`.
+Prior: **`/bug-triage` reconcile blind spot closed and LIVE on `main` (PR #478,
 squash `0b649b74`).** Triage ranked a ticket as the run's one actionable item a day after the work shipped in a
 hand-built PR #468: nothing stamped the PR on the ticket, Reconcile needs a PR on the ticket, and the
 PR sweep lists only OPEN PRs. New **Merged Sweep** scans merged PRs for a feedback id in the body,
