@@ -41,6 +41,7 @@ import {
 import { loadWaybackReleases, type WaybackRelease } from "@/lib/map/wayback";
 import { wireAttributionRefresh } from "@/lib/map/attribution-refresh";
 import { isVineyardPolygon, type PolygonGeometry as GisPolygonGeometry } from "@/lib/gis/geometry";
+import type { MapOverlay } from "@/lib/gis/overlay";
 
 const ESRI_IMAGERY_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -165,6 +166,12 @@ export interface SatelliteMapProps {
     manager?: string | null;
     elevationM?: number | null;
   };
+  /**
+   * VI-P1 governed layer-stack (brief §13.1). Additional vector overlays (planting-area boundaries,
+   * later raster/soil layers) rendered ABOVE the block layer, in array order. Additive: existing
+   * `blocks`/`editable` behaviour is untouched. The `kind: "raster"` arm is wired in P3.
+   */
+  overlays?: MapOverlay[];
 }
 
 /**
@@ -284,6 +291,7 @@ export function SatelliteMap({
   onCancelDraw,
   exportName,
   vineyardMeta,
+  overlays,
 }: SatelliteMapProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   // The relative wrapper around the map AND its HTML overlays (key, controls).
@@ -292,6 +300,7 @@ export function SatelliteMap({
   const frameRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<L.Map | null>(null);
   const overlayRef = React.useRef<L.FeatureGroup | null>(null);
+  const layerStackRef = React.useRef<L.FeatureGroup | null>(null); // VI-P1 governed overlays (planting boundaries, …)
   const markerRef = React.useRef<L.Marker | null>(null);
   const baseLayerRef = React.useRef<L.TileLayer | null>(null);
   const waybackLayerRef = React.useRef<L.TileLayer | null>(null);
@@ -519,6 +528,35 @@ export function SatelliteMap({
     }
     map.invalidateSize();
   }, [blocks, unit, lat, lng, editable]);
+
+  // VI-P1: governed layer-stack overlays (planting-area boundaries, later raster/soil). Rendered ABOVE
+  // the block layer, in array order, into a dedicated FeatureGroup. Additive — never touches the block
+  // or editable effects. Only `kind: "vector"` is painted in P1; raster arrives in P3.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (layerStackRef.current) {
+      layerStackRef.current.remove();
+      layerStackRef.current = null;
+    }
+    if (!overlays || overlays.length === 0) return;
+    const group = L.featureGroup();
+    for (const ov of overlays) {
+      if (ov.kind !== "vector") continue; // raster wired in P3
+      L.geoJSON(ov.data as unknown as GeoJSON.GeoJsonObject, {
+        style: {
+          color: ov.style.color,
+          weight: ov.style.weight ?? 2,
+          fillColor: ov.style.fillColor ?? ov.style.color,
+          fillOpacity: ov.style.fillOpacity ?? 0.1,
+          dashArray: ov.style.dashArray,
+        },
+      }).addTo(group);
+    }
+    group.addTo(map);
+    group.bringToFront();
+    layerStackRef.current = group;
+  }, [overlays]);
 
   // Geoman edit setup: snapping, a token-styled toolbar (edit + drag only —
   // drawing is per-block via the buttons below, removal is the block's Clear

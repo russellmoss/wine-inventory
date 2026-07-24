@@ -14,7 +14,7 @@
 import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { prisma } from "@/lib/prisma";
-import type { VineyardPolygon } from "@/lib/gis/geometry";
+import type { PolygonGeometry, VineyardPolygon } from "@/lib/gis/geometry";
 import { projectedAreaM2 } from "@/lib/gis/geometry-meta";
 import {
   createPlantingAreaCore,
@@ -42,7 +42,7 @@ function check(name: string, ok: boolean, detail = "") {
   }
 }
 
-function square(sideDeg: number, ox = 0, oy = 0): VineyardPolygon {
+function square(sideDeg: number, ox = 0, oy = 0): PolygonGeometry {
   const x = LON0 + ox;
   const y = LAT0 + oy;
   return { type: "Polygon", coordinates: [[[x, y], [x, y + sideDeg], [x + sideDeg, y + sideDeg], [x + sideDeg, y], [x, y]]] };
