@@ -32,6 +32,7 @@ export default async function SettingsPage() {
   return (
     <SettingsClient
       sparklingEnabled={settings.sparklingEnabled}
+      customCrushEnabled={settings.customCrushEnabled}
       pushVendorsToQbo={pushVendorsToQbo}
       cost={cost}
       accounting={accounting}

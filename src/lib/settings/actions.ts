@@ -28,6 +28,23 @@ export const setSparklingEnabled = adminAction(async ({ actor }, enabled: boolea
   return { sparklingEnabled: enabled };
 });
 
+// Plan 093 follow-on: toggle the custom-crush capability. Admin-only; audited. Revalidates the layout so
+// the gated nav (Weigh-tags) + the Clients setup screen appear/disappear immediately.
+export const setCustomCrushEnabled = adminAction(async ({ actor }, enabled: boolean): Promise<{ customCrushEnabled: boolean }> => {
+  await runInTenantTx(async (tx) => {
+    await tx.appSettings.upsert({
+      where: { tenantId: actor.tenantId },
+      update: { customCrushEnabled: enabled },
+      create: { customCrushEnabled: enabled }, // tenantId auto-injected; id defaults to a cuid
+    });
+    await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "AppSettings", entityId: actor.tenantId, summary: `Custom-crush program ${enabled ? "enabled" : "disabled"}` });
+  });
+  revalidatePath("/settings");
+  revalidatePath("/", "layout");
+  revalidatePath("/vineyards/harvest/weigh-tags");
+  return { customCrushEnabled: enabled };
+});
+
 // Plan 077: toggle the eager QBO vendor push (a vendor created in Cellarhand is pushed to QBO immediately).
 // Admin-only; audited. Revalidates settings.
 export const setPushVendorsToQbo = adminAction(async ({ actor }, enabled: boolean): Promise<{ pushVendorsToQbo: boolean }> => {

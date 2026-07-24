@@ -9,11 +9,11 @@ import { isRealTimeZone } from "@/lib/work-orders/due-at";
 // active tenant context (RLS + the Prisma extension), so it returns the calling org's row (default
 // off when it doesn't exist yet); the toggle action upserts it by tenantId.
 
-export type AppSettingsView = { sparklingEnabled: boolean };
+export type AppSettingsView = { sparklingEnabled: boolean; customCrushEnabled: boolean };
 
 export async function getAppSettings(): Promise<AppSettingsView> {
-  const s = await prisma.appSettings.findFirst({ select: { sparklingEnabled: true } });
-  return { sparklingEnabled: s?.sparklingEnabled ?? false };
+  const s = await prisma.appSettings.findFirst({ select: { sparklingEnabled: true, customCrushEnabled: true } });
+  return { sparklingEnabled: s?.sparklingEnabled ?? false, customCrushEnabled: s?.customCrushEnabled ?? false };
 }
 
 export type FeedbackAutomationModes = {
@@ -40,6 +40,12 @@ export async function getFeedbackAutomationModes(): Promise<FeedbackAutomationMo
 /** The capability gate for the ENTIRE traditional-method sparkling UI/nav (default off). */
 export async function isSparklingEnabled(): Promise<boolean> {
   return (await getAppSettings()).sparklingEnabled;
+}
+
+/** Plan 093 follow-on: the capability gate for the custom-crush surfaces (Clients/Owners setup + the
+ *  Weigh-tags nav). Default off — the whole model is inert until a winery opts in. */
+export async function isCustomCrushEnabled(): Promise<boolean> {
+  return (await getAppSettings()).customCrushEnabled;
 }
 
 /**
