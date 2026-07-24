@@ -259,5 +259,35 @@ TEMPLATE — copy this block for each new decision:
   unreachable regardless, so the fold+assert are correctness reinforcement, not the sole guard; guarded by
   `verify:one-lot-per-vessel` + `test/ledger-math.test.ts`).
 
+### Gap-free weigh-tag numbers serialize truck intake on one per-tenant counter row (plan 093)
+- **Choice:** a weigh-tag's `tagNumber` is a gap-free, per-tenant, monotonic certificate allocated from a
+  single `WeighTagCounter` row via `SELECT … FOR UPDATE` inside the intake tx (council: NOT `MAX(tagNumber)+1`,
+  which bounces/gaps under SERIALIZABLE + a transaction-mode pooler). See `src/lib/harvest/weigh-tag-core.ts`.
+- **Fine until:** human-paced weigh-bridge intake — trucks arrive minutes apart, one weighmaster per scale.
+- **What breaks at scale:** the counter row is a **per-tenant serialization point** — every concurrent tag
+  issue for a tenant contends on that one row's `FOR UPDATE` lock. Multiple scales / a bulk backfill issuing
+  tags in parallel queue behind it; combined with SERIALIZABLE this shows as lock waits or 40001 aborts.
+- **Tripwire:** `[write-retry]` warns spiking during harvest intake; tag-issue latency climbing when two
+  weigh stations run at once.
+- **Status:** 🟢 (one scale, human-paced; the FOR-UPDATE counter is correct-by-construction and gap-free,
+  which is the actual requirement — a TTB certificate number can't have holes; revisit only if multi-scale
+  parallel intake becomes real).
+
+### ownerId is re-stamped across a lot's live positions on every CHANGE_OWNERSHIP (plan 093 / OWNER-1)
+- **Choice:** `ownerId` is a maintained SCALAR projection. A `CHANGE_OWNERSHIP` op re-stamps the lot row plus
+  its LIVE positions (`vessel_lot`, `bottled_lot_state`) in one tx; historical `lot_operation_line` snapshots
+  keep their as-of owner (the immutable record is the op). Descendant rows read the CURRENT column at the
+  write chokepoint, never re-walking lineage ([[invariants/OWNER-1-owner-projection]]).
+- **Fine until:** a lot sits in a handful of live positions — the norm (a lot occupies at most one vessel per
+  LEDGER-12; a bottled lot has bounded state rows).
+- **What breaks at scale:** the re-stamp is `updateMany` over a lot's live positions, so it's bounded and small
+  today; the watch-item is if a future FRACTIONAL-ownership model (`LotOwnershipShare`, deliberately NOT built)
+  turns the scalar re-stamp into a per-share fan-out, or if owner-scope RLS (plan 092) adds a WITH-CHECK to
+  every one of the ~25 `ownerId`-bearing tables (a second predicate evaluated on each write).
+- **Tripwire:** `CHANGE_OWNERSHIP` latency climbing; plan-092 owner-scope RLS landing (re-benchmark write
+  paths then); any move to fractional ownership.
+- **Status:** 🟢 (scalar + bounded live positions; `verify:owner-model` proves descendant rows carry the owner
+  from the column, not lineage).
+
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*
