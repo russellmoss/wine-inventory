@@ -190,3 +190,27 @@ export const confirmPlantingMigration = action(
 export const getPlantingStructure = action(async (_ctx, vineyardId: string): Promise<PlantingStructure> => {
   return describePlantingStructureCore(vineyardId);
 });
+
+export type PlantingAreaMapRow = {
+  id: string;
+  name: string;
+  geometry: VineyardPolygon;
+  reviewStatus: string;
+  source: string;
+  geometryVersion: number;
+  areaGeodesicM2: number | null;
+};
+
+/** READ: serialized planting areas (with geometry) for the map overlay. */
+export const loadPlantingAreasForMap = action(async (_ctx, vineyardId: string): Promise<PlantingAreaMapRow[]> => {
+  const rows = await prisma.vineyardPlantingArea.findMany({ where: { vineyardId }, orderBy: { sortOrder: "asc" } });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    geometry: r.geometry as unknown as VineyardPolygon,
+    reviewStatus: r.reviewStatus as string,
+    source: r.source as string,
+    geometryVersion: r.geometryVersion,
+    areaGeodesicM2: r.areaGeodesicM2 ? Number(r.areaGeodesicM2) : null,
+  }));
+});
