@@ -54,9 +54,11 @@ export const GAP_ALLOWLIST = {
   // (owner/grower read + change_ownership + weigh-tag intake). The plan sanctions allow-listing until then.
   // Ratchet back DOWN in F3 as each tool is wired.
   "src/lib/owner/owner-core.ts": { owner: "russellmoss", reason: "createOwnerCore assistant coverage deferred to plan 093 F3 Unit 12; owner is otherwise reference-data admin / read-only in the assistant" },
+  "src/lib/grower/grower-core.ts": { owner: "russellmoss", reason: "createGrowerCore assistant coverage deferred to plan 093 F3 Unit 12; grower is otherwise reference-data admin / read-only in the assistant" },
+  "src/lib/harvest/weigh-tag-core.ts": { owner: "russellmoss", reason: "weigh-tag intake assistant tool is plan 093 F3 Unit 12 (extends log_harvest_pick); core proven by the concurrency verify" },
 };
 
 // The ratchet ceiling for GAP_ALLOWLIST ONLY (INTERNAL is exempt). Set to the
 // number of deferred real gaps; only ever DECREMENT as you wire tools.
-// Bumped 2->3 for plan 093 F1 (owner-core); F3 wires the tool and ratchets it back down.
-export const MAX_ALLOWED = 3;
+// Bumped for plan 093: F1 owner-core (3), F2 grower-core (4) + weigh-tag-core (5); F3 wires tools + ratchets down.
+export const MAX_ALLOWED = 5;

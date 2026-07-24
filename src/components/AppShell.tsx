@@ -40,6 +40,7 @@ const WINERY: NavItem[] = [
 const VINEYARDS: NavItem[] = [
   { href: "/vineyards/field-notes", label: "Field notes" },
   { href: "/vineyards/harvest", label: "Harvest" },
+  { href: "/vineyards/harvest/weigh-tags", label: "Weigh-tags" }, // Plan 093 Unit 10b
   { href: "/vineyards/maps", label: "Maps" },
 ];
 
