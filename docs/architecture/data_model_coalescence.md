@@ -126,22 +126,33 @@ billing land here; intake is P0-Intake below.
 > JV/fractional with the design partner). Rationale: scalar-vs-fractional = column-vs-join, the one
 > choice that would force a full RLS re-migration on the live tenant. Plan 092 is the enforcement half.
 
+> ✅ **SHIPPED — the ownership FOUNDATION is BUILT + ON PROD (plan 093 F1, merged #484).** Owner entity
+> (`ownerId` scalar, NULL = Estate) + `CHANGE_OWNERSHIP` (conditional title-vs-TIB, reversible) + AP-owner
+> bond precedence + cross-owner blend allow-and-bill (`BillableWineConsumed`). Proven with NO RLS by
+> `verify:owner-model` (16/16) + invariant OWNER-1. Assistant: `change_ownership` (D10 title-vs-TIB readback).
+> Still open here: `CostLine.visibility` split + owner-scoped materials → plan 092 (the enforcement half).
+
 | Item | Verdict | Effort | Assistant | Note |
 |---|---|---|---|---|
-| **Owner** entity (replace the `LotOwnership` enum with a real record; wire `Bond.ownerId`) | build-new | L ⚠️ | +asst read ("show me Client X's lots") | Standalone entity, not a forced Party table. ⭐ Design for ADDITIVE fractional extension (see the ownership-decision note above — confirm JV/fractional with the partner). |
-| **`CHANGE_OWNERSHIP`** operation | build-new | M ⚠️ | +asst write (D10) | Both incumbents have it; we defer. Cross-owner blend = transfer-first. |
-| Bond derivation: **AP-owner precedence** (+ optional location-default) | build-new | M ⚠️ | — (GUI) | The `Bond` ENTITY is already built (`schema.prisma:2487`); `deriveBond` stays ledger-derived and now *consults* owner. Re-scoped plan 092 Unit 3c. |
+| **Owner** entity (replace the `LotOwnership` enum with a real record; wire `Bond.ownerId`) | ✅ BUILT (093 F1) | L ⚠️ | ✅ `change_ownership` | Standalone entity, scalar, structured for additive fractional. `kind` is a String+TS-union (not a Prisma enum). |
+| **`CHANGE_OWNERSHIP`** operation | ✅ BUILT (093 F1) | M ⚠️ | ✅ `change_ownership` (D10) | CONDITIONAL on the bond delta: same bond = title-only ZERO TTB; host↔AP = title + transfer-in-bond. Reversible. Cross-owner blend is now ALLOWED + billed (council C2), NOT transfer-first. |
+| Bond derivation: **AP-owner precedence** (+ optional location-default) | ✅ BUILT (093 F1) | M ⚠️ | — (GUI) | `deriveBond` step 0: an AP-owned lot derives its owner's bond ahead of ledger/lineage/primary. `skipOwnerPrecedence` gives the base bond for CHANGE_OWNERSHIP's delta. |
 | **`CostLine.visibility`** split (client_billable / internal_overhead) | build-new | M ⚠️ | — (GUI config) | THE custom-crush differentiator (neither incumbent redacts facility cost from a client). Backfill default `internal_overhead` → derive from ownership → enforce. |
 | Owner-scoped materials (owner tag + RLS on dry goods) | build-new | M ⚠️ | — | Gated behind the Owner entity. |
 
 ### P0 — Intake / crush-pad survival
 Can't legally receive a custom-crush partner's fruit without this.
 
+> ✅ **SHIPPED — the intake SPINE is BUILT + ON PROD (plan 093 F2, merged #485).** Grower entity + weigh-tags
+> (per-truck → per-bin, gap-free monotonic number via a counter row + `SELECT FOR UPDATE`, void-not-delete)
+> + `HarvestPick.weighTagLineId`/`sold` + the crush→ownership bridge (dominant owner; hard-stop on
+> unresolved) + the design-reviewed **weigh-tag entry SCREEN** (browser-QA'd). Assistant: `log_weigh_tag`.
+
 | Item | Verdict | Effort | Assistant | Note |
 |---|---|---|---|---|
-| First-class **Grower** entity + grower FK on Vineyard/Block | build-new | M ⚠️ | +asst read | **Strongest both-incumbent gap in the audit.** Replaces free-text `VineyardDetail.manager`. Needed for intake TTB attribution. |
-| **Weigh-tag/weighmaster** certificate (monotonic, void-not-delete) + tare/bin weigh-groups | build-new | M/L ⚠️ | +asst write ("took in 4 tons of Cab from Smith Ranch, bin weights…") | Both ship sequential weigh-tags + gross/tare/net; we have `HarvestPick` weight only. |
-| Owner/grower/sold refs on `HarvestPick` (→ TTB Part IV fruit removal) | align-retro | M ⚠️ | — | Depends on Grower + Owner (both P0). |
+| First-class **Grower** entity + grower FK on Vineyard/Block | ✅ BUILT (093 F2) | M ⚠️ | rides entities | Replaces free-text `VineyardDetail.manager` (kept as legacy). `isEstate` flags the winery's own vineyards. |
+| **Weigh-tag/weighmaster** certificate (monotonic, void-not-delete) + tare/bin weigh-groups | ✅ BUILT (093 F2) | M/L ⚠️ | ✅ `log_weigh_tag` | Per-truck `WeighTag` → per-bin `WeighTagLine`. Gap-free number via a counter row + `SELECT FOR UPDATE` (proven 25 concurrent → 1..25). Receive-now-assign-later. |
+| Owner/grower/sold refs on `HarvestPick` (→ TTB Part IV fruit removal) | ✅ BUILT (093 F2) | M ⚠️ | — | Owner/grower resolve from the weigh-tag LINE (not stamped on the pick); `sold` for Part IV. |
 
 ### P1 — Cellar execution + billing capture (during harvest)
 | Item | Verdict | Effort | Assistant | Note |

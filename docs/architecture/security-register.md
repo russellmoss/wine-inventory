@@ -84,6 +84,19 @@
   of RLS; a cross-tenant template id resolves to null.
 - The new `NOTE` (checklist) task kind writes NOTHING (no ledger op / measurement / vessel-activity /
   cost) — guarded by `npm run verify:work-orders-enhancements`.
+
+### Ownership (`ownerId`) is a MODEL, not yet an enforcement boundary — plan 093 foundation / plan 092 RLS
+- Plan 093 (F1 #484 + F2 #485) added a scalar `ownerId` on ~25 tables + the `Owner`/`Grower`/`WeighTag`/
+  `BillableWineConsumed` entities. Those new tables get the **full tenant-isolation RLS** (AGENTS 9-step,
+  proven by `verify:tenant-isolation`) — tenant isolation is NOT weakened. **But there is deliberately NO
+  owner-scope RLS yet**: within a tenant, a custom-crush client cannot yet be fenced to only *their* rows.
+  That RESTRICTIVE owner-scope quad is **plan 092** (the enforcement half), layered on this verified model.
+- ⚠️ **Security tripwire until 092 lands:** do NOT expose a client-facing read path (a "Your wine" portal,
+  a per-client login) against these tables — `ownerId` scopes NOTHING at the DB yet, so a client login would
+  see the whole tenant. The model is proven correct (`verify:owner-model`, OWNER-1) precisely so 092 can add
+  the RLS without a re-migration; until then owner-scope is an app-layer/GUI concern only, not enforced.
+- `ownerId` is a maintained projection (OWNER-1), never the source of a security decision on its own; a NULL
+  `ownerId` = Estate/facility (not "unknown"), so a fail-open bug would leak *as facility*, not cross-client.
 - **Status:** 🟢 (admin gate + server-side canonicalization + tenant scoping verified by the /review
   security specialist + the write-nothing guard)
 
