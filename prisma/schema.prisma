@@ -1646,6 +1646,7 @@ model AppSettings {
   // tenantId, not the old "singleton" id. id is a plain cuid so a 2nd org's row can't collide.
   id                       String                 @id @default(cuid())
   sparklingEnabled         Boolean                @default(false)
+  customCrushEnabled       Boolean                @default(false) // Plan 093 follow-on: gates the custom-crush surfaces (Owners/Clients setup + the Weigh-tags nav). Default off — inert until a winery opts in (mirror sparklingEnabled/K14).
   pushVendorsToQbo         Boolean                @default(false) // Plan 077: opt-in — eagerly create a QBO vendor when one is created in Cellarhand (off = author vendors in QBO, Slice 1's pull covers it)
   // Phase 8 (D5, D9, D17): per-tenant costing policy. `currency` (ISO code, default USD) heads every
   // cost row. `costingMethod` + `costingMethodEffectiveAt` set depletion order (WA default | FIFO); the

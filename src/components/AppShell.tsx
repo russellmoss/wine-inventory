@@ -12,7 +12,7 @@ import { AssistantDock } from "@/components/assistant/AssistantDock";
 import { DevDiagnostics } from "@/components/observability/DevDiagnostics";
 import { clearConsoleBuffer } from "@/lib/observability/console-buffer";
 
-type NavItem = { href: string; label: string; admin?: boolean; developer?: boolean; badge?: number };
+type NavItem = { href: string; label: string; admin?: boolean; developer?: boolean; customCrush?: boolean; badge?: number };
 
 const MAIN: NavItem[] = [
   { href: "/", label: "Dashboard" },
@@ -40,7 +40,7 @@ const WINERY: NavItem[] = [
 const VINEYARDS: NavItem[] = [
   { href: "/vineyards/field-notes", label: "Field notes" },
   { href: "/vineyards/harvest", label: "Harvest" },
-  { href: "/vineyards/harvest/weigh-tags", label: "Weigh-tags" }, // Plan 093 Unit 10b
+  { href: "/vineyards/harvest/weigh-tags", label: "Weigh-tags", customCrush: true }, // Plan 093 (gated on the custom-crush program)
   { href: "/vineyards/maps", label: "Maps" },
 ];
 
@@ -52,6 +52,8 @@ const SETUP: NavItem[] = [
   // (Inventory → Consumables), alongside finished goods and equipment. /setup/expendables redirects there.
   // Locations stays here for now: it has no section on the Inventory page yet and every intake depends on it.
   { href: "/setup/vendors", label: "Vendors" },
+  { href: "/setup/growers", label: "Growers", admin: true }, // Plan 093 — always available (estate fruit has growers too)
+  { href: "/setup/clients", label: "Clients", admin: true, customCrush: true }, // Plan 093 — custom-crush owners; gated on the program
   { href: "/settings", label: "Settings", admin: true },
   { href: "/users", label: "Users", admin: true },
 ];
@@ -156,6 +158,7 @@ function SidebarContent({
   pendingSamples,
   pendingWorkOrders,
   sparklingEnabled,
+  customCrushEnabled,
   complianceDeadlines,
   inboxEnabled,
   unreadMessages,
@@ -175,11 +178,14 @@ function SidebarContent({
   pendingSamples: number;
   pendingWorkOrders: number;
   sparklingEnabled: boolean;
+  customCrushEnabled: boolean;
   complianceDeadlines: { count: number; urgent: boolean };
   inboxEnabled: boolean;
   unreadMessages: number;
 }) {
-  const visibleSetup = SETUP.filter((s) => !s.admin || isAdmin);
+  const gate = (n: NavItem) => (!n.admin || isAdmin) && (!n.developer || isDeveloper) && (!n.customCrush || customCrushEnabled);
+  const visibleSetup = SETUP.filter(gate);
+  const visibleVineyards = VINEYARDS.filter(gate);
   const wineryItems = sparklingEnabled ? [...WINERY, EN_TIRAGE_NAV] : WINERY;
   const winery = wineryItems.map((n) =>
     n.href === "/samples" ? { ...n, badge: pendingSamples } : n.href === "/work-orders" ? { ...n, badge: pendingWorkOrders } : n,
@@ -213,7 +219,7 @@ function SidebarContent({
           );
         })}
         <CollapsibleNavGroup label="Winery" items={winery} open={wineryOpen} setOpen={setWineryOpen} isActive={isActive} onNavigate={onNavigate} />
-        <CollapsibleNavGroup label="Vineyards" items={VINEYARDS} open={vineyardsOpen} setOpen={setVineyardsOpen} isActive={isActive} onNavigate={onNavigate} />
+        <CollapsibleNavGroup label="Vineyards" items={visibleVineyards} open={vineyardsOpen} setOpen={setVineyardsOpen} isActive={isActive} onNavigate={onNavigate} />
         <CollapsibleNavGroup label="Setup" items={visibleSetup} open={setupOpen} setOpen={setSetupOpen} isActive={isActive} onNavigate={onNavigate} />
       </nav>
       <div style={{ borderTop: "1px solid var(--border-strong)", padding: "14px 16px" }}>
@@ -272,6 +278,7 @@ export function AppShell({
   pendingSamples = 0,
   pendingWorkOrders = 0,
   sparklingEnabled = false,
+  customCrushEnabled = false,
   complianceDeadlines = { count: 0, urgent: false },
   voiceEnabled = false,
   inboxEnabled = false,
@@ -283,6 +290,7 @@ export function AppShell({
   pendingSamples?: number;
   pendingWorkOrders?: number;
   sparklingEnabled?: boolean;
+  customCrushEnabled?: boolean;
   complianceDeadlines?: { count: number; urgent: boolean };
   voiceEnabled?: boolean;
   inboxEnabled?: boolean;
@@ -359,7 +367,7 @@ export function AppShell({
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
       <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
-        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
+        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} customCrushEnabled={customCrushEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
       </aside>
 
       {/* Mobile drawer */}
@@ -368,7 +376,7 @@ export function AppShell({
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
           <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
             <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
-            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
+            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} customCrushEnabled={customCrushEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
           </aside>
         </div>
       ) : null}

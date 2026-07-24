@@ -1,7 +1,7 @@
 import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { AppShell } from "@/components/AppShell";
 import { countOpenSamples } from "@/lib/chemistry/data";
-import { isSparklingEnabled, getTenantCurrency } from "@/lib/settings/data";
+import { isSparklingEnabled, isCustomCrushEnabled, getTenantCurrency } from "@/lib/settings/data";
 import { openDeadlineBadge } from "@/lib/compliance/reminders";
 import { countPendingApprovalWorkOrders } from "@/lib/work-orders/data";
 import { countUnreadInbox } from "@/lib/inbox/notifications";
@@ -23,7 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // session, revoked/absent membership), and a tenant-scoped `prisma` read throws for them. Without
   // these guards the shell itself 500s on a full load (an error the page-level (app)/error.tsx can't
   // catch, since a layout error bubbles past it) — leaving that user with no way into the app at all.
-  const [pendingSamples, sparklingEnabled, complianceDeadlines, pendingWorkOrders, currency, unreadMessages, wineryTimeZone] = await Promise.all([
+  const [pendingSamples, sparklingEnabled, complianceDeadlines, pendingWorkOrders, currency, unreadMessages, wineryTimeZone, customCrushEnabled] = await Promise.all([
     effectiveTenantId ? countOpenSamples() : Promise.resolve(0),
     effectiveTenantId ? isSparklingEnabled() : Promise.resolve(false),
     isAdmin && effectiveTenantId ? openDeadlineBadge(effectiveTenantId, new Date()) : Promise.resolve({ count: 0, urgent: false }),
@@ -31,6 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     effectiveTenantId ? getTenantCurrency() : Promise.resolve(DEFAULT_CURRENCY),
     inboxEnabled && effectiveTenantId ? countUnreadInbox(effectiveTenantId, user.id) : Promise.resolve(0),
     effectiveTenantId ? getWineryTimeZone() : Promise.resolve(null),
+    effectiveTenantId ? isCustomCrushEnabled() : Promise.resolve(false),
   ]);
   // Developer diagnostics (Plan 080) are developer-only, so the tenant-name lookup the indicator
   // needs is too — a normal user's load is unchanged. `organization` is a global auth table, so this
@@ -47,7 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <CurrencyProvider code={currency}>
       <WineryTimeZoneProvider zone={wineryTimeZone}>
-      <AppShell user={user} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} complianceDeadlines={complianceDeadlines} voiceEnabled={voiceEnabled()} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} diagnosticsTenantName={diagnosticsTenantName}>
+      <AppShell user={user} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} customCrushEnabled={customCrushEnabled} complianceDeadlines={complianceDeadlines} voiceEnabled={voiceEnabled()} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} diagnosticsTenantName={diagnosticsTenantName}>
         {children}
       </AppShell>
       </WineryTimeZoneProvider>

@@ -72,3 +72,34 @@ export async function createOwnerCore(
 
   return injectedTx ? body(injectedTx) : runInTenantTx(body);
 }
+
+export type UpdateOwnerInput = { id: string; name?: string; kind?: string; isActive?: boolean };
+
+/** Edit an owner (rename / change kind / deactivate). Deactivate is a soft flag — lots reference owners
+ *  (FK RESTRICT), so an owner in use can't be deleted; deactivating hides it from new pickers. */
+export async function updateOwnerCore(actor: LedgerActor, input: UpdateOwnerInput): Promise<CreateOwnerResult> {
+  const data: { name?: string; kind?: OwnerKind; isActive?: boolean } = {};
+  if (input.name != null) {
+    const name = String(input.name).trim();
+    if (!name) return { ok: false, error: "Enter a name for the owner." };
+    if (name.length > MAX_OWNER_NAME) return { ok: false, error: `Owner name is too long (max ${MAX_OWNER_NAME} characters).` };
+    data.name = name;
+  }
+  if (input.kind != null) {
+    const kind = input.kind as OwnerKind;
+    if (!OWNER_KINDS.includes(kind)) return { ok: false, error: "Choose whether the owner is a custom-crush client or an alternating proprietor." };
+    data.kind = kind;
+  }
+  if (input.isActive != null) data.isActive = input.isActive;
+
+  return runInTenantTx(async (tx) => {
+    try {
+      const row = await tx.owner.update({ where: { id: input.id }, data, select: OWNER_SELECT });
+      await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "Owner", entityId: row.id, summary: `Updated owner "${row.name}"${input.isActive === false ? " (deactivated)" : input.isActive === true ? " (reactivated)" : ""}` });
+      return { ok: true, owner: toRow(row) };
+    } catch (e) {
+      if (isP2002(e)) return { ok: false, error: `You already have an owner called "${data.name}".` };
+      throw e;
+    }
+  });
+}

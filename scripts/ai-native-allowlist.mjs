@@ -42,6 +42,22 @@ export const INTERNAL = {
       "The first-class vendor capabilities (create / query / merge duplicates) already have assistant tools.",
     coveredBy: "/setup/vendors vendor-import queue UI (accept/reject/merge actions)",
   },
+  "src/lib/owner/owner-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "Plan 093: managing custom-crush Owners (add/rename/change-kind/deactivate) is a reference-data admin " +
+      "task — desk-with-coffee, a clicking flow over a list, not a winemaker natural-language capability " +
+      "(per the coalescence 'wet-hands→tool, desk→GUI' rule). The winemaker-facing ownership CAPABILITY " +
+      "(change a lot's owner) has its own tool + core (change_ownership → changeOwnershipCore).",
+    coveredBy: "/setup/clients admin screen (create/rename/deactivate)",
+  },
+  "src/lib/grower/grower-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "Plan 093: managing Growers is reference-data admin (desk-with-coffee GUI), like vendors — not a chat " +
+      "capability. Growers are READ by the assistant (they ride entities/query) but authored in Setup.",
+    coveredBy: "/setup/growers admin screen (create/rename/deactivate)",
+  },
 };
 
 // Temporary — real gaps deferred with a tracked reason. Ratcheted by MAX_ALLOWED.
@@ -50,15 +66,12 @@ export const GAP_ALLOWLIST = {
   // deferred fast-follow alongside the U1 rendered surfaces (manual-QA-only; see PHASE-2-REPORT).
   "src/lib/compliance/return-to-bond-core.ts": { owner: "russellmoss", reason: "RETURN_TO_BOND assistant tool deferred to the Phase-2 UX/assistant fast-follow; core proven by verify:taxpaid" },
   "src/lib/compliance/tax-class-event-core.ts": { owner: "russellmoss", reason: "change-tax-class assistant tool deferred to the Phase-2 UX/assistant fast-follow; core proven by verify:taxclass" },
-  // Plan 093: the ownership cores ship in F1/F2 (data model); their assistant coverage lands in F3 Unit 12
-  // (owner/grower read + change_ownership + weigh-tag intake). The plan sanctions allow-listing until then.
-  // Ratchet back DOWN in F3 as each tool is wired.
-  "src/lib/owner/owner-core.ts": { owner: "russellmoss", reason: "createOwnerCore assistant coverage deferred to plan 093 F3 Unit 12; owner is otherwise reference-data admin / read-only in the assistant" },
-  "src/lib/grower/grower-core.ts": { owner: "russellmoss", reason: "createGrowerCore assistant coverage deferred to plan 093 F3 Unit 12; grower is otherwise reference-data admin / read-only in the assistant" },
+  // Plan 093: owner-core + grower-core RATCHETED OUT of the gap list — they're now GUI-covered (INTERNAL,
+  // /setup/clients + /setup/growers). Back to the pre-093 baseline of 2 deferred gaps.
 };
 
 // The ratchet ceiling for GAP_ALLOWLIST ONLY (INTERNAL is exempt). Set to the
 // number of deferred real gaps; only ever DECREMENT as you wire tools.
-// Plan 093: F1 owner-core (3), F2 grower-core (4) + weigh-tag-core (5); F3 Unit 12 wired log_weigh_tag →
-// ratcheted weigh-tag-core off (5→4). owner-core + grower-core stay deferred (reference-data admin / read).
-export const MAX_ALLOWED = 4;
+// Plan 093 fully ratcheted back to the pre-093 baseline (2): weigh-tag-core wired (log_weigh_tag),
+// owner-core + grower-core reclassified INTERNAL (GUI-covered, /setup/clients + /setup/growers).
+export const MAX_ALLOWED = 2;

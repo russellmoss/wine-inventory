@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Input, Button } from "@/components/ui";
 import { AddressFields } from "@/components/address/AddressFields";
 import type { AddressParts } from "@/lib/address/format";
-import { setSparklingEnabled, saveCostSettings, setPushVendorsToQbo } from "@/lib/settings/actions";
+import { setSparklingEnabled, setCustomCrushEnabled, saveCostSettings, setPushVendorsToQbo } from "@/lib/settings/actions";
 import type { CostSettings } from "@/lib/cost/policy";
 import { SUPPORTED_CURRENCIES, CURRENCY_LABELS } from "@/lib/money/currency";
 import { saveComplianceProfile } from "@/app/(app)/compliance/actions";
@@ -45,6 +45,7 @@ const CAPITALIZATION_TOGGLES: { key: keyof CostSettings; label: string; hint: st
 
 export function SettingsClient({
   sparklingEnabled,
+  customCrushEnabled,
   pushVendorsToQbo,
   cost,
   complianceProfile,
@@ -59,6 +60,7 @@ export function SettingsClient({
   timeZoneOptions,
 }: {
   sparklingEnabled: boolean;
+  customCrushEnabled: boolean;
   pushVendorsToQbo: boolean;
   cost: CostSettings;
   complianceProfile: ComplianceProfileFields;
@@ -74,6 +76,7 @@ export function SettingsClient({
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(sparklingEnabled);
+  const [ccEnabled, setCcEnabled] = React.useState(customCrushEnabled);
   const [pushVendors, setPushVendors] = React.useState(pushVendorsToQbo);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -121,6 +124,20 @@ export function SettingsClient({
         router.refresh(); // reveal/hide the gated nav + routes
       } catch (e) {
         setEnabled(!next);
+        setError(e instanceof Error ? e.message : "Couldn't save that setting.");
+      }
+    });
+  }
+
+  function toggleCustomCrush(next: boolean) {
+    setError(null);
+    setCcEnabled(next); // optimistic
+    startTransition(async () => {
+      try {
+        await setCustomCrushEnabled(next);
+        router.refresh(); // reveal/hide the gated nav (Weigh-tags) + the Clients setup screen
+      } catch (e) {
+        setCcEnabled(!next);
         setError(e instanceof Error ? e.message : "Couldn't save that setting.");
       }
     });
@@ -197,6 +214,57 @@ export function SettingsClient({
           </button>
         </div>
         {error && <p style={{ color: "var(--danger)", marginTop: 12, fontSize: 14 }}>{error}</p>}
+      </Card>
+
+      {/* Plan 093 — custom-crush: gates the Clients (Owners) setup + the Weigh-tags nav. */}
+      <Card style={{ maxWidth: 560, marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, justifyContent: "space-between" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: 0 }}>Custom-crush program</h2>
+              <Badge tone={ccEnabled ? "gold" : "neutral"}>{ccEnabled ? "On" : "Off"}</Badge>
+            </div>
+            <p style={{ color: "var(--text-secondary)", margin: "6px 0 0", fontSize: 14.5, maxWidth: "48ch" }}>
+              Make wine for other owners (custom-crush clients / alternating proprietors). Off by default;
+              turning it on reveals the Clients list (Setup → Clients) and the crush-pad Weigh-tags screen,
+              and lets you assign a lot&apos;s owner. Growers stay available either way.
+            </p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={ccEnabled}
+            aria-label="Toggle custom-crush program"
+            disabled={pending}
+            onClick={() => toggleCustomCrush(!ccEnabled)}
+            style={{
+              flexShrink: 0,
+              width: 56,
+              height: 32,
+              minWidth: 44,
+              borderRadius: "var(--radius-pill)",
+              border: "1px solid var(--border-strong)",
+              background: ccEnabled ? "var(--accent)" : "var(--surface-sunken)",
+              position: "relative",
+              cursor: pending ? "wait" : "pointer",
+              transition: "background 120ms ease",
+              padding: 0,
+            }}
+          >
+            <span
+              style={{
+                position: "absolute",
+                top: 3,
+                left: ccEnabled ? 27 : 3,
+                width: 24,
+                height: 24,
+                borderRadius: "50%",
+                background: "var(--surface-raised)",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                transition: "left 120ms ease",
+              }}
+            />
+          </button>
+        </div>
       </Card>
 
       {/* Phase 8 U9 — costing policy: depletion method + which components fold into cost-per-bottle. */}

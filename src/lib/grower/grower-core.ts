@@ -58,3 +58,32 @@ export async function createGrowerCore(actor: LedgerActor, input: CreateGrowerIn
 
   return injectedTx ? body(injectedTx) : runInTenantTx(body);
 }
+
+export type UpdateGrowerInput = { id: string; name?: string; company?: string | null; contact?: string | null; isEstate?: boolean; isActive?: boolean };
+
+/** Edit a grower (rename / details / estate flag / deactivate). Deactivate is soft — vineyards/blocks and
+ *  weigh-tag lines reference growers (FK RESTRICT), so a grower in use can't be deleted. */
+export async function updateGrowerCore(actor: LedgerActor, input: UpdateGrowerInput): Promise<CreateGrowerResult> {
+  const data: { name?: string; company?: string | null; contact?: string | null; isEstate?: boolean; isActive?: boolean } = {};
+  if (input.name != null) {
+    const name = String(input.name).trim();
+    if (!name) return { ok: false, error: "Enter a name for the grower." };
+    if (name.length > MAX_GROWER_NAME) return { ok: false, error: `Grower name is too long (max ${MAX_GROWER_NAME} characters).` };
+    data.name = name;
+  }
+  if (input.company !== undefined) data.company = input.company?.trim() || null;
+  if (input.contact !== undefined) data.contact = input.contact?.trim() || null;
+  if (input.isEstate != null) data.isEstate = input.isEstate;
+  if (input.isActive != null) data.isActive = input.isActive;
+
+  return runInTenantTx(async (tx) => {
+    try {
+      const row = await tx.grower.update({ where: { id: input.id }, data, select: GROWER_SELECT });
+      await writeAudit(tx, { ...actor, action: "UPDATE", entityType: "Grower", entityId: row.id, summary: `Updated grower "${row.name}"${input.isActive === false ? " (deactivated)" : input.isActive === true ? " (reactivated)" : ""}` });
+      return { ok: true, grower: toRow(row) };
+    } catch (e) {
+      if (isP2002(e)) return { ok: false, error: `You already have a grower called "${data.name}".` };
+      throw e;
+    }
+  });
+}
