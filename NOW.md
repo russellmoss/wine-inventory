@@ -607,6 +607,19 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **CI flake killed: `test/compliance-fill-pdf.test.ts` vs. the 5s vitest default** — branch
+  `claude/dreamy-murdock-e6ec3a`, **not yet committed/PR'd**. The TTB round-trip parses the 3.1 MB
+  fillable AcroForm twice + saves once; it ran ~4.2s standalone and timed out at 5380ms under
+  full-suite load. Root cause of the slowness: **pdf-lib's default `parseSpeed` is `Slow`** (yield to
+  the event loop every 10 objects — a browser default), ~350ms per parse of this form.
+  Fix = `parseSpeed: ParseSpeeds.Medium` in `fill-pdf.ts` (prod gets the speedup too, still yields)
+  + `Fastest` on the test's own loads + an explicit **30s** per-test timeout. Assertions untouched.
+  ✅ Verified neutral: all **621** field names/values round-trip identically at every parse speed
+  (the residual ~4-byte jitter inside a compressed object stream happens run-to-run at a FIXED speed
+  too — pre-existing, not from this change). Round-trip 1032→413ms standalone, **1139ms under full
+  parallel load** (was 5380ms); full suite 312 files / 3660 tests green; tsc + eslint clean.
+  ⏳ `npm run verify:ttb` (needs `.env`/DB — worktrees have none) still to run from the MAIN checkout
+  on this branch before merge.
 - **`/bug-triage` re-offered PRODUCTION CODE as new work — FIXED, LIVE on `main` ([PR #478](https://github.com/russellmoss/wine-inventory/pull/478), squash `0b649b74`).**
   Ticket `cmrwdgt2u…` ("assistant should read a vessel's/lot's operation history") was ranked the
   run's ONE actionable plan-ready item, pointing at plan issue #466 — a day AFTER the work shipped in
@@ -927,7 +940,11 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-24 — **Vineyard Intelligence P0 planned + council-reviewed (plan 094, 16 units).**
+_Last updated: 2026-07-24 — **detour resolved: the `compliance-fill-pdf` CI flake is fixed** on branch
+`claude/dreamy-murdock-e6ec3a` (uncommitted). pdf-lib's default `parseSpeed` is `Slow`; `Medium` in
+`fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-load to 1139ms
+with assertions untouched. `verify:ttb` still owed from the MAIN checkout. Objective unchanged →
+**Vineyard Intelligence P0 planned + council-reviewed (plan 094, 16 units).**
 Both reviewers confirmed the convex-window/Sutherland–Hodgman reframe and both rejected the first draft's
 instrument; six fixes folded in. Three corrections not to re-derive: `harmonizeValues` is backwards in
 runbook §2.13, the processing baseline needs a STAC call, and the free tier binds on requests not PU.
