@@ -166,6 +166,23 @@ export async function changeOwnershipCore(actor: LedgerActor, input: ChangeOwner
 }
 
 /**
+ * READ-ONLY preview of what a CHANGE_OWNERSHIP would do (for the assistant's propose→confirm readback — the
+ * operator must SEE title-only vs transfer-in-bond BEFORE confirming). Mirrors the tx's bond-delta logic
+ * without mutating. Tenant-scoped via the session/ALS `prisma`.
+ */
+export async function previewChangeOwnership(lotId: string, newOwnerId: string | null): Promise<{ kind: "TITLE_ONLY" | "TRANSFER_IN_BOND"; oldOwnerId: string | null; oldBondId: string; newBondId: string } | { error: string }> {
+  const lot = await prisma.lot.findUnique({ where: { id: lotId }, select: { ownerId: true } });
+  if (!lot) return { error: "That lot doesn't exist in this winery." };
+  const oldOwnerId = lot.ownerId;
+  if (oldOwnerId === (newOwnerId ?? null)) return { error: "That lot is already owned by that party — nothing to change." };
+  const baseBond = await deriveBond(lotId, new Date(), undefined, { skipOwnerPrecedence: true });
+  const apOf = async (oid: string | null): Promise<string | null> => (oid ? (await prisma.bond.findFirst({ where: { ownerId: oid }, select: { id: true } }))?.id ?? null : null);
+  const oldBondId = (await apOf(oldOwnerId)) ?? baseBond;
+  const newBondId = (await apOf(newOwnerId ?? null)) ?? baseBond;
+  return { kind: oldBondId === newBondId ? "TITLE_ONLY" : "TRANSFER_IN_BOND", oldOwnerId, oldBondId, newBondId };
+}
+
+/**
  * Reverse a CHANGE_OWNERSHIP by re-applying the INVERSE change (swap owner back). This mirrors the exact
  * bond delta: a title-only change reverses title-only (no TTB); a TIB reverses as the mirror TIB. The
  * reversal is itself a CHANGE_OWNERSHIP op stamped correctsOperationId (append-only — the original stays).
