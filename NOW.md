@@ -35,9 +35,16 @@ Dev-only Python tools: `pip install exactextract numpy tifffile`. Runtime deps 2
 ▶️ **NEXT:** `/review` then `/ship` the P0 branch (16 units, no PR yet). Then Wave 1 opens:
 **P1 planting geometry ⚡ P4 soil cards ⚡ POF offline** — P4 and POF never depended on this verdict.
 
-✅ **P1 PLAN WRITTEN + COUNCIL-REVIEWED (2026-07-24), not yet built.**
-[phase-1 plan](docs/GIS/phases/phase-1-planting-geometry-plan.md) (Deep, 12 units, schema-first slice PR) ·
-[council](docs/GIS/phases/phase-1-council-feedback.md). Runbook §7 ledger → 🟦 planning.
+✅ **P1 BUILT — all 12 units on `feat/vi-p1-planting-geometry` (8 commits, NO PR yet). Runbook §7 → 🟪 QA.**
+[phase-1 plan](docs/GIS/phases/phase-1-planting-geometry-plan.md) · [council](docs/GIS/phases/phase-1-council-feedback.md) ·
+[phase report](docs/GIS/phases/phase-1-report.md). tsc 0, **172 GIS/assistant tests green**,
+**`verify:planting-geometry` 13/13** on the real Demo tenant (create→blade-split zero-lost-area→IoU
+version→migration byte-identical), `verify:tenant-isolation` + `verify:ai-native` green. Additive migration
+`20260724120000_planting_geometry` APPLIED to prod (new tables + nullable cols; Bhutan untouched).
+⚠️ **Browser QA of `/vineyards/planting-setup` still owed** — needs USER login (in-app browser refuses the
+HTTP localhost origin; can't drive headless). ⚠️ **`next dev` regenerated a STALE Prisma client** (dropped
+the new models, tsc 0→60) — stop the dev server before `prisma generate`; regen after adding models.
+⚠️ **Standing P2 obligation:** warn-only topology means P2 must RE-VALIDATE the mask before NDVI stats.
 Council changed two architecture calls before any code:
 1. **Boolean geometry kernel = `jsts`, NOT `polyclip-ts`.** Recentring to UTM fixes OUR arithmetic but NOT
    the martinez family's internal coincident-edge failure P0 rejected — it's a precision-model problem, not
@@ -53,7 +60,7 @@ Also folded: pinned+persisted canonicalization anchor in the fingerprint (else t
 version-bump concurrency = subject row-lock + partial-unique on the open row + stale-write guard; migration
 pre-flight topology (never silently heal overlaps, strict <1 m grouping so it can't bridge a road); area shown
 as "Productive area" (spacing) primary + "Boundary footprint" (geodesic) secondary.
-▶️ Build with `/work docs/GIS/phases/phase-1-planting-geometry-plan.md` — Unit 1 (schema slice) ships as its own PR first.
+▶️ **NEXT:** browser-QA `/vineyards/planting-setup` on Demo (user logs in), then `/review` + `/ship` the branch (schema-slice commit can be its own PR). P2 (NDVI core) unblocks once P1 lands.
 
 <details><summary>Planning + council + repo cleanup (done)</summary>
 
