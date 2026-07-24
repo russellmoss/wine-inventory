@@ -375,24 +375,46 @@ model Grower {
   @@map("grower")
 }
 
+// ───────────────────────── Vineyard Intelligence P1: planting geometry ─────────────────────────
+// Source of the drawn/derived polygon (brief §14).
+enum PlantingAreaSource {
+  DRAW // user drew it on the map
+  IMPORT // imported (e.g. shapefile / GeoJSON)
+  DERIVED // migration-by-union from existing block polygons
+}
+
+// Review lifecycle for a planting area (brief §2.2 — propose then confirm).
+enum PlantingReviewStatus {
+  PROPOSED
+  CONFIRMED
+}
+
+// Which geometry a version row belongs to (one append-only history table covers both).
+enum GeometrySubjectType {
+  PLANTING_AREA
+  BLOCK
+}
+
 model Vineyard {
-  tenantId        String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id              String            @id @default(cuid())
-  name            String
-  growerId        String? // Plan 093 Unit 8: the grower that farms this vineyard (composite FK -> grower(tenantId,id), raw-SQL K11). NULL = unassigned/legacy.
-  abbreviation    String? // 2–4 uppercase code for lot codes (GS, NT). Nullable→backfilled; Postgres unique allows multiple NULLs.
-  isActive        Boolean           @default(true)
-  createdAt       DateTime          @default(now())
-  components      VesselComponent[]
-  bottlingSources BottlingSource[]
-  detail          VineyardDetail?
-  blocks          VineyardBlock[]
-  fieldNotes      FieldNote[]
-  brixLogs        BrixLog[]
-  harvestRecords  HarvestRecord[]
+  tenantId           String                 @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id                 String                 @id @default(cuid())
+  name               String
+  growerId           String? // Plan 093 Unit 8: the grower that farms this vineyard (composite FK -> grower(tenantId,id), raw-SQL K11). NULL = unassigned/legacy.
+  abbreviation       String? // 2–4 uppercase code for lot codes (GS, NT). Nullable→backfilled; Postgres unique allows multiple NULLs.
+  isActive           Boolean                @default(true)
+  plantingMigratedAt DateTime? // VI-P1: set when the vineyard's blocks were migrated into planting areas (all-or-nothing gate). NULL = not migrated.
+  createdAt          DateTime               @default(now())
+  components         VesselComponent[]
+  bottlingSources    BottlingSource[]
+  detail             VineyardDetail?
+  blocks             VineyardBlock[]
+  plantingAreas      VineyardPlantingArea[] // VI-P1: continuous planting areas (analysis masks) inside this vineyard
+  fieldNotes         FieldNote[]
+  brixLogs           BrixLog[]
+  harvestRecords     HarvestRecord[]
   // Phase 5.
-  lotMemberships  LotVineyard[] // lots whose source set includes this vineyard
-  userMemberships UserVineyard[] // users who manage this vineyard (D9 membership set)
+  lotMemberships     LotVineyard[] // lots whose source set includes this vineyard
+  userMemberships    UserVineyard[] // users who manage this vineyard (D9 membership set)
 
   @@unique([tenantId, name])
   @@unique([tenantId, abbreviation])
@@ -400,6 +422,64 @@ model Vineyard {
   @@index([tenantId])
   @@index([tenantId, growerId]) // Plan 093 Unit 8
   @@map("vineyard")
+}
+
+// VI-P1 (brief §14 VineyardPlantingArea): the canonical analysis mask — one continuous set of planted
+// rows — sitting between Vineyard and VineyardBlock. Blocks are management units INSIDE a planting area.
+// Geometry is versioned via VineyardGeometryVersion (append-only); a boundary edit that changes the shape
+// (IoU ≤ 0.98) mints a new version and marks dependents stale, never silently rewrites history (brief §2.3).
+model VineyardPlantingArea {
+  tenantId            String               @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
+  id                  String               @id @default(cuid())
+  vineyardId          String
+  name                String // per-(tenant,vineyard) unique display name
+  code                String? // optional short token
+  sortOrder           Int                  @default(0)
+  geometry            Json // canonical GeoJSON Polygon | MultiPolygon (WGS84)
+  geometryVersion     Int                  @default(1) // current version (mirrors the open VineyardGeometryVersion row)
+  geometryFingerprint String // canonical-form hash (frame-pinned) — staleness key, shared with soil (P4)
+  canonicalAnchor     Json // pinned recenter origin {epsg, originX, originY} used to compute the fingerprint
+  effectiveFrom       DateTime             @default(now())
+  source              PlantingAreaSource
+  excludedHoleNote    String? // free-text note about intentional non-vine holes
+  reviewStatus        PlantingReviewStatus @default(PROPOSED)
+  areaProjectedM2     Decimal?             @db.Decimal(14, 2) // internal cross-check only
+  areaGeodesicM2      Decimal?             @db.Decimal(14, 2) // "Boundary footprint" shown to users
+  createdBy           String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  vineyard            Vineyard             @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, vineyardId, name])
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — vineyard_block.plantingAreaId references this
+  @@index([tenantId])
+  @@index([tenantId, vineyardId])
+  @@map("vineyard_planting_area")
+}
+
+// VI-P1: append-only geometry history for planting areas AND blocks. One open row per subject
+// (effectiveTo IS NULL, enforced by a partial unique index). A shape change closes the open row and
+// appends the next version; the moat is that the OLD geometry stays retrievable (brief §2.3 / runbook §6).
+model VineyardGeometryVersion {
+  tenantId        String              @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id              String              @id @default(cuid())
+  subjectType     GeometrySubjectType
+  subjectId       String // planting-area id or block id (both are (tenantId,id)-unique in their tables)
+  version         Int
+  geometry        Json // the geometry AS OF this version (WGS84)
+  fingerprint     String
+  canonicalAnchor Json // frame used for this version's fingerprint
+  effectiveFrom   DateTime            @default(now())
+  effectiveTo     DateTime? // NULL = current/open version
+  iouFromPrev     Decimal?            @db.Decimal(6, 5) // IoU vs the previous version (null for v1)
+  reason          String?
+  createdBy       String?
+  createdAt       DateTime            @default(now())
+
+  @@unique([tenantId, subjectType, subjectId, version])
+  @@index([tenantId, subjectType, subjectId])
+  @@index([tenantId])
+  @@map("vineyard_geometry_version")
 }
 
 // ───────────────────────── Vineyard details + blocks ─────────────────────────
@@ -427,37 +507,41 @@ model VineyardDetail {
 // A planted block within a vineyard. All fields optional; nothing required to save.
 // Acreage is NOT stored — it is derived from rowSpacing * vineSpacing * vineCount.
 model VineyardBlock {
-  tenantId       String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id             String             @id @default(cuid())
-  vineyardId     String
-  growerId       String? // Plan 093 Unit 8: block-level grower override (else inherits the vineyard's). Composite FK -> grower(tenantId,id), raw-SQL K11.
-  blockLabel     String? // e.g. "Block 1", "A"
-  code           String? // short token for lot codes (e.g. "1", "A"); falls back to a normalized blockLabel
-  numRows        Int? // informational (drives optional vines/row readout)
-  rowSpacingM    Decimal?           @db.Decimal(10, 4) // canonical metric
-  vineSpacingM   Decimal?           @db.Decimal(10, 4) // canonical metric
-  varietyId      String?
-  clone          String?
-  rootstock      String?
-  vineCount      Int?
-  yearPlanted    Int?
-  irrigated      Boolean?
-  polygon        Json? // GeoJSON Polygon geometry (illustrative, not the area source)
-  color          String? // optional per-block polygon color override (hex)
-  sortOrder      Int                @default(0)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  vineyard       Vineyard           @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
-  variety        Variety?           @relation(fields: [varietyId], references: [id], onDelete: SetNull)
-  brixLogs       BrixLog[]
-  harvestRecords HarvestRecord[]
-  subblocks      VineyardSubblock[]
+  tenantId            String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id                  String             @id @default(cuid())
+  vineyardId          String
+  growerId            String? // Plan 093 Unit 8: block-level grower override (else inherits the vineyard's). Composite FK -> grower(tenantId,id), raw-SQL K11.
+  blockLabel          String? // e.g. "Block 1", "A"
+  code                String? // short token for lot codes (e.g. "1", "A"); falls back to a normalized blockLabel
+  numRows             Int? // informational (drives optional vines/row readout)
+  rowSpacingM         Decimal?           @db.Decimal(10, 4) // canonical metric
+  vineSpacingM        Decimal?           @db.Decimal(10, 4) // canonical metric
+  varietyId           String?
+  clone               String?
+  rootstock           String?
+  vineCount           Int?
+  yearPlanted         Int?
+  irrigated           Boolean?
+  polygon             Json? // VI-P1: canonical block analysis boundary (GeoJSON Polygon; was "illustrative"). Spacing-based acreage is still the productive-area authority (units.ts).
+  plantingAreaId      String? // VI-P1: parent planting area. Composite FK -> planting_area(tenantId,id), raw-SQL K11. NULL until the vineyard is migrated (all-or-nothing).
+  geometryVersion     Int                @default(1) // VI-P1: mirrors the open VineyardGeometryVersion row for this block
+  geometryFingerprint String? // VI-P1: canonical-form hash of the current polygon (null until first versioned write)
+  color               String? // optional per-block polygon color override (hex)
+  sortOrder           Int                @default(0)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  vineyard            Vineyard           @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
+  variety             Variety?           @relation(fields: [varietyId], references: [id], onDelete: SetNull)
+  brixLogs            BrixLog[]
+  harvestRecords      HarvestRecord[]
+  subblocks           VineyardSubblock[]
 
   @@unique([tenantId, id]) // plan 039: composite-FK target for work_order_task.blockId (Phase-12 rule)
   @@index([vineyardId])
   @@index([varietyId])
   @@index([tenantId])
   @@index([tenantId, growerId]) // Plan 093 Unit 8
+  @@index([tenantId, plantingAreaId]) // VI-P1
   @@map("vineyard_block")
 }
 
@@ -621,19 +705,19 @@ model WeighTagCounter {
 }
 
 model WeighTag {
-  tenantId     String    @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
-  id           String    @id @default(cuid())
+  tenantId     String         @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
+  id           String         @id @default(cuid())
   tagNumber    Int // per-tenant monotonic, gap-free certificate number (allocated via WeighTagCounter)
-  issuedAt     DateTime  @default(now())
+  issuedAt     DateTime       @default(now())
   weighmaster  String? // who weighed it in
   truck        String? // truck / hauler identifier
-  grossKg      Decimal?  @db.Decimal(12, 3)
-  tareKg       Decimal?  @db.Decimal(12, 3)
-  netKg        Decimal?  @db.Decimal(12, 3)
+  grossKg      Decimal?       @db.Decimal(12, 3)
+  tareKg       Decimal?       @db.Decimal(12, 3)
+  netKg        Decimal?       @db.Decimal(12, 3)
   voidedAt     DateTime? // void-not-delete (mirror LotTreatment); a voided tag stays visible + numbered
   voidedReason String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
   lines        WeighTagLine[]
 
   @@unique([tenantId, tagNumber]) // per-tenant unique certificate number
@@ -777,7 +861,7 @@ model VesselTransfer {
 
 model WineSku {
   tenantId         String                 @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId          String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id               String                 @id @default(cuid())
   name             String
   // Phase 7 (K11): NULLABLE for NV / multi-vintage sparkling; isNonVintage marks a true NV
@@ -814,7 +898,7 @@ model WineSku {
 
 model BottlingRun {
   tenantId              String                 @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId               String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                    String                 @id @default(cuid())
   date                  DateTime
   wineSkuId             String
@@ -848,7 +932,7 @@ model BottlingRun {
 
 model BottlingSource {
   tenantId        String      @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId         String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id              String      @id @default(cuid())
   bottlingRunId   String
   // Phase 7 (K13, extended): origin columns are NULLABLE. A blended / multi-vintage sparkling
@@ -881,7 +965,7 @@ model BottlingSource {
 
 model StockMovement {
   tenantId        String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId         String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id              String        @id @default(cuid())
   createdAt       DateTime      @default(now())
   createdById     String?
@@ -912,7 +996,7 @@ model StockMovement {
 
 model BottledInventory {
   tenantId     String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId      String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id           String   @id @default(cuid())
   wineSkuId    String
   locationId   String
@@ -1066,38 +1150,38 @@ model AssistantConfirmation {
 // `conversation` snapshots the transcript so the feedback-fix agent has context.
 // `status` tracks the improvement loop: NEW -> TRIAGED (agent opened a PR) -> ...
 model AssistantFeedback {
-  tenantId              String                   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id                    String                   @id @default(cuid())
-  createdAt             DateTime                 @default(now())
-  rating                String // "up" | "down"
-  comment               String? // free-text "what was wrong" (UNTRUSTED input)
-  conversation          Json // [{ role, content }] transcript for context
-  conversationId        String?
-  ratedMessageId        String?
-  debugContext          Json?
-  actorUserId           String?
-  actorEmail            String
-  status                String                   @default("NEW") // NEW | TRIAGED | RESOLVED | DISMISSED
-  prUrl                 String?
-  notes                 String?
-  modeAtSubmission      FeedbackAutomationMode   @default(AGENTIC_FIX)
-  automationStatus      FeedbackAutomationStatus @default(NOT_REQUESTED)
-  severity              FeedbackSeverity?
-  githubIssueUrl        String?
-  githubRunUrl          String?
-  planMarkdown          String?
-  planTitle             String?
-  planGeneratedAt       DateTime?
-  resolvedAt            DateTime?
-  resolvedByUserId      String?
-  developerNotes        String?
-  developerNotesVersion Int                      @default(1)
-  triageClass           FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
+  tenantId               String                   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id                     String                   @id @default(cuid())
+  createdAt              DateTime                 @default(now())
+  rating                 String // "up" | "down"
+  comment                String? // free-text "what was wrong" (UNTRUSTED input)
+  conversation           Json // [{ role, content }] transcript for context
+  conversationId         String?
+  ratedMessageId         String?
+  debugContext           Json?
+  actorUserId            String?
+  actorEmail             String
+  status                 String                   @default("NEW") // NEW | TRIAGED | RESOLVED | DISMISSED
+  prUrl                  String?
+  notes                  String?
+  modeAtSubmission       FeedbackAutomationMode   @default(AGENTIC_FIX)
+  automationStatus       FeedbackAutomationStatus @default(NOT_REQUESTED)
+  severity               FeedbackSeverity?
+  githubIssueUrl         String?
+  githubRunUrl           String?
+  planMarkdown           String?
+  planTitle              String?
+  planGeneratedAt        DateTime?
+  resolvedAt             DateTime?
+  resolvedByUserId       String?
+  developerNotes         String?
+  developerNotesVersion  Int                      @default(1)
+  triageClass            FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
   currentAutomationRunId String? // Plan 079: the run whose status this row mirrors (multiple runs can exist across clarification rounds)
-  attachments           FeedbackAttachment[]
-  linearLinks           FeedbackLinearLink[]
-  automationRuns        AutomationRun[]          @relation("AssistantFeedbackAutomationRuns")
-  clarifications        FeedbackClarification[]
+  attachments            FeedbackAttachment[]
+  linearLinks            FeedbackLinearLink[]
+  automationRuns         AutomationRun[]          @relation("AssistantFeedbackAutomationRuns")
+  clarifications         FeedbackClarification[]
 
   @@unique([tenantId, id])
   @@index([status, createdAt])
@@ -1110,38 +1194,38 @@ model AssistantFeedback {
 }
 
 model FeedbackTicket {
-  tenantId              String                   @default("")
-  id                    String                   @id @default(cuid())
-  kind                  FeedbackTicketKind
-  title                 String
-  body                  String
-  pageUrl               String?
-  userAgent             String?
-  debugContext          Json?
-  actorUserId           String?
-  actorEmail            String
-  modeAtSubmission      FeedbackAutomationMode
-  automationStatus      FeedbackAutomationStatus @default(NOT_REQUESTED)
-  status                FeedbackItemStatus       @default(NEW)
-  severity              FeedbackSeverity?
-  githubIssueUrl        String?
-  githubRunUrl          String?
-  prUrl                 String?
-  planMarkdown          String?
-  planTitle             String?
-  planGeneratedAt       DateTime?
-  resolvedAt            DateTime?
-  resolvedByUserId      String?
-  developerNotes        String?
-  developerNotesVersion Int                      @default(1)
-  triageClass           FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
+  tenantId               String                   @default("")
+  id                     String                   @id @default(cuid())
+  kind                   FeedbackTicketKind
+  title                  String
+  body                   String
+  pageUrl                String?
+  userAgent              String?
+  debugContext           Json?
+  actorUserId            String?
+  actorEmail             String
+  modeAtSubmission       FeedbackAutomationMode
+  automationStatus       FeedbackAutomationStatus @default(NOT_REQUESTED)
+  status                 FeedbackItemStatus       @default(NEW)
+  severity               FeedbackSeverity?
+  githubIssueUrl         String?
+  githubRunUrl           String?
+  prUrl                  String?
+  planMarkdown           String?
+  planTitle              String?
+  planGeneratedAt        DateTime?
+  resolvedAt             DateTime?
+  resolvedByUserId       String?
+  developerNotes         String?
+  developerNotesVersion  Int                      @default(1)
+  triageClass            FeedbackTriageClass? // Plan 059: disposition assigned by the bug-triage goalie (null = untriaged)
   currentAutomationRunId String? // Plan 079: the run whose status this row mirrors (multiple runs across clarification rounds)
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  attachments           FeedbackAttachment[]
-  linearLinks           FeedbackLinearLink[]
-  automationRuns        AutomationRun[]          @relation("FeedbackTicketAutomationRuns")
-  clarifications        FeedbackClarification[]
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  attachments            FeedbackAttachment[]
+  linearLinks            FeedbackLinearLink[]
+  automationRuns         AutomationRun[]          @relation("FeedbackTicketAutomationRuns")
+  clarifications         FeedbackClarification[]
 
   @@unique([tenantId, id])
   @@index([tenantId, kind, status, createdAt])
@@ -1822,7 +1906,7 @@ model Lot {
 // kinds without an ALTER TYPE) — plan Q4.
 model LotIdentifier {
   tenantId         String    @default("")
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId          String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id               String    @id @default(cuid())
   lotId            String
   kind             String // current-code | source-system-id | spreadsheet-alias | ttb-label | prior-code(Phase-3 imports only)
@@ -1852,7 +1936,7 @@ model LotIdentifier {
 // SQL (a fixed domain — plan Q4). Composite FK + RLS in raw SQL.
 model LotCodeEvent {
   tenantId    String   @default("")
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId     String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id          String   @id @default(cuid())
   lotId       String
   field       String // code | displayName (CHECK-constrained in migration)
@@ -1968,7 +2052,7 @@ model LotOperation {
 // are durable snapshots so history reads survive later renames/deletes.
 model LotOperationLine {
   tenantId     String       @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId      String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id           Int          @id @default(autoincrement())
   operationId  Int
   lotId        String
@@ -2010,7 +2094,7 @@ model LotOperationLine {
 // a row at functional zero is deleted, never stored at 0.
 model VesselLot {
   tenantId  String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId   String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id        String   @id @default(cuid())
   vesselId  String
   lotId     String
@@ -2068,7 +2152,7 @@ model LotLineage {
 // op metadata; the measured output liters is the only balanced line.
 model LotHarvestSource {
   tenantId      String      @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId       String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id            String      @id @default(cuid())
   lotId         String
   harvestPickId String
@@ -2091,7 +2175,7 @@ model LotHarvestSource {
 // `commandId` UNIQUE makes a phase mutation idempotent (duplicate-as-success, council S4).
 model LotStateEvent {
   tenantId       String        @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId        String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id             String        @id @default(cuid())
   lotId          String
   vesselId       String? // snapshot context (the vessel the lot sat in at the transition)
@@ -2124,7 +2208,7 @@ model LotStateEvent {
 // exactly like a VesselLot row. CHECK(bottleCount >= 0) and CHECK(volumeL >= 0) in migration.
 model BottledLotState {
   tenantId            String          @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId             String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   lotId               String          @id
   bottleCount         Int
   nominalFillMl       Int             @default(750)
@@ -2159,7 +2243,7 @@ model BottledLotState {
 // query is "lots whose source vineyard ∈ my set" → index on vineyardId.
 model LotVineyard {
   tenantId   String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId    String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id         String   @id @default(cuid())
   lotId      String
   vineyardId String
@@ -2263,7 +2347,7 @@ model BlendTrialComponent {
 // recomputed (VISION D14). Corrected/voided via voidedByOperationId (stays visible).
 model LotTreatment {
   tenantId            String   @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId             String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                  String   @id @default(cuid())
   operationId         Int
   lotId               String
@@ -2410,7 +2494,7 @@ enum TastingScoreScale {
 // lab result is a panel with `sampleId` set. SO₂ pairing happens WITHIN one panel only.
 model AnalysisPanel {
   tenantId             String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId              String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                   String            @id @default(cuid())
   lotId                String
   vesselId             String? // snapshot context (the vessel the lot sat in when measured)
@@ -2489,7 +2573,7 @@ model AnalysisReading {
 // notes/aroma/flavor — no tsvector this phase (avoids the search_vector migration gotcha).
 model LotTastingNote {
   tenantId        String             @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId         String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id              String             @id @default(cuid())
   lotId           String
   vesselId        String?
@@ -2529,7 +2613,7 @@ model LotTastingNote {
 // current vessel — backdated/late-resulted readings must not be misattributed). D2.
 model Sample {
   tenantId        String          @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId         String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id              String          @id @default(cuid())
   lotId           String
   vesselId        String?
@@ -2962,39 +3046,39 @@ model MigrationEntityMapping {
 // current on-hand for a material is Σ qtyRemaining over its non-depleted lots. `unitCost` is per
 // stockUnit; NULL cost = UNKNOWN (D14), never $0. WA/FIFO depletion draws these down (Unit 3).
 model SupplyLot {
-  tenantId      String              @default("")
-  id            String              @id @default(cuid())
-  materialId    String
-  qtyReceived   Decimal             @db.Decimal(18, 6)
-  qtyRemaining  Decimal             @db.Decimal(18, 6)
-  stockUnit     String // snapshot of the unit these quantities are held in (g | kg | mL | L | unit …)
-  unitCost      Decimal?            @db.Decimal(18, 8) // per stockUnit; NULL = unknown cost (D14). Plan 073: ALWAYS in the tenant BASE currency — the roll-up basis; a foreign invoice is converted at receipt (never revalued).
-  currency      String              @default("USD") // Plan 073: the BASE currency (== tenant base); the foreign figures live below for audit only
+  tenantId        String              @default("")
+  id              String              @id @default(cuid())
+  materialId      String
+  qtyReceived     Decimal             @db.Decimal(18, 6)
+  qtyRemaining    Decimal             @db.Decimal(18, 6)
+  stockUnit       String // snapshot of the unit these quantities are held in (g | kg | mL | L | unit …)
+  unitCost        Decimal?            @db.Decimal(18, 8) // per stockUnit; NULL = unknown cost (D14). Plan 073: ALWAYS in the tenant BASE currency — the roll-up basis; a foreign invoice is converted at receipt (never revalued).
+  currency        String              @default("USD") // Plan 073: the BASE currency (== tenant base); the foreign figures live below for audit only
   // Plan 073: immutable foreign-invoice provenance (historical cost, IAS 21 — stored for audit/reversal, NEVER enters the roll-up). All null for a base-currency receipt.
-  foreignUnitCost   Decimal?        @db.Decimal(18, 8) // per stockUnit in the invoice (foreign) currency
-  foreignCurrency   String? // the invoice currency (e.g. "EUR")
-  fxRate            Decimal?        @db.Decimal(18, 8) // base per 1 foreign at receipt (unitCost == foreignUnitCost × fxRate)
-  fxRateDate        DateTime? // the ECB publication date the rate was for
-  fxRateSource      String? // e.g. "ECB via Frankfurter" or "manual override"
-  receivedAt    DateTime            @default(now())
-  lotCode       String? // supplier lot / PO reference
-  supplierNote  String?
-  expiresAt     DateTime? // Plan 072: batch/lot expiry (attached from a COA by lot no.); nullable, RLS-neutral column add
-  vendorId      String? // Plan 069: per-purchase vendor — composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
+  foreignUnitCost Decimal?            @db.Decimal(18, 8) // per stockUnit in the invoice (foreign) currency
+  foreignCurrency String? // the invoice currency (e.g. "EUR")
+  fxRate          Decimal?            @db.Decimal(18, 8) // base per 1 foreign at receipt (unitCost == foreignUnitCost × fxRate)
+  fxRateDate      DateTime? // the ECB publication date the rate was for
+  fxRateSource    String? // e.g. "ECB via Frankfurter" or "manual override"
+  receivedAt      DateTime            @default(now())
+  lotCode         String? // supplier lot / PO reference
+  supplierNote    String?
+  expiresAt       DateTime? // Plan 072: batch/lot expiry (attached from a COA by lot no.); nullable, RLS-neutral column add
+  vendorId        String? // Plan 069: per-purchase vendor — composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
   // Plan 080: physical location of this lot. CONTRACTED to NOT NULL in U13a
   // (20260719180000_supplylot_location_not_null) once every writer — app paths AND the verify/seed scripts —
   // stamped it and the backfill reached 0 nulls across all tenants. Composite-tenant FK
   // (tenantId,locationId)→location(tenantId,id) in raw SQL (K11), NO Prisma relation (mirrors vendorId) so
   // Location's back-relations stay untouched.
-  locationId    String
+  locationId      String
   // Plan 080 U1: transfer lineage. When a transfer SPLITS a lot, the destination lot points back at the source lot
   // here; provenance (LotDocument/expiry) is derived TRANSITIVELY through this edge (council S2 — never row-copy).
-  splitFromLotId String?
-  policyVersion Int                 @default(1) // costing-policy version at receipt (D17)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  material      CellarMaterial      @relation(fields: [materialId], references: [id], onDelete: Restrict)
-  consumptions  SupplyConsumption[]
+  splitFromLotId  String?
+  policyVersion   Int                 @default(1) // costing-policy version at receipt (D17)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  material        CellarMaterial      @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  consumptions    SupplyConsumption[]
 
   @@unique([tenantId, id]) // composite-tenant-FK target for supply_consumption (K11)
   @@index([tenantId])
@@ -3036,7 +3120,7 @@ model MaterialMovement {
 // the op). `reversalOfCostLineId` links an identity-negation row (Unit 11). Never mutated.
 model CostLine {
   tenantId             String                @default("")
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId              String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                   String                @id @default(cuid())
   operationId          Int
   lotId                String?
@@ -3204,7 +3288,7 @@ model BarrelAsset {
 // barrel each get their own fill row → cost splits by volume×time.
 model BarrelFill {
   tenantId               String      @default("")
-  ownerId            String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
+  ownerId                String? // Plan 093 Unit 2: owner-scope; nullable (Estate=NULL); maintained per Unit 4; composite FK -> owner(tenantId,id) in the migration (K11)
   id                     String      @id @default(cuid())
   barrelAssetId          String
   lotId                  String
@@ -3477,27 +3561,27 @@ model KnowledgeBlob {
 }
 
 model KnowledgeDocument {
-  id               String    @id @default(cuid())
-  sourceId         String
-  canonicalUrl     String
-  blobId           String?
-  canonicalTitle   String?
-  publisher        String
-  tier             Int
-  license          String
-  contentType      String
-  sitemapLastmod   DateTime?
-  publishedAt      DateTime?
-  etag             String?
-  lastModifiedHttp String?
+  id                 String    @id @default(cuid())
+  sourceId           String
+  canonicalUrl       String
+  blobId             String?
+  canonicalTitle     String?
+  publisher          String
+  tier               Int
+  license            String
+  contentType        String
+  sitemapLastmod     DateTime?
+  publishedAt        DateTime?
+  etag               String?
+  lastModifiedHttp   String?
   status             String    @default("active") // active | withdrawn (tombstoned, kept for audit)
   activeRevision     Int       @default(0) // retrieval reads only chunks at this revision
   indexedContentHash String? // contentHash the active chunk-set was built from (idempotency: skip re-embed if unchanged)
   withdrawnAt        DateTime?
-  firstSeenAt      DateTime  @default(now())
-  lastSeenAt       DateTime  @default(now())
-  lastVerifiedAt   DateTime  @default(now())
-  retrievedAt      DateTime  @default(now())
+  firstSeenAt        DateTime  @default(now())
+  lastSeenAt         DateTime  @default(now())
+  lastVerifiedAt     DateTime  @default(now())
+  retrievedAt        DateTime  @default(now())
 
   source       KnowledgeSource           @relation(fields: [sourceId], references: [id], onDelete: Restrict)
   blob         KnowledgeBlob?            @relation(fields: [blobId], references: [id], onDelete: SetNull)
@@ -3755,26 +3839,26 @@ model AccountingDelivery {
 // (pending → applying → applied | discarded | held); the pending→applying compare-and-set is the concurrency
 // claim (one apply at a time, ChatGPT #4). `extractedJson` is the raw structured extraction (audit + reload).
 model IngestedInvoice {
-  tenantId            String    @default("")
-  id                  String    @id @default(cuid())
+  tenantId            String           @default("")
+  id                  String           @id @default(cuid())
   batchId             String // ingestion session id — scopes same-session COA↔invoice matching (Unit 10)
   blobUrl             String // private Vercel Blob URL of the source document
   fileName            String
   mimeType            String
   fileSha256          String? // exact-file duplicate guard (alongside vendor+invoice#); the blob helper computes it
   docType             String // invoice | proforma | coa | other
-  status              String    @default("pending") // pending | applying | applied | discarded | held
+  status              String           @default("pending") // pending | applying | applied | discarded | held
   currency            String? // one currency per document (mixed-currency rejected upstream) — the invoice/foreign currency
   // Plan 073: the FX rate applied at apply time (editable pre-apply on the review screen; locked once applied — council #3).
   baseCurrency        String? // the tenant base currency the lines were converted TO (snapshot at apply)
-  fxRate              Decimal?  @db.Decimal(18, 8) // base per 1 foreign (manual override or the resolved ECB rate)
+  fxRate              Decimal?         @db.Decimal(18, 8) // base per 1 foreign (manual override or the resolved ECB rate)
   fxRateDate          DateTime? // the rate date used
   fxRateSource        String? // "ECB via Frankfurter" | "manual override"
   vendorId            String? // composite-tenant FK → vendor (raw SQL, K11); resolved on apply
   vendorNameRaw       String? // extracted vendor name before match/create
   vendorInvoiceNumber String? // supplier invoice # — duplicate-upload guard on (vendor, invoice#)
-  invoiceTotal        Decimal?  @db.Decimal(18, 8) // extracted grand total — the reconciliation-gate target (Unit 7)
-  taxTotal            Decimal?  @db.Decimal(18, 8) // extracted tax — surfaced in the gate, excluded from capitalized landed cost
+  invoiceTotal        Decimal?         @db.Decimal(18, 8) // extracted grand total — the reconciliation-gate target (Unit 7)
+  taxTotal            Decimal?         @db.Decimal(18, 8) // extracted tax — surfaced in the gate, excluded from capitalized landed cost
   landedReceipt       Boolean? // proforma gate answer: true = goods physically received IN FULL → intake as a receipt
   // Plan 076: A/P payment status chosen on the review screen (required before confirm) and carried to the
   // aggregate A/P event → QBO. PAID records a BillPayment from paidFromAccount; OUTSTANDING posts the Bill only.
@@ -3783,8 +3867,8 @@ model IngestedInvoice {
   paidAt              DateTime? // when marked paid (app-side or read back from QBO)
   extractedJson       Json // full structured extraction result (audit + review reload)
   createdBy           String // actor userId who uploaded/ingested
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
   appliedAt           DateTime?
 
   @@unique([tenantId, id]) // composite-tenant-FK target for ingested_invoice_line + lot_document (K11)
@@ -3817,33 +3901,33 @@ model IngestedInvoiceLineCreatedAsset {
 }
 
 model IngestedInvoiceLine {
-  tenantId           String   @default("")
-  id                 String   @id @default(cuid())
-  ingestedInvoiceId  String // composite-tenant FK → ingested_invoice (raw SQL, K11)
-  lineNo             Int
-  descriptionRaw     String
-  vendorItemCodeRaw  String?
-  qty                Decimal? @db.Decimal(18, 6)
-  unitRaw            String? // invoice UOM (e.g. "25 kg", "case") — normalized to the material's stock unit at apply (Unit 5)
-  unitPrice          Decimal? @db.Decimal(18, 8) // per invoice unit (NULL = unknown, D14 — never a fabricated $0)
-  lineTotal          Decimal? @db.Decimal(18, 8) // extracted line extended total (charge-allocation basis)
-  lotNoRaw           String? // supplier lot no. (→ SupplyLot.lotCode; the COA match key)
-  allocatedUnitCost  Decimal? @db.Decimal(18, 8) // per-stock-unit landed cost after charge allocation + UOM normalize (Unit 5)
-  matchDecision      String? // new | existing | skip (human dedup decision; null = undecided)
-  matchedMaterialId  String? // existing/backfill target — composite-tenant FK → cellar_material (raw SQL, K11)
-  resolvedKind       String? // material family for a `new` line
-  resolvedCategory   String? // material category for a `new` line (EQUIPMENT for parts)
-  createdSupplyLotId String? // audit: the SupplyLot this line created (set inside the atomic apply tx)
+  tenantId             String   @default("")
+  id                   String   @id @default(cuid())
+  ingestedInvoiceId    String // composite-tenant FK → ingested_invoice (raw SQL, K11)
+  lineNo               Int
+  descriptionRaw       String
+  vendorItemCodeRaw    String?
+  qty                  Decimal? @db.Decimal(18, 6)
+  unitRaw              String? // invoice UOM (e.g. "25 kg", "case") — normalized to the material's stock unit at apply (Unit 5)
+  unitPrice            Decimal? @db.Decimal(18, 8) // per invoice unit (NULL = unknown, D14 — never a fabricated $0)
+  lineTotal            Decimal? @db.Decimal(18, 8) // extracted line extended total (charge-allocation basis)
+  lotNoRaw             String? // supplier lot no. (→ SupplyLot.lotCode; the COA match key)
+  allocatedUnitCost    Decimal? @db.Decimal(18, 8) // per-stock-unit landed cost after charge allocation + UOM normalize (Unit 5)
+  matchDecision        String? // new | existing | skip (human dedup decision; null = undecided)
+  matchedMaterialId    String? // existing/backfill target — composite-tenant FK → cellar_material (raw SQL, K11)
+  resolvedKind         String? // material family for a `new` line
+  resolvedCategory     String? // material category for a `new` line (EQUIPMENT for parts)
+  createdSupplyLotId   String? // audit: the SupplyLot this line created (set inside the atomic apply tx)
   // Plan 080 U5 — where this line's goods GO. NULLABLE with NO default (council C2): a null target is a
   // hard needsAck at apply, never a silent MATERIAL assumption, because guessing mis-posts real money.
   // CHECK-constrained in SQL to {MATERIAL, EQUIPMENT_ASSET, FINISHED_GOOD}.
-  targetKind         String?
+  targetKind           String?
   // Finished-goods target, resolved at REVIEW time — apply-time auto-create is irreversible (council S11).
   // Exactly one may be set, and only when targetKind = FINISHED_GOOD (CHECK-constrained).
-  wineSkuTargetId    String? // composite-tenant FK → wine_sku(tenantId,id) (raw SQL, K11)
+  wineSkuTargetId      String? // composite-tenant FK → wine_sku(tenantId,id) (raw SQL, K11)
   finishedGoodTargetId String? // composite-tenant FK → finished_good(tenantId,id) (raw SQL, K11)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@unique([tenantId, id])
   @@unique([tenantId, ingestedInvoiceId, lineNo]) // stable line identity within an invoice
@@ -4273,14 +4357,14 @@ model WorkOrderDependency {
 // `kind`/`status` are validated strings (no enum). Referenced by work-order tasks as ADVISORY required
 // equipment (WorkOrderTaskEquipment) — surfaced, never blocks (WORKORDER-2). Maintenance stays record-only.
 model EquipmentAsset {
-  tenantId   String   @default("")
-  id         String   @id @default(cuid())
-  name       String
-  kind       String // press / filter / pump / tank-accessory / other (validated string)
-  status     String   @default("available") // available / in_use / maintenance / retired
-  locationId String? // plain ref → location.id (K11/K12)
-  notes      String?
-  isActive   Boolean  @default(true)
+  tenantId            String    @default("")
+  id                  String    @id @default(cuid())
+  name                String
+  kind                String // press / filter / pump / tank-accessory / other (validated string)
+  status              String    @default("available") // available / in_use / maintenance / retired
+  locationId          String? // plain ref → location.id (K11/K12)
+  notes               String?
+  isActive            Boolean   @default(true)
   // Plan 080 U3: acquisition cost + invoice provenance (all nullable — existing assets stay uncosted; a
   // capitalized asset is a FIXED ASSET, never dosed: EQUIPMENT stays non-doseable, WORKORDER-7).
   // `purchaseCostBase` is ALWAYS the tenant BASE currency (the roll-up basis, COST-4); the foreign quintet
@@ -4294,8 +4378,8 @@ model EquipmentAsset {
   fxRateSource        String? // e.g. "ECB via Frankfurter" | "manual override"
   purchaseDate        DateTime?
   vendorId            String? // Plan 069/080: composite-tenant FK → vendor(tenantId,id) (raw SQL, K11)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@unique([tenantId, name])
   @@unique([tenantId, id]) // composite-FK target for work_order_task_equipment
