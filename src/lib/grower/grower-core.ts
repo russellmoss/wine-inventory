@@ -114,7 +114,7 @@ export type UpdateGrowerInput = {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
-  isEstate?: boolean;
+  isEstate?: boolean | null;
   isActive?: boolean;
   contacts?: GrowerContactInput[];
 };
