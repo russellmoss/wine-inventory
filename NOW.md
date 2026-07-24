@@ -41,8 +41,10 @@ Dev-only Python tools: `pip install exactextract numpy tifffile`. Runtime deps 2
 **`verify:planting-geometry` 13/13** on the real Demo tenant (create→blade-split zero-lost-area→IoU
 version→migration byte-identical), `verify:tenant-isolation` + `verify:ai-native` green. Additive migration
 `20260724120000_planting_geometry` APPLIED to prod (new tables + nullable cols; Bhutan untouched).
-⚠️ **Browser QA of `/vineyards/planting-setup` still owed** — needs USER login (in-app browser refuses the
-HTTP localhost origin; can't drive headless). ⚠️ **`next dev` regenerated a STALE Prisma client** (dropped
+✅ **Browser QA PASSED** (2026-07-24, via Claude-in-Chrome on the user's real browser — the in-app browser
+refuses the HTTP localhost origin here). Russian River Ranch: migration proposed **2 separate plantings**
+(not bridged), confirmed all-or-nothing → 2 DERIVED areas + yellow boundary overlay + migrated badge;
+assistant answered structure Q&A. ⚠️ **RRR is now migrated in Demo (real QA write)** — revert available. ⚠️ **`next dev` regenerated a STALE Prisma client** (dropped
 the new models, tsc 0→60) — stop the dev server before `prisma generate`; regen after adding models.
 ⚠️ **Standing P2 obligation:** warn-only topology means P2 must RE-VALIDATE the mask before NDVI stats.
 Council changed two architecture calls before any code:
