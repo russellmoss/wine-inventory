@@ -309,3 +309,18 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   where "unresolved" means neither reconciled to zero nor explicitly accepted by the operator as a **named
   exception** in the reconciliation pack (not a numeric tolerance). Operationalizes **D11** (no fabricated
   ledger history). Guarded by `npm run verify:migration` in Phase 3.
+
+## Ownership — custom-crush (Plan 093)
+
+> Machine-readable note: [[OWNER-1-owner-projection]].
+
+- **ownerId is a maintained projection, never re-derived from lineage (OWNER-1, guarded — `verify:owner-model`).**
+  A lot's `ownerId` is SCALAR (one owner; NULL = Estate/facility) and a re-stampable PROJECTION like
+  `vessel_component` — the immutable record is the `CHANGE_OWNERSHIP` op. Descendant rows carry their lot's
+  CURRENT `ownerId` read from the column at the chokepoint, NEVER walked from lineage (re-deriving would
+  resurrect a pre-`CHANGE_OWNERSHIP` owner — eng-review P1). A derived lot takes the dominant owner of its
+  sources; a **cross-owner blend is ALLOWED**, the minority billed via `BILLABLE_WINE_CONSUMED` (council C2),
+  never refused. `CHANGE_OWNERSHIP` is **conditional on the bond delta**: same bond → title-only, ZERO TTB;
+  host↔AP (distinct BWN) → title + symmetric transfer-in-bond (council C1). Compliance keys off BOND, not
+  ownerId, but an AP owner's bond wins in `deriveBond`. Owner-scope RLS is plan 092, not this invariant.
+  Guarded by `npm run verify:owner-model` (16 assertions, Demo tenant, no RLS).
