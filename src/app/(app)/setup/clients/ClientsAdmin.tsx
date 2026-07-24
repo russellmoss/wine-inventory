@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { Card, Button, Input, Eyebrow, Badge } from "@/components/ui";
 import { createClient, updateClient } from "./actions";
 
@@ -17,6 +18,7 @@ const KIND_LABEL: Record<Owner["kind"], string> = {
 const selectStyle: React.CSSProperties = { height: 44, padding: "0 12px", fontSize: 15, fontFamily: "var(--font-body)", color: "var(--text-primary)", background: "var(--surface-raised)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--border-strong)", borderRadius: "var(--radius-md)" };
 
 export function ClientsAdmin({ owners }: { owners: Owner[] }) {
+  const router = useRouter();
   const [name, setName] = React.useState("");
   const [kind, setKind] = React.useState<Owner["kind"]>("CUSTOM_CRUSH_CLIENT");
   const [error, setError] = React.useState<string | null>(null);
@@ -30,6 +32,7 @@ export function ClientsAdmin({ owners }: { owners: Owner[] }) {
       const res = await createClient({ name: name.trim(), kind });
       if (!res.ok) { setError(res.error); return; }
       setName("");
+      router.refresh();
     } catch { setError("Couldn't add the client — try again."); } finally { setBusy(false); }
   }
 
@@ -76,6 +79,7 @@ export function ClientsAdmin({ owners }: { owners: Owner[] }) {
 }
 
 function ClientRow({ owner }: { owner: Owner }) {
+  const router = useRouter();
   const [active, setActive] = React.useState(owner.isActive);
   const [editing, setEditing] = React.useState(false);
   const [name, setName] = React.useState(owner.name);
@@ -90,6 +94,7 @@ function ClientRow({ owner }: { owner: Owner }) {
       if (!res.ok) { setErr(res.error); return; }
       if (patch.isActive != null) setActive(patch.isActive);
       if (patch.name != null) setEditing(false);
+      router.refresh();
     } catch { setErr("Couldn't save — try again."); } finally { setBusy(false); }
   }
 

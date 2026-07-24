@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { Card, Button, Input, Eyebrow, Badge } from "@/components/ui";
 import { createGrower, updateGrower } from "./actions";
 
@@ -10,6 +11,7 @@ import { createGrower, updateGrower } from "./actions";
 type Grower = { id: string; name: string; company: string | null; contact: string | null; isEstate: boolean; isActive: boolean };
 
 export function GrowersAdmin({ growers }: { growers: Grower[] }) {
+  const router = useRouter();
   const [name, setName] = React.useState("");
   const [company, setCompany] = React.useState("");
   const [contact, setContact] = React.useState("");
@@ -25,6 +27,7 @@ export function GrowersAdmin({ growers }: { growers: Grower[] }) {
       const res = await createGrower({ name: name.trim(), company: company.trim() || null, contact: contact.trim() || null, isEstate });
       if (!res.ok) { setError(res.error); return; }
       setName(""); setCompany(""); setContact(""); setIsEstate(false);
+      router.refresh();
     } catch { setError("Couldn't add the grower — try again."); } finally { setBusy(false); }
   }
 
@@ -72,6 +75,7 @@ export function GrowersAdmin({ growers }: { growers: Grower[] }) {
 }
 
 function GrowerRow({ grower }: { grower: Grower }) {
+  const router = useRouter();
   const [active, setActive] = React.useState(grower.isActive);
   const [editing, setEditing] = React.useState(false);
   const [name, setName] = React.useState(grower.name);
@@ -86,6 +90,7 @@ function GrowerRow({ grower }: { grower: Grower }) {
       if (!res.ok) { setErr(res.error); return; }
       if (patch.isActive != null) setActive(patch.isActive);
       if (patch.name != null) setEditing(false);
+      router.refresh();
     } catch { setErr("Couldn't save — try again."); } finally { setBusy(false); }
   }
 
