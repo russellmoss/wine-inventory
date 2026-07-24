@@ -234,6 +234,10 @@ async function main() {
   // suppliers/PII, and a contact/material/lot whose vendor spans tenants (composite (tenantId, vendorId) FK).
   await owner.vendor.upsert({ where: { id: "iso_vendor_b" }, update: {}, create: { id: "iso_vendor_b", tenantId: B, name: "ISO Vendor B", updatedAt: now } });
   await owner.vendorContact.upsert({ where: { id: "iso_vc_b" }, update: {}, create: { id: "iso_vc_b", tenantId: B, vendorId: "iso_vendor_b", name: "ISO Contact B", updatedAt: now } });
+  // Plan 095: a grower + a grower_contact in tenant B. Same isolation risk as vendors — a cross-tenant read of
+  // a winery's growers/PII, and a contact whose grower spans tenants (composite (tenantId, growerId) FK, K11).
+  await owner.grower.upsert({ where: { id: "iso_grower_b" }, update: {}, create: { id: "iso_grower_b", tenantId: B, name: "ISO Grower B", updatedAt: now } });
+  await owner.growerContact.upsert({ where: { id: "iso_gc_b" }, update: {}, create: { id: "iso_gc_b", tenantId: B, growerId: "iso_grower_b", name: "ISO Grower Contact B", updatedAt: now } });
   // Plan 075: a tenant-authored custom_unit in tenant B. Isolation risk is a cross-tenant read of a winery's
   // unit registry (a custom unit feeds cost math, so a leak could mis-price the other tenant's intake).
   await owner.customUnit.upsert({ where: { id: "iso_cu_b" }, update: {}, create: { id: "iso_cu_b", tenantId: B, name: "ISO Drum B", normalizedName: "iso drum b", dimension: "mass", perCanonical: "200000", updatedAt: now } });
@@ -694,6 +698,21 @@ async function main() {
       await asTenant(A, (db) => db.vendorContact.create({ data: { id: "iso_vc_fk", tenantId: A, vendorId: "iso_vendor_b", name: "ISO VC FK", updatedAt: new Date() } }));
     } catch { vcFkRaised = true; }
     check("vendor_contact cross-tenant vendor reference rejected (composite FK, K11)", vcFkRaised);
+    // Plan 095: grower + grower_contact isolation + cross-tenant grower FK rejects.
+    const aSeesGrowerB = await asTenant(A, (db) => db.grower.findFirst({ where: { id: "iso_grower_b" } }));
+    check("tenant A CANNOT see tenant B's grower (RLS)", aSeesGrowerB === null);
+    const aSeesGcB = await asTenant(A, (db) => db.growerContact.findFirst({ where: { id: "iso_gc_b" } }));
+    check("tenant A CANNOT see tenant B's grower_contact (RLS)", aSeesGcB === null);
+    let growerInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.grower.create({ data: { id: "iso_grower_x", tenantId: B, name: "ISO Grower X", updatedAt: new Date() } }));
+    } catch { growerInsertRaised = true; }
+    check("foreign-tenant grower INSERT raises (WITH CHECK)", growerInsertRaised);
+    let gcFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.growerContact.create({ data: { id: "iso_gc_fk", tenantId: A, growerId: "iso_grower_b", name: "ISO GC FK", updatedAt: new Date() } }));
+    } catch { gcFkRaised = true; }
+    check("grower_contact cross-tenant grower reference rejected (composite FK, K11)", gcFkRaised);
     // Plan 075: vendor_import_candidate isolation + cross-tenant suggested-vendor FK reject.
     const aSeesVicB = await asTenant(A, (db) => db.vendorImportCandidate.findFirst({ where: { id: "iso_vic_b" } }));
     check("tenant A CANNOT see tenant B's vendor_import_candidate (RLS)", aSeesVicB === null);
@@ -914,6 +933,9 @@ async function main() {
     // Plan 069: vendor children (contacts, the FK-test material) before the vendors (ON DELETE RESTRICT).
     await owner.vendorImportCandidate.deleteMany({ where: { id: { in: ["iso_vic_b", "iso_vic_x", "iso_vic_fk"] } } });
     await owner.vendorContact.deleteMany({ where: { id: { in: ["iso_vc_b", "iso_vc_fk"] } } });
+    // Plan 095: grower children (contacts) before growers.
+    await owner.growerContact.deleteMany({ where: { id: { in: ["iso_gc_b", "iso_gc_fk"] } } });
+    await owner.grower.deleteMany({ where: { id: { in: ["iso_grower_b", "iso_grower_x"] } } });
     await owner.customUnit.deleteMany({ where: { id: { in: ["iso_cu_b", "iso_cu_x"] } } });
     await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_vfk" } });
     await owner.vendor.deleteMany({ where: { id: { in: ["iso_vendor_b", "iso_vendor_x"] } } });
