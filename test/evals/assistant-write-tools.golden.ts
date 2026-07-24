@@ -39,6 +39,18 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { brixValue: 24.5, block: "Block 3" },
   },
   {
+    utterance: "Change ownership of lot 24-CAB-1 to Smith Family Cellars",
+    tool: "change_ownership",
+    args: { lot: "24-CAB-1", newOwner: "Smith Family Cellars" },
+    note: "plan 093: custom-crush proprietor change (title-vs-TIB readback on confirm)",
+  },
+  {
+    utterance: "Transfer lot 24-PN-2 to the facility",
+    tool: "change_ownership",
+    args: { lot: "24-PN-2", newOwner: "facility" },
+    note: "plan 093: transfer a client lot back to the winery (Estate)",
+  },
+  {
     utterance: "Brix came in at 22 on the Grenache block today",
     tool: "log_brix",
     args: { brixValue: 22, variety: "Grenache" },
