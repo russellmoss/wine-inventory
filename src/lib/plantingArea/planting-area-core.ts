@@ -308,6 +308,7 @@ export type PlantingStructure = {
     geometryVersion: number;
     areaGeodesicM2: number | null;
     blockCount: number;
+    blocks: Array<{ id: string; label: string | null }>;
     topology: TopologyFinding[];
   }>;
   unassignedBlocks: Array<{ id: string; label: string | null }>;
@@ -344,6 +345,7 @@ export async function describePlantingStructureCore(vineyardId: string): Promise
       geometryVersion: pa.geometryVersion,
       areaGeodesicM2: pa.areaGeodesicM2 ? Number(pa.areaGeodesicM2) : null,
       blockCount: members.length,
+      blocks: members.map((b) => ({ id: b.id, label: b.blockLabel })),
       topology,
     };
   });
