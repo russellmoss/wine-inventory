@@ -336,7 +336,7 @@ done until its slice of the relevant §22 narrative can be demonstrated live on 
 | Phase | Wave/Lane | Status | Plan | PRs | Report |
 | --- | --- | --- | --- | --- | --- |
 | P0 spike | 0 | 🟩 shipped | [094](../plans/2026-07-24-094-spike-vineyard-intelligence-p0-plan.md) | `spike/vi-p0-no-worker` | [phase-0](phases/phase-0-report.md) |
-| P1 planting geometry | 1A | ⬜ not started | — | — | — |
+| P1 planting geometry | 1A | 🟦 planning | [phase-1-plan](phases/phase-1-planting-geometry-plan.md) | — | — |
 | P4 soil cards | 1B | ⬜ not started | — | — | — |
 | POF offline foundation | 1C | ⬜ not started | — | — | — |
 | P2 NDVI core | 2 | ⬜ not started | — | — | — |

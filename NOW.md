@@ -32,8 +32,28 @@ every non-zero diff explained by the ORACLE's float32). Live scene: 342×342 px,
 ⚠️ Free tier binds on **REQUESTS** (10k/mo), not PU → one estate-wide raster, clipped N ways.
 Dev-only Python tools: `pip install exactextract numpy tifffile`. Runtime deps 22→23 (`proj4` only).
 
-▶️ **NEXT:** `/review` then `/ship` the branch (16 units, no PR yet). Then Wave 1 opens:
+▶️ **NEXT:** `/review` then `/ship` the P0 branch (16 units, no PR yet). Then Wave 1 opens:
 **P1 planting geometry ⚡ P4 soil cards ⚡ POF offline** — P4 and POF never depended on this verdict.
+
+✅ **P1 PLAN WRITTEN + COUNCIL-REVIEWED (2026-07-24), not yet built.**
+[phase-1 plan](docs/GIS/phases/phase-1-planting-geometry-plan.md) (Deep, 12 units, schema-first slice PR) ·
+[council](docs/GIS/phases/phase-1-council-feedback.md). Runbook §7 ledger → 🟦 planning.
+Council changed two architecture calls before any code:
+1. **Boolean geometry kernel = `jsts`, NOT `polyclip-ts`.** Recentring to UTM fixes OUR arithmetic but NOT
+   the martinez family's internal coincident-edge failure P0 rejected — it's a precision-model problem, not
+   a coordinate-scale one. JSTS `GeometryPrecisionReducer` + `OverlayNG` + native line-splitter.
+2. **Split = true line-split ("blade"), NOT buffer-and-corridor.** Corridor-difference destroyed the shared
+   row-middle boundary and minted a permanent gap = unassigned area. Blade produces adjacent blocks sharing a
+   mathematically identical edge, zero lost area.
+Russell's four decisions: **JSTS** · **IoU-gated versioning** (IoU>0.98 = trace correction in place, no stale
+cascade; ≤0.98 = new version + mark stale) · **all-or-nothing per-vineyard migration** (`Vineyard.plantingMigratedAt`
+gate) · **warn-only topology** (chose the non-recommended option — saves never blocked; **consequence: P2 must
+re-validate the mask before computing stats**, carried to the P2 plan + registers).
+Also folded: pinned+persisted canonicalization anchor in the fingerprint (else the same shape hashes two ways);
+version-bump concurrency = subject row-lock + partial-unique on the open row + stale-write guard; migration
+pre-flight topology (never silently heal overlaps, strict <1 m grouping so it can't bridge a road); area shown
+as "Productive area" (spacing) primary + "Boundary footprint" (geodesic) secondary.
+▶️ Build with `/work docs/GIS/phases/phase-1-planting-geometry-plan.md` — Unit 1 (schema slice) ships as its own PR first.
 
 <details><summary>Planning + council + repo cleanup (done)</summary>
 
