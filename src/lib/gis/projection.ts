@@ -118,6 +118,43 @@ export function createProjector(polygon: VineyardPolygon): Projector {
   return createProjectorForBbox(bbox(polygon));
 }
 
+/**
+ * A frozen projection frame: the working CRS + the recentre origin, in projected metres. Persisting
+ * this alongside a geometry lets a LATER edit be projected into the SAME frame, so a fingerprint of an
+ * unchanged shape is byte-identical across edits (VI-P1 council S1 — an unpinned origin hashes two ways).
+ */
+export type CanonicalAnchor = { epsg: string; originX: number; originY: number };
+
+/** PURE: rebuild a projector from a persisted anchor (fixed origin), rather than from a fresh bbox. */
+export function createProjectorFromAnchor(anchor: CanonicalAnchor): Projector {
+  const code = anchor.epsg.replace("EPSG:", "");
+  const north = code.startsWith("326");
+  const zone = Number(code.slice(3));
+  const def = utmDef(zone, north);
+  const origin: readonly [number, number] = [anchor.originX, anchor.originY];
+  return {
+    epsg: anchor.epsg,
+    zone,
+    north,
+    origin,
+    spansMultipleZones: false,
+    forward(pos: Position): [number, number] {
+      const [x, y] = proj4(WGS84, def, [pos[0], pos[1]]) as [number, number];
+      return [x - origin[0], y - origin[1]];
+    },
+    inverse(xy: readonly [number, number]): Position {
+      const [lon, lat] = proj4(def, WGS84, [xy[0] + origin[0], xy[1] + origin[1]]) as [number, number];
+      return [lon, lat];
+    },
+  };
+}
+
+/** PURE: the canonical anchor for a geometry — the frame `createProjector` would pick, as data. */
+export function anchorFor(polygon: VineyardPolygon): CanonicalAnchor {
+  const p = createProjector(polygon);
+  return { epsg: p.epsg, originX: p.origin[0], originY: p.origin[1] };
+}
+
 /** PURE: project every ring of a geometry into recentred metres. Winding is preserved. */
 export function projectRings(polygon: VineyardPolygon, p: Projector): [number, number][][] {
   const rings = polygon.type === "Polygon" ? polygon.coordinates : polygon.coordinates.flat();

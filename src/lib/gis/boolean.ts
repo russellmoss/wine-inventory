@@ -63,6 +63,26 @@ function reduce(g: JstsGeometry): JstsGeometry {
   return r.reduce(g);
 }
 
+// Difference/intersection along a coincident edge can leave a hairline numerical sliver (sub-mm drift
+// from independent projection round-trips). That is noise, not geometry, and it fails
+// validateVineyardPolygon as a degenerate ring. Drop polygonal members below this area (10 cm²) — far
+// below any floor topology reports (1 m²) — so those ops return the real result (or null), not a throw.
+const SLIVER_EPS_M2 = 1e-3;
+
+/** Keep only polygonal members with area ≥ minAreaM2; return null if nothing survives. */
+function dropSlivers(geom: JstsGeometry, minAreaM2: number): JstsGeometry | null {
+  if (geom.isEmpty()) return null;
+  const n = geom.getNumGeometries();
+  const kept: JstsGeometry[] = [];
+  for (let i = 0; i < n; i++) {
+    const g = geom.getGeometryN(i);
+    if (g.getArea() >= minAreaM2) kept.push(g);
+  }
+  if (kept.length === 0) return null;
+  if (kept.length === n && geom.getArea() >= minAreaM2) return geom;
+  return geom.getFactory().createGeometryCollection(kept);
+}
+
 /** Combine per-polygon bboxes into one `[minX,minY,maxX,maxY]` extent. */
 function combinedBbox(polys: VineyardPolygon[], extra?: Position[]): [number, number, number, number] {
   let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
@@ -146,11 +166,25 @@ export function unionPolygons(polys: VineyardPolygon[]): VineyardPolygon {
 /** Difference `a \ b`. Returns null when the result is empty (b fully covers a). */
 export function differencePolygons(a: VineyardPolygon, b: VineyardPolygon): VineyardPolygon | null {
   const projector = createProjectorForBbox(combinedBbox([a, b]));
-  const diff = readMetric(a, projector).difference(readMetric(b, projector));
+  const raw = readMetric(a, projector).difference(readMetric(b, projector));
+  const diff = dropSlivers(raw, SLIVER_EPS_M2);
+  if (!diff) return null;
   const out = toWgs84(diff, projector);
   if (out.length === 0) return null;
   if (out.length === 1) return out[0];
   // multiple disjoint remnants → a MultiPolygon
+  return { type: "MultiPolygon", coordinates: out.flatMap((g) => (g.type === "Polygon" ? [g.coordinates] : g.coordinates)) };
+}
+
+/** Intersection `a ∩ b`. Returns null when the two do not overlap. */
+export function intersectionPolygons(a: VineyardPolygon, b: VineyardPolygon): VineyardPolygon | null {
+  const projector = createProjectorForBbox(combinedBbox([a, b]));
+  const rawInter = readMetric(a, projector).intersection(readMetric(b, projector));
+  const inter = dropSlivers(rawInter, SLIVER_EPS_M2);
+  if (!inter) return null;
+  const out = toWgs84(inter, projector);
+  if (out.length === 0) return null;
+  if (out.length === 1) return out[0];
   return { type: "MultiPolygon", coordinates: out.flatMap((g) => (g.type === "Polygon" ? [g.coordinates] : g.coordinates)) };
 }
 
