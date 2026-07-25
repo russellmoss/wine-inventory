@@ -65,9 +65,10 @@ function PlantingSetupPanel({ vineyard }: { vineyard: Vineyard }) {
   const [proposals, setProposals] = React.useState<MigrationProposal[] | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
 
+  // No synchronous setState here: `loading` starts true and the panel remounts per vineyard (keyed in
+  // the parent), so the first setState lands AFTER the await — keeps the effect free of a synchronous
+  // setState (React 19 cascading-render lint rule).
   const refetch = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const [d, s, p] = await Promise.all([
         loadVineyardDetail(vineyard.id),
@@ -77,6 +78,7 @@ function PlantingSetupPanel({ vineyard }: { vineyard: Vineyard }) {
       setDetail(d);
       setStructure(s);
       setPlantings(p);
+      setError(null);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -85,6 +87,9 @@ function PlantingSetupPanel({ vineyard }: { vineyard: Vineyard }) {
   }, [vineyard.id]);
 
   React.useEffect(() => {
+    // Standard load-on-mount: refetch's setState lands after the await (async), not the synchronous
+    // cascading render this rule targets. Same pattern as MapsClient's MapModal.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refetch();
   }, [refetch]);
 
