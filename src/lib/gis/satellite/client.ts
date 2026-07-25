@@ -264,10 +264,19 @@ export async function fetchProcessedScene(
  * Separate from the Process call because the ESA processing baseline is NOT available from the
  * Process API, and recording Sentinel Hub's `serviceVersion` in its place would be silently wrong.
  */
+export type StacScene = {
+  id: string;
+  datetime: string | null;
+  processingVersion: string | null;
+  cloudCover: number | null;
+  /** The feature's WGS84 bbox `[minLon, minLat, maxLon, maxLat]` — the footprint-containment input (P2 C4). */
+  bbox: [number, number, number, number] | null;
+};
+
 export async function searchStacScenes(
   req: { bbox: readonly [number, number, number, number]; fromIso: string; toIso: string; maxCloudCoveragePct?: number },
   deps: ClientDeps = {},
-): Promise<{ id: string; datetime: string | null; processingVersion: string | null; cloudCover: number | null }[]> {
+): Promise<StacScene[]> {
   const doFetch = deps.fetchImpl ?? fetch;
   return withRetry(deps, async () => {
     const res = await doFetch(`${CDSE.stac}/search`, {
@@ -277,9 +286,11 @@ export async function searchStacScenes(
       body: JSON.stringify(buildStacSearchBody(req)),
     });
     if (!res.ok) throw new SatelliteFault(classifyFault(res.status), res.status, `CDSE STAC returned HTTP ${res.status}`);
-    const body = (await res.json()) as { features?: { id?: string; properties?: Record<string, unknown> }[] };
+    const body = (await res.json()) as { features?: { id?: string; bbox?: number[]; properties?: Record<string, unknown> }[] };
     return (body.features ?? []).map((f) => {
       const p = f.properties ?? {};
+      // A STAC feature bbox may be 4- or 6-tuple (with elevation); take the horizontal extent.
+      const bb = Array.isArray(f.bbox) && f.bbox.length >= 4 ? f.bbox : null;
       return {
         id: String(f.id ?? ""),
         datetime: typeof p.datetime === "string" ? p.datetime : null,
@@ -287,6 +298,7 @@ export async function searchStacScenes(
         processingVersion:
           typeof p["processing:version"] === "string" ? (p["processing:version"] as string) : null,
         cloudCover: typeof p["eo:cloud_cover"] === "number" ? (p["eo:cloud_cover"] as number) : null,
+        bbox: bb ? [bb[0], bb[1], bb[bb.length - 2], bb[bb.length - 1]] : null,
       };
     });
   });
