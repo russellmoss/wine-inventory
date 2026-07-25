@@ -146,4 +146,21 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     tool: "describe_planting_structure",
     args: { vineyard: "Home Ranch" },
   },
+  // VI-P2 — NDVI (satellite vigour) READS. Distinct from process_ndvi (fetch a new scene = a write).
+  {
+    utterance: "What's the NDVI for Estate Vineyard?",
+    tool: "query_ndvi_stats",
+    args: { vineyard: "Estate Vineyard" },
+    note: "reading stored vigour, not fetching a new scene",
+  },
+  {
+    utterance: "How does the canopy vigour look on the Home Block right now?",
+    tool: "query_ndvi_stats",
+    args: { vineyard: "Home Block" },
+  },
+  {
+    utterance: "Show me the satellite greenness for block 3 in Russian River Ranch",
+    tool: "query_ndvi_stats",
+    args: { vineyard: "Russian River Ranch", block: "3" },
+  },
 ];
