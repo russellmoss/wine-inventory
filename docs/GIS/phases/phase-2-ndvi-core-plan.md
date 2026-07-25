@@ -1,7 +1,7 @@
 ---
 title: P2 — NDVI core (Vineyard Intelligence, brief Release 1B data half)
 type: feat
-status: draft
+status: council-reviewed
 date: 2026-07-25
 branch: feat/vi-p2-ndvi-core
 depth: deep
@@ -153,6 +153,40 @@ auto-injects `tenantId`; never add new tables to `GLOBAL_MODELS`.
 `getOrigin()`/`getResolution()`. It is pure-JS (no native/WASM GDAL), works in Node. It is the intended
 decoder for the single-tile, single-image FLOAT32 output the adapter already requests.
 
+## Council revisions (2026-07-25)
+
+Cross-LLM review ([phase-2-council-feedback.md](phase-2-council-feedback.md), Codex + Gemini) surfaced one
+real exactly-once hole and a schema/immutability gap; four decisions were settled. All folded into the units.
+
+- **Exactly-once → dataset-identity key + in-flight placeholder (C1).** "Adopt if exists" dedupes too late.
+  Add a UNIQUE `datasetIdentity = hash(tenantId, vineyardId, providerSceneId, recipeHash)` where `recipeHash`
+  = harmonizeValues + mask policy + resampling + algorithm version; **create an in-flight `SpatialDataset`
+  placeholder BEFORE the external fetch**; a second claimant that sees an active row backs off; the **blob key
+  is deterministic from the identity**, not the sha256. Honest name: "at-least-once fetch, idempotent
+  materialization." **Lease > 300 s + finalize slack** (no heartbeat infra) so a healthy long fetch isn't reclaimed.
+- **Immutable metrics, keep history (Q1 decision).** A `BlockSpatialMetric` is permanently bound to the
+  `geometryVersion` it was computed against; a boundary edit **annotates, never hides/invalidates**.
+  **`geometryVersion`/`geometryFingerprint` go INTO the `BlockSpatialMetric` uniqueness key** so v3 and v4
+  readings coexist. `markStaleFor` becomes an annotation event (compatible with runbook §6 "never rewrite").
+- **Scene selection: auto-advance top-3 + gated SCL preflight (Q2 decision).** Free checks first (footprint
+  containment, edge-of-tile risk); auto-try the top **3** candidates within one attempt; a **1-band
+  SCL-over-the-AOI preflight only in the ambiguous 10–40% tile-cloud band** (blanket SCL doubles request-spend);
+  surface WITHHELD only after top-3 exhausted, with a typed reason.
+- **minValidFraction = 0.5 (Q3 decision).** Below half-valid, a block's mean/median/quantiles are `null` +
+  quality flag `INSUFFICIENT_VALID_COVERAGE` — never a biased 15%-coverage mean. Per-tenant configurable later.
+- **Compute block metrics INLINE in the job (Q4 decision).** No blob reload — stats run in the same request
+  right after NDVI while the raster is in memory; the block-metrics core stays separately testable.
+- **Memory is a first-class acceptance criterion (S1).** Decode banded, release source TIFF bytes immediately,
+  NDVI in place, drop red/nir after, **sequential accumulator block reducers** (never 20 sample arrays at once);
+  tripwire on **measured peak bytes**, not pixel count.
+- Folded, no decision: **`requestedDateTarget` vs `actualAcquiredAt`** + shown offset (S2); **`maskDilation: 0`
+  in provenance** (S3, SCL-halo honesty); **`effectivePixelCount` as Decimal** (Σweights, weighted-mean
+  denominator — S4); **typed geotransform** (not loose JSON); **typed `withheldReason`/fault class**, sweeper
+  never reclaims a quota-withheld job until the next billing window (S5); **counter = billable provider
+  attempts** (S6); **composite-parent `@@unique([tenantId, id])`** on scene+dataset (S7); decoder asserts the
+  full georeferencing + `Float32Array` + non-interleaved + `samplesPerPixel===3` + BigTIFF/tiled-vs-stripped
+  policy + no worker pool (C6); **topographic-shadow watch** for the hilly Bhutan tenant (S8).
+
 ## Key Decisions
 
 | Decision | Choice | Alternatives Considered | Rationale |
@@ -177,22 +211,34 @@ first, then `_ndvi_schema`, then `_ndvi_rls`); `test/tenant-isolation.test.ts` +
 **Approach:** Copy the P1 planting-geometry migration structure. Tables (all Phase-12: `tenantId @default("")`,
 `@@index([tenantId])`, `@@unique([tenantId,id])` where an FK target, composite FKs, RLS ENABLE+FORCE+policy+
 grant+fail-closed check):
-- `SpatialScene` (immutable): `vineyardId`, `provider`, `collection`, `providerSceneId`, `acquiredAt`,
+- `SpatialScene` (immutable): `vineyardId`, `provider`, `collection`, `providerSceneId`, **`requestedDateTarget
+  DateTime`** + **`acquiredAt DateTime`** (S2 date-drift honesty — the offset is derived, axis = acquiredAt),
   `bounds Json`, `sceneCloudCover Decimal`, `processingBaseline`, `processingLevel`, `selectionReason`,
-  provenance fields; `@@unique([tenantId, vineyardId, providerSceneId])`.
+  provenance fields; `@@unique([tenantId, vineyardId, providerSceneId])`, **`@@unique([tenantId, id])`** (FK target).
 - `SpatialDataset` (the raster; mirrors `IngestedInvoice`): `vineyardId`, composite FK →`SpatialScene`,
-  `kind` (RASTER), `metric` (NDVI), `blobUrl`, `blobSha256`, `byteSize Int`, `crsEpsg`, `bounds Json`,
-  `gridWidth`/`gridHeight`/`pixelSizeM`, `geotransform Json`, `harmonizeValues Boolean`, `sclResampling`,
-  `processingUnits Decimal`, `attribution`, `status`.
+  **`datasetIdentity String` `@@unique([tenantId, datasetIdentity])`** = `hash(vineyardId, providerSceneId,
+  recipeHash)` where `recipeHash` = harmonizeValues+maskPolicy+resampling+`algorithmVersion` (C1 up-front
+  idempotency), `kind` (RASTER), `metric` (NDVI), `blobUrl`, `blobSha256`, `byteSize Int`, `crsEpsg`,
+  **typed geotransform: `originX`/`originY`/`pixelSizeM`/`gridWidth`/`gridHeight`/`axisYSign` (NOT loose Json)**,
+  `harmonizeValues Boolean`, `sclResampling`, **`maskDilation Int @default(0)`** (S3), `processingUnits Decimal`,
+  `attribution`, `status` (INFLIGHT/READY/FAILED — the in-flight placeholder lands here before the fetch),
+  `@@unique([tenantId, id])` (FK target).
 - `SpatialAnalysisJob` (outbox): `vineyardId`, `kind` (NDVI_SCENE), `status` enum (PENDING/IN_FLIGHT/
-  PROCESSING/COMPLETED/FAILED/WITHHELD), `idempotencyKey` `@@unique`, `sceneId?`, `datasetId?`, `params Json`,
-  `attemptCount`, `claimedAt`, `leaseExpiresAt`, `lastError`, `processingVersion`.
-- `BlockSpatialMetric`: composite FK →`VineyardBlock` + →`SpatialDataset`, `metric`, `acquiredAt`, the P0
-  `ZonalStats` fields (min/p10/p25/median/mean/p75/p90/max/stdDev Decimal, effective/intersecting/valid counts,
-  validFraction, coveredAreaM2, mixedPixelShare), `qualityFlags Json`, `processingVersion`,
-  **`geometryVersion Int` + `geometryFingerprint String`** (P1 hand-off); `@@unique([tenantId, blockId, datasetId, metric])`.
-- `CdseUsageCounter` (mirror `WeighTagCounter`): `@@id([tenantId, yearMonth])`, `requestCount Int`,
-  `processingUnits Decimal`, `blobEgressBytes BigInt`, `updatedAt`.
+  PROCESSING/COMPLETED/FAILED/WITHHELD), `idempotencyKey` `@@unique`, **`withheldReason` / `faultClass`**
+  (quota-exhausted | selection-miss | low-coverage — S5; sweeper never reclaims `quota-exhausted` until the next
+  billing window), `sceneId?`, `datasetId?`, `params Json`, `attemptCount`, `claimedAt`, `leaseExpiresAt` (set
+  **> 300 s + slack**), `lastError`, `processingVersion`.
+- `BlockSpatialMetric` (**immutable snapshot** — Q1): composite FK →`VineyardBlock` + →`SpatialDataset`,
+  `metric`, `acquiredAt`, the P0 `ZonalStats` fields (min/p10/p25/median/mean/p75/p90/max/stdDev **Decimal,
+  nullable** — null below the valid floor, with `qualityFlags` carrying `INSUFFICIENT_VALID_COVERAGE`),
+  `intersectingPixelCount Int`, `validPixelCount Int`, **`effectivePixelCount Decimal`** (Σcoverage, the
+  weighted-mean denominator — S4), `validFraction Decimal`, `coveredAreaM2 Decimal`, `mixedPixelShare Decimal`,
+  `qualityFlags Json`, `processingVersion`, **`geometryVersion Int` + `geometryFingerprint String`**;
+  **`@@unique([tenantId, blockId, datasetId, metric, geometryVersion])`** (Q1/C2 — versions coexist, history
+  never overwritten).
+- `CdseUsageCounter` (mirror `WeighTagCounter`; **counts BILLABLE PROVIDER ATTEMPTS, not successful datasets** —
+  S6): `@@id([tenantId, yearMonth])`, `requestCount Int @default(0)`, `processingUnits Decimal @default(0)`,
+  `blobEgressBytes BigInt @default(0)`, `updatedAt` (all non-null zero defaults — S5).
 - `Vineyard.ndviAutoAdd Boolean @default(false)` (the DARK flag).
 **Tests:** per-table isolation cases (seed A+B, A-sees-own / A-can't-see-B / foreign-INSERT-reject +
 composite-FK reject for block↔metric, scene↔dataset); RLS-coverage guard picks all up.
@@ -206,14 +252,19 @@ composite-FK reject for block↔metric, scene↔dataset); RLS-coverage guard pic
 **Files:** `src/lib/gis/satellite/decode.ts` (new); `test/gis-decode.test.ts` (new); `test/fixtures/gis/`
 (commit a small real scene TIFF + its expected bands, derived from the P0 `tifffile` output);
 `package.json` (+`geotiff`).
-**Approach:** `decodeNdviScene(bytes: Uint8Array): { red: Float32Array; nir: Float32Array; scl: Float32Array;
-width: number; height: number; bbox: [number,number,number,number]; crsEpsg: number; pixelSizeM: number }`.
-Use `geotiff.fromArrayBuffer` → `getImage()` → `readRasters()` (band order [B04, B08, SCL] per
-`NDVI_EVALSCRIPT`), `getBoundingBox()`/`getResolution()` for the geotransform. Bound decompressed size +
-dimensions (SSRF/DoS guard, brief §18). Pure (bytes in, arrays out).
+**Approach:** `decodeNdviScene(bytes): { red, nir, scl: Float32Array; width; height; originX; originY;
+pixelSizeM; axisYSign; crsEpsg }`. Use `geotiff.fromArrayBuffer` → `getImage()` → `readRasters({interleave:
+false})` (band order [B04, B08, SCL] per `NDVI_EVALSCRIPT`), `getOrigin()`/`getResolution()`/`getBoundingBox()`
+for the typed geotransform. **Council C6 contract (all asserted, not assumed):** each returned band **is a
+`Float32Array`** (not `number[]` — memory), **non-interleaved**, `samplesPerPixel === 3` read from our own
+evalscript provenance (NOT inferred from photometric tags), an explicit **BigTIFF policy** (reject with a clear
+error class) and a **tiled-vs-stripped policy**, **prove no decode worker-pool** spins up in serverless Node
+(configure geotiff.js to decode inline). Bound decompressed size + dimensions (SSRF/DoS, brief §18). Pure.
 **Tests:** decode the committed fixture → assert band arrays **equal the P0 `tifffile` output** element-for-
-element (the validation the learnings demand); grid dims + geotransform match; a truncated/garbage buffer
-rejects; an oversized-dimension header rejects.
+element AND the **full georeferencing** (origin, pixelSize, axis-Y sign, crsEpsg, bbox) matches within tolerance
+(value-equality alone is insufficient — the clipper needs the geotransform right); each band is a
+`Float32Array`; a truncated/garbage buffer rejects; an oversized-dimension header rejects; a BigTIFF rejects
+with the typed error.
 **Depends on:** none.
 **Patterns to follow:** `scripts/gis-p0-decode-tif.py` (the reference output to match); `attachments/blob.ts` size guards.
 **Verification:** `npx vitest run test/gis-decode.test.ts`.
@@ -224,15 +275,19 @@ rejects; an oversized-dimension header rejects.
 `SpatialScene` on selection.
 **Files:** `src/lib/gis/satellite/scene-selection-core.ts` (new); `src/lib/spatial/actions.ts` (new, `"use server"`);
 `test/scene-selection.test.ts`.
-**Approach:** `searchScenesCore(vineyardId, aroundIso, opts)` builds the estate bbox (union of the vineyard's
-planting areas via `boolean.unionPolygons` → bbox), expands the window ±7→14→30 days until candidates exist,
-calls `searchStacScenes`, ranks by `eo:cloud_cover` ascending, returns candidates with cloud% + acquiredAt +
-processingVersion + selection reason. **STAC-slow contract:** the action carries a generous timeout and is
-never called from a synchronous render path. `selectSceneCore(vineyardId, providerSceneId)` writes the
-immutable `SpatialScene` (with STAC baseline) and enqueues a `SpatialAnalysisJob` (PENDING). Never fabricate:
-zero candidates → an explicit empty result, never a placeholder scene.
-**Tests:** mock STAC responses (contract) — ranking by cloud, window expansion, zero-candidate empty result,
-scene normalization, baseline recorded from STAC not Process API. Deterministic; no live provider.
+**Approach:** `searchScenesCore(vineyardId, aroundIso, opts)` builds the estate bbox (union of planting areas
+via `boolean.unionPolygons`), expands the window ±7→14→30 days, `searchStacScenes`, and ranks candidates with
+**free up-front checks first (C4)**: **footprint containment** (does the scene footprint actually cover the
+estate AOI — reject partial/edge-of-tile), then `eo:cloud_cover` ascending. Returns the ranked candidate list
+with cloud% + `requestedDateTarget` + `acquiredAt` (+ derived offset) + processingVersion + reason. **STAC-slow
+contract:** generous timeout, never on a synchronous render path. `selectSceneCore` writes the immutable
+`SpatialScene` (STAC baseline, requestedDateTarget) and enqueues a job carrying the **top-3 ranked candidates**
+so the job can **auto-advance** (C4). A **gated 1-band SCL-over-AOI preflight** runs only when tile cloud% is in
+the ambiguous **10–40%** band (blanket SCL doubles request-spend in a request-bound quota). Never fabricate:
+zero candidates → explicit empty result.
+**Tests:** mock STAC — footprint-containment rejects an edge-of-tile scene; ranking by cloud; window expansion;
+zero-candidate empty result; baseline from STAC not Process API; date-offset (requested vs acquired) recorded;
+SCL preflight fires only in the 10–40% band. Deterministic; no live provider.
 **Depends on:** Units 1, (P1 boolean).
 **Patterns to follow:** `commerce/*` STAC-mock style; brief §13.5, §15 scene selection.
 **Verification:** `npx vitest run test/scene-selection.test.ts`.
@@ -242,17 +297,25 @@ scene normalization, baseline recorded from STAC not Process API. Deterministic;
 **Goal:** The outbox core that turns a PENDING job into a stored NDVI raster + `SpatialDataset`, exactly once.
 **Files:** `src/lib/gis/satellite/process-scene-core.ts` (new); `src/lib/gis/satellite/raster-store.ts` (new,
 blob put/get for rasters); `test/process-scene.test.ts`.
-**Approach:** `processSceneJobCore(job, deps)`: one estate-wide `fetchProcessedScene` → `decodeNdviScene` →
-`computeNdvi` (SCL mask) → serialize the masked raster (Float32 + grid + provenance) → `putPrivateRaster`
-(tenant-namespaced, sha256, byteSize) → write `SpatialDataset` (blobUrl, metadata, **provenance:
-harmonizeValues, baseline, SCL resampling, attribution, PU**) → mark job COMPLETED. Fault→status:
-`quota(402)→WITHHELD` (no retry, surface), `validation→FAILED`, `transient/rate_limit→retry` (lease expiry).
-Record PU + request in `CdseUsageCounter` (Unit 7). Claim-first lease + query-before-write idempotency (a
-dataset already written for this scene ⇒ adopt, don't re-fetch). No fabricated scene ever persisted.
-**Tests:** fixture-bytes path (no live provider): decode→ndvi→blob(mock)→dataset row with full provenance;
-idempotent re-run adopts the existing dataset; quota fault → WITHHELD + no dataset; provenance contains
-harmonizeValues=false + baseline + SCL resampling (contract test).
-**Depends on:** Units 1, 2.
+**Approach:** `processSceneJobCore(job, deps)` — **idempotent materialization (C1), not exactly-once fetch.**
+First compute `datasetIdentity = hash(vineyardId, providerSceneId, recipeHash)` and **upsert an INFLIGHT
+`SpatialDataset` placeholder** on `@@unique([tenantId, datasetIdentity])`; if a READY/INFLIGHT row already
+exists, **adopt/back off — never re-fetch** (this is what stops the double request-spend). Then: one
+estate-wide `fetchProcessedScene` → `decodeNdviScene` → `computeNdvi` → **inline block metrics (Unit 5) in the
+SAME pass while the raster is in memory (Q4)** → `putPrivateRaster` at a **deterministic blob key derived from
+`datasetIdentity`** (not sha256) → flip the dataset to READY with full provenance (**harmonizeValues, baseline,
+SCL resampling, maskDilation:0, attribution, PU, typed geotransform**) → job COMPLETED. **Memory discipline
+(S1):** release the source TIFF bytes right after decode, compute NDVI in place, drop `red`/`nir` once NDVI
+exists. **Auto-advance (C4):** if the scene fails the AOI SCL coverage, mark that candidate a
+`selection-miss` and try the next of the top-3 before surfacing WITHHELD. Fault→status: `quota(402)→WITHHELD`
+`faultClass=quota-exhausted` (sweeper won't reclaim till next billing window), `validation→FAILED`,
+`transient/rate_limit→retry` via lease. Record the **billable attempt** (PU + request) in `CdseUsageCounter`
+(Unit 7) on every provider call, success or fail. No fabricated scene ever persisted.
+**Tests:** fixture-bytes path (no live provider): decode→ndvi→inline-metrics→blob(mock)→READY dataset with full
+provenance; **a second concurrent claimant sees the INFLIGHT placeholder and does NOT re-fetch** (the C1
+guarantee); quota fault → WITHHELD + faultClass + no READY dataset; the top-3 auto-advance skips a
+selection-miss; provenance contains harmonizeValues=false + baseline + SCL resampling + maskDilation.
+**Depends on:** Units 1, 2, 5 (the block-metrics core runs inline here).
 **Patterns to follow:** `accounting/post-sweep.ts` claim/finalize; `attachments/blob.ts`; `IngestedInvoice` sha256.
 **Verification:** `npx vitest run test/process-scene.test.ts`.
 
@@ -261,18 +324,24 @@ harmonizeValues=false + baseline + SCL resampling (contract test).
 **Goal:** Compute and persist `BlockSpatialMetric` from a dataset, refusing broken masks and wiring staleness.
 **Files:** `src/lib/spatial/block-metrics-core.ts` (new); `src/lib/gis/geometry-version.ts` (register the NDVI
 dependent); `test/block-metrics.test.ts`.
-**Approach:** `computeBlockMetricsCore(datasetId, deps)`: load the stored raster (range/whole), rebuild the
-`PixelGrid` from the dataset geotransform, and for the planting + its blocks run **`reviewTopology`** — if any
-`MASK_BREAKING` finding, **refuse** (record the reason on the job, don't write metrics). Otherwise per block:
-`coverageOverGrid` → `WeightedSample[]` from `ndvi.values[index]` → `zonalStats` → `BlockSpatialMetric` row
-**stamped with the block's `geometryVersion` + `geometryFingerprint`**. Extend `markStaleFor` so a
-PLANTING_AREA/BLOCK version bump returns the NDVI-metric dependent kind (P2 is the first real consumer). Write
-under `runLedgerWrite` (SERIALIZABLE). `Σcoverage×pixelArea ≈ polygonArea` sanity assert (the oracle-free
-dropped-ring check).
-**Tests:** reuse P0 fixtures — reconcile block coverage to the parent; a `MASK_BREAKING` fixture is refused
-(no rows written); metrics stamp the right version/fingerprint; `markStaleFor` now returns the NDVI dependent;
-weighted-quantile values match analytic fixtures (not exactextract).
-**Depends on:** Units 1, 4; P1 (`topology`, `geometry-version`, `geometry-meta`).
+**Approach:** `computeBlockMetricsCore(raster, planting, blocks, deps)` — **called INLINE by U4's job with the
+raster already in memory (Q4), no blob reload.** Rebuild the `PixelGrid` from the dataset's typed geotransform;
+run **`reviewTopology`** and **refuse a `MASK_BREAKING` mask** (record `withheldReason=mask-breaking`, write no
+metrics). Otherwise iterate blocks **sequentially with accumulator-style reducers (S1 — never hold 20 sample
+arrays at once)**: `coverageOverGrid` → samples from `ndvi.values[index]` → `zonalStats`. **Validity floor
+(Q3):** if `validFraction < 0.5`, write the row with **null mean/median/quantiles + `INSUFFICIENT_VALID_COVERAGE`**
+(counts + coverage still recorded). Each `BlockSpatialMetric` is an **immutable snapshot stamped with the block's
+`geometryVersion` + `geometryFingerprint`** (Q1) and stored as coverage-weighted (with `effectivePixelCount` =
+Σweights). **Staleness = annotation (Q1):** extend `markStaleFor` so a PLANTING_AREA/BLOCK version bump returns
+the NDVI dependent as an ANNOTATION event — **old metrics are retained and served**, never hidden; the metric's
+`geometryVersion` in its unique key lets the next version coexist. Write under `runLedgerWrite` (SERIALIZABLE).
+`Σcoverage×pixelArea ≈ polygonArea` sanity assert (oracle-free dropped-ring check).
+**Tests:** reuse P0 fixtures — reconcile block coverage to the parent; `MASK_BREAKING` fixture refused (no rows);
+**a block below 0.5 valid → null stats + INSUFFICIENT_VALID_COVERAGE, counts still present**; metrics stamp the
+right version/fingerprint and a **second version coexists** (no unique conflict); `markStaleFor` returns the
+NDVI dependent as an annotation (old rows still readable); weighted-quantile values match analytic fixtures
+(not exactextract); `effectivePixelCount` is the Σweights float.
+**Depends on:** Units 1; P1 (`topology`, `geometry-version`, `geometry-meta`). (Invoked inline from U4.)
 **Verification:** `npx vitest run test/block-metrics.test.ts`.
 
 ### Unit 6: Job sweep + Vercel cron route (poll ingest; DARK auto-add)
@@ -281,7 +350,10 @@ weighted-quantile values match analytic fixtures (not exactextract).
 **Files:** `src/lib/spatial/job-sweep.ts` (new, the claim-first poster); `src/app/api/cron/ndvi-poll/route.ts`
 (new); `vercel.json` (+cron entry); `test/job-sweep.test.ts`.
 **Approach:** `runNdviJobSweep()` mirrors `runAccountingPostSweep`: `claimBatch` (`FOR UPDATE SKIP LOCKED` +
-lease) → `processSceneJobCore` (U4) → `computeBlockMetricsCore` (U5) → finalize; expired leases self-heal.
+lease) → `processSceneJobCore` (U4, which runs metrics inline) → finalize; expired leases self-heal.
+**Lease > 300 s + finalize slack** (CDSE took 135 s live; no heartbeat infra) so a healthy long fetch isn't
+double-claimed (council Q10). The sweep **never reclaims a `faultClass=quota-exhausted` WITHHELD job** until the
+next billing window (S5).
 The cron route (`runtime="nodejs"`, `maxDuration=300`, `CRON_SECRET` `timingSafeEqual`) enumerates tenants and
 runs the sweep. **Auto-add DARK:** only for vineyards with `ndviAutoAdd=true` (default false), a cursor+overlap
 search for the newest clear scene since the last, advancing the cursor only after a drained run — enqueue a
@@ -395,8 +467,19 @@ checkout with `.env`), mirroring the P0 live harness — never in CI.
       `SpatialDataset` with full provenance (harmonizeValues=false, STAC baseline, SCL NEAREST, attribution, PU).
 - [ ] Per-block `BlockSpatialMetric` rows match the P0-measured spread, stamped with geometryVersion+fingerprint;
       a `MASK_BREAKING` mask is refused; `markStaleFor` now returns the NDVI dependent.
-- [ ] Scene processing is exactly-once under the cron claim-first outbox (retry/lease/idempotency tests green);
-      `402→quota→WITHHELD`; no fabricated scene ever persisted.
+- [ ] **Idempotent materialization (C1):** a second concurrent claimant sees the INFLIGHT dataset placeholder
+      (keyed on `datasetIdentity`) and does NOT re-fetch (no double request-spend); deterministic blob key;
+      lease > 300 s; `402→quota-exhausted→WITHHELD` not reclaimed till next billing window; no fabricated scene.
+- [ ] **Immutable history (Q1/C2/C3):** a boundary edit annotates but never hides prior metrics; a v3 and a v4
+      `BlockSpatialMetric` for the same block+dataset coexist (geometryVersion in the unique key).
+- [ ] **Validity floor (Q3/C5):** a block below 0.5 valid stores null mean/quantiles + `INSUFFICIENT_VALID_COVERAGE`
+      (never a biased partial-coverage mean); `effectivePixelCount` stored as the Σweights float.
+- [ ] **Scene selection (C4):** footprint-containment rejects edge-of-tile scenes; the job auto-advances the
+      top-3 candidates; SCL preflight fires only in the 10–40% band; `requestedDateTarget` vs `acquiredAt` recorded.
+- [ ] **Decoder (C6):** band arrays == P0 `tifffile` AND georeferencing (origin/pixelSize/axis/EPSG/bbox) match;
+      each band a `Float32Array`; BigTIFF rejected; no worker pool.
+- [ ] **Memory (S1):** measured peak bytes under the acceptance threshold; source bytes released post-decode,
+      red/nir dropped post-NDVI, block reducers sequential.
 - [ ] Quota counter (PU + requests + blob bytes) accumulates per tenant/month and is visible; auto-add ships DARK.
 - [ ] Assistant `process_ndvi` (write) + `query_ndvi_stats` (read) + goldens; `verify:ai-native` green.
 - [ ] `verify:ndvi` e2e green on Demo (fixture scene); RLS/isolation for all five tables; `verify:naming` green.
@@ -406,8 +489,10 @@ checkout with `.env`), mirroring the P0 live harness — never in CI.
 ## Sequencing & parallelism
 
 - **Unit 1 ships as its own schema-slice PR first.**
-- Units **2 (decoder)** and **3 (scene selection)** are independent and can run right after U1 (or alongside).
-- 4 needs 1+2; 5 needs 1+4; 6 needs 4+5; 7 needs 1; 8 needs 3+5+6; 9 needs all; 10 (thin UI) needs 3+5+6; 11 last.
+- Units **2 (decoder)**, **3 (scene selection)**, and **5 (block-metrics core)** are independent of each other
+  and can run right after U1. **U5's core is invoked inline by U4's job** (Q4 — no blob reload), so build U5
+  before/with U4.
+- 4 needs 1+2+5; 6 needs 4; 7 needs 1; 8 needs 3+4+6; 9 needs all; 10 (thin UI) needs 3+4+6; 11 last.
 - **Depends on P1 (#494) being merged** — `VineyardBlock.geometryVersion`/`plantingAreaId` + `topology`/
   `geometry-version`/`geometry-meta` all come from P1. Do not start P2 `/work` until #494 lands.
 - Wave-2 sibling **P5 (observations + sampling plans)** is file-disjoint (no `src/lib/gis` overlap); the only
