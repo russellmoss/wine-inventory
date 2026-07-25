@@ -95,6 +95,18 @@ async function main() {
       { fetchScene: async () => ({ bytes: new Uint8Array(TIF), processingUnits: 0.0286, contentType: "image/tiff" }) },
     );
     console.log(`Processed: ${out.status}` + (out.status === "COMPLETED" ? ` — dataset ${out.datasetId}, ${out.metricCount} block metrics` : ""));
+
+    // A SECOND scene ~30 days earlier (same fixture bytes, distinct providerSceneId → distinct dataset) so the
+    // date-comparison view has two dates to lock a domain across. Demonstrates Q4 side-by-side in the demo.
+    const earlier = new Date(new Date(REF.provenance.acquiredAt).getTime() - 30 * 864e5).toISOString();
+    const cand2 = { providerSceneId: `${REF.provenance.sceneId}-EARLIER`, acquiredAt: earlier, cloudCover: REF.provenance.sceneCloudCover, processingVersion: REF.provenance.processingBaseline, bbox: aoiBbox };
+    const params2 = { aoiBbox, requestedDateTarget: earlier, candidates: [cand2] };
+    await prisma.spatialAnalysisJob.create({ data: { id: `${JOB}_2`, vineyardId: V, idempotencyKey: `qa:${JOB}_2`, params: params2 as unknown as object } });
+    const out2 = await processSceneJobCore(
+      { id: `${JOB}_2`, vineyardId: V, params: params2 },
+      { fetchScene: async () => ({ bytes: new Uint8Array(TIF), processingUnits: 0.0286, contentType: "image/tiff" }) },
+    );
+    console.log(`Second scene (${earlier.slice(0, 10)}): ${out2.status}`);
     // SYSTEM style presets (idempotent) so the style dropdown has options in the demo.
     const presets = [
       { name: "Vigour (relative)", mode: "VINEYARD_SCENE", paletteId: "vigor-classic", reverse: false },

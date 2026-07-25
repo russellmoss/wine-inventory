@@ -36,6 +36,7 @@ export type DisplayDerivativeRow = {
   id: string;
   status: string;
   blobUrl: string | null;
+  crsEpsg: number | null;
   gridWidth: number | null;
   gridHeight: number | null;
   originX: unknown;
