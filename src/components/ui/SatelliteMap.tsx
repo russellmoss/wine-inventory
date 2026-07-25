@@ -543,6 +543,7 @@ export function SatelliteMap({
     }
     if (!overlays || overlays.length === 0) return;
     const group = L.featureGroup();
+    const rasters: { layer: L.ImageOverlay; resampling: string }[] = [];
     for (const ov of overlays) {
       if (ov.kind === "vector") {
         L.geoJSON(ov.data as unknown as GeoJSON.GeoJsonObject, {
@@ -560,13 +561,17 @@ export function SatelliteMap({
           opacity: ov.opacity,
           interactive: false,
         }).addTo(group);
-        // Q1: bilinear (browser-smooth) is the default; the nearest toggle shows the honest source pixels.
-        const el = img.getElement();
-        if (el) el.style.imageRendering = ov.resampling === "nearest" ? "pixelated" : "auto";
+        rasters.push({ layer: img, resampling: ov.resampling });
       }
     }
     group.addTo(map);
     group.bringToFront();
+    // Q1: bilinear (browser-smooth) is the default; the nearest toggle shows the honest source pixels. The
+    // image element only exists AFTER the layer is added to the map (onAdd), so set the rendering hint here.
+    for (const { layer, resampling } of rasters) {
+      const el = layer.getElement();
+      if (el) el.style.imageRendering = resampling === "nearest" ? "pixelated" : "auto";
+    }
     layerStackRef.current = group;
   }, [overlays]);
 
