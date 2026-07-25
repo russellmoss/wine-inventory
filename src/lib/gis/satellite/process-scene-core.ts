@@ -155,6 +155,10 @@ export async function processSceneJobCore(job: ProcessSceneJob, deps: ProcessSce
     // CLAIM the INFLIGHT placeholder (C1). A concurrent claimant's create hits P2002 → back off / adopt.
     const claim = await claimDataset(job.vineyardId, scene.id, identity);
     if (claim.kind === "adopt") {
+      // Adopt an already-materialized dataset — the fresh path marks the job COMPLETED inside finalizeDataset's
+      // tx, so the adopt path MUST do the same here or the job leaks at IN_FLIGHT (the sweep's finalizer trusts
+      // the core to have persisted a COMPLETED job).
+      await prisma.spatialAnalysisJob.update({ where: { id: job.id }, data: { status: "COMPLETED", datasetId: claim.datasetId, sceneId: scene.id, leaseExpiresAt: null } });
       return { status: "COMPLETED", datasetId: claim.datasetId, sceneId: scene.id, metricCount: claim.metricCount, adopted: true };
     }
     if (claim.kind === "backoff") {

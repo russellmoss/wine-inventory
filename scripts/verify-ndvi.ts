@@ -118,6 +118,10 @@ async function main() {
       await prisma.spatialAnalysisJob.create({ data: { id: JOB2, vineyardId: V, idempotencyKey: `qa:${JOB2}`, params: params as unknown as object } });
       const out2 = await processSceneJobCore({ id: JOB2, vineyardId: V, params }, deps);
       check("second job ADOPTS the existing dataset (no re-fetch — C1)", out2.status === "COMPLETED" && (out2 as { adopted: boolean }).adopted === true && fetchCalls === 1, `status=${out2.status} calls=${fetchCalls}`);
+      // The adopt path must persist COMPLETED to the JOB ROW too (not just the return value) — else the job
+      // leaks at IN_FLIGHT in the UI. This is the regression the browser QA caught.
+      const job2Row = await prisma.spatialAnalysisJob.findUnique({ where: { id: JOB2 }, select: { status: true, datasetId: true } });
+      check("adopted job ROW is COMPLETED (not stuck IN_FLIGHT)", job2Row?.status === "COMPLETED" && job2Row.datasetId === out1.datasetId, `row=${job2Row?.status}`);
 
       // Quota counter incremented (billable attempts).
       const usageAfter = await readCdseUsage();
