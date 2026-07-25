@@ -50,6 +50,7 @@
     "verify:ttb": "tsx --conditions=react-server --env-file=.env scripts/verify-ttb.ts",
     "verify:planting-geometry": "tsx --conditions=react-server --env-file=.env scripts/verify-planting-geometry.ts",
     "verify:ndvi": "tsx --conditions=react-server --env-file=.env scripts/verify-ndvi.ts",
+    "verify:ndvi-display": "tsx --conditions=react-server --env-file=.env scripts/verify-ndvi-display.ts",
     "verify:bond": "tsx --conditions=react-server --env-file=.env scripts/verify-bond.ts",
     "verify:taxclass": "tsx --conditions=react-server --env-file=.env scripts/verify-taxclass.ts",
     "verify:taxpaid": "tsx --conditions=react-server --env-file=.env scripts/verify-taxpaid.ts",
