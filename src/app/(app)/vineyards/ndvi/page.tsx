@@ -1,4 +1,5 @@
 import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
+import { isTenantAdminLike } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { Eyebrow } from "@/components/ui";
 import { NdviConsole, type NdviJobRow, type NdviBlockRow } from "./NdviConsole";
@@ -12,7 +13,7 @@ export default async function NdviConsolePage({ searchParams }: { searchParams: 
   const sp = await searchParams;
 
   const vineyards =
-    user.role === "admin"
+    isTenantAdminLike(user) // admin OR developer — all-access to the active tenant's vineyards
       ? await prisma.vineyard.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })
       : user.vineyardIds.length
         ? await prisma.vineyard.findMany({ where: { id: { in: user.vineyardIds } }, orderBy: { name: "asc" }, select: { id: true, name: true } })
