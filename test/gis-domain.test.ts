@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { resolveDomain, toWeightedSamples, MIN_DOMAIN_SPREAD, ABSOLUTE_NDVI_MIN, ABSOLUTE_NDVI_MAX } from "@/lib/gis/domain";
-import { fixedDomain, type WeightedSample } from "@/lib/gis/color";
+import { fixedDomain } from "@/lib/gis/color";
+import type { WeightedSample } from "@/lib/gis/zonal";
 import { ndviHistogram } from "@/lib/gis/histogram";
 import { NO_DATA } from "@/lib/gis/ndvi";
 
