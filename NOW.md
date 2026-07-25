@@ -7,25 +7,31 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Vineyard Intelligence P2 — NDVI core (data half of Release 1B). All 11 plan units BUILT + tested.**
-Plan: `docs/GIS/phases/phase-2-ndvi-core-plan.md`. Branches: schema slice **[PR #495](https://github.com/russellmoss/wine-inventory/pull/495)** (`feat/vi-p2-ndvi-core`);
-feature units on `feat/vi-p2-ndvi-impl` (stacked, PR pending push).
+**NEXT: Vineyard Intelligence P3 — NDVI DISPLAY (viz half of Release 1B). ⬜ Not started.**
+NDVI raster map overlay + scale modes (vineyard-relative p5–p95, absolute, locked, baseline, custom) + palette +
+legend + histogram + date comparison. Renders directly from what P2 stored: the `SpatialDataset` raster (blob) +
+`BlockSpatialMetric` per-block stats — the mask is already validated, so P3 doesn't redo it. Inherits `render.ts`/
+`color.ts`. Plan next via `/plan`. Scale-register tripwire (>2M-px streaming) is load-bearing; decoder refuses >4M px.
 
-- **U1 schema (LIVE IN PROD):** 5 tenant-scoped tables (`spatial_scene`/`spatial_dataset`/`spatial_analysis_job`/
-  `block_spatial_metric`/`cdse_usage_counter`) + `vineyard.ndviAutoAdd`. Migrations applied via `migrate deploy`;
-  `verify:tenant-isolation` green (139 tables RLS-covered), `verify:naming` 25/25.
-- **U2 decoder:** `geotiff.js` → band planes bit-exact vs the P0 Python tifffile oracle on a committed REAL scene
-  (56×67, EPSG 32617). **Grid fix: `buildProcessRequest` snaps the UTM bbox to 10 m → SQUARE pixels** (CDSE was
-  emitting non-square, ~3px drift at estate scale). C6 contract asserted (Float32, non-interleaved, no BigTIFF, no worker).
-- **U3 scene selection · U4 processing (C1 idempotent materialization) · U5 block metrics (mask gate + Y-FLIP proven
-  by value + 0.5 valid floor) · U6 sweep+cron (DARK auto-add) · U7 quota · U8 assistant (`process_ndvi`/`query_ndvi_stats`
-  + goldens, `verify:ai-native` GREEN) · U9 `verify:ndvi` · U10 thin console `/vineyards/ndvi`.**
-- **✅ PROOF (`verify:ndvi`, DB e2e on Demo): per-block NDVI means [0.597, 0.725] LAND IN THE DB** with full provenance
-  (harmonize=false, NEAREST, baseline 05.12, Copernicus attribution, typed geotransform), C1 idempotency (2nd job adopts,
-  fetch stays 1), quota counter, MASK_BREAKING refusal.
+<details><summary>✅ Vineyard Intelligence P2 — NDVI core (data half) — SHIPPED + LIVE IN PROD 2026-07-25</summary>
 
-▶️ **NEXT:** push `feat/vi-p2-ndvi-impl` + open the feature PR; `/review`; browser-QA the console via Claude-in-Chrome
-(user logs in with Demo creds); then merge #495 first, then the feature PR. **Deferred:** display/scale-modes/map = P3.
+All 11 units merged: schema slice **[#495](https://github.com/russellmoss/wine-inventory/pull/495)** + feature units
+**[#496](https://github.com/russellmoss/wine-inventory/pull/496)** (squash-merged to main; prod deploy `B6D8Lm9H` success).
+Plan `docs/GIS/phases/phase-2-ndvi-core-plan.md` (completed) · report `phase-2-report.md`.
+
+- 5 tenant-scoped tables (`spatial_scene`/`spatial_dataset`/`spatial_analysis_job`/`block_spatial_metric`/`cdse_usage_counter`)
+  + `vineyard.ndviAutoAdd`; `geotiff.js` decoder (bit-exact vs P0 tifffile); C1 idempotent-materialization outbox;
+  block metrics (mask gate + Y-FLIP + 0.5 floor); sweep+cron (DARK auto-add); quota; `process_ndvi`/`query_ndvi_stats`
+  assistant tools; thin console `/vineyards/ndvi`.
+- **PROVEN via `verify:ndvi` (DB e2e) + TWO browser-QA passes** (Claude-in-Chrome, Demo login): per-block NDVI means land
+  in the DB (0.591/0.768/0.670; live Oakville 0.443 in UTM 10N), full provenance, C1 idempotency, WITHHELD/low-coverage.
+- ⚠️ **NEW gotchas (see [[vineyard-intelligence-p2-plan]]):** (1) CDSE non-square pixels → `buildProcessRequest` snaps UTM
+  bbox to 10 m; (2) the Y-FLIP (`rasterRow = H-1-gridRow`); (3) the adopt path must persist COMPLETED to the JOB ROW,
+  not just return it (browser QA caught the IN_FLIGHT leak — `verify:ndvi` now asserts the row); (4) console all-access =
+  `isTenantAdminLike` (admin OR developer), not `role==="admin"`; (5) scripts driving the adapter need `--conditions=react-server`.
+</details>
+
+<details><summary>Grower module → Vendor parity (plan 095, #489) — SHIPPED (PR #493, live in prod)</summary>
 
 <details><summary>Grower module → Vendor parity (plan 095, #489) — SHIPPED (PR #493, live in prod)</summary>
 
