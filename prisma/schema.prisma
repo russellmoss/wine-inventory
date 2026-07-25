@@ -436,6 +436,7 @@ model Vineyard {
   abbreviation       String? // 2–4 uppercase code for lot codes (GS, NT). Nullable→backfilled; Postgres unique allows multiple NULLs.
   isActive           Boolean                @default(true)
   plantingMigratedAt DateTime? // VI-P1: set when the vineyard's blocks were migrated into planting areas (all-or-nothing gate). NULL = not migrated.
+  ndviAutoAdd        Boolean                @default(false) // VI-P2: DARK per-vineyard flag — cron auto-enqueues the best new clear NDVI scene ONLY when true (rule §2.8, default off)
   createdAt          DateTime               @default(now())
   components         VesselComponent[]
   bottlingSources    BottlingSource[]
@@ -594,6 +595,213 @@ model VineyardSubblock {
   @@index([blockId])
   @@index([tenantId])
   @@map("vineyard_subblock")
+}
+
+// ───────────────────────── Vineyard Intelligence P2: spatial analysis (NDVI core) ─────────────────────────
+// The data half of brief Release 1B. One estate-wide Sentinel-2 scene per date → masked NDVI raster in blob
+// → per-block statistics in Postgres, all with full radiometric provenance and behind a cron-driven claim-first
+// outbox (ADR 0009 — no worker/queue). Mirrors the AccountingDelivery outbox + IngestedInvoice blob-metadata
+// patterns. All five tables follow the AGENTS.md Phase-12 checklist (tenantId + RLS + composite lineage FKs).
+// Cross-tenant-risk FKs are RAW-SQL composite (tenantId, refId)→(tenantId, id) — plain String cols, NO Prisma
+// @relation (K11, the accounting/ingestion family precedent), so schema stays lean and RLS still enforces.
+
+// The raster's materialization state. The INFLIGHT placeholder is written on the datasetIdentity key BEFORE
+// the external fetch (council C1) so a second concurrent claimant backs off instead of double-spending requests.
+enum SpatialDatasetStatus {
+  INFLIGHT // placeholder claimed; fetch/decode in progress (a second claimant on the same identity backs off)
+  READY // raster stored in blob, provenance complete
+  FAILED // terminal failure (validation etc.); a retry mints a fresh identity only if the recipe changes
+}
+
+// What a SpatialDataset holds. RASTER only in P2; kept as an enum for the P3+ display/derivative story.
+enum SpatialDatasetKind {
+  RASTER
+}
+
+// The spatial index a dataset/metric represents. NDVI only in P2 (other indices are a Later bucket — a new
+// value is an isolated ALTER TYPE migration, the Windows enum rule).
+enum SpatialMetric {
+  NDVI
+}
+
+// What kind of analysis a job runs. NDVI_SCENE only in P2.
+enum SpatialJobKind {
+  NDVI_SCENE
+}
+
+// The outbox lifecycle (mirror DeliveryStatus). WITHHELD = a typed non-retryable hold (quota-exhausted until
+// the next billing window, selection-miss after top-3 exhausted, low-coverage, mask-breaking).
+enum SpatialJobStatus {
+  PENDING
+  IN_FLIGHT // claimed by a sweep (lease held)
+  PROCESSING // fetch/decode/compute underway
+  COMPLETED
+  FAILED
+  WITHHELD
+}
+
+// An immutable satellite scene selected for a vineyard "around a date". Provenance-complete: the STAC
+// processing baseline (NOT the Process API serviceVersion), the requested-vs-acquired date drift (S2), and
+// Copernicus attribution all live here. Keyed on (tenant, vineyard, providerSceneId) — the same scene is
+// selected once. `provider`/`collection`/`processingLevel`/`processingBaseline` are provenance strings.
+model SpatialScene {
+  tenantId            String   @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
+  id                  String   @id @default(cuid())
+  vineyardId          String // composite FK → vineyard(tenantId, id) (raw SQL, K11)
+  provider            String // "CDSE" (Copernicus Data Space Ecosystem)
+  collection          String // STAC collection, e.g. "sentinel-2-l2a"
+  providerSceneId     String // the STAC item id (e.g. S2A_MSIL2A_...)
+  requestedDateTarget DateTime // S2: the "around this date" target the user asked for
+  acquiredAt          DateTime // S2: the scene's real acquisition datetime (the analysis axis; offset is derived)
+  bounds              Json // AOI/scene footprint used (GeoJSON bbox/polygon, WGS84)
+  sceneCloudCover     Decimal  @db.Decimal(6, 3) // STAC eo:cloud_cover % (coarse rank, 0–100)
+  processingBaseline  String // ESA processing baseline from the CDSE STAC processing:version (runbook §2.13)
+  processingLevel     String // e.g. "L2A"
+  selectionReason     String // why this scene won (footprint-contained + lowest-cloud, auto-advance rank, etc.)
+  attribution         String // Copernicus attribution string (copernicusAttribution(year))
+  createdBy           String? // actor userId who selected it (null for cron auto-add)
+  createdAt           DateTime @default(now())
+
+  @@unique([tenantId, vineyardId, providerSceneId]) // one immutable scene per (vineyard, provider scene)
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — spatial_dataset.sceneId references this
+  @@index([tenantId])
+  @@index([tenantId, vineyardId])
+  @@map("spatial_scene")
+}
+
+// The stored NDVI raster: bytes in @vercel/blob (private, tenant-namespaced, deterministic key from the
+// identity), metadata + typed geotransform here (mirrors IngestedInvoice's "bytes in blob, key in Postgres").
+// `datasetIdentity` = hash(vineyardId, providerSceneId, recipeHash) where recipeHash = harmonizeValues +
+// maskPolicy + resampling + algorithmVersion (council C1). The INFLIGHT placeholder lands on this unique BEFORE
+// the fetch; the blob key is derived from the identity (NOT the sha256) so materialization is idempotent.
+model SpatialDataset {
+  tenantId         String               @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id               String               @id @default(cuid())
+  vineyardId       String // composite FK → vineyard(tenantId, id)
+  sceneId          String // composite FK → spatial_scene(tenantId, id)
+  datasetIdentity  String // hash(vineyardId, providerSceneId, recipeHash) — the up-front idempotency key (C1)
+  kind             SpatialDatasetKind   @default(RASTER)
+  metric           SpatialMetric        @default(NDVI)
+  status           SpatialDatasetStatus @default(INFLIGHT) // INFLIGHT placeholder → READY on store → FAILED terminal
+  algorithmVersion String // the NDVI algorithm version baked into recipeHash (provenance + identity)
+  blobUrl          String? // private Vercel Blob URL (null until READY)
+  blobKey          String? // deterministic key derived from datasetIdentity (null until READY)
+  blobSha256       String? // content hash of the stored raster (audit; null until READY)
+  byteSize         Int? // stored raster size in bytes (null until READY)
+  crsEpsg          Int? // raster CRS (metric UTM zone)
+  // Typed geotransform (NOT loose Json — the clipper depends on it, council S-decision).
+  originX          Decimal?             @db.Decimal(14, 4) // grid origin easting (m)
+  originY          Decimal?             @db.Decimal(14, 4) // grid origin northing (m)
+  pixelSizeM       Decimal?             @db.Decimal(10, 4) // pixel size (m); 10 m native
+  gridWidth        Int? // raster width (px)
+  gridHeight       Int? // raster height (px)
+  axisYSign        Int? // +1 (y-up, lower-left origin) or -1 (y-down); PixelGrid rebuild depends on it
+  // Radiometric provenance (runbook §2.13 — the pinned contract, recorded, never re-derived).
+  harmonizeValues  Boolean              @default(false) // MUST be false (harmonize fabricates NDVI=1.0)
+  sclResampling    String? // "NEAREST" (20 m SCL → 10 m grid)
+  maskDilation     Int                  @default(0) // S3: SCL halo honesty — 0 = no dilation
+  processingUnits  Decimal?             @db.Decimal(12, 4) // CDSE PU billed for the fetch
+  processingBaseline String? // ESA baseline snapshot (also on the scene; carried for a self-contained provenance)
+  attribution      String? // Copernicus attribution
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@unique([tenantId, datasetIdentity]) // C1: up-front idempotency — the INFLIGHT placeholder claims this
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — block_spatial_metric.datasetId references this
+  @@index([tenantId])
+  @@index([tenantId, vineyardId])
+  @@index([tenantId, sceneId])
+  @@map("spatial_dataset")
+}
+
+// The cron-driven claim-first outbox row (mirror AccountingDelivery). One job per (tenant, idempotencyKey).
+// `sceneId`/`datasetId` are lifecycle pointers filled as the job progresses (soft refs, no hard FK — the
+// outbox precedent). `withheldReason`/`faultClass` are typed-in-code String unions (mirror
+// AccountingDelivery.withheldReason String) so a new reason never needs an ALTER TYPE.
+model SpatialAnalysisJob {
+  tenantId          String           @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                String           @id @default(cuid())
+  vineyardId        String // composite FK → vineyard(tenantId, id)
+  kind              SpatialJobKind   @default(NDVI_SCENE)
+  status            SpatialJobStatus @default(PENDING)
+  idempotencyKey    String // per-tenant idempotent (e.g. ndvi:${vineyardId}:${providerSceneId}:${recipeHash})
+  sceneId           String? // set once the scene is selected/created (soft ref)
+  datasetId         String? // set once the dataset is materialized (soft ref)
+  params            Json // the top-3 ranked candidates + requestedDateTarget + AOI (the auto-advance payload, C4)
+  attemptCount      Int              @default(0)
+  claimedAt         DateTime?
+  leaseExpiresAt    DateTime? // set > 300 s + slack (CDSE took 135 s live; no heartbeat infra) so a long fetch isn't reclaimed
+  withheldReason    String? // typed union: "quota-exhausted" | "selection-miss" | "low-coverage" | "mask-breaking" | "no-candidates"
+  faultClass        String? // typed union from classifyFault: "quota" | "rate_limit" | "validation" | "transient"
+  lastError         String?
+  processingVersion String? // the STAC/Process processing version observed
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@unique([tenantId, idempotencyKey]) // idempotent enqueue
+  @@index([tenantId])
+  @@index([tenantId, status]) // the sweep claims by status
+  @@index([tenantId, vineyardId])
+  @@map("spatial_analysis_job")
+}
+
+// An IMMUTABLE per-block statistics snapshot (council Q1). Permanently bound to the geometryVersion it was
+// computed against — geometryVersion is IN the uniqueness key so a v3 and a v4 reading coexist and history is
+// never overwritten. A boundary edit ANNOTATES via geometry-version.markStaleFor, never hides/invalidates
+// these rows. Below the 0.5 valid floor (council Q3) the summary stats are null + qualityFlags carries
+// INSUFFICIENT_VALID_COVERAGE (counts + coverage still recorded — never a biased partial-coverage mean).
+model BlockSpatialMetric {
+  tenantId               String        @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                     String        @id @default(cuid())
+  blockId                String // composite FK → vineyard_block(tenantId, id)
+  datasetId              String // composite FK → spatial_dataset(tenantId, id)
+  vineyardId             String // denormalized for per-vineyard reads (plain indexed column, no FK — avoids a redundant cascade path)
+  metric                 SpatialMetric @default(NDVI)
+  acquiredAt             DateTime // copied from the dataset's scene (the analysis axis)
+  // ZonalStats (P0) — Decimal, NULLABLE (null below the valid floor).
+  min                    Decimal?      @db.Decimal(8, 5)
+  p10                    Decimal?      @db.Decimal(8, 5)
+  p25                    Decimal?      @db.Decimal(8, 5)
+  median                 Decimal?      @db.Decimal(8, 5)
+  mean                   Decimal?      @db.Decimal(8, 5)
+  p75                    Decimal?      @db.Decimal(8, 5)
+  p90                    Decimal?      @db.Decimal(8, 5)
+  max                    Decimal?      @db.Decimal(8, 5)
+  stdDev                 Decimal?      @db.Decimal(8, 5)
+  intersectingPixelCount Int // pixels whose footprint intersects the block
+  validPixelCount        Int // intersecting pixels that survived the SCL mask
+  effectivePixelCount    Decimal       @db.Decimal(14, 4) // S4: Σcoverage weights — the weighted-mean denominator
+  validFraction          Decimal       @db.Decimal(7, 6) // validPixelCount / intersectingPixelCount, [0,1]
+  coveredAreaM2          Decimal       @db.Decimal(16, 2) // Σcoverage × pixelArea
+  mixedPixelShare        Decimal       @db.Decimal(7, 6) // share of partial-coverage (edge) pixels, [0,1]
+  qualityFlags           Json // e.g. ["INSUFFICIENT_VALID_COVERAGE"]
+  processingVersion      String? // provenance passthrough
+  geometryVersion        Int // Q1: the block geometry version these stats were computed against (IN the unique key)
+  geometryFingerprint    String // Q1: the canonical-form fingerprint of that geometry
+  createdAt              DateTime      @default(now())
+
+  @@unique([tenantId, blockId, datasetId, metric, geometryVersion]) // Q1/C2: versions coexist, history never overwritten
+  @@index([tenantId])
+  @@index([tenantId, blockId])
+  @@index([tenantId, datasetId])
+  @@index([tenantId, vineyardId, metric]) // read the latest metric for a vineyard
+  @@map("block_spatial_metric")
+}
+
+// Per-tenant/month CDSE quota + blob-egress telemetry (mirror WeighTagCounter's one-row-per-key shape).
+// Counts BILLABLE PROVIDER ATTEMPTS, not successful datasets (S6) — a failed fetch still spends a request/PU.
+// Drives the visible quota counter + the DARK auto-add headroom gate (rule §2.8). Atomic upsert increments.
+model CdseUsageCounter {
+  tenantId        String   @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  yearMonth       String // "YYYY-MM" (the tenant's billing bucket)
+  requestCount    Int      @default(0) // billable provider requests (success or fail)
+  processingUnits Decimal  @default(0) @db.Decimal(14, 4) // CDSE PU consumed
+  blobEgressBytes BigInt   @default(0) // raster bytes read out of blob
+  updatedAt       DateTime @updatedAt
+
+  @@id([tenantId, yearMonth]) // one row per tenant per month
+  @@index([tenantId])
+  @@map("cdse_usage_counter")
 }
 
 // ───────────────────────── Vineyard operations: field notes ─────────────────────────
