@@ -1,0 +1,188 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Card } from "@/components/ui";
+import { SatelliteMap } from "@/components/ui/SatelliteMap.client";
+import type { SerializedBlock } from "@/lib/vineyard/data";
+import type { MapOverlay } from "@/lib/gis/overlay";
+import { PALETTES, type ColorScaleMode } from "@/lib/gis/color";
+import { NdviLegend, type DisplayMetaLite } from "./NdviLegend";
+
+export type NdviDataset = { id: string; acquiredAt: string | null };
+
+const PROMINENT: { mode: ColorScaleMode; label: string; hint: string }[] = [
+  { mode: "VINEYARD_SCENE", label: "Vineyard relative", hint: "p5–p95 across this vineyard — the default. Shows where vigor differs inside the block." },
+  { mode: "ABSOLUTE", label: "Absolute", hint: "A fixed NDVI scale (−0.2 … 0.9). Compare true values across vineyards and dates." },
+  { mode: "COMPARISON_LOCKED", label: "Locked", hint: "A fixed span for honest date-to-date comparison (set in Compare)." },
+];
+const ADVANCED: { mode: ColorScaleMode; label: string; hint: string }[] = [
+  { mode: "BLOCK_SCENE", label: "Block relative", hint: "p5–p95 — same as vineyard-relative here (per-block domains arrive with block masks)." },
+  { mode: "VINEYARD_BASELINE", label: "Baseline", hint: "Read this scene against a saved baseline domain." },
+  { mode: "CUSTOM", label: "Custom", hint: "Your own fixed min/max." },
+];
+
+const label = { fontSize: 12, color: "var(--text-secondary)" } as const;
+const control: React.CSSProperties = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", fontSize: 13, background: "var(--surface, #fff)" };
+
+export function NdviMapPanel({
+  datasets,
+  blocks,
+  center,
+  vineyardName,
+}: {
+  datasets: NdviDataset[];
+  blocks: SerializedBlock[];
+  center: { lat: number; lng: number } | null;
+  vineyardName: string;
+}) {
+  const [datasetId, setDatasetId] = useState<string | null>(datasets[0]?.id ?? null);
+  const [mode, setMode] = useState<ColorScaleMode>("VINEYARD_SCENE");
+  const [paletteId, setPaletteId] = useState<string>("vigor-classic");
+  const [reverse, setReverse] = useState(false);
+  const [opacity, setOpacity] = useState(0.8);
+  const [nearest, setNearest] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [meta, setMeta] = useState<DisplayMetaLite | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const resampling = nearest ? "nearest" : "bilinear";
+
+  // React Compiler auto-memoizes; keep these as plain derived values (manual useMemo would fight it).
+  const styleParams = new URLSearchParams({ mode, paletteId, reverse: reverse ? "1" : "0", opacity: String(opacity), resampling });
+  if (mode === "ABSOLUTE") {
+    styleParams.set("fmin", "-0.2");
+    styleParams.set("fmax", "0.9");
+  }
+  const query = styleParams.toString();
+  const imageUrl = datasetId ? `/api/spatial/ndvi/${datasetId}/display?${query}` : null;
+
+  // Fetch the legend metadata (domain + histogram + bbox) whenever the dataset/style changes.
+  useEffect(() => {
+    if (!datasetId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing the layer when no scene is selected
+      setMeta(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/spatial/ndvi/${datasetId}/display?${query}&meta=1`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error ?? `HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((m: DisplayMetaLite) => {
+        if (!cancelled) setMeta(m);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load the NDVI layer.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [datasetId, query]);
+
+  const overlays: MapOverlay[] =
+    imageUrl && meta?.wgs84Bbox
+      ? [{ kind: "raster", id: `ndvi-${datasetId}-${query}`, imageUrl, bounds: meta.wgs84Bbox, opacity, resampling }]
+      : [];
+
+  const pickMode = (m: ColorScaleMode) => setMode(m);
+
+  if (datasets.length === 0) {
+    return (
+      <Card>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, margin: "0 0 6px" }}>NDVI map</h2>
+        <p style={{ color: "var(--text-secondary)", margin: 0, fontSize: 14 }}>
+          No processed NDVI scene yet. Queue a look above; once it processes, the map appears here.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, margin: 0 }}>NDVI map</h2>
+        <label style={{ ...label, display: "flex", alignItems: "center", gap: 6 }}>
+          Scene
+          <select value={datasetId ?? ""} onChange={(e) => setDatasetId(e.target.value)} style={control}>
+            {datasets.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.acquiredAt ? d.acquiredAt.slice(0, 10) : d.id.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {/* Scale-mode selector — 3 prominent + Advanced disclosure (Q2). */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "12px 0 6px" }}>
+        {PROMINENT.map((m) => (
+          <button key={m.mode} onClick={() => pickMode(m.mode)} title={m.hint} style={modeBtn(mode === m.mode)}>
+            {m.label}
+          </button>
+        ))}
+        <button onClick={() => setShowAdvanced((s) => !s)} style={modeBtn(false)}>
+          {showAdvanced ? "Advanced ▲" : "Advanced ▾"}
+        </button>
+      </div>
+      {showAdvanced && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+          {ADVANCED.map((m) => (
+            <button key={m.mode} onClick={() => pickMode(m.mode)} title={m.hint} style={modeBtn(mode === m.mode)}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Palette + display controls. */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", margin: "8px 0 12px" }}>
+        <label style={{ ...label, display: "flex", alignItems: "center", gap: 6 }}>
+          Palette
+          <select value={paletteId} onChange={(e) => setPaletteId(e.target.value)} style={control}>
+            {PALETTES.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ ...label, display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={reverse} onChange={(e) => setReverse(e.target.checked)} /> Reverse
+        </label>
+        <label style={{ ...label, display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={nearest} onChange={(e) => setNearest(e.target.checked)} /> Nearest (raw pixels)
+        </label>
+        <label style={{ ...label, display: "flex", alignItems: "center", gap: 6 }}>
+          Opacity
+          <input type="range" min={0.2} max={1} step={0.1} value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} />
+        </label>
+      </div>
+
+      <SatelliteMap lat={center?.lat ?? null} lng={center?.lng ?? null} blocks={blocks} unit="imperial" overlays={overlays} height={420} exportName={vineyardName} />
+
+      {error && <p style={{ color: "var(--danger, #b00020)", fontSize: 13, margin: "10px 0 0" }}>{error}</p>}
+      {loading && !meta && <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "10px 0 0" }}>Loading NDVI…</p>}
+      {meta && <NdviLegend meta={meta} paletteId={paletteId} reverse={reverse} mode={mode} />}
+    </Card>
+  );
+}
+
+function modeBtn(active: boolean): React.CSSProperties {
+  return {
+    padding: "5px 11px",
+    borderRadius: 8,
+    fontSize: 13,
+    cursor: "pointer",
+    border: "1px solid var(--border)",
+    background: active ? "var(--accent, #1a1a1a)" : "transparent",
+    color: active ? "var(--accent-contrast, #fff)" : "var(--text-primary)",
+    fontWeight: active ? 600 : 400,
+  };
+}

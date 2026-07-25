@@ -4,9 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui";
 import { enqueueNdviJobAction, runNdviSweepNowAction } from "@/lib/spatial/actions";
+import type { SerializedBlock } from "@/lib/vineyard/data";
+import { NdviMapPanel, type NdviDataset } from "./NdviMapPanel";
 
 export type NdviJobRow = { id: string; status: string; withheldReason: string | null; faultClass: string | null; createdAt: string };
 export type NdviBlockRow = { block: string; ndviMean: number | null; acquiredAt: string | null; validPct: number | null; flags: string[]; geometryVersion: number | null };
+export type NdviDatasetRow = NdviDataset;
 
 const STATUS_COLOR: Record<string, string> = {
   COMPLETED: "var(--success, #2e7d32)",
@@ -19,12 +22,15 @@ const STATUS_COLOR: Record<string, string> = {
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-export function NdviConsole({ vineyards, selectedId, selectedName, jobs, blocks }: {
+export function NdviConsole({ vineyards, selectedId, selectedName, jobs, blocks, mapBlocks, center, datasets }: {
   vineyards: { id: string; name: string }[];
   selectedId: string | null;
   selectedName: string | null;
   jobs: NdviJobRow[];
   blocks: NdviBlockRow[];
+  mapBlocks: SerializedBlock[];
+  center: { lat: number; lng: number } | null;
+  datasets: NdviDatasetRow[];
 }) {
   const router = useRouter();
   const [date, setDate] = useState(todayIso());
@@ -94,6 +100,11 @@ export function NdviConsole({ vineyards, selectedId, selectedName, jobs, blocks 
             The search widens ±7→14→30 days to find the clearest Sentinel-2 scene. Contains modified Copernicus Sentinel data.
           </p>
         </Card>
+      )}
+
+      {/* NDVI map (P3) */}
+      {selectedId && (
+        <NdviMapPanel datasets={datasets} blocks={mapBlocks} center={center} vineyardName={selectedName ?? "Vineyard"} />
       )}
 
       {/* Per-block NDVI */}
