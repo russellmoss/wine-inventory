@@ -163,4 +163,21 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     tool: "query_ndvi_stats",
     args: { vineyard: "Russian River Ranch", block: "3" },
   },
+  // VI-P3 — NDVI date COMPARISON (change over time). Distinct from a single-date read (query_ndvi_stats).
+  {
+    utterance: "How has the NDVI changed in Estate Vineyard since last month?",
+    tool: "compare_ndvi_dates",
+    args: { vineyard: "Estate Vineyard" },
+    note: "change-over-time is a comparison, not a single-date read",
+  },
+  {
+    utterance: "Compare vine vigour in Home Block between 2026-06-01 and 2026-07-01",
+    tool: "compare_ndvi_dates",
+    args: { vineyard: "Home Block", fromDate: "2026-06-01", toDate: "2026-07-01" },
+  },
+  {
+    utterance: "Is Russian River Ranch greening up compared to the last scene?",
+    tool: "compare_ndvi_dates",
+    args: { vineyard: "Russian River Ranch" },
+  },
 ];
