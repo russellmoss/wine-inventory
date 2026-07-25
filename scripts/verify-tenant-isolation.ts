@@ -211,6 +211,19 @@ async function main() {
   await owner.vineyardPlantingArea.upsert({ where: { id: "iso_pa_b" }, update: {}, create: { id: "iso_pa_b", vineyardId: "iso_vy_b", name: "ISO PA B", geometry: isoGeom, geometryFingerprint: "iso-b", canonicalAnchor: isoAnchor, source: "DRAW", tenantId: B, updatedAt: now } });
   await owner.vineyardGeometryVersion.upsert({ where: { id: "iso_gv_a" }, update: {}, create: { id: "iso_gv_a", subjectType: "PLANTING_AREA", subjectId: "iso_pa_a", version: 1, geometry: isoGeom, fingerprint: "iso-a", canonicalAnchor: isoAnchor, tenantId: A } });
   await owner.vineyardGeometryVersion.upsert({ where: { id: "iso_gv_b" }, update: {}, create: { id: "iso_gv_b", subjectType: "PLANTING_AREA", subjectId: "iso_pa_b", version: 1, geometry: isoGeom, fingerprint: "iso-b", canonicalAnchor: isoAnchor, tenantId: B } });
+  // VI-P2: a spatial scene → dataset → block metric chain + a job + a usage counter per tenant. The lineage
+  // FKs (dataset→scene, metric→dataset, metric→block) are composite (tenantId, refId) → (tenantId, id) (K11).
+  const isoBounds = { type: "bbox", coordinates: [0, 0, 1, 1] };
+  await owner.spatialScene.upsert({ where: { id: "iso_scene_a" }, update: {}, create: { id: "iso_scene_a", tenantId: A, vineyardId: "iso_vy_a", provider: "CDSE", collection: "sentinel-2-l2a", providerSceneId: "ISO-SCENE-A", requestedDateTarget: now, acquiredAt: now, bounds: isoBounds, sceneCloudCover: "5.000", processingBaseline: "05.11", processingLevel: "L2A", selectionReason: "iso", attribution: "Copernicus" } });
+  await owner.spatialScene.upsert({ where: { id: "iso_scene_b" }, update: {}, create: { id: "iso_scene_b", tenantId: B, vineyardId: "iso_vy_b", provider: "CDSE", collection: "sentinel-2-l2a", providerSceneId: "ISO-SCENE-B", requestedDateTarget: now, acquiredAt: now, bounds: isoBounds, sceneCloudCover: "5.000", processingBaseline: "05.11", processingLevel: "L2A", selectionReason: "iso", attribution: "Copernicus" } });
+  await owner.spatialDataset.upsert({ where: { id: "iso_ds_a" }, update: {}, create: { id: "iso_ds_a", tenantId: A, vineyardId: "iso_vy_a", sceneId: "iso_scene_a", datasetIdentity: "iso-identity-a", algorithmVersion: "ndvi-1", status: "READY", updatedAt: now } });
+  await owner.spatialDataset.upsert({ where: { id: "iso_ds_b" }, update: {}, create: { id: "iso_ds_b", tenantId: B, vineyardId: "iso_vy_b", sceneId: "iso_scene_b", datasetIdentity: "iso-identity-b", algorithmVersion: "ndvi-1", status: "READY", updatedAt: now } });
+  await owner.spatialAnalysisJob.upsert({ where: { id: "iso_job_a" }, update: {}, create: { id: "iso_job_a", tenantId: A, vineyardId: "iso_vy_a", idempotencyKey: "iso-job-a", params: {} } });
+  await owner.spatialAnalysisJob.upsert({ where: { id: "iso_job_b" }, update: {}, create: { id: "iso_job_b", tenantId: B, vineyardId: "iso_vy_b", idempotencyKey: "iso-job-b", params: {} } });
+  await owner.blockSpatialMetric.upsert({ where: { id: "iso_bsm_a" }, update: {}, create: { id: "iso_bsm_a", tenantId: A, blockId: "iso_blk_a", datasetId: "iso_ds_a", vineyardId: "iso_vy_a", acquiredAt: now, mean: "0.55000", intersectingPixelCount: 100, validPixelCount: 90, effectivePixelCount: "88.5000", validFraction: "0.900000", coveredAreaM2: "8850.00", mixedPixelShare: "0.100000", qualityFlags: [], geometryVersion: 1, geometryFingerprint: "iso-a" } });
+  await owner.blockSpatialMetric.upsert({ where: { id: "iso_bsm_b" }, update: {}, create: { id: "iso_bsm_b", tenantId: B, blockId: "iso_blk_b", datasetId: "iso_ds_b", vineyardId: "iso_vy_b", acquiredAt: now, mean: "0.55000", intersectingPixelCount: 100, validPixelCount: 90, effectivePixelCount: "88.5000", validFraction: "0.900000", coveredAreaM2: "8850.00", mixedPixelShare: "0.100000", qualityFlags: [], geometryVersion: 1, geometryFingerprint: "iso-b" } });
+  await owner.cdseUsageCounter.upsert({ where: { tenantId_yearMonth: { tenantId: A, yearMonth: "2026-07" } }, update: {}, create: { tenantId: A, yearMonth: "2026-07", requestCount: 3, processingUnits: "2.6760", blobEgressBytes: BigInt(730000), updatedAt: now } });
+  await owner.cdseUsageCounter.upsert({ where: { tenantId_yearMonth: { tenantId: B, yearMonth: "2026-07" } }, update: {}, create: { tenantId: B, yearMonth: "2026-07", requestCount: 3, processingUnits: "2.6760", blobEgressBytes: BigInt(730000), updatedAt: now } });
   // Phase 15: an accounting_connection (the token table) per tenant, plus a cost_export_event in A
   // (composite-FK target for the delivery-uniqueness check). DISCONNECTED + null tokens satisfies the
   // SEC-S5 CHECK; null realmId keeps the one-realm partial-unique out of the way.
@@ -621,6 +634,25 @@ async function main() {
     } catch { openVersionRaised = true; }
     check("second OPEN geometry version for a subject rejected (partial unique)", openVersionRaised);
 
+    // 5c-VI-P2. NDVI core tables: RLS isolation on all five, WITH CHECK on a foreign INSERT, and the
+    // metric→dataset composite (tenantId, datasetId) FK (K11) rejecting a cross-tenant lineage reference.
+    check("tenant A sees its own spatial_scene", (await asTenant(A, (db) => db.spatialScene.findFirst({ where: { id: "iso_scene_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's spatial_scene (RLS)", (await asTenant(A, (db) => db.spatialScene.findFirst({ where: { id: "iso_scene_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's spatial_dataset (RLS)", (await asTenant(A, (db) => db.spatialDataset.findFirst({ where: { id: "iso_ds_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's spatial_analysis_job (RLS)", (await asTenant(A, (db) => db.spatialAnalysisJob.findFirst({ where: { id: "iso_job_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's block_spatial_metric (RLS)", (await asTenant(A, (db) => db.blockSpatialMetric.findFirst({ where: { id: "iso_bsm_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's cdse_usage_counter (RLS)", (await asTenant(A, (db) => db.cdseUsageCounter.findFirst({ where: { tenantId: B, yearMonth: "2026-07" } }))) === null);
+    let sceneInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.spatialScene.create({ data: { id: "iso_scene_x", tenantId: B, vineyardId: "iso_vy_a", provider: "CDSE", collection: "sentinel-2-l2a", providerSceneId: "ISO-SCENE-X", requestedDateTarget: new Date(), acquiredAt: new Date(), bounds: {}, sceneCloudCover: "1.000", processingBaseline: "05.11", processingLevel: "L2A", selectionReason: "x", attribution: "Copernicus" } }));
+    } catch { sceneInsertRaised = true; }
+    check("foreign-tenant spatial_scene INSERT raises (WITH CHECK)", sceneInsertRaised);
+    let metricFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.blockSpatialMetric.create({ data: { id: "iso_bsm_x", tenantId: A, blockId: "iso_blk_a", datasetId: "iso_ds_b", vineyardId: "iso_vy_a", acquiredAt: new Date(), intersectingPixelCount: 1, validPixelCount: 1, effectivePixelCount: "1.0000", validFraction: "1.000000", coveredAreaM2: "1.00", mixedPixelShare: "0.000000", qualityFlags: [], geometryVersion: 1, geometryFingerprint: "x" } }));
+    } catch { metricFkRaised = true; }
+    check("metric cross-tenant dataset reference rejected (composite FK, K11)", metricFkRaised);
+
     // 5d. Phase 15: accounting_connection (the ENCRYPTED-TOKEN table) is tenant-isolated through the
     // pooled endpoint. This is the one that matters most — a leak here is a cross-tenant token read.
     const aSeesConnB = await asTenant(A, (db) => db.accountingConnection.findFirst({ where: { id: "iso_acct_conn_b" } }));
@@ -994,6 +1026,13 @@ async function main() {
     await owner.location.deleteMany({ where: { id: { in: ["iso_loc_a", "iso_loc_b"] } } });
     await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_b" } });
     await owner.brixLog.deleteMany({ where: { id: { in: ["iso_brix_a", "iso_brix_b"] } } });
+    // VI-P2: metrics → jobs → datasets → scenes → counters (counters FK org RESTRICT; the rest also cascade
+    // off the vineyard delete below, but delete explicitly, child→parent, before blocks/vineyards drop).
+    await owner.blockSpatialMetric.deleteMany({ where: { id: { in: ["iso_bsm_a", "iso_bsm_b", "iso_bsm_x"] } } });
+    await owner.spatialAnalysisJob.deleteMany({ where: { id: { in: ["iso_job_a", "iso_job_b"] } } });
+    await owner.spatialDataset.deleteMany({ where: { id: { in: ["iso_ds_a", "iso_ds_b"] } } });
+    await owner.spatialScene.deleteMany({ where: { id: { in: ["iso_scene_a", "iso_scene_b", "iso_scene_x"] } } });
+    await owner.cdseUsageCounter.deleteMany({ where: { yearMonth: "2026-07", tenantId: { in: [A, B] } } });
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["iso_blk_a", "iso_blk_b"] } } });
     // VI-P1: geometry_version FK's organization (RESTRICT), so delete before the org drop; planting areas
     // after their blocks (block→planting is RESTRICT) and before the vineyard (which would cascade them).
