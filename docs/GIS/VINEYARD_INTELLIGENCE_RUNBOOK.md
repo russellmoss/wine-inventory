@@ -355,7 +355,7 @@ done until its slice of the relevant §22 narrative can be demonstrated live on 
 | P1 planting geometry | 1A | 🟪 QA (PR green, awaiting merge) | [phase-1-plan](phases/phase-1-planting-geometry-plan.md) | [#494](https://github.com/russellmoss/wine-inventory/pull/494) | [phase-1](phases/phase-1-report.md) |
 | P4 soil cards | 1B | ⬜ not started | — | — | — |
 | POF offline foundation | 1C | ⬜ not started | — | — | — |
-| P2 NDVI core | 2 | 🟦 planning | — | — | — |
+| P2 NDVI core | 2 | 🟦 planning | [phase-2-plan](phases/phase-2-ndvi-core-plan.md) | — | — |
 | P5 observations + plans | 2 | ⬜ not started | — | — | — |
 | P3 NDVI display | 3 | ⬜ not started | — | — | — |
 | P6 field collection | 3 | ⬜ not started | — | — | — |
