@@ -773,4 +773,17 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { name: "roll", dimension: "count", amount: 500 },
     note: "a COUNT custom unit; amount is base items per package, no reference unit",
   },
+  // VI-P2 — process (fetch + compute) a NEW satellite NDVI scene. A WRITE (spends quota) vs the query read.
+  {
+    utterance: "Run NDVI for Estate Vineyard around June 15",
+    tool: "process_ndvi",
+    args: { vineyard: "Estate Vineyard", date: "2026-06-15" },
+    note: "fetch + compute a new scene = a write; reading existing NDVI is query_ndvi_stats",
+  },
+  {
+    utterance: "Get the latest satellite vigour for the Home Block",
+    tool: "process_ndvi",
+    args: { vineyard: "Home Block" },
+    note: "no date → defaults to today, the search widens to find a clear scene",
+  },
 ];

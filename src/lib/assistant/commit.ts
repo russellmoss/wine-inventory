@@ -68,6 +68,7 @@ import { commitRecordBulkWineCost } from "./tools/record-bulk-wine-cost";
 import { commitFileFeedback } from "./tools/file-feedback";
 import { commitCreateVendor } from "./tools/create-vendor";
 import { commitCreateGrower } from "./tools/create-grower";
+import { commitProcessNdvi } from "./tools/process-ndvi";
 import { commitCreateCustomUnit } from "./tools/create-custom-unit";
 import { commitIngestDocuments } from "./tools/ingest-documents";
 import { commitReverseIntake } from "./tools/reverse-intake";
@@ -139,6 +140,7 @@ const COMMITTERS: Record<string, Committer> = {
   file_feedback: commitFileFeedback,
   create_vendor: commitCreateVendor,
   create_grower: commitCreateGrower,
+  process_ndvi: commitProcessNdvi,
   create_custom_unit: commitCreateCustomUnit,
   ingest_documents: commitIngestDocuments,
   reverse_intake: commitReverseIntake,

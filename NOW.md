@@ -7,22 +7,33 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Grower module → Vendor parity (plan 095, ticket #489) — SHIPPED. [PR #493](https://github.com/russellmoss/wine-inventory/pull/493) squash-merged to main.**
-Decision (context-ledger, `grower` domain): Grower stays standalone; **third-party growers auto-link
-to a QBO-synced Vendor, estate growers don't** (link-if-name-exists). Shipped: schema + 2 migrations
-(backfill-then-enforce `GrowerContact`, full 9-step RLS) · read/shared + sanitizer · write core
-(contacts + vendor link) · actions + QBO push · `create_grower` assistant tool + golden + allowlist
-(grower-core out of INTERNAL) · `/setup/growers` multi-contact UI · isolation cases.
-CI GREEN + **LIVE IN PROD** (deploy `o23xav8wg` Ready; grower schema on prod).
+**Vineyard Intelligence P2 — NDVI core (data half of Release 1B). All 11 plan units BUILT + tested.**
+Plan: `docs/GIS/phases/phase-2-ndvi-core-plan.md`. Branches: schema slice **[PR #495](https://github.com/russellmoss/wine-inventory/pull/495)** (`feat/vi-p2-ndvi-core`);
+feature units on `feat/vi-p2-ndvi-impl` (stacked, PR pending push).
 
-⚠️ **Deploy was blocked ~20h by a PRE-EXISTING bug, not grower:** `.vercelignore` shipped `scripts/`
-but not `test/`, and VI-P0's `scripts/gis-p0-validate-*.ts` import `test/fixtures/gis/plantings` →
-`next build` type-check failed on EVERY prod+preview deploy since #094 merged. CI stayed green (full
-checkout). Fixed by vercelignoring `scripts` (`cc91f341`). See [[vercelignore-scripts-test-build-break]].
-**Lesson: CI green ≠ Vercel build green when `.vercelignore` strips files.**
+- **U1 schema (LIVE IN PROD):** 5 tenant-scoped tables (`spatial_scene`/`spatial_dataset`/`spatial_analysis_job`/
+  `block_spatial_metric`/`cdse_usage_counter`) + `vineyard.ndviAutoAdd`. Migrations applied via `migrate deploy`;
+  `verify:tenant-isolation` green (139 tables RLS-covered), `verify:naming` 25/25.
+- **U2 decoder:** `geotiff.js` → band planes bit-exact vs the P0 Python tifffile oracle on a committed REAL scene
+  (56×67, EPSG 32617). **Grid fix: `buildProcessRequest` snaps the UTM bbox to 10 m → SQUARE pixels** (CDSE was
+  emitting non-square, ~3px drift at estate scale). C6 contract asserted (Float32, non-interleaved, no BigTIFF, no worker).
+- **U3 scene selection · U4 processing (C1 idempotent materialization) · U5 block metrics (mask gate + Y-FLIP proven
+  by value + 0.5 valid floor) · U6 sweep+cron (DARK auto-add) · U7 quota · U8 assistant (`process_ndvi`/`query_ndvi_stats`
+  + goldens, `verify:ai-native` GREEN) · U9 `verify:ndvi` · U10 thin console `/vineyards/ndvi`.**
+- **✅ PROOF (`verify:ndvi`, DB e2e on Demo): per-block NDVI means [0.597, 0.725] LAND IN THE DB** with full provenance
+  (harmonize=false, NEAREST, baseline 05.12, Copernicus attribution, typed geotransform), C1 idempotency (2nd job adopts,
+  fetch stays 1), quota counter, MASK_BREAKING refusal.
 
-▶️ **NEXT (optional):** Demo-Winery manual QA of `/setup/growers` + the `create_grower` voice/chat path.
-Roadmap seams left clean (fruit contracts / AVA / vineyard maps hang off `grower.vendorId` + the entity).
+▶️ **NEXT:** push `feat/vi-p2-ndvi-impl` + open the feature PR; `/review`; browser-QA the console via Claude-in-Chrome
+(user logs in with Demo creds); then merge #495 first, then the feature PR. **Deferred:** display/scale-modes/map = P3.
+
+<details><summary>Grower module → Vendor parity (plan 095, #489) — SHIPPED (PR #493, live in prod)</summary>
+
+Third-party growers auto-link to a QBO-synced Vendor, estate growers don't. Schema + 2 migrations, write core,
+`create_grower` tool, `/setup/growers` UI, isolation cases. ⚠️ Deploy was blocked ~20h by a PRE-EXISTING
+`.vercelignore` bug (shipped `scripts/` not `test/`) — see [[vercelignore-scripts-test-build-break]]. **CI green ≠
+Vercel build green when `.vercelignore` strips files.**
+</details>
 
 <details><summary>Vineyard Intelligence P0 — GO verdict (done, unshipped)</summary>
 

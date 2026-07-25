@@ -114,10 +114,22 @@ export function buildProcessRequest(req: ProcessRequest): Record<string, unknown
   // Sentinel-2's native 10 m grid is only possible in a metric CRS, so the AOI's UTM zone is the
   // default and the bbox is projected into it. Correct by construction rather than by remembering.
   const utm = utmBboxFor(req.bbox);
+  // Snap the UTM bbox OUTWARD to whole multiples of the resolution. Without this, CDSE fits an integer
+  // pixel count across an arbitrary bbox and the ACTUAL x/y pixel sizes drift apart (e.g. 10.06 vs 9.98 m),
+  // i.e. NON-SQUARE pixels — a sub-pixel row/col misalignment that accumulates to whole pixels of drift at
+  // estate scale and silently corrupts a square-grid clipper. Snapping makes both spans exact multiples of
+  // `res`, so the output is Sentinel-2's true 10 m SQUARE grid. This is GRID geometry only; the radiometric
+  // contract (REFLECTANCE/DN units, harmonizeValues, NEAREST resampling) is untouched.
+  const snapped: [number, number, number, number] = [
+    Math.floor(utm.bbox[0] / res) * res,
+    Math.floor(utm.bbox[1] / res) * res,
+    Math.ceil(utm.bbox[2] / res) * res,
+    Math.ceil(utm.bbox[3] / res) * res,
+  ];
   return {
     input: {
       bounds: {
-        bbox: utm.bbox,
+        bbox: snapped,
         properties: { crs: req.outputCrs ?? utm.crsUri },
       },
       data: [
@@ -252,10 +264,19 @@ export async function fetchProcessedScene(
  * Separate from the Process call because the ESA processing baseline is NOT available from the
  * Process API, and recording Sentinel Hub's `serviceVersion` in its place would be silently wrong.
  */
+export type StacScene = {
+  id: string;
+  datetime: string | null;
+  processingVersion: string | null;
+  cloudCover: number | null;
+  /** The feature's WGS84 bbox `[minLon, minLat, maxLon, maxLat]` — the footprint-containment input (P2 C4). */
+  bbox: [number, number, number, number] | null;
+};
+
 export async function searchStacScenes(
   req: { bbox: readonly [number, number, number, number]; fromIso: string; toIso: string; maxCloudCoveragePct?: number },
   deps: ClientDeps = {},
-): Promise<{ id: string; datetime: string | null; processingVersion: string | null; cloudCover: number | null }[]> {
+): Promise<StacScene[]> {
   const doFetch = deps.fetchImpl ?? fetch;
   return withRetry(deps, async () => {
     const res = await doFetch(`${CDSE.stac}/search`, {
@@ -265,9 +286,11 @@ export async function searchStacScenes(
       body: JSON.stringify(buildStacSearchBody(req)),
     });
     if (!res.ok) throw new SatelliteFault(classifyFault(res.status), res.status, `CDSE STAC returned HTTP ${res.status}`);
-    const body = (await res.json()) as { features?: { id?: string; properties?: Record<string, unknown> }[] };
+    const body = (await res.json()) as { features?: { id?: string; bbox?: number[]; properties?: Record<string, unknown> }[] };
     return (body.features ?? []).map((f) => {
       const p = f.properties ?? {};
+      // A STAC feature bbox may be 4- or 6-tuple (with elevation); take the horizontal extent.
+      const bb = Array.isArray(f.bbox) && f.bbox.length >= 4 ? f.bbox : null;
       return {
         id: String(f.id ?? ""),
         datetime: typeof p.datetime === "string" ? p.datetime : null,
@@ -275,6 +298,7 @@ export async function searchStacScenes(
         processingVersion:
           typeof p["processing:version"] === "string" ? (p["processing:version"] as string) : null,
         cloudCover: typeof p["eo:cloud_cover"] === "number" ? (p["eo:cloud_cover"] as number) : null,
+        bbox: bb ? [bb[0], bb[1], bb[bb.length - 2], bb[bb.length - 1]] : null,
       };
     });
   });

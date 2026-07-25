@@ -48,6 +48,8 @@ import { queryMeasurementsTool } from "./tools/query-measurements";
 import { queryOperationsTool } from "./tools/query-operations";
 import { estimatePackagingNeedsTool } from "./tools/estimate-packaging-needs";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
+import { queryNdviStatsTool } from "./tools/query-ndvi-stats";
+import { processNdviTool } from "./tools/process-ndvi";
 import { describePlantingStructureTool } from "./tools/describe-planting-structure";
 import { queryFieldReportsTool } from "./tools/query-field-reports";
 import { getFieldReportFormTool } from "./tools/get-field-report-form";
@@ -139,6 +141,8 @@ const ALL_TOOLS: AssistantTool[] = [
   queryVendorsTool,
   estimatePackagingNeedsTool,
   queryVineyardStatusTool,
+  queryNdviStatsTool,
+  processNdviTool,
   describePlantingStructureTool,
   queryFieldReportsTool,
   getFieldReportFormTool,

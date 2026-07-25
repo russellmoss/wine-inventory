@@ -24,6 +24,10 @@
       "schedule": "0 14 * * *"
     },
     {
+      "path": "/api/cron/ndvi-poll",
+      "schedule": "20 15 * * *"
+    },
+    {
       "path": "/api/cron/commerce7-inventory",
       "schedule": "15 14 * * *"
     },

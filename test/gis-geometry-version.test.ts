@@ -47,11 +47,11 @@ describe("planNextVersion", () => {
       expect(t.iouFromPrev).toBeLessThanOrEqual(IOU_CORRECTION_THRESHOLD);
       expect(t.areaGeodesicM2).toBeGreaterThan(0);
       expect(Array.isArray(t.stale)).toBe(true);
-      expect(t.stale).toEqual([]); // empty in P1, but present
+      expect(t.stale).toEqual([{ kind: "NDVI", subjectId: "pa1" }]); // VI-P2: NDVI is now the wired consumer
     }
   });
 
-  it("markStaleFor returns an empty (but real) dependent set in P1", () => {
-    expect(markStaleFor("anything")).toEqual([]);
+  it("markStaleFor returns the NDVI dependent for a subject (VI-P2 — the first real consumer)", () => {
+    expect(markStaleFor("blk1")).toEqual([{ kind: "NDVI", subjectId: "blk1" }]);
   });
 });
