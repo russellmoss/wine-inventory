@@ -114,10 +114,22 @@ export function buildProcessRequest(req: ProcessRequest): Record<string, unknown
   // Sentinel-2's native 10 m grid is only possible in a metric CRS, so the AOI's UTM zone is the
   // default and the bbox is projected into it. Correct by construction rather than by remembering.
   const utm = utmBboxFor(req.bbox);
+  // Snap the UTM bbox OUTWARD to whole multiples of the resolution. Without this, CDSE fits an integer
+  // pixel count across an arbitrary bbox and the ACTUAL x/y pixel sizes drift apart (e.g. 10.06 vs 9.98 m),
+  // i.e. NON-SQUARE pixels — a sub-pixel row/col misalignment that accumulates to whole pixels of drift at
+  // estate scale and silently corrupts a square-grid clipper. Snapping makes both spans exact multiples of
+  // `res`, so the output is Sentinel-2's true 10 m SQUARE grid. This is GRID geometry only; the radiometric
+  // contract (REFLECTANCE/DN units, harmonizeValues, NEAREST resampling) is untouched.
+  const snapped: [number, number, number, number] = [
+    Math.floor(utm.bbox[0] / res) * res,
+    Math.floor(utm.bbox[1] / res) * res,
+    Math.ceil(utm.bbox[2] / res) * res,
+    Math.ceil(utm.bbox[3] / res) * res,
+  ];
   return {
     input: {
       bounds: {
-        bbox: utm.bbox,
+        bbox: snapped,
         properties: { crs: req.outputCrs ?? utm.crsUri },
       },
       data: [
