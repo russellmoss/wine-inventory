@@ -20,7 +20,7 @@ export type NdviHistogram = {
   /** The domain the bins span (echoed for the legend). */
   readonly min: number;
   readonly max: number;
-  /** Total coverage weight counted (values inside [min, max]). */
+  /** Total coverage weight counted across ALL samples (in-range + under/overflow) = sum(counts). */
   readonly total: number;
   /** Coverage weight that fell BELOW min / ABOVE max (clamped into the end bins but reported for honesty). */
   readonly underflow: number;

@@ -51,6 +51,15 @@ describe("resolveDomain: scale-mode dispatch", () => {
     expect(d.mode).toBe("COMPARISON_LOCKED");
   });
 
+  it("COMPARISON_LOCKED with NO locked domains falls back to vineyard-relative, not a 0..1 lie", () => {
+    // The single-map "Locked" button supplies no per-date domains. It must NOT collapse to fixed 0..1
+    // (which would crush real NDVI into the top of the ramp) — it shows the scene's p5–p95 instead.
+    const d = resolveDomain({ mode: "COMPARISON_LOCKED", pixels: samples([0.4, 0.5, 0.6, 0.7, 0.8]) });
+    expect(d.min).toBeGreaterThan(0.2);
+    expect(d.max).toBeLessThan(0.95);
+    expect(d.max - d.min).toBeLessThan(0.9); // definitely not the full 0..1
+  });
+
   it("toWeightedSamples drops no-data and zero-coverage", () => {
     const values = [0.5, NO_DATA, 0.7, 0.9];
     const coverage = [1, 1, 0, 0.5];

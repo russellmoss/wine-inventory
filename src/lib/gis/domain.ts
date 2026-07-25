@@ -97,8 +97,14 @@ export function resolveDomain(input: ResolveDomainInput): ResolvedDomain {
       return { ...fixedDomain(min, max, mode), clamped: false };
     }
 
-    case "COMPARISON_LOCKED":
-      return { ...lockedDomain(input.lockedDomains ?? []), clamped: false };
+    case "COMPARISON_LOCKED": {
+      // A true locked span needs the per-date domains (supplied by the comparison view). With none given
+      // — e.g. the single-map "Locked" button — fall back to the vineyard-relative domain over THIS scene's
+      // pixels rather than a meaningless fixed 0..1 (which would crush real NDVI into the top of the ramp).
+      const locked = input.lockedDomains ?? [];
+      if (locked.length === 0) return applyMinSpreadClamp(percentileDomain(input.pixels ?? [], { low, high, mode }));
+      return { ...lockedDomain(locked), clamped: false };
+    }
 
     default: {
       // Exhaustiveness guard — a new ColorScaleMode must be handled here.

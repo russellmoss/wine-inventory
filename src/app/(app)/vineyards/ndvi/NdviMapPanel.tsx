@@ -15,11 +15,11 @@ export type NdviDataset = { id: string; acquiredAt: string | null };
 const PROMINENT: { mode: ColorScaleMode; label: string; hint: string }[] = [
   { mode: "VINEYARD_SCENE", label: "Vineyard relative", hint: "p5–p95 across this vineyard — the default. Shows where vigor differs inside the block." },
   { mode: "ABSOLUTE", label: "Absolute", hint: "A fixed NDVI scale (−0.2 … 0.9). Compare true values across vineyards and dates." },
-  { mode: "COMPARISON_LOCKED", label: "Locked", hint: "A fixed span for honest date-to-date comparison (set in Compare)." },
+  { mode: "COMPARISON_LOCKED", label: "Locked", hint: "Locks the scale across dates — turn on Compare for a true two-date lock. On a single map it shows the vineyard-relative scale." },
 ];
 const ADVANCED: { mode: ColorScaleMode; label: string; hint: string }[] = [
   { mode: "BLOCK_SCENE", label: "Block relative", hint: "p5–p95 — same as vineyard-relative here (per-block domains arrive with block masks)." },
-  { mode: "VINEYARD_BASELINE", label: "Baseline", hint: "Read this scene against a saved baseline domain." },
+  { mode: "VINEYARD_BASELINE", label: "Baseline", hint: "Reads against a saved baseline domain. No baseline set yet → falls back to the vineyard-relative scale." },
   { mode: "CUSTOM", label: "Custom", hint: "Your own fixed min/max." },
 ];
 
@@ -90,7 +90,9 @@ export function NdviMapPanel({
   };
 
   // React Compiler auto-memoizes; keep these as plain derived values (manual useMemo would fight it).
-  const styleParams = new URLSearchParams({ mode, paletteId, reverse: reverse ? "1" : "0", opacity: String(opacity), resampling });
+  // opacity + resampling are display-only (Leaflet opacity / CSS image-rendering) — NOT in the server query,
+  // so dragging opacity or toggling Nearest never refetches the PNG or the legend.
+  const styleParams = new URLSearchParams({ mode, paletteId, reverse: reverse ? "1" : "0" });
   if (mode === "ABSOLUTE") {
     styleParams.set("fmin", "-0.2");
     styleParams.set("fmax", "0.9");

@@ -73,7 +73,7 @@ export function NdviCompare({
 
   const overlayFor = (id: string | null, m: SideMeta | null): MapOverlay[] => {
     if (!id || !m?.bbox || lockedMin == null || lockedMax == null) return [];
-    const q = new URLSearchParams({ mode: "CUSTOM", paletteId, reverse: reverse ? "1" : "0", opacity: "0.85", resampling: "bilinear", fmin: String(lockedMin), fmax: String(lockedMax) });
+    const q = new URLSearchParams({ mode: "CUSTOM", paletteId, reverse: reverse ? "1" : "0", fmin: String(lockedMin), fmax: String(lockedMax) });
     return [{ kind: "raster", id: `cmp-${id}-${lockedMin.toFixed(3)}-${lockedMax.toFixed(3)}`, imageUrl: `/api/spatial/ndvi/${id}/display?${q}`, bounds: m.bbox, opacity: 0.85, resampling: "bilinear" }];
   };
 

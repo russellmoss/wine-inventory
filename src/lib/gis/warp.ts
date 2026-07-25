@@ -69,7 +69,14 @@ export function utmDefFromEpsg(epsg: number): string {
   return `+proj=utm +zone=${zone} ${north ? "" : "+south "}+datum=WGS84 +units=m +no_defs`;
 }
 
-/** PURE: the grid convergence angle γ (degrees) at a lon/lat in a UTM zone — grid-north minus true-north. */
+/**
+ * PURE: the grid convergence angle γ (degrees) at a lon/lat in a UTM zone — grid-north minus true-north.
+ *
+ * NOT used by `warpToDisplayGrid` (the warp reprojects the four corners directly and never needs γ). This
+ * exists to DOCUMENT and TEST the load-bearing rationale: the registration test asserts γ is non-trivial at
+ * the test AOI, which is exactly the condition that misregisters a flat (unwarped) overlay. Keep it here so a
+ * maintainer can re-measure the rotation term; do not wire it into the resample path.
+ */
 export function gridConvergenceDeg(utmDef: string, lon: number, lat: number): number {
   // γ ≈ atan2( dEast/dLat-step at fixed lon ). Empirically: project a tiny due-north step and read its
   // easting drift. A robust closed form is γ = atan(tan(Δλ)·sin(φ)) with Δλ = lon − centralMeridian, but

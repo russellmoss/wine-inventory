@@ -64,7 +64,7 @@ function etagFor(datasetId: string, style: DisplayStyle): string {
     m: style.mode,
     p: style.paletteId ?? null,
     r: !!style.reverse,
-    o: style.opacity ?? 1,
+    // opacity + resampling are display-only (owned by Leaflet / CSS), never in the PNG bytes → not in the ETag.
     lo: style.percentileLow ?? null,
     hi: style.percentileHigh ?? null,
     fn: style.fixedMin ?? null,
@@ -132,7 +132,9 @@ export async function buildDisplayRender(datasetId: string, style: DisplayStyle)
   const { values, width, height, domain, meta } = await loadDisplay(datasetId, style);
   const palette = resolvePalette(style);
   const lut = buildPaletteLut(palette);
-  const rgba = rasterToRgba(values, width, height, domain, palette, { lut, opacity: style.opacity ?? 1 });
+  // Render at FULL alpha (no-data still transparent). Layer opacity is owned client-side by Leaflet's
+  // imageOverlay — baking it in here too would double-apply it (on-screen alpha = opacity²).
+  const rgba = rasterToRgba(values, width, height, domain, palette, { lut });
   const png = encodePng(rgba.data, width, height);
   return { png, meta, etag: etagFor(datasetId, style) };
 }
