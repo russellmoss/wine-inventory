@@ -241,7 +241,25 @@ type ClaimResult =
   | { kind: "adopt"; datasetId: string; metricCount: number }
   | { kind: "backoff" };
 
+async function resolveExisting(datasetIdentity: string): Promise<ClaimResult | null> {
+  const existing = await prisma.spatialDataset.findFirst({ where: { datasetIdentity } });
+  if (!existing) return null;
+  if (existing.status === "READY") {
+    const metricCount = await prisma.blockSpatialMetric.count({ where: { datasetId: existing.id } });
+    return { kind: "adopt", datasetId: existing.id, metricCount };
+  }
+  if (existing.status === "FAILED") {
+    await prisma.spatialDataset.update({ where: { id: existing.id }, data: { status: "INFLIGHT" } });
+    return { kind: "claimed", datasetId: existing.id };
+  }
+  return { kind: "backoff" }; // INFLIGHT held by another worker
+}
+
+/** CLAIM the identity (C1). Check-first for the common idempotent re-run (adopt a READY / reclaim a FAILED
+ *  row) so it doesn't trip the unique; the create+catch handles the genuine concurrent first-claim race. */
 async function claimDataset(vineyardId: string, sceneId: string, datasetIdentity: string): Promise<ClaimResult> {
+  const pre = await resolveExisting(datasetIdentity);
+  if (pre) return pre;
   try {
     const ds = await prisma.spatialDataset.create({
       data: { vineyardId, sceneId, datasetIdentity, status: "INFLIGHT", algorithmVersion: NDVI_ALGORITHM_VERSION, harmonizeValues: false, maskDilation: NDVI_MASK_DILATION, sclResampling: NDVI_RESAMPLING },
@@ -249,17 +267,10 @@ async function claimDataset(vineyardId: string, sceneId: string, datasetIdentity
     return { kind: "claimed", datasetId: ds.id };
   } catch (e) {
     if (!isUniqueViolation(e)) throw e;
-    const existing = await prisma.spatialDataset.findFirst({ where: { datasetIdentity } });
-    if (!existing) throw e;
-    if (existing.status === "READY") {
-      const metricCount = await prisma.blockSpatialMetric.count({ where: { datasetId: existing.id } });
-      return { kind: "adopt", datasetId: existing.id, metricCount };
-    }
-    if (existing.status === "FAILED") {
-      await prisma.spatialDataset.update({ where: { id: existing.id }, data: { status: "INFLIGHT" } });
-      return { kind: "claimed", datasetId: existing.id };
-    }
-    return { kind: "backoff" }; // INFLIGHT held by another worker
+    // Lost the race: another worker inserted the placeholder between our check and create.
+    const raced = await resolveExisting(datasetIdentity);
+    if (!raced) throw e;
+    return raced;
   }
 }
 
