@@ -241,6 +241,22 @@ material persisted beyond existing session mechanisms; ADR recorded.
 
 ### P2 — NDVI core (Wave 2 — brief Release 1B, data half)
 
+**P1 hand-off (what P2 inherits + must honor):**
+- **Reuse the P1 GIS layer, don't rebuild it:** `src/lib/gis/{geometry,projection,coverage,zonal,ndvi,
+  color,smooth,render}` (P0) + `{boolean,topology,geometry-meta,geometry-version,overlay}` (P1) are the
+  pure math. The analysis mask = a `VineyardPlantingArea` polygon (or the estate union via
+  `boolean.unionPolygons`); block stats clip to `VineyardBlock.polygon`.
+- **⚠️ Re-validate the mask before computing stats.** P1 topology is **warn-only** — stored planting/block
+  geometry CAN contain overlaps or blocks-outside-parent (the save was never blocked). P2 must run
+  `reviewTopology` and REFUSE (or repair) a mask with a `MASK_BREAKING` finding before it computes NDVI,
+  rather than trust stored geometry. This is the deferred enforcement P1 explicitly punted.
+- **Be the first real consumer of the stale hook.** `BlockSpatialMetric`/scene records must persist the
+  `geometryVersion` + `geometryFingerprint` (from `geometry-meta`) they were computed against, and P2 wires
+  `geometry-version.markStaleFor` so a boundary edit marks NDVI dependents stale (runbook §6 — empty in P1).
+- **`SpatialScene` keys on estate + date, not block + date** (P0 fetch-shape lesson): one estate-wide raster,
+  clipped N ways.
+- **jsts is available** (`src/lib/gis/boolean.ts`) for assembling the estate-wide AOI from planting areas.
+
 Scope: provider-neutral satellite adapter (CDSE STAC search + Process API behind one interface,
 brief §13.4); OAuth2 client-credential caching; **date-window scene selection** UX contract
 ("around a date", ±7→14→30 days, per-planting SCL cloud/valid coverage, recommend-but-let-inspect,
@@ -336,10 +352,10 @@ done until its slice of the relevant §22 narrative can be demonstrated live on 
 | Phase | Wave/Lane | Status | Plan | PRs | Report |
 | --- | --- | --- | --- | --- | --- |
 | P0 spike | 0 | 🟩 shipped | [094](../plans/2026-07-24-094-spike-vineyard-intelligence-p0-plan.md) | `spike/vi-p0-no-worker` | [phase-0](phases/phase-0-report.md) |
-| P1 planting geometry | 1A | 🟪 QA | [phase-1-plan](phases/phase-1-planting-geometry-plan.md) | [#494](https://github.com/russellmoss/wine-inventory/pull/494) | [phase-1](phases/phase-1-report.md) |
+| P1 planting geometry | 1A | 🟪 QA (PR green, awaiting merge) | [phase-1-plan](phases/phase-1-planting-geometry-plan.md) | [#494](https://github.com/russellmoss/wine-inventory/pull/494) | [phase-1](phases/phase-1-report.md) |
 | P4 soil cards | 1B | ⬜ not started | — | — | — |
 | POF offline foundation | 1C | ⬜ not started | — | — | — |
-| P2 NDVI core | 2 | ⬜ not started | — | — | — |
+| P2 NDVI core | 2 | 🟦 planning | — | — | — |
 | P5 observations + plans | 2 | ⬜ not started | — | — | — |
 | P3 NDVI display | 3 | ⬜ not started | — | — | — |
 | P6 field collection | 3 | ⬜ not started | — | — | — |
