@@ -7,19 +7,22 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Grower module → Vendor parity (plan 095, ticket #489) — ALL 8 UNITS BUILT, verification-pending.**
-On `claude/grower-module-assistant-27c689` (9 commits, no PR yet). Decision (context-ledger,
-`grower` domain): Grower stays standalone; **third-party growers auto-link to a QBO-synced Vendor,
-estate growers don't** (link-if-name-exists). Built: schema + 2 migrations (backfill-then-enforce
-`GrowerContact`, full 9-step RLS) · read/shared + sanitizer · write core (contacts + vendor link) ·
-actions + QBO push · `create_grower` tool + golden + allowlist (grower-core out of INTERNAL,
-`verify:ai-native` GREEN + coverage doc regen'd) · `/setup/growers` multi-contact UI · isolation cases.
-[Plan 095](docs/plans/2026-07-24-095-feat-grower-module-vendor-parity-plan.md) carries the verify runbook.
+**Grower module → Vendor parity (plan 095, ticket #489) — SHIPPED. [PR #493](https://github.com/russellmoss/wine-inventory/pull/493) squash-merged to main.**
+Decision (context-ledger, `grower` domain): Grower stays standalone; **third-party growers auto-link
+to a QBO-synced Vendor, estate growers don't** (link-if-name-exists). Shipped: schema + 2 migrations
+(backfill-then-enforce `GrowerContact`, full 9-step RLS) · read/shared + sanitizer · write core
+(contacts + vendor link) · actions + QBO push · `create_grower` assistant tool + golden + allowlist
+(grower-core out of INTERNAL) · `/setup/growers` multi-contact UI · isolation cases.
+CI GREEN + **LIVE IN PROD** (deploy `o23xav8wg` Ready; grower schema on prod).
 
-⚠️ **Built here but NOT verified** — this worktree has no node_modules/.env; local .env = prod.
-▶️ **NEXT:** run the plan's **Verification runbook in the MAIN checkout** (db:generate → tsc/lint/test →
-verify:ai-native/naming → **db:migrate on prod (backfill-then-enforce)** → verify-tenant-isolation →
-Demo-Winery manual QA), then `/review` + `/ship`.
+⚠️ **Deploy was blocked ~20h by a PRE-EXISTING bug, not grower:** `.vercelignore` shipped `scripts/`
+but not `test/`, and VI-P0's `scripts/gis-p0-validate-*.ts` import `test/fixtures/gis/plantings` →
+`next build` type-check failed on EVERY prod+preview deploy since #094 merged. CI stayed green (full
+checkout). Fixed by vercelignoring `scripts` (`cc91f341`). See [[vercelignore-scripts-test-build-break]].
+**Lesson: CI green ≠ Vercel build green when `.vercelignore` strips files.**
+
+▶️ **NEXT (optional):** Demo-Winery manual QA of `/setup/growers` + the `create_grower` voice/chat path.
+Roadmap seams left clean (fruit contracts / AVA / vineyard maps hang off `grower.vendorId` + the entity).
 
 <details><summary>Vineyard Intelligence P0 — GO verdict (done, unshipped)</summary>
 
