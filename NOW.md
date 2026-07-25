@@ -13,6 +13,16 @@ legend + histogram + date comparison. Renders directly from what P2 stored: the 
 `BlockSpatialMetric` per-block stats — the mask is already validated, so P3 doesn't redo it. Inherits `render.ts`/
 `color.ts`. Plan next via `/plan`. Scale-register tripwire (>2M-px streaming) is load-bearing; decoder refuses >4M px.
 
+**⚡ PARALLEL LANE OPENED — P4 soil (Wave 1 lane B). PLANNED + COUNCIL-REVIEWED 2026-07-25, ⬜ not built.**
+Now that P1+P2 shipped, P4/P5/P8 all unblocked (deps `P4←block polygons`, `P5←P1`, `P8←P1`) and are file-disjoint
+from P3 — build in parallel. P4 plan: [phase-4-soil-documentation-plan.md](docs/GIS/phases/phase-4-soil-documentation-plan.md)
+(Deep, 9 units) · council: [phase-4-council-feedback.md](docs/GIS/phases/phase-4-council-feedback.md). NRCS SSURGO
+per-block soil cards, cards-only (no map), one SDA clip query, supersede-not-delete snapshots. Council folded 11
+findings — the report-wrong-data ones: **stale-write geometry-version CAS** (older in-flight SDA response must not
+supersede a newer snapshot), **SDA join multiplicity** (clip one-row-per-mukey in a CTE before joining props),
+**geodesic `areaSqM`** (never persist cos(lat)-scaled m²). Unit 0 (schema slice) is the serialization point vs P3/P8
+on `prisma/schema.prisma`. `/work` it in a separate worktree.
+
 <details><summary>✅ Vineyard Intelligence P2 — NDVI core (data half) — SHIPPED + LIVE IN PROD 2026-07-25</summary>
 
 All 11 units merged: schema slice **[#495](https://github.com/russellmoss/wine-inventory/pull/495)** + feature units
