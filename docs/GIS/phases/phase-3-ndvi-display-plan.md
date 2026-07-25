@@ -1,12 +1,22 @@
 ---
 title: P3 — NDVI display and comparison (Vineyard Intelligence, brief Release 1B viz half)
 type: feat
-status: draft
+status: completed
 date: 2026-07-25
 branch: feat/vi-p3-ndvi-display
 depth: deep
 units: 11
 ---
+
+> **BUILD COMPLETE 2026-07-25.** All 11 units shipped on `feat/vi-p3-ndvi-display`. Schema applied to
+> the live DB (RLS proven, `verify:tenant-isolation` 141 tables green). Correctness proven: the sub-pixel
+> **registration gate** passes (synthetic + real fixture), `verify:ndvi-display` green (hermetic chain +
+> live derivative/serve), 103 gis unit tests green, `verify:ai-native`/`verify:ndvi` green, tsc + eslint
+> clean. Browser-QA'd on Demo Winery: overlay registers on block outlines, all 6 scale modes re-domain
+> live, nearest→pixelated, legend/badges honest, SYSTEM+vineyard styles apply, side-by-side locked-domain
+> comparison renders two dates on one scale. **Deferred (documented):** the pixel B−A diff MAP (per-block
+> numeric delta ships via `compare_ndvi_dates`); analytical 3×3 stored smoothing; polygon-exact display clip
+> (v1 paints the estate AOI, masked to valid pixels). See `phase-3-report.md`.
 
 > **PROVENANCE NOTE (2026-07-25):** The original P3 plan + `phase-3-council-feedback.md` were
 > written and council-hardened on 2026-07-25 but **were never persisted to disk** (data loss —
