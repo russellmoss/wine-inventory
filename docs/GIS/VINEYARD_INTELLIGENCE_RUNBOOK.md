@@ -138,12 +138,18 @@ Wave 1   P1  Planting geometry (1A)            ⚡ P4  Soil cards (1C)    ⚡ PO
 Wave 2   P2  NDVI core (1B-data)               ⚡ P5  Observations + sampling plans (R2a)
 Wave 3   P3  NDVI display (1B-viz)             ⚡ P6  Field collection (R2b; needs P5 + POF)
 Wave 4   P7  Derived analysis (R3)             ⚡ (optional) soil map-unit overlay spike
+Wave 5   P8  Weather & climate spine (R4A)     ⚡ P9  Weather disease models (R4B; needs P8)
 Later    Additional indices, Sentinel-1, temporal composites, multiyear stability, kriging,
-         hyperspectral, variable-rate export. Hardware/device control is out of scope entirely.
+         hyperspectral, variable-rate export, on-site weather sensors, sub-km climate downscaling,
+         forecast integration. Hardware/device control is out of scope entirely.
 ```
 
+P8/P9 are **independent of the NDVI/soil/observation lanes** (only need `Vineyard` + a planting-area
+centroid) and can run in parallel with or after them. Weather is the lightest lane: point JSON, no worker,
+no blob.
+
 Dependency edges: P1←P0; P2←P0+P1; P3←P2; P4←(nothing but existing block polygons); P5←P1;
-P6←P5+POF; P7←P2+P5.
+P6←P5+POF; P7←P2+P5; P8←P1; P9←P8.
 
 ### Parallel-build mechanics (velocity without quality loss)
 
@@ -333,6 +339,45 @@ chart patterns; exports. Example workflows §10.4 as QA scripts.
 saved; zone provenance (inputs, transforms, algorithm version); RLS tests; assistant tools (run
 zoning, explain what drove a zone) + goldens.
 
+### P8 — Weather & climate spine (Wave 5 — brief Release 4A)
+
+Design: [vineyard-weather-climate-design.md](vineyard-weather-climate-design.md); plan:
+[phase-8-weather-climate-spine-plan.md](phases/phase-8-weather-climate-spine-plan.md).
+
+Scope: a tiered `ClimateProvider` registry (brief §13.7 — gridMET live / Daymet history / NASA POWER
+global + RCC-ACIS/NOAA-CDO stations + USGS elevation; CIMIS/AgriMet/NEWA as later plug-ins); the "at your
+site" estimate is a **terrain-aware gridded point value shown beside the nearest station + elevation
+delta**, never hand-rolled interpolation; primary + comparison + **gap-fill per metric with spread, never a
+blend**; GDD (base 10 ± cap), Winkler I–V, GST + Jones, frost (last-spring/first-fall + sub-threshold
+events, "risk not safe"), heat-day counts, rainfall, season-to-date + year-over-year; three tenant-scoped
+tables (`VineyardWeatherSnapshot`, `VineyardClimateDaily`, `WeatherProviderUsage`, brief §14) per the
+tenancy checklist (**String-union statuses, no enums**); **no worker, no blob** — a daily claim-first cron
+snapshot rendered offline; per-provider quota telemetry (CDO 10k/day gate, rule §2.8); a grower climate
+card on the **existing vineyard surface** (summary-first, progressive disclosure, one nav entry — no
+sprawl); a thin frost/heat inbox alert. Honesty rules are load-bearing: **one estimate per vineyard**
+(grids resolve site-vs-region, not block-vs-block), daily precip flagged low-confidence, non-US → coherent
+`GLOBAL_COARSE`.
+
+**Gate:** `verify:weather` e2e on a committed fixture series (no live provider); provider fixture-
+normalization tests; **spread-not-blend** + **no-fabricated-weather** + **timezone-correct daily bucketing**
+contract tests; idempotent ingest + claim-first sweep tests; RLS/isolation for the three tables; quota
+counter visible; assistant `query_climate` (GDD-vs-last-year, warmer-than-last-year, **frost-last-night in
+the operating timezone** per #472/#473) + golden; `verify:ai-native` green; `verify:naming` green.
+
+### P9 — Weather disease intelligence (Wave 5 — brief Release 4B; needs P8)
+
+Scope: diurnal reconstruction from daily Tmin/Tmax; Gubler-Thomas powdery-mildew risk index
+(temperature-only, no leaf wetness), 3-10 downy proxy, botrytis temp+RH+rain proxy — each a **screening
+index ("scout"), never a diagnosis** (brief principle #7), cross-linked to the IPM knowledge base; for the
+Northeast prefer/validate against **NEWA's already-validated grape disease models** (don't reinvent);
+`query_disease_risk` assistant tool + disease-pressure inbox alert. Decision gate carried from the design:
+if reconstructed-diurnal proves too coarse for botrytis/downy, spike an hourly source (ERA5-Land/Open-Meteo)
+for the disease slice only.
+
+**Gate:** disease-index goldens on committed fixture series; the "scout not diagnose" framing enforced in
+copy tests; NEWA validation-oracle comparison recorded; RLS unchanged (columns only, no new tables if the
+daily series already carries RH); `query_disease_risk` + golden; `verify:ai-native` green.
+
 ### Later bucket (not scheduled)
 
 NDRE/EVI/SAVI/GNDVI/NDWI/MSI + Sentinel-1 (formulas already in brief §5); temporal median
@@ -360,6 +405,8 @@ done until its slice of the relevant §22 narrative can be demonstrated live on 
 | P3 NDVI display | 3 | ⬜ not started | — | — | — |
 | P6 field collection | 3 | ⬜ not started | — | — | — |
 | P7 derived analysis | 4 | ⬜ not started | — | — | — |
+| P8 weather climate spine | 5 | 🟦 planning | [phase-8-plan](phases/phase-8-weather-climate-spine-plan.md) | — | — |
+| P9 weather disease | 5 | ⬜ not started | — | — | — |
 
 Statuses: ⬜ not started → 🟦 planning → 🟨 building → 🟪 QA → 🟩 shipped.
 Update this table at every transition; link the plan doc, PR(s), and phase report.

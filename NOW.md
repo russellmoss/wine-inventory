@@ -703,6 +703,16 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 - **Plan 062 U2/U5 liquid SO₂-solution booking** — feature gap, not the money bug. Do NOT
   `/work` plan 062 as written; it would double-apply 0.576. → TODOS.
 - **Break Mode: Sentry server-side scrubbing** — ⚠️ blocker before any real-tenant use. → TODOS.
+- **VI Release 4 — Weather & Climate (runbook phases P8 climate spine + P9 disease; NOT "Phase 4" — that's
+  soil/P4)** — design brief `docs/GIS/vineyard-weather-climate-design.md` + **4A plan written**
+  `docs/GIS/phases/phase-8-weather-climate-spine-plan.md` (12 units) + woven into the brief (Release 4,
+  §13.7, §14) and runbook (P8/P9, ledger). Gridded terrain-aware point value (gridMET live / Daymet history
+  / POWER global) beside nearest station + elevation delta; **no worker/blob**; spread-not-blend;
+  one-estimate-per-vineyard; `query_climate` timezone-correct. **Council-reviewed + owner-decided**
+  (`docs/GIS/phases/phase-8-council-feedback.md`; revisions R1–R16 folded — daily-fact-table-authoritative
+  schema, obs-time tz normalized at ingest, per-source-with-completeness aggregates, hemisphere/SeasonYear,
+  primary-source-model, vulnerable-window frost, vineyard-root card). **Do AFTER P3 ships** (independent, can
+  parallel). Next: register CDO token + run the ~45-min point-API spike (de-risks the providers), then `/work`.
 
 ## ✅ Done recently
 
