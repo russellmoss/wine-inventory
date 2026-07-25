@@ -1,7 +1,7 @@
 ---
 title: P2 — NDVI core (Vineyard Intelligence, brief Release 1B data half)
 type: feat
-status: council-reviewed
+status: completed
 date: 2026-07-25
 branch: feat/vi-p2-ndvi-core
 depth: deep
