@@ -51,7 +51,7 @@ Dev-only Python tools: `pip install exactextract numpy tifffile`. Runtime deps 2
 ▶️ **NEXT:** `/review` then `/ship` the P0 branch (16 units, no PR yet). Then Wave 1 opens:
 **P1 planting geometry ⚡ P4 soil cards ⚡ POF offline** — P4 and POF never depended on this verdict.
 
-✅ **P1 BUILT — all 12 units on `feat/vi-p1-planting-geometry` (8 commits, NO PR yet). Runbook §7 → 🟪 QA.**
+✅ **P1 SHIPPED TO PR — [#494](https://github.com/russellmoss/wine-inventory/pull/494) open (branch merged w/ main, CI running). Runbook §7 → 🟪 QA.**
 [phase-1 plan](docs/GIS/phases/phase-1-planting-geometry-plan.md) · [council](docs/GIS/phases/phase-1-council-feedback.md) ·
 [phase report](docs/GIS/phases/phase-1-report.md). tsc 0, **172 GIS/assistant tests green**,
 **`verify:planting-geometry` 13/13** on the real Demo tenant (create→blade-split zero-lost-area→IoU
