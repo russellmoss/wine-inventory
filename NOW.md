@@ -13,6 +13,20 @@ legend + histogram + date comparison. Renders directly from what P2 stored: the 
 `BlockSpatialMetric` per-block stats — the mask is already validated, so P3 doesn't redo it. Inherits `render.ts`/
 `color.ts`. Plan next via `/plan`. Scale-register tripwire (>2M-px streaming) is load-bearing; decoder refuses >4M px.
 
+<details><summary>✅ VI P8 — Weather & Climate spine — PLAN EXECUTION-READY (hardened 2026-07-25, not built)</summary>
+
+`docs/GIS/phases/phase-8-weather-climate-spine-plan.md` (12 units) — parallel lane, deps satisfied (needs only
+`Vineyard` + centroid from P1 #494). Was already council-reviewed (Codex gpt-5.4 + Gemini 3.1 → R1–R16). This
+session **folded R1–R16 DOWN into the units** (Unit 1 no longer describes the superseded mutable-snapshot
+schema) + ran a **confirmatory council gate**, which surfaced one real fold-down hazard now fixed:
+- **Gap-fill is a READ-TIME composition, never a stored row.** Every `VineyardClimateDaily` row is strictly
+  single-provider; `gapFillCore` (U3) composes the primary series in memory and stamps `filledFromProvider`
+  on the DTO — **no `filledFromProvider` DB column** (both reviewers converged; keeps R3 purity + mirrors R10).
+- Also fixed: `effectivePrimary(config) = override ?? resolvedDefault` (one helper, ingest+read can't diverge);
+  explicit `id String @id @default(cuid())` on both new models; per-metric RH is provenance, never a blended headline.
+- Ready for `/work` after or in parallel with P3. Council doc: `phase-8-council-feedback.md`.
+</details>
+
 <details><summary>✅ Vineyard Intelligence P2 — NDVI core (data half) — SHIPPED + LIVE IN PROD 2026-07-25</summary>
 
 All 11 units merged: schema slice **[#495](https://github.com/russellmoss/wine-inventory/pull/495)** + feature units
