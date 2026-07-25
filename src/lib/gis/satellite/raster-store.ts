@@ -25,7 +25,9 @@ export type StoredRaster = { url: string; key: string; sha256: string; byteSize:
 export async function putPrivateRaster(tenantId: string, datasetIdentity: string, bytes: Uint8Array): Promise<StoredRaster> {
   const key = rasterBlobKey(tenantId, datasetIdentity);
   const buf = Buffer.from(bytes);
-  const blob = await put(key, buf, { access: "private", addRandomSuffix: false, contentType: "image/tiff" });
+  // Deterministic key + idempotent OVERWRITE: a retry that re-fetches the same scene rewrites the same object
+  // (allowOverwrite required by newer @vercel/blob; addRandomSuffix:false keeps the key stable — C1 idempotency).
+  const blob = await put(key, buf, { access: "private", addRandomSuffix: false, allowOverwrite: true, contentType: "image/tiff" });
   return { url: blob.url, key, sha256: createHash("sha256").update(buf).digest("hex"), byteSize: buf.byteLength };
 }
 
@@ -56,7 +58,8 @@ export async function putPrivateDerivative(
 ): Promise<StoredRaster> {
   const key = derivativeBlobKey(tenantId, datasetId, kind, recipeVersion);
   const buf = Buffer.from(bytes);
-  const blob = await put(key, buf, { access: "private", addRandomSuffix: false, contentType: "application/octet-stream" });
+  // Deterministic key keyed on (dataset, kind, recipeVersion): re-materializing one recipe overwrites in place.
+  const blob = await put(key, buf, { access: "private", addRandomSuffix: false, allowOverwrite: true, contentType: "application/octet-stream" });
   return { url: blob.url, key, sha256: createHash("sha256").update(buf).digest("hex"), byteSize: buf.byteLength };
 }
 

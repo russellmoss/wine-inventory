@@ -7,6 +7,8 @@ import type { SerializedBlock } from "@/lib/vineyard/data";
 import type { MapOverlay } from "@/lib/gis/overlay";
 import { PALETTES, type ColorScaleMode } from "@/lib/gis/color";
 import { NdviLegend, type DisplayMetaLite } from "./NdviLegend";
+import { NdviCompare } from "./NdviCompare";
+import { listSpatialStylesAction, saveVineyardStyleAction, type SpatialStylePayload } from "@/lib/spatial/style-actions";
 
 export type NdviDataset = { id: string; acquiredAt: string | null };
 
@@ -25,11 +27,13 @@ const label = { fontSize: 12, color: "var(--text-secondary)" } as const;
 const control: React.CSSProperties = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", fontSize: 13, background: "var(--surface, #fff)" };
 
 export function NdviMapPanel({
+  vineyardId,
   datasets,
   blocks,
   center,
   vineyardName,
 }: {
+  vineyardId: string | null;
   datasets: NdviDataset[];
   blocks: SerializedBlock[];
   center: { lat: number; lng: number } | null;
@@ -45,8 +49,45 @@ export function NdviMapPanel({
   const [meta, setMeta] = useState<DisplayMetaLite | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [styles, setStyles] = useState<SpatialStylePayload[]>([]);
+  const [styleMsg, setStyleMsg] = useState<string | null>(null);
+  const [compare, setCompare] = useState(false);
 
   const resampling = nearest ? "nearest" : "bilinear";
+
+  // Load saved styles (SYSTEM presets + this vineyard's) for the dropdown.
+  useEffect(() => {
+    if (!vineyardId) return;
+    let cancelled = false;
+    listSpatialStylesAction(vineyardId)
+      .then((r) => {
+        if (!cancelled) setStyles(r.styles);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [vineyardId]);
+
+  const applyStyle = (s: SpatialStylePayload) => {
+    setMode(s.mode as ColorScaleMode);
+    setPaletteId(s.paletteId);
+    setReverse(s.reverse);
+    if (["BLOCK_SCENE", "VINEYARD_BASELINE", "CUSTOM"].includes(s.mode)) setShowAdvanced(true);
+  };
+
+  const saveStyle = async () => {
+    if (!vineyardId) return;
+    const name = window.prompt("Save this style as (name):", "Vineyard default");
+    if (!name) return;
+    try {
+      const r = await saveVineyardStyleAction({ vineyardId, name, mode, paletteId, reverse });
+      setStyles((prev) => [...prev.filter((s) => s.id !== r.style.id), r.style]);
+      setStyleMsg(`Saved “${r.style.name}”.`);
+    } catch (e) {
+      setStyleMsg(e instanceof Error ? e.message : "Could not save style.");
+    }
+  };
 
   // React Compiler auto-memoizes; keep these as plain derived values (manual useMemo would fight it).
   const styleParams = new URLSearchParams({ mode, paletteId, reverse: reverse ? "1" : "0", opacity: String(opacity), resampling });
@@ -165,11 +206,55 @@ export function NdviMapPanel({
         </label>
       </div>
 
-      <SatelliteMap lat={center?.lat ?? null} lng={center?.lng ?? null} blocks={blocks} unit="imperial" overlays={overlays} height={420} exportName={vineyardName} />
+      {/* Saved styles (SYSTEM presets + per-vineyard) + comparison toggle. */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", margin: "0 0 12px" }}>
+        <label style={{ ...label, display: "flex", alignItems: "center", gap: 6 }}>
+          Style
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              const s = styles.find((x) => x.id === e.target.value);
+              if (s) applyStyle(s);
+            }}
+            style={control}
+          >
+            <option value="">Custom…</option>
+            {styles.filter((s) => s.scope === "SYSTEM").length > 0 && (
+              <optgroup label="Presets">
+                {styles.filter((s) => s.scope === "SYSTEM").map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </optgroup>
+            )}
+            {styles.filter((s) => s.scope === "VINEYARD").length > 0 && (
+              <optgroup label="This vineyard">
+                {styles.filter((s) => s.scope === "VINEYARD").map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        </label>
+        <button onClick={saveStyle} style={modeBtn(false)}>Save as vineyard default</button>
+        <label style={{ ...label, display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} /> Compare dates
+        </label>
+        {styleMsg && <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{styleMsg}</span>}
+      </div>
 
-      {error && <p style={{ color: "var(--danger, #b00020)", fontSize: 13, margin: "10px 0 0" }}>{error}</p>}
-      {loading && !meta && <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "10px 0 0" }}>Loading NDVI…</p>}
-      {meta && <NdviLegend meta={meta} paletteId={paletteId} reverse={reverse} mode={mode} />}
+      {compare && datasets.length >= 2 ? (
+        <NdviCompare datasets={datasets} blocks={blocks} center={center} vineyardName={vineyardName} paletteId={paletteId} reverse={reverse} initialA={datasets[1]?.id ?? null} initialB={datasetId} />
+      ) : (
+        <>
+          {compare && datasets.length < 2 && (
+            <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "0 0 10px" }}>Need two processed scenes to compare — only one is available.</p>
+          )}
+          <SatelliteMap lat={center?.lat ?? null} lng={center?.lng ?? null} blocks={blocks} unit="imperial" overlays={overlays} height={420} exportName={vineyardName} />
+          {error && <p style={{ color: "var(--danger, #b00020)", fontSize: 13, margin: "10px 0 0" }}>{error}</p>}
+          {loading && !meta && <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "10px 0 0" }}>Loading NDVI…</p>}
+          {meta && <NdviLegend meta={meta} paletteId={paletteId} reverse={reverse} mode={mode} />}
+        </>
+      )}
     </Card>
   );
 }

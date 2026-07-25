@@ -104,7 +104,7 @@ export function NdviConsole({ vineyards, selectedId, selectedName, jobs, blocks,
 
       {/* NDVI map (P3) */}
       {selectedId && (
-        <NdviMapPanel datasets={datasets} blocks={mapBlocks} center={center} vineyardName={selectedName ?? "Vineyard"} />
+        <NdviMapPanel vineyardId={selectedId} datasets={datasets} blocks={mapBlocks} center={center} vineyardName={selectedName ?? "Vineyard"} />
       )}
 
       {/* Per-block NDVI */}
