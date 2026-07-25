@@ -20,13 +20,18 @@ export const IOU_CORRECTION_THRESHOLD = 0.98;
 /** A downstream product whose recomputation is invalidated by a boundary change. */
 export type StaleDependent = { kind: string; subjectId: string };
 
+/** The NDVI (spatial-metric) dependent kind — VI-P2 is the first real consumer of this seam. */
+export const NDVI_DEPENDENT_KIND = "NDVI" as const;
+
 /**
- * PURE: the set of dependent product kinds to invalidate for a subject. EMPTY in P1 (no NDVI/soil/
- * sampling consumers exist yet) — but the seam + its test exist so P2/P4 plug in without redesign
- * (runbook §6 "geometry-version invalidation wired even with no consumers yet").
+ * PURE: the set of dependent product kinds to invalidate for a subject. VI-P2 wired the first real
+ * consumer: a boundary change on a PLANTING_AREA or BLOCK marks that subject's NDVI stale. This is an
+ * ANNOTATION, not a deletion (council Q1): `BlockSpatialMetric` carries `geometryVersion` IN its unique
+ * key, so a recompute against the new version COEXISTS with the old rows — old NDVI stays readable and is
+ * served, never hidden (runbook §6 "never rewrite"). P4 (soil) plugs in here the same way.
  */
-export function markStaleFor(_subjectId: string): StaleDependent[] {
-  return [];
+export function markStaleFor(subjectId: string): StaleDependent[] {
+  return [{ kind: NDVI_DEPENDENT_KIND, subjectId }];
 }
 
 export type GeometryVersionState = {
