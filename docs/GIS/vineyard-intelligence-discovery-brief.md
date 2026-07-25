@@ -1164,6 +1164,39 @@ This design complements the new planting hierarchy:
 - Dissolved management-zone polygons
 - Cross-variable charts and exports
 
+### Release 4: weather and climate intelligence
+
+The environmental-driver layer beneath NDVI vigor and Brix. Full design:
+[vineyard-weather-climate-design.md](./vineyard-weather-climate-design.md). Runbook phases **P8** (climate
+spine) + **P9** (disease). Not a spatial-interpolation engine: the "at your site" value is a terrain-aware
+**gridded point** value (gridMET live / Daymet history / NASA POWER global), shown beside the grower's
+nearest NOAA station with the elevation delta. No worker, no blob — a daily JSON fetch into a dated
+snapshot, rendered offline. Honesty boundaries are load-bearing: grids resolve **site vs region, not block
+vs block** (one climate estimate per vineyard); sources are shown side by side with the **spread, never a
+blended average**; disease indices are **screening ("scout"), never diagnosis**.
+
+**Release 4A — climate spine (P8):**
+
+- Tiered `ClimateProvider` registry selected by location (gridMET/Daymet/POWER + RCC-ACIS/NOAA-CDO stations
+  + USGS elevation; CIMIS/AgriMet/NEWA as later plug-ins)
+- Primary + comparison + gap-fill per metric, provenance on every value, spread not blend
+- GDD (base 10, optional cap), Winkler I–V, Growing Season Temperature + Jones grouping
+- Frost (last-spring/first-fall + sub-threshold events, "risk not safe"), heat-day counts, rainfall
+- Season-to-date + year-over-year comparison; per-vineyard climate card on the existing vineyard surface
+- `query_climate` assistant tool (GDD vs last year, warmer-than-last-year, frost-last-night — timezone-correct)
+- Thin frost/heat inbox alert; daily cron snapshot; per-provider quota telemetry; non-US coherent state
+
+**Release 4B — disease intelligence (P9):**
+
+- Diurnal reconstruction from daily Tmin/Tmax; Gubler-Thomas powdery (temperature-only), 3-10 downy proxy,
+  botrytis temp+RH+rain proxy — each a screening index cross-linked to the IPM knowledge base
+- For the Northeast, prefer/validate against NEWA's already-validated grape disease models (don't reinvent)
+- `query_disease_risk` assistant tool + alerts
+
+**Later:** on-site sensor/rain-gauge ingestion (fixes the daily-precip weak link + validates the grid),
+sub-km physical downscaling (frost pockets/cold-air-drainage/aspect → true block microclimate), forecast
+integration (NWS), ET/irrigation scheduling.
+
 ### Later
 
 - NDRE, EVI, SAVI, GNDVI, NDWI, Sentinel-1
@@ -1225,6 +1258,8 @@ screens:
 7. Interpolated field-measurement surfaces
 8. K-means/management-zone polygons
 9. Field notes, alerts, and follow-up locations
+10. Weather & climate site markers (the gridded estimate point + the nearest station, with the elevation
+    delta) — a light vector overlay; the climate data itself lives on the vineyard climate card, not the map
 
 Every layer needs visible on/off state, order, opacity where applicable, legend, source/provenance,
 acquisition/effective date, quality/stale state, and an inspect interaction. A selected block should
@@ -1398,6 +1433,30 @@ and rendering performance. If acceptable, store or cache only block-clipped disp
 `mukey`; the composition snapshot remains authoritative. A live WMS/WFS overlay may be useful for
 exploration but must not become the only stored evidence for a filed soil report.
 
+### 13.7 Weather & climate data (Release 4)
+
+Full design + accuracy/latency notes: [vineyard-weather-climate-design.md](./vineyard-weather-climate-design.md).
+All keyless except NOAA CDO (free token) and CIMIS (free AppKey). Server-side only, SSRF-allowlisted, point
+extraction (no worker). A tiered `ClimateProvider` registry selects by vineyard location + completeness:
+
+- **gridMET** — 4 km CONUS daily, ~14 h latency (the live/in-season source; carries RH/VPD/ref-ET).
+  `https://www.climatologylab.org/gridmet.html` (THREDDS/subset).
+- **Daymet** — 1 km North America daily, released annually + a ~1-month monthly-latency product (historical
+  baseline). ORNL single-pixel extraction API.
+- **NASA POWER** — ~0.5° global agroclimate point API (the non-US fallback, e.g. Bhutan → `GLOBAL_COARSE`).
+- **RCC-ACIS** — keyless near-real-time US station daily Tmax/Tmin/precip (the live "nearest station").
+- **NOAA NCDC/CDO v2** — free token; history + 1991–2020 normals (not the live hot path).
+- **USGS EPQS** — keyless point elevation (to display the station-vs-site delta only).
+- **Later plug-ins:** CIMIS (CA, REST + free AppKey + 2 km Spatial CIMIS), AgriMet (PNW/West, URL/CSV,
+  keyless), NEWA (NE, Cornell — ships grape disease models used in Release 4B).
+
+Rules: **gridded value = the site estimate, never hand-rolled interpolation**; **show sources side by side +
+the spread, never a blend**; **per-metric sourcing** (RH from a grid; temp/precip from a close station else
+the grid); **provenance + provider + resolution on every value**; **one estimate per vineyard** (grids don't
+resolve block-vs-block); daily precip flagged low-confidence. Quota telemetry ships with the first
+integration (CDO caps at 10k/day, 5 req/s), mirroring rule §2.8. Snapshots are dated + fingerprinted and
+render offline; a boundary/centroid change supersedes rather than overwrites.
+
 ## 14. Proposed domain concepts
 
 Names are provisional.
@@ -1500,6 +1559,29 @@ and re-pull action rather than make the block page fail.
 ### `VineyardObservation` and values
 
 As specified in Section 9, including geometry, date, source, sample identity, metric, value, and unit.
+
+### `VineyardWeatherSnapshot` (Release 4)
+
+- tenant and vineyard
+- primary provider + resolution; coverage state (`US_HIGH_RES` | `GLOBAL_COARSE` | `UNAVAILABLE`)
+- nearest station id/name/distance + station-vs-site elevation delta; site elevation
+- pull window + source fingerprint; status (`CURRENT` | `SUPERSEDED` | `STALE`)
+- attribution, pulled-at, creator/audit
+
+One current snapshot per vineyard (tenant-safe partial uniqueness) with superseded rows retained; renders
+offline; a centroid/boundary change supersedes rather than deletes.
+
+### `VineyardClimateDaily` (Release 4)
+
+- tenant, vineyard, composite FK → snapshot
+- zone-local date; per-metric source; `tmaxC` / `tminC` / `precipMm` / `rhMaxPct` / `rhMinPct` (nullable)
+- gap-fill stamp (`filledFromProvider`) + per-value provenance
+
+The raw daily series; season aggregates (GDD, Winkler, frost, heat) are computed from it by pure modules.
+
+### `WeatherProviderUsage` (Release 4)
+
+- keyed by tenant + year-month + provider; request count; last error; updated-at (the CDO 10k/day quota gate).
 
 All new tables must follow the `AGENTS.md` tenant/RLS checklist, including tenant indexes, composite
 tenant-safe foreign keys, forced RLS, and isolation verification.
