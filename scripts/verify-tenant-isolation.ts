@@ -204,6 +204,13 @@ async function main() {
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_b" }, update: {}, create: { id: "iso_blk_b", vineyardId: "iso_vy_b", tenantId: B, updatedAt: now } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_a" }, update: {}, create: { id: "iso_brix_a", blockId: "iso_blk_a", vineyardId: "iso_vy_a", brixValue: "22.5", createdByEmail: "iso@test", tenantId: A } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_b" }, update: {}, create: { id: "iso_brix_b", blockId: "iso_blk_b", vineyardId: "iso_vy_b", brixValue: "23.5", createdByEmail: "iso@test", tenantId: B } });
+  // VI-P1: a planting area per tenant (analysis mask parent). geometry/fingerprint/anchor are opaque here.
+  const isoGeom = { type: "Polygon", coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] };
+  const isoAnchor = { epsg: 32617, originX: 0, originY: 0 };
+  await owner.vineyardPlantingArea.upsert({ where: { id: "iso_pa_a" }, update: {}, create: { id: "iso_pa_a", vineyardId: "iso_vy_a", name: "ISO PA A", geometry: isoGeom, geometryFingerprint: "iso-a", canonicalAnchor: isoAnchor, source: "DRAW", tenantId: A, updatedAt: now } });
+  await owner.vineyardPlantingArea.upsert({ where: { id: "iso_pa_b" }, update: {}, create: { id: "iso_pa_b", vineyardId: "iso_vy_b", name: "ISO PA B", geometry: isoGeom, geometryFingerprint: "iso-b", canonicalAnchor: isoAnchor, source: "DRAW", tenantId: B, updatedAt: now } });
+  await owner.vineyardGeometryVersion.upsert({ where: { id: "iso_gv_a" }, update: {}, create: { id: "iso_gv_a", subjectType: "PLANTING_AREA", subjectId: "iso_pa_a", version: 1, geometry: isoGeom, fingerprint: "iso-a", canonicalAnchor: isoAnchor, tenantId: A } });
+  await owner.vineyardGeometryVersion.upsert({ where: { id: "iso_gv_b" }, update: {}, create: { id: "iso_gv_b", subjectType: "PLANTING_AREA", subjectId: "iso_pa_b", version: 1, geometry: isoGeom, fingerprint: "iso-b", canonicalAnchor: isoAnchor, tenantId: B } });
   // Phase 15: an accounting_connection (the token table) per tenant, plus a cost_export_event in A
   // (composite-FK target for the delivery-uniqueness check). DISCONNECTED + null tokens satisfies the
   // SEC-S5 CHECK; null realmId keeps the one-realm partial-unique out of the way.
@@ -592,6 +599,28 @@ async function main() {
     const brixASeesB = await asTenant(A, (db) => db.$queryRaw<{ blockId: string }[]>`SELECT "blockId" FROM "brix_log" WHERE "vineyardId" = 'iso_vy_b'`);
     check("brix_log raw read as A CANNOT see B's vineyard rows", brixASeesB.length === 0, `saw ${brixASeesB.length}`);
 
+    // 5c-VI. VI-P1: vineyard_planting_area + vineyard_geometry_version isolation, and the block→planting
+    // composite (tenantId, plantingAreaId) FK (K11) rejecting a cross-tenant parent reference.
+    check("tenant A sees its own vineyard_planting_area", (await asTenant(A, (db) => db.vineyardPlantingArea.findFirst({ where: { id: "iso_pa_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's vineyard_planting_area (RLS)", (await asTenant(A, (db) => db.vineyardPlantingArea.findFirst({ where: { id: "iso_pa_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's vineyard_geometry_version (RLS)", (await asTenant(A, (db) => db.vineyardGeometryVersion.findFirst({ where: { id: "iso_gv_b" } }))) === null);
+    let paInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.vineyardPlantingArea.create({ data: { id: "iso_pa_x", vineyardId: "iso_vy_a", name: "ISO PA X", geometry: {}, geometryFingerprint: "x", canonicalAnchor: {}, source: "DRAW", tenantId: B, updatedAt: new Date() } }));
+    } catch { paInsertRaised = true; }
+    check("foreign-tenant vineyard_planting_area INSERT raises (WITH CHECK)", paInsertRaised);
+    let paFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.vineyardBlock.update({ where: { id: "iso_blk_a" }, data: { plantingAreaId: "iso_pa_b" } }));
+    } catch { paFkRaised = true; }
+    check("block cross-tenant plantingArea reference rejected (composite FK, K11)", paFkRaised);
+    // Exactly one OPEN geometry version per subject (partial unique, council C3/S2).
+    let openVersionRaised = false;
+    try {
+      await asTenant(A, (db) => db.vineyardGeometryVersion.create({ data: { id: "iso_gv_dup", subjectType: "PLANTING_AREA", subjectId: "iso_pa_a", version: 2, geometry: {}, fingerprint: "dup", canonicalAnchor: {}, tenantId: A } }));
+    } catch { openVersionRaised = true; }
+    check("second OPEN geometry version for a subject rejected (partial unique)", openVersionRaised);
+
     // 5d. Phase 15: accounting_connection (the ENCRYPTED-TOKEN table) is tenant-isolated through the
     // pooled endpoint. This is the one that matters most — a leak here is a cross-tenant token read.
     const aSeesConnB = await asTenant(A, (db) => db.accountingConnection.findFirst({ where: { id: "iso_acct_conn_b" } }));
@@ -966,6 +995,10 @@ async function main() {
     await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_b" } });
     await owner.brixLog.deleteMany({ where: { id: { in: ["iso_brix_a", "iso_brix_b"] } } });
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["iso_blk_a", "iso_blk_b"] } } });
+    // VI-P1: geometry_version FK's organization (RESTRICT), so delete before the org drop; planting areas
+    // after their blocks (block→planting is RESTRICT) and before the vineyard (which would cascade them).
+    await owner.vineyardGeometryVersion.deleteMany({ where: { id: { in: ["iso_gv_a", "iso_gv_b", "iso_gv_dup"] } } });
+    await owner.vineyardPlantingArea.deleteMany({ where: { id: { in: ["iso_pa_a", "iso_pa_b", "iso_pa_x"] } } });
     await owner.vineyard.deleteMany({ where: { id: { in: ["iso_vy_a", "iso_vy_b"] } } });
     await owner.lot.deleteMany({ where: { id: { in: ["iso_lot_a", "iso_lot_b", "iso_lot_x"] } } });
     // Phase 2: bonds are FK'd to organization → delete before org B drops.

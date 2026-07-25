@@ -54,6 +54,15 @@ export const INTERNAL = {
   // Plan 095: grower-core is NO LONGER internal — it now has a first-class assistant tool (create_grower →
   // createGrowerAction → createGrowerWithSync → createGrowerCore). The ticket (#489) made growers a
   // conversational capability like vendors, so the core is reachable and needs no exemption.
+  "src/lib/plantingArea/migration-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "VI-P1: migration-by-union is a one-time, REVIEWED, all-or-nothing setup step — the grower eyeballs " +
+      "each proposed parent over satellite imagery ('did we bridge a road?') before confirming. That review " +
+      "is a map-and-click flow, not a natural-language capability (coalescence 'desk-with-coffee → GUI'). The " +
+      "conversational surface for planting structure (READ) is covered by describe_planting_structure.",
+    coveredBy: "planting-setup migration review UI + describe_planting_structure (read)",
+  },
 };
 
 // Temporary — real gaps deferred with a tracked reason. Ratcheted by MAX_ALLOWED.
