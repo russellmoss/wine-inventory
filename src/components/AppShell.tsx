@@ -42,6 +42,7 @@ const VINEYARDS: NavItem[] = [
   { href: "/vineyards/harvest", label: "Harvest" },
   { href: "/vineyards/harvest/weigh-tags", label: "Weigh-tags", customCrush: true }, // Plan 093 (gated on the custom-crush program)
   { href: "/vineyards/maps", label: "Maps" },
+  { href: "/vineyards/planting-setup", label: "Planting setup" }, // VI-P1
 ];
 
 const SETUP: NavItem[] = [
