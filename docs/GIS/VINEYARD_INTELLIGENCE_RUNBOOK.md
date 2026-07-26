@@ -413,11 +413,11 @@ Update this table at every transition; link the plan doc, PR(s), and phase repor
 
 > **As of 2026-07-26:** Release 1 (P1 geometry + P2/P3 NDVI + P4 soil) and Release 4A (P8 weather) are
 > shipped + live. Genuinely-next unbuilt work: **P5 observations/sampling** (Wave 2) and **P9 weather
-> disease** (needs P8). **Parked landmine:** a `feat/vi-p4-soil` continuation branch (Map Explorer fold —
-> merges the two map pages, renames "Satellite NDVI" → "Map Explorer", soil-as-a-toggleable-NDVI-layer,
-> auto-pull soil sweep) is UNMERGED and STALE (predates the P3 #498/#499 fixes). Rebase on main before it
-> lands or it will revert the P3 prod-client fix + block-clip. P4's core gate (#502) is shipped regardless.
-> Doc gap: P4 (soil) and P8 (weather) shipped without a `phases/*-report.md` — worth backfilling.
+> disease** (needs P8). **UI note:** #502 shipped the soil layer AND folded the map surfaces — NDVI + soil +
+> blocks now live in one **Map Explorer** at `/vineyards/maps` (the old `/vineyards/ndvi` permanently
+> redirects there; the nav entry is "Map Explorer"). #502 merged after the P3 #499 fixes and preserved them
+> (prod `prisma generate` in build + block-clip). Doc gap: P4 (soil) and P8 (weather) shipped without a
+> `phases/*-report.md` — worth backfilling.
 
 ## 8. Phase reports and decisions
 
