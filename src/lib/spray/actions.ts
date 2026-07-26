@@ -304,7 +304,9 @@ export async function loadSprayFormInitial(applicationId: string): Promise<
       prisma.sprayBlockLine.findMany({ where: { applicationId } }),
     ]);
     const materialLineNoById = new Map(materials.map((m) => [m.id, m.lineNo]));
-    const local = (d: Date | null) => (d ? d.toISOString().slice(0, 16) : "");
+    // Full ISO (UTC) — SprayForm converts to the BROWSER's wall time for datetime-local inputs
+    // (QA finding: a truncated UTC string fed to datetime-local shifts every instant on resubmit).
+    const local = (d: Date | null) => (d ? d.toISOString() : "");
     const str = (v: unknown) => (v == null ? "" : String(Number(v)));
     return {
       predecessorId: app.id,

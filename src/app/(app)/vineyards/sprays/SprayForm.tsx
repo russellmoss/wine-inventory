@@ -85,6 +85,32 @@ const num = (s: string): number | null => {
 };
 const dt = (s: string): Date | null => (s ? new Date(s) : null);
 
+/** A stored UTC instant (ISO, from the correction prefill) → the BROWSER-local wall time a
+ * datetime-local input expects. Without this, an untouched correction would silently shift every
+ * timestamp by the viewer's UTC offset (QA finding, 2026-07-26). */
+const isoUtcToLocalInput = (s: string): string => {
+  if (!s) return "";
+  const d = new Date(s.endsWith("Z") || s.includes("+") ? s : s + "Z");
+  if (Number.isNaN(d.getTime())) return s;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+function normalizeInitial(initial: SprayFormInitial | undefined): SprayFormInitial | undefined {
+  if (!initial) return undefined;
+  return {
+    ...initial,
+    startedAt: isoUtcToLocalInput(initial.startedAt),
+    finishedAt: isoUtcToLocalInput(initial.finishedAt),
+    blockDrafts: Object.fromEntries(
+      Object.entries(initial.blockDrafts).map(([k, d]) => [
+        k,
+        { ...d, startedAt: isoUtcToLocalInput(d.startedAt), finishedAt: isoUtcToLocalInput(d.finishedAt) },
+      ]),
+    ),
+  };
+}
+
 const inputStyle: React.CSSProperties = {
   padding: "6px 8px",
   borderRadius: 10,
@@ -118,13 +144,14 @@ export function SprayForm({
   blocks,
   mode,
   predecessorId,
-  initial,
+  initial: rawInitial,
 }: {
   blocks: SprayFormBlock[];
   mode: "create" | "correct";
   predecessorId?: string;
   initial?: SprayFormInitial;
 }) {
+  const initial = normalizeInitial(rawInitial);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -188,7 +215,9 @@ export function SprayForm({
       .filter(([, d]) => d.selected)
       .map(([blockId, d]) => ({
         blockId,
-        treatedAreaHa: num(d.areaHa),
+        // Untouched prefill = let the core derive (provenance stays DERIVED_FROM_SPACING —
+        // council CQ2; QA finding: submitting the prefilled number read as operator-entered).
+        treatedAreaHa: d.areaEdited ? num(d.areaHa) : null,
         treatedAreaSource: d.areaEdited ? ("OPERATOR_ENTERED" as const) : undefined,
         startedAt: dt(d.startedAt),
         finishedAt: dt(d.finishedAt),
