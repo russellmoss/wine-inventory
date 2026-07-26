@@ -35,6 +35,7 @@
     "backfill:published-dates": "tsx --conditions=react-server --env-file=.env scripts/backfill-published-dates.ts",
     "reindex:knowledge": "tsx --conditions=react-server --env-file=.env scripts/reindex-knowledge-corpus.ts",
     "kb:snapshot": "tsx --env-file=.env scripts/kb-snapshot.ts",
+    "ingest:appril": "tsx --env-file=.env scripts/ingest-appril.ts",
     "verify:knowledge-base": "tsx --env-file=.env scripts/verify-knowledge-base.ts",
     "verify:vt-enology": "tsx scripts/verify-vt-enology.ts",
     "verify:msu": "tsx scripts/verify-msu.ts",

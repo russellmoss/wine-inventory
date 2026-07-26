@@ -132,8 +132,15 @@ export function parseAisCell(raw: string): { ais: ApprilAi[]; errors: string[] }
 
 export function parseApprilRow(row: Record<string, string>): ApprilRowResult {
   const regNumRaw = (row.REG_NUM ?? "").trim();
-  const productName = (row.PRODUCT_NAME ?? "").trim();
   if (regNumRaw.length === 0) return { ok: false, error: "missing REG_NUM" };
+  // Measured 2026-07-26: ~4,750 real dump rows (overwhelmingly Inactive, but 7 Active-grape) carry an
+  // empty PRODUCT_NAME. Fall back to the ABNS primary name; a still-nameless row is a typed failure
+  // the ingest counts as a skip, not a run-failing error — it is a property of the dump.
+  let productName = (row.PRODUCT_NAME ?? "").trim();
+  if (productName.length === 0) {
+    const primary = (row.ABNS ?? "").split(/,\s+/).find((a) => /\(Primary Name\)\s*$/i.test(a));
+    productName = (primary ?? "").replace(/\s*\(Primary Name\)\s*$/i, "").trim();
+  }
   if (productName.length === 0) return { ok: false, error: `missing PRODUCT_NAME for ${regNumRaw}` };
 
   const { ais, errors: aisErrors } = parseAisCell(row.AIS ?? "");
