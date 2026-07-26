@@ -47,6 +47,7 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const [hoverDay, setHoverDay] = React.useState<number | null>(null);
   const [domain, setDomain] = React.useState<[number, number]>(FULL);
+  const [isDragging, setIsDragging] = React.useState(false); // state (not the ref) so render can gate on it
   const drag = React.useRef<{ startX: number; startDomain: [number, number] } | null>(null);
   const pinch = React.useRef<{ startDist: number; startSpan: number; center: number } | null>(null);
 
@@ -105,7 +106,7 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
     if (drag.current) {
       const r = svgRef.current!.getBoundingClientRect();
       const dxDays = ((e.clientX - drag.current.startX) / r.width) * W / PLOT_W * span;
-      let nd0 = clamp(drag.current.startDomain[0] - dxDays, 0, MAX_DAY - span);
+      const nd0 = clamp(drag.current.startDomain[0] - dxDays, 0, MAX_DAY - span);
       setDomain([nd0, nd0 + span]);
     } else {
       setHoverDay(clientToDay(e.clientX));
@@ -122,7 +123,7 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
       const mid = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       pinch.current = { startDist: touchDist(e.touches), startSpan: span, center: clientToDay(mid) };
     } else if (e.touches.length === 1) {
-      if (zoomed) drag.current = { startX: e.touches[0].clientX, startDomain: [d0, d1] };
+      if (zoomed) { drag.current = { startX: e.touches[0].clientX, startDomain: [d0, d1] }; setIsDragging(true); }
       else setHoverDay(clientToDay(e.touches[0].clientX));
     }
   }
@@ -134,12 +135,12 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
       if (drag.current) {
         const r = svgRef.current!.getBoundingClientRect();
         const dxDays = ((e.touches[0].clientX - drag.current.startX) / r.width) * W / PLOT_W * span;
-        let nd0 = clamp(drag.current.startDomain[0] - dxDays, 0, MAX_DAY - span);
+        const nd0 = clamp(drag.current.startDomain[0] - dxDays, 0, MAX_DAY - span);
         setDomain([nd0, nd0 + span]);
       } else setHoverDay(clientToDay(e.touches[0].clientX));
     }
   }
-  const endGesture = () => { drag.current = null; pinch.current = null; };
+  const endGesture = () => { drag.current = null; pinch.current = null; setIsDragging(false); };
 
   const btn: React.CSSProperties = { width: 30, height: 30, borderRadius: 8, border: "1px solid var(--border-default)", background: "var(--surface-raised)", color: "var(--text-primary)", cursor: "pointer", fontSize: 16, lineHeight: 1 };
 
@@ -158,8 +159,8 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
       <svg
         ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%" role="img"
         aria-label="Accumulated growing degree days — drag to read, pinch or ± to zoom into a few days"
-        style={{ touchAction: "none", cursor: drag.current ? "grabbing" : zoomed ? "grab" : "crosshair" }}
-        onMouseMove={onMouseMove} onMouseDown={(e) => { drag.current = { startX: e.clientX, startDomain: [d0, d1] }; setHoverDay(null); }}
+        style={{ touchAction: "none", cursor: isDragging ? "grabbing" : zoomed ? "grab" : "crosshair" }}
+        onMouseMove={onMouseMove} onMouseDown={(e) => { drag.current = { startX: e.clientX, startDomain: [d0, d1] }; setIsDragging(true); setHoverDay(null); }}
         onMouseUp={endGesture} onMouseLeave={() => { endGesture(); setHoverDay(null); }}
         onWheel={onWheel} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={endGesture}
       >
@@ -183,7 +184,7 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
           {ordered.map((s) => (
             <path key={s.key} d={pathD(s)} fill="none" stroke={s.color} strokeWidth={s.emphasis ? 3 : 1.75} strokeDasharray={s.dash} strokeLinejoin="round" opacity={s.emphasis ? 1 : 0.9} />
           ))}
-          {hoverX !== null && !drag.current && (
+          {hoverX !== null && !isDragging && (
             <>
               <line x1={hoverX} y1={PAD_T} x2={hoverX} y2={H - PAD_B} stroke="var(--text-primary)" strokeWidth={1} strokeDasharray="3 3" opacity={0.6} />
               {readout?.map(({ s, v }) => (
@@ -194,7 +195,7 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
         </g>
       </svg>
 
-      {hoverDay !== null && readout && !drag.current ? (
+      {hoverDay !== null && readout && !isDragging ? (
         <div style={{ border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 12px", background: "var(--surface-raised)" }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6, color: "var(--text-primary)" }}>
             {dayLabel(hoverDay)} <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>(day {Math.round(hoverDay) + 1} of season)</span>
