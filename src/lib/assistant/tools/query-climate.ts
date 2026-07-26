@@ -4,6 +4,7 @@ import { resolveVineyards } from "../scope";
 import { prisma } from "@/lib/prisma";
 import { getWineryTimeZone } from "@/lib/settings/data";
 import { resolveSiteTimeZone, siteTodayIso } from "@/lib/weather/site-time-core";
+import { composeRainfallRangeCore } from "@/lib/weather/rainfall-range-core";
 import { gddCToF } from "@/lib/weather/units-core";
 import { composeClimateSummaryCore, type DailyRow, type ClimateConfig } from "@/lib/weather/read-core";
 import { resolveVineyardCentroid } from "@/lib/weather/location";
@@ -119,6 +120,16 @@ export const queryClimateTool: AssistantTool = {
         frostSeason: { vulnerableWindow: s.headline.frost.vulnerableWindow, lightNights: s.headline.frost.lightCount, killingNights: s.headline.frost.killingCount, framing: s.honesty.frostFraming },
         heatDaysOver35C: s.headline.heat.daysOverByThreshold["35"],
         rainfall: { seasonMm: s.headline.rainfall.totalMm, label: "Regional Rainfall Estimate (≈4 km average, not your rain gauge)" },
+        // Rolling recent rainfall (plan 096 U8) — year-round rows make this answerable in winter too.
+        rainfallLast30Days: (() => {
+          const r = composeRainfallRangeCore({
+            rows: primaryRows.map((row) => ({ providerKey: row.providerKey, localDate: row.localDate, precipMm: row.precipMm })),
+            primaryProviderKey: s.primaryProviderKey,
+            startIso: addDaysIso(todayLocal, -29),
+            endIso: todayLocal,
+          });
+          return { totalMm: r.stats.totalMm, wetDays: r.stats.wetDays, daysSinceLastRain: r.stats.daysSinceLastRain, missingDays: r.stats.missingDays };
+        })(),
         compareSources: s.spread ? { gddRange: `${s.spread.min}–${s.spread.max} GDD across ${s.spread.sources.join(", ")}`, perSource: s.perSource } : undefined,
         lastRefresh: s.lastRefreshAt,
       });
