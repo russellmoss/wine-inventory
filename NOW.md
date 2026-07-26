@@ -7,12 +7,16 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**PLAN 096 — Weather forecast + rainfall time-series: ALL 5 PHASES SHIPPED (2026-07-26).**
+**PLAN 096 — Weather forecast + rainfall time-series: ALL 5 PHASES SHIPPED + LIVE IN PROD (2026-07-26, deploy `bcd70e29` success).**
 PRs [#514](https://github.com/russellmoss/wine-inventory/pull/514) (P0 foundations) ·
 [#515](https://github.com/russellmoss/wine-inventory/pull/515) (P1 rainfall) ·
 [#516](https://github.com/russellmoss/wine-inventory/pull/516) (P2 forecast) ·
 [#517](https://github.com/russellmoss/wine-inventory/pull/517) (P3 warnings+notifications) ·
-P4 (observability+goldens) in flight to merge. Plan `docs/plans/2026-07-26-096-…` (completed) ·
+[#518](https://github.com/russellmoss/wine-inventory/pull/518) (P4 observability+goldens) ·
+[#519](https://github.com/russellmoss/wine-inventory/pull/519) (**deploy fix: the `10 */6` cron
+failed EVERY prod deploy from #516 — Vercel Hobby rejects sub-daily crons at DEPLOY time, invisible
+to CI/local build; forecast cron is DAILY 15:10 UTC, on-view refresh >6h carries intra-day
+freshness; restore 6-hourly only on Pro**). Plan `docs/plans/2026-07-26-096-…` (completed) ·
 council `council-feedback-096-…` (Codex+Gemini, 13 folded, 1 refuted). **The forecast strip sits at
 the TOP of /vineyards/weather** (Russell: most actionable info first). 7-day NWS (US) / Open-Meteo
 (Bhutan, elevation-downscaled to the true site), tiered frost/heat badges + claim-first digest
