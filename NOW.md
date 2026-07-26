@@ -68,11 +68,24 @@ each on/off, reorder flips the stack (verified NDVI↔Soil top swap), click a po
 with the parallel P3/P8 lanes — **`prisma generate` gets clobbered by their generates; regenerate right before any
 tsc/verify/dev-server run.** P3 display migrations (`..._ndvi_display_*`) are already in prod but not on this branch (fine).
 
-<details><summary>✅ VI P8 — Weather & Climate spine — SHIPPED to main (#500–#508, 2026-07-26)</summary>
+<details><summary>✅ VI P8 — Weather & Climate spine — SHIPPED + LIVE to main (#500–#511, 2026-07-26)</summary>
 
-`docs/GIS/phases/phase-8-weather-climate-spine-plan.md` (BUILT) · report `phase-8-report.md`. Branch
-`claude/distracted-edison-bcf259` (11 commits). **Migration `20260725150000_weather_schema` is APPLIED to prod**
+`docs/GIS/phases/phase-8-weather-climate-spine-plan.md` (BUILT) · report `phase-8-report.md`. **All merged + live in prod.**
+**Migration `20260725150000_weather_schema` is APPLIED to prod**
 (bumped past the parallel P3 `ndvi_display` + P4 `soil_snapshot` slices already in the DB).
+
+**Post-spine follow-ons shipped (all live):**
+- **Station/source selector + clickable Leaflet station map** (#504) — grower picks which station reports.
+- **Winkler long-term normal (10/20-yr selectable) + WSU-style cumulative GDD chart** (#505–#508) — °F, base 50°F,
+  April–Oct, 5 comparison lines (longterm/cool/hot/last/current), interactive crosshair scrub + zoom (±/pinch/drag-pan).
+- **#509 — "No tenant context" fix**: server actions now wrap ingest in `runAsTenant()` (`requireTenant()` helper);
+  dataless-primary fallback in `read-core` + `selectPrimaryCore` skips completeness-0 stations (Madera read 0 → fixed).
+- **#510 — non-US vineyards (Bhutan) get weather**: `resolveVineyardCentroid` fallback chain adds the grower's **GPS pin**
+  (`VineyardDetail.gpsLat/gpsLng`); `backfill-core` uses **NASA POWER** (global, keyless) where gridMET has no coverage.
+  Manually primed 7 of 8 Bhutan vineyards (Gelephu has no pin yet).
+- **#511 — durable sweep auto-prime**: the daily cron (`/api/cron/weather-poll`, 15:40 UTC) now enumerates ALL active
+  vineyards and primes any located-but-empty one (current season + 20yr backfill + `weatherAutoRefresh` on), capped 30/run.
+  ➡️ **Gelephu will self-populate on the next cron run once its GPS pin lands** — no manual step needed.
 
 **Proven with REAL live data** (Russian River Ranch + Bhutan) + a deterministic fixture gate:
 - 3 tenant tables (fact-table `vineyard_climate_daily` + 1:1 `vineyard_weather_config` + daily-keyed
