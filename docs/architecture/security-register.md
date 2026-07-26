@@ -24,6 +24,34 @@
   Organization/Member/Invitation. Nothing else may be global.
 - **Status:** 🟢 (enforced + verified in prod; `npm run` verify scripts + `test/tenant-isolation.test.ts`)
 
+### A tenant scope must outlive the query it scopes — the lazy-`PrismaPromise` trap (TENANT-3)
+- A Prisma model method returns a **lazy thenable**: calling it only BUILDS the query, and the tenant
+  extension's `$allOperations` hook (`src/lib/prisma.ts`) does not run until something calls `.then()`.
+  `AsyncLocalStorage.run` exits its scope the instant its callback **returns**. So
+  `runAsTenant(t, () => prisma.lot.findMany())` builds the query inside the scope and **runs it after
+  the scope has exited** — the hook reads the store from outside.
+- **Why this is a security invariant, not a lint nit — the failure is asymmetric.** With no ambient
+  context it throws `Tenant context required for <Model>.<op>` (loud, safe). With an ambient **outer**
+  `runAsTenant` still live it **silently uses the outer tenant** instead of the one explicitly passed —
+  a cross-tenant read/write shape. RLS is not a backstop here: the GUC is set from whatever tenant the
+  hook resolves, so the database faithfully enforces the *wrong* tenant. Every call site swept
+  (2026-07-26) was in fact reached cold, so no cross-tenant row is known to have been written; the
+  exposure was latent, one nested caller away.
+- **Closed on two fences.** (1) *Structural*: `runAsTenant` / `runWithTenantContext` now wrap the
+  callback in `async () => await fn()`, forcing the thenable **inside** the scope regardless of how the
+  callback is written — this covers aliased callbacks and future call sites. (2) *Shape*:
+  `npm run verify:tenant-callbacks` (AST scan) keeps call sites written `async () => await …`, so the
+  codebase never silently depends on fence 1 and the bad shape never reads as a copyable idiom.
+  `runAsSystem` (un-extended client, no ALS read) and `runInTenantTx` / `runLedgerWrite` (callback
+  forced inside an `async` `$transaction` callback) cannot hit the trap and are not scanned.
+- **Tripwire:** `store.run(ctx, fn)` handing `fn` through un-awaited in `src/lib/tenant/context.ts`
+  (fence 1 removed); a new `AsyncLocalStorage`-based scope helper that returns its callback's value
+  without awaiting it; `verify:tenant-callbacks` being allowlisted rather than fixed. Proof:
+  `test/tenant-context-lazy.test.ts` (helper guarantee, incl. the nested outer-tenant case) +
+  `npm run verify:tenant-callbacks` + `verify:tenant-isolation`.
+- **Status:** 🟢 (structural fix + 8 call sites corrected + guard and regression test landed 2026-07-26;
+  see [[TENANT-3-lazy-thenable-scope]])
+
 ### Every NEW tenant table follows the full checklist or it leaks
 - The 9-step Phase-12 checklist in [[CLAUDE]] is mandatory: `tenantId` + index, migration + FK,
   backfill + NOT NULL, per-tenant uniques, composite FKs where needed, RLS enable/force/policy,

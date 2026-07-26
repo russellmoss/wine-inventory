@@ -83,6 +83,7 @@
     "verify:fx-live": "tsx --conditions=react-server --env-file=.env scripts/verify-fx-live.ts",
     "verify:fx-e2e": "tsx --conditions=react-server --env-file=.env scripts/verify-fx-e2e.ts",
     "verify:raw-sql": "tsx scripts/check-raw-sql-tenant-safety.ts",
+    "verify:tenant-callbacks": "tsx scripts/check-tenant-callback-shape.ts",
     "verify:invariants": "node scripts/verify-invariant-guards.mjs",
     "verify:invariant-frontmatter": "node scripts/verify-invariant-frontmatter.mjs",
     "verify:tripwires": "node scripts/verify-tripwire-guards.mjs",

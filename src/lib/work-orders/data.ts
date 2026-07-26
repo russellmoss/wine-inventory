@@ -474,7 +474,9 @@ export async function getWorkOrderForEdit(tenantId: string, workOrderId: string)
 
 /** Count of work orders awaiting review (PENDING_APPROVAL) — the nav badge source. */
 export async function countPendingApprovalWorkOrders(tenantId: string): Promise<number> {
-  return runAsTenant(tenantId, () => prisma.workOrder.count({ where: { status: "PENDING_APPROVAL" } }));
+  // TENANT-3: await INSIDE the callback — a bare PrismaPromise is lazy and would run after the
+  // ALS scope exits (see src/lib/tenant/context.ts).
+  return runAsTenant(tenantId, async () => await prisma.workOrder.count({ where: { status: "PENDING_APPROVAL" } }));
 }
 
 export type ArchiveRow = {
@@ -659,8 +661,9 @@ export async function getReviewQueue(tenantId: string): Promise<ReviewQueueItem[
 
 /** The manager's template picker (issue-from-template). */
 export async function listWorkOrderTemplates(tenantId: string): Promise<{ id: string; code: string; name: string; category: string | null; isSystem: boolean }[]> {
-  return runAsTenant(tenantId, () =>
-    prisma.workOrderTemplate.findMany({
+  // TENANT-3: await INSIDE the callback (lazy PrismaPromise — see src/lib/tenant/context.ts).
+  return runAsTenant(tenantId, async () =>
+    await prisma.workOrderTemplate.findMany({
       where: { archivedAt: null },
       orderBy: [{ isSystem: "desc" }, { name: "asc" }],
       select: { id: true, code: true, name: true, category: true, isSystem: true },

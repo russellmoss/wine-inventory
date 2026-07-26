@@ -35,16 +35,18 @@ export async function storeFeedbackAttachment(input: {
   const parentWhere = input.ticketId
     ? { ticketId: input.ticketId }
     : { assistantFeedbackId: input.assistantFeedbackId ?? "" };
-  const existing = await runAsTenant(input.tenantId, () =>
-    prisma.feedbackAttachment.count({ where: parentWhere }),
+  // TENANT-3: await INSIDE every runAsTenant callback here — a bare PrismaPromise is lazy and would
+  // run after the ALS scope exits (see src/lib/tenant/context.ts).
+  const existing = await runAsTenant(input.tenantId, async () =>
+    await prisma.feedbackAttachment.count({ where: parentWhere }),
   );
   if (existing >= MAX_ATTACHMENTS_PER_ITEM) throw new Error("Too many attachments for this item.");
 
   const filename = safeFilename(input.filename);
   const blob = await putPrivateImage("feedback", input.tenantId, filename, input.image);
 
-  return runAsTenant(input.tenantId, () =>
-    prisma.feedbackAttachment.create({
+  return runAsTenant(input.tenantId, async () =>
+    await prisma.feedbackAttachment.create({
       data: {
         ticketId: input.ticketId ?? null,
         assistantFeedbackId: input.assistantFeedbackId ?? null,
@@ -63,8 +65,9 @@ export async function storeFeedbackAttachment(input: {
 }
 
 export async function readFeedbackAttachmentBlob(tenantId: string, attachmentId: string) {
-  const attachment = await runAsTenant(tenantId, () =>
-    prisma.feedbackAttachment.findUnique({
+  // TENANT-3: await INSIDE the callback (lazy PrismaPromise — see src/lib/tenant/context.ts).
+  const attachment = await runAsTenant(tenantId, async () =>
+    await prisma.feedbackAttachment.findUnique({
       where: { id: attachmentId },
       select: { blobUrl: true, filename: true, contentType: true },
     }),

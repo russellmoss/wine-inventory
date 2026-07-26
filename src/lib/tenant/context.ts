@@ -33,18 +33,44 @@ export type TenantContext = {
 
 const store = new AsyncLocalStorage<TenantContext>();
 
+/**
+ * TENANT-3 — why every entry point below wraps `fn` in `async () => await fn()` instead of handing
+ * `fn` straight to `store.run`.
+ *
+ * A Prisma model method returns a LAZY thenable (`PrismaPromise`): calling it only BUILDS the query;
+ * nothing runs — and the tenant extension's `$allOperations` hook (src/lib/prisma.ts) never fires —
+ * until something calls `.then()`. `store.run(ctx, fn)` exits the ALS scope the instant `fn` returns,
+ * so a callback that returns a bare PrismaPromise:
+ *
+ *     runAsTenant(t, () => prisma.lot.findMany())   // ⚠️ the query runs AFTER the scope exits
+ *
+ * would have the hook read the store from OUTSIDE the scope. With no ambient context that throws
+ * "Tenant context required for …"; with an ambient OUTER context still live it silently runs under
+ * the OUTER tenant instead of `t` — a cross-tenant read/write.
+ *
+ * The `await` below happens INSIDE the scope, so the thenable is forced there and the hook always
+ * sees the intended tenant. This makes the shape structurally impossible rather than a rule authors
+ * have to remember; `test/tenant-context-lazy.test.ts` pins it (and would fail if the wrapper were
+ * removed). Call sites should still prefer `async () => await …` for readability — that form is
+ * correct on its own merits and `npm run verify:tenant-callbacks` keeps them that way.
+ *
+ * The only behavior change: a callback that throws SYNCHRONOUSLY now rejects the returned promise
+ * instead of throwing synchronously out of the helper. Every caller awaits the result, and the
+ * signature already promised `Promise<T>`.
+ */
+
 /** Run `fn` with the given tenant as the active context. All tenant-scoped Prisma ops inside are
  *  scoped to `tenantId` (RLS + auto-injected on create). Pass `opts.userId` to also set `app.user_id`
  *  for per-user RLS (inbox); omit it for tenant-only work. */
 export function runAsTenant<T>(tenantId: string, fn: () => Promise<T>, opts?: { userId?: string }): Promise<T> {
   if (!tenantId) throw new Error("runAsTenant requires a non-empty tenantId.");
-  return store.run({ tenantId, userId: opts?.userId }, fn);
+  return store.run({ tenantId, userId: opts?.userId }, async () => await fn());
 }
 
 /** Internal: run with an explicit context object (used by the ledger to set skipWrap). */
 export function runWithTenantContext<T>(ctx: TenantContext, fn: () => Promise<T>): Promise<T> {
   if (!ctx.tenantId) throw new Error("runWithTenantContext requires a non-empty tenantId.");
-  return store.run(ctx, fn);
+  return store.run(ctx, async () => await fn());
 }
 
 export function getTenantContext(): TenantContext | undefined {

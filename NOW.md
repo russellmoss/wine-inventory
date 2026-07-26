@@ -962,6 +962,33 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **TENANT-3 — the lazy-`PrismaPromise` tenancy bug class: SWEPT + CLOSED STRUCTURALLY**
+  (branch `claude/silly-goldwasser-d2aedf`, 2026-07-26). `runAsTenant(t, () => prisma.x.op())` with a
+  **non-async** arrow BUILDS the query inside the ALS scope and **runs it after the scope exits** —
+  the tenant extension's hook then reads the store from outside. With no ambient context it throws;
+  with an ambient **outer** `runAsTenant` live it silently uses the **outer** tenant. AST sweep found
+  exactly **8** sites (the 8 known ones — no others). Fixed on two fences: (1) *structural* —
+  `runAsTenant`/`runWithTenantContext` now wrap the callback in `async () => await fn()`, so the
+  thenable is forced inside the scope however the callback is written; (2) *shape* — all 8 call sites
+  rewritten `async () => await …`, guarded by a new AST scan `npm run verify:tenant-callbacks` (wired
+  into CI). Pinned by `test/tenant-context-lazy.test.ts` (9 cases incl. the nested outer-tenant one;
+  4 fail if the wrapper is removed). Registered as invariant **TENANT-3** + a security-register entry.
+  🔎 **`npm run verify:reminders` was RED on `main` because of this** — it died at the step-2
+  `ComplianceReport.create`. Now green end-to-end (15 assertions) for the first time; that unmasked a
+  second, unrelated bug in the script itself (the badge assertion compared a **30**-day count to a
+  **60**-day one), also fixed. Gates: tsc 0, eslint 0 errors, **vitest 4482/0**,
+  `verify:tenant-isolation` / `raw-sql` / `invariants` (45/45) / `tripwires` / `parity` / `ai-native` /
+  `work-orders` / `feedback` / `naming` all green.
+  ⚠️ **Two premises in the request did not hold and are worth knowing:** there is no
+  `src/lib/users/vineyard-memberships.ts` on **any** branch, and the security register has no
+  "GLOBAL model may never select a relation to a tenant-scoped table" section — that work was never
+  committed. The real in-repo reference for the correct shape is
+  [`src/lib/knowledge/subscriptions.ts:23`](src/lib/knowledge/subscriptions.ts). The **separate**
+  global-relation bug it described is **still open**: `getCurrentUser` selects
+  `vineyardMemberships` (RLS-forced `user_vineyard`) through the GLOBAL `User` model, which the
+  extension passes through with no `app.tenant_id` → `[]`. That is the ⛔ open gate line above and is
+  NOT fixed by this work.
+
 - **S4 (Spray Intelligence lane D) — phenology precision + the growth-dilution model: BUILT.**
   PR 1 (schema slice) **MERGED** as [#521](https://github.com/russellmoss/wine-inventory/pull/521);
   PR 2 (the feature, Units 3–10) opened on `claude/s4-phenology-feature-e9b928`. Six new weekly
@@ -1308,7 +1335,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 — **S4 (spray phenology + growth) BUILT: PR 1 #521 MERGED, PR 2 open; 135 new tests, all gates green except interactive UI QA, which is blocked by a non-S4 RLS bug in getCurrentUser. Scouting coverage measured at 0/0 = NOT YET MEASURABLE, recorded as-is.** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+_Last updated: 2026-07-26 — **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts` added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15. The adjacent GLOBAL-relation bug in `getCurrentUser` is STILL OPEN.** Prior: **S4 (spray phenology + growth) BUILT: PR 1 #521 MERGED, PR 2 open; 135 new tests, all gates green except interactive UI QA, which is blocked by a non-S4 RLS bug in getCurrentUser. Scouting coverage measured at 0/0 = NOT YET MEASURABLE, recorded as-is.** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.
