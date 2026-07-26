@@ -12,6 +12,7 @@ import { backfillVineyardWeatherHistory, listNearbyStations, refreshVineyardWeat
 import { formatGdd, formatPrecip, formatTemp, gddCToF, gddFToC, type UnitSystem } from "@/lib/weather/units-core";
 import { StationMapClient } from "./StationMap.client";
 import { GddChart } from "./GddChart";
+import { RainfallSectionClient } from "./RainfallSection.client";
 
 type VineyardOpt = { id: string; name: string };
 
@@ -265,6 +266,9 @@ export function WeatherCard({
               <div style={{ ...label, textTransform: "none", marginTop: 4 }}>Regional Rainfall Estimate (≈4 km average, not your rain gauge).</div>
             </Panel>
           </div>
+
+          {/* Rainfall over time (plan 096 U9) — bars + cumulative, range control, honest stats. */}
+          {selectedId && <RainfallSectionClient vineyardId={selectedId} unitSystem={unit} />}
 
           {/* Station-vs-site + provider panel, with the grower's primary-source selector (R14). */}
           <Panel title="Where this estimate comes from">
