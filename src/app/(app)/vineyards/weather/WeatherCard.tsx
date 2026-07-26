@@ -158,7 +158,7 @@ export function WeatherCard({
               <span style={{ color: "var(--text-muted)" }}>to date · {trustLabel(h.gddCompletenessPct)} confidence ({h.gddCompletenessPct}% of season) · {h.seasonGddC.toLocaleString()} °C</span>
             </div>
             {summary.normals.hasHistory ? (
-              <GddChart current={summary.normals.graph.current} avg10={summary.normals.graph.avg10} avg20={summary.normals.graph.avg20} />
+              <GddChart series={summary.normals.comparison} />
             ) : (
               <div style={{ ...card, background: "var(--surface-muted)", display: "grid", gap: 8 }}>
                 <div>Load 20 years of history to chart this season against the 10- and 20-year average curves and classify the Winkler region.</div>

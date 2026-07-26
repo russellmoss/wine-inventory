@@ -129,6 +129,49 @@ export function averageCurve(curves: CurvePoint[][]): CurvePoint[] {
     .map(([dayIndex, { sum, n }]) => ({ dayIndex, cumF: Math.round(sum / n) }));
 }
 
+/** One labelled curve for the WSU-style comparison chart (a season line + its running-total °F). */
+export interface NamedCurve {
+  key: "longterm" | "cool" | "hot" | "last" | "current";
+  label: string;
+  totalF: number; // season-to-date (current) or full-season (historical) °F GDD — shown in the legend
+  color: string;
+  dash?: string; // SVG stroke-dasharray for the long-term line
+  emphasis?: boolean; // the current year, drawn heavier
+  curve: CurvePoint[];
+}
+
+/**
+ * The WSU/CSF-style comparison set: long-term average, the coolest and hottest historical seasons (the
+ * envelope), last complete year, and the current year. Farmers read "am I tracking hot or cool, ahead or
+ * behind normal" at a glance. Colours are semantic (cool=blue, hot=red) — a data-viz exception to tokens.
+ */
+export function comparisonSeries(records: LocalDailyRecord[], latitude: number, currentSeasonYear: number): NamedCurve[] {
+  const perYear = perYearSeasonGdd(records, latitude);
+  const complete = perYear.filter((y) => y.complete && y.seasonYear < currentSeasonYear);
+  const curveFor = (yr: number) => cumulativeCurve(records, latitude, yr);
+  const out: NamedCurve[] = [];
+
+  if (complete.length > 0) {
+    const recent = [...complete].sort((a, b) => b.seasonYear - a.seasonYear).slice(0, 20);
+    const avgF = Math.round(recent.reduce((s, y) => s + y.gddF, 0) / recent.length);
+    out.push({ key: "longterm", label: `Long-term avg (${recent.length} yr)`, totalF: avgF, color: "#1f7a6b", dash: "7 4", curve: averageCurve(recent.map((y) => curveFor(y.seasonYear))) });
+
+    const coolest = complete.reduce((a, b) => (b.gddF < a.gddF ? b : a));
+    const hottest = complete.reduce((a, b) => (b.gddF > a.gddF ? b : a));
+    out.push({ key: "cool", label: `Coolest (${coolest.seasonYear})`, totalF: coolest.gddF, color: "#2b6cb0", curve: curveFor(coolest.seasonYear) });
+    out.push({ key: "hot", label: `Hottest (${hottest.seasonYear})`, totalF: hottest.gddF, color: "#c0392b", curve: curveFor(hottest.seasonYear) });
+
+    const lastY = recent[0];
+    if (lastY && lastY.seasonYear !== coolest.seasonYear && lastY.seasonYear !== hottest.seasonYear) {
+      out.push({ key: "last", label: `${lastY.seasonYear}`, totalF: lastY.gddF, color: "#dd8452", curve: curveFor(lastY.seasonYear) });
+    }
+  }
+
+  const cur = perYear.find((y) => y.seasonYear === currentSeasonYear);
+  out.push({ key: "current", label: `${currentSeasonYear} (this year)`, totalF: cur?.gddF ?? 0, color: "#111111", emphasis: true, curve: curveFor(currentSeasonYear) });
+  return out;
+}
+
 /** Build the graph payload: the current (partial) year + the 10-yr and 20-yr average curves. */
 export function gddGraphCurves(records: LocalDailyRecord[], latitude: number, currentSeasonYear: number) {
   const perYear = perYearSeasonGdd(records, latitude);

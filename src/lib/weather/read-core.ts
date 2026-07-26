@@ -13,7 +13,7 @@ import { heatDays, type HeatResult } from "./heat-core";
 import { rainfall, type RainfallResult } from "./rainfall-core";
 import { filterToSeason, seasonCompleteness, seasonWindowFor, seasonYearFor, hemisphereFor } from "./season-core";
 import { computeSpreadCore, effectivePrimary, gapFillCore, type Spread, type WeatherConfigLike } from "./source-selection-core";
-import { gddGraphCurves, perYearSeasonGdd, winklerNormal, type CurvePoint, type WinklerNormal, type YearGdd } from "./normals-core";
+import { comparisonSeries, gddGraphCurves, perYearSeasonGdd, winklerNormal, type CurvePoint, type NamedCurve, type WinklerNormal, type YearGdd } from "./normals-core";
 import type { ProviderKey } from "./providers/types";
 
 /** A stored daily row (Prisma Decimals already coerced to number|null). */
@@ -81,6 +81,7 @@ export interface ClimateSummary {
     winkler10: WinklerNormal | null;
     winkler20: WinklerNormal | null;
     graph: { current: CurvePoint[]; avg10: CurvePoint[]; avg20: CurvePoint[]; avg10Years: number; avg20Years: number };
+    comparison: NamedCurve[]; // WSU-style: long-term avg + coolest + hottest + last year + current
     hasHistory: boolean; // ≥1 complete past season available
   };
   // Compare-sources view (R3/R14): the spread across sources, never an average.
@@ -179,12 +180,14 @@ export function composeClimateSummaryCore(input: {
   const winkler10 = winklerNormal(perYearNormals, 10, seasonYear);
   const winkler20 = winklerNormal(perYearNormals, 20, seasonYear);
   const graph = gddGraphCurves(normalsRows, latitude, seasonYear);
+  const comparison = comparisonSeries(normalsRows, latitude, seasonYear);
   const normals = {
     source: normalsSource,
     perYear: perYearNormals,
     winkler10,
     winkler20,
     graph,
+    comparison,
     hasHistory: perYearNormals.some((y) => y.complete && y.seasonYear < seasonYear),
   };
 
