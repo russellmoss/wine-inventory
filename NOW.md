@@ -7,11 +7,12 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Vineyard Intelligence P3 — NDVI DISPLAY: BUILT + browser-QA'd on `feat/vi-p3-ndvi-display`, PR open, not yet merged.**
-All 11 units. Ship = review + merge the PR. Plan `docs/GIS/phases/phase-3-ndvi-display-plan.md` (completed) · report
+**Vineyard Intelligence P3 — NDVI DISPLAY: SHIPPED + LIVE (PR #498 squash-merged to main `bcc73b94`, 2026-07-26).**
+All 11 units, reviewed (4 specialists) + fixed. Plan `docs/GIS/phases/phase-3-ndvi-display-plan.md` (completed) · report
 `phase-3-report.md`. ⚠️ **The P3 plan + council files were LOST (never saved) — reconstructed from memory at build time.**
+**NEXT candidates:** VI-P4 soil (worktree `cranky-ritchie`, branch `feat/vi-p4-soil`) or Release-4 weather (P8 plan ready).
 
-<details><summary>✅ Vineyard Intelligence P3 — NDVI display (viz half) — BUILT 2026-07-25 (PR open)</summary>
+<details><summary>✅ Vineyard Intelligence P3 — NDVI display (viz half) — SHIPPED + LIVE 2026-07-26 (#498)</summary>
 
 Schema (`SpatialDatasetDerivative` + `SpatialStyle`, RLS applied to live DB, `verify:tenant-isolation` 141 tables) ·
 `warp.ts` UTM→north-up-3857 (council #1, **sub-pixel registration test is the merge gate**) · `resolveDomain` +
