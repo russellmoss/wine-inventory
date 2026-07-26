@@ -107,6 +107,19 @@ Each phase's `/plan` adds its own cases here-by-reference. Minimum shape per pha
 - **The persistence proof** — `runAsTenant` read-back for anything that writes.
 - **Mobile viewport** for anything a grower reads in the field.
 - **Light and dark**, for anything using the risk visual vocabulary (S9 onward).
+- **The round-trip case, for ANY surface that pre-fills a stored value and re-submits it**
+  (an edit/correction form, a plan-vs-actual editor, a "duplicate this" flow): open it, change
+  NOTHING, submit, then diff the new row against the old one in the DB. *(Added after S3a: the
+  correction form rendered stored UTC instants into `datetime-local` inputs, which the browser reads
+  as LOCAL wall time — an untouched correction silently shifted every timestamp by the viewer's UTC
+  offset. On a REI/PHI record that is a compliance defect, and it is invisible unless you
+  specifically submit an unchanged form. The same class of bug puts a defaulted value in as though a
+  human asserted it — S3a's other finding.)*
+- **Site-regime expectation, S5a onward:** two live Demo sites — **Russian River (coastal fog) and
+  Madera (hot arid interior)** — are in the regime S0 measured as NOT servable on reanalysis inputs
+  (ADR 0012). Any LWD-derived output there should **refuse**, and a QA run that shows a confident
+  number at those sites is a finding, not a pass. Stoney Hill and Monticello are the passing-regime
+  sites to exercise the happy path on.
 
 ---
 

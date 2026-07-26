@@ -445,6 +445,23 @@ time (rule §3.6). **S2b must also implement the S3a `ProductFactsResolver` port
 (`src/lib/spray/product-facts-port.ts`, `resolveMany`) — registering the real resolver replaces
 the null resolver and back-fills nothing (facts-as-of is per-entry, rule §3.8).
 
+🔴 **S2b UNIT 1 — reconcile the `factsAsOf` shape BEFORE writing any real facts. Cross-lane defect,
+found 2026-07-26 auditing S2 against S3a; both lanes shipped, neither is wrong alone.**
+S2 froze a **composite** (`phases/S2-S3a-factsAsOf-contract.md`):
+`{ publishedRevisionId: string, apprilAsOf, cdprAsOf, resistanceArtifactSha256 }` + a separate
+`provenance: "registry" | "grower-supplied"`. S3a shipped a **scalar pair** on
+`spray_material_line`: `factsRevision Int?` + `factsAsOf DateTime?` (+ `factsSource` enum). They do
+not line up on two counts: **(a)** S2's revision id is a cuid STRING and cannot be written into an
+`Int` column at all; **(b)** a scalar `factsAsOf` collapses four independently-moving source dates,
+which is exactly what S2's contract says must not happen ("a scalar would imply they all moved
+together — they do not"). Left alone, the real resolver either drops provenance or writes a lie.
+**Fix it as S2b's first unit, while `spray_material_line` still holds ZERO real facts rows** — an
+additive widening (add `factsPublishedRevisionId String?`, `factsApprilAsOf`, `factsCdprAsOf`,
+`factsResistanceArtifactSha256`; retire or repurpose `factsRevision Int?`) is free today and a
+backfill-then-enforce on a live compliance table later. Keep `factsAsOf DateTime?` as the
+human-facing display date, derived from the newest non-null component. `factsSource` already
+carries S2's `provenance` arms plus a `NONE` arm for the null resolver — that part is fine.
+
 **Gate:** every curated row carries source + as-of date + reviewer; a product with no facts row
 resolves to *cannot-determine*, never *permitted*; the non-US path proven end-to-end on a
 Bhutan-shaped fixture (no EPA lookup, engines still run); coverage report shows curated vs
@@ -491,6 +508,14 @@ equipment/tank fields as plain columns now so Phase 20 has somewhere to hang its
 ⚠️ **ROADMAP Phase 20's note that the template "omits REI and applicator license" is half wrong** —
 the template carries **REI (F7) and PHI (G7)**. Only **applicator license** is genuinely missing
 (along with target pest and weather-at-application). Correct that line when Phase 20 is planned.
+
+✅ **S3a SHIPPED 2026-07-26 — three open decisions were carried with defaults (Russell was away).
+They are live and cheap to reverse; do not re-litigate them at plan time, just override if wanted:**
+**D1** canonical metric storage as planned (material-line quantity stored **as entered** *and*
+canonically; the PUR edge reprints the filed number). **D2** the five S3a cores sit on `INTERNAL` in
+`scripts/ai-native-allowlist.mjs` with the **S11 retirement condition named in each reason string** —
+no new allowlist tier was invented. **D3** the segment-gap threshold is **24 h, warn-only, never
+blocking** (`SEGMENT_GAP_WARN_HOURS` in `src/lib/spray/record-pure.ts` — one constant).
 
 Migration note: `FieldNote.spraysApplied` keeps working. The **read seam** surfaces an old name-only
 spray as a **low-confidence record, not an absence** — it is evidence something was applied, and
@@ -569,6 +594,23 @@ the trailing PHI window and raises a hard warning at the moment of the change.**
 Output contract: an opaque `blockReasonCode` + a canonical human string (§5) so the assistant can
 never mis-attribute a block.
 
+**Constraints inherited from S2's build (2026-07-26 — S2 is SHIPPED and live, read its report):**
+- ⚠️ **S2 ships DARK.** The `epa-pesticide` KnowledgeSource is `defaultEnabled: false`, so on a
+  tenant that has not enabled it **every** `lookupRegistration` returns
+  `{ ok: false, reason: "source-not-enabled" }`. That is a legitimate *cannot-determine*, NOT an
+  error and NOT a clearance (rule §3.6) — and S7a's own QA has to enable the source on Demo first
+  or every case tests the same refusal.
+- **Handle every not-ok arm explicitly.** `lookupRegistration` returns a discriminated union:
+  `source-not-enabled` · `malformed-reg-number` · `unsupported-registration-format`
+  (`CA_STATE_ONLY` | `EXEMPT_25B`) · `not-found` · `not-registered-on-grapes` · **`non-bearing-only`**
+  (risk-register G1 — a non-bearing-only product on bearing vines makes the crop unsellable; never
+  collapse it into "not registered"). A default branch that maps them all to one message throws away
+  the distinction between *gap*, *no-code-exists*, and *clear*.
+- **Consume the frozen `factsAsOf` composite**, don't re-derive it
+  (`phases/S2-S3a-factsAsOf-contract.md`); a null component means *never published*, render unknown.
+- **Zampro resolves GAP, not 45/40** — the measured free-source miss. A gap must block a rotation-OK
+  claim, and S7a's goldens should pin Zampro as the gap case rather than assuming coverage.
+
 **Constraints inherited from S3a's build (2026-07-26):**
 - **(a)** PHI evaluates against the **EARLIEST open planned harvest date** for a block-vintage —
   split picks mean `currentPlannedHarvestDatesCore` returns SEVERAL open passes (council G4); the
@@ -637,6 +679,15 @@ Also: a **"calibrate wetness" grower override** (council S6) so someone standing
 can correct the grid estimate and reset the clocks. The override is itself an observation, recorded
 with attribution.
 
+✅ **The canopy modifier's inputs SHIPPED with S4 — read these, there is no `canopyManagement` field.**
+S0 asked S4 for a per-block canopy-management observation with a timestamp; S4 delivered it as **two**
+fields on `BlockStatus` (`src/lib/phenology/observation-types.ts`): **`hedgedThisWeek: boolean | null`**
+— an EVENT, never carried forward, where `false` is meaningful — and **`fruitZoneLeafRemoval`** (a
+state). The field note's own date is the timestamp. Unmanaged is the *absence* of both, which is
+distinct from `null` (not assessed) — do not collapse them. Also inherit S4's naming deviation:
+`formatShootLength` / `cmToInches` live in `src/lib/phenology/units.ts` because S4 could not touch
+`src/lib/weather/`; **S1 owns that file and should fold them into `units-core.ts` and delete them there.**
+
 **Gate:** `verify:weather-hourly` e2e on a committed fixture series (no live provider in tests);
 **a FORECAST row can never satisfy a historical-decision read (contract test)**; LWD goldens incl.
 the refusal case and the canopy modifier; Delta T goldens; timezone-correct hourly bucketing;
@@ -650,6 +701,15 @@ downy mildew (3-10 primary rule + secondary sporulation on night temperature/RH)
 anthracnose; botrytis (bloom-latency and pre-harvest windows). Each a pure core, each labeled
 **"scout, not diagnose"**, each cross-linked to the IPM knowledge base, each plugging into S5a's
 latent-infection ledger.
+
+⚠️ **S5b's SCOPE GREW — S0 found brief §7's pathogen table materially incomplete (2026-07-26).**
+**Botrytis (Broome 1995) and phomopsis (Erincik 2003) are LWD × temperature models**, not the
+simpler window/latency shapes the brief assumed. Two consequences to plan for, not discover:
+**(1)** both now depend on S1's leaf-wetness estimate, so both inherit ADR 0012's confidence bands
+and refusal threshold — and both must refuse at the coastal-fog / hot-arid-interior sites rather
+than emit a number; **(2)** the two papers' coefficients are **paywalled** — S0 could only run
+coarsened renderings, which carried no gate weight, so **obtaining both papers is a S5b
+prerequisite, not a nice-to-have.** Budget for it at plan time or cut those two models to Later.
 
 **Plus sour rot** *(returned from Later on 2026-07-26 — S4 added the scouting observation; §12 q3)*.
 
@@ -721,6 +781,15 @@ penetrant). **Cumulative copper loading** per block per season for organic progr
 Modeling rule: a compatibility answer is a function of *product A label + product B label + crop +
 fruit present + direction + elapsed days*, and the **most restrictive rule wins**. Never inherit one
 oil's rules onto the category "oil."
+
+⚠️ **Inherited from S0 (measured, 2026-07-26) — wind is a HARD input to this gate, not a nicety.**
+**ERA5-Land is excluded from the provider set: it returned no wind at any of the 5 probed sites over
+a full week.** A null-wind provider cannot support an application-window answer *at all* — rendering
+a window without wind advises a possible label violation. So the window model must **refuse** on a
+missing wind series rather than degrade, and the provider chosen for a site must be one S1 retained
+for wind coverage. Also: **the two failing LWD regimes are coastal-fog and hot-arid-interior**
+(Russian River, Madera — both live Demo sites), so S7b's own QA will legitimately hit refusal on
+those sites; expect it and record it rather than treating it as a bug.
 
 **Gate:** interlock goldens for every documented pair **in both directions**; a hybrid variety at
 86 °F forecast blocks sulfur while vinifera warns; the sulfur check proven to use post-application
@@ -845,6 +914,10 @@ measure → flip); `verify:knowledge-base`, `verify:kb-register`, `verify:kb-sub
 4. **Organic / copper loading** — is cumulative elemental copper per block a v1 requirement in S7b
    or a fast-follow?
 5. **Cornell guide purchase** — plan 086 measured that its value concentrates in **biologicals**.
-   Still an upgrade path, still the user's call, still not a blocker. Re-evaluate against S2b's
-   measured cannot-determine rate.
+   Still an upgrade path, still the user's call, still not a blocker.
+   ✅ **S2 shipped the number to decide against (2026-07-26): `biologicalsShareOfGap: 59`** — 59 % of
+   the coverage gap is biologicals, and **Zampro resolves GAP rather than 45/40**, the concrete
+   product miss. 361 AIs bucket with zero unclassified (35 CODED / 1 NO_CODE_EXISTS / 325 GAP).
+   The purchase decision is now "is closing a 59 %-biologicals gap worth the licence", not a guess.
+   Re-evaluate once more against S2b's measured cannot-determine rate.
 6. **How far does S3a go toward Phase 20's spray work order** before it becomes Phase 20's job?
