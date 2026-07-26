@@ -286,7 +286,7 @@ cellar as a residue flag — a thing no incumbent can do, because no incumbent o
 | S0 spike (hourly / LWD / retention) | 1A | ⬜ not started | — | — | — | — | — |
 | S2 registration & resistance | 1B | 🟦 planning (council-reconciled) | [S2 plan](phases/S2-registration-resistance-master-plan.md) | [S2 council](phases/S2-council-feedback.md) | — | — | — |
 | S2b product facts master | 1B | ⬜ not started | — | — | — | — | — |
-| S3a spray record + planned harvest | 1C | 🟦 planning (plan council-reconciled, ready for `/work`) | [S3a-spray-record-plan](phases/S3a-spray-record-plan.md) | [S3a-council-feedback](phases/S3a-council-feedback.md) | — | — | — |
+| S3a spray record + planned harvest | 1C | 🟩 shipped (PR1+PR2 MERGED 2026-07-26 — **Wave 2 unblocked**; PR3 QA'd in-browser same day, 2 findings found+fixed) | [S3a-spray-record-plan](phases/S3a-spray-record-plan.md) | [S3a-council-feedback](phases/S3a-council-feedback.md) | [#523](https://github.com/russellmoss/wine-inventory/pull/523) · [#524](https://github.com/russellmoss/wine-inventory/pull/524) · [#527](https://github.com/russellmoss/wine-inventory/pull/527) | [S3a-qa-report](qa/S3a-qa-report.md) | [S3a-report](phases/S3a-report.md) |
 | S3b spray program / season plan | 1C | ⬜ not started | — | — | — | — | — |
 | S4 phenology + growth | 1D | 🟪 QA (code MERGED + live; all gates green; UI-placement QA blocked by a non-S4 RLS bug) | [S4 plan v2](phases/S4-phenology-growth-model-plan.md) | [S4 council](phases/S4-council-feedback.md) | [#521](https://github.com/russellmoss/wine-inventory/pull/521) · [#526](https://github.com/russellmoss/wine-inventory/pull/526) both merged | [S4 QA](qa/S4-qa-report.md) | [S4 report](phases/S4-report.md) |
 | S7a legality + rotation | 2A | ⬜ not started | — | — | — | — | — |
@@ -382,6 +382,13 @@ product-AI occurrences.** Curate that set first. Everything outside it resolves 
 **Also here:** the **non-US manual-entry path** (rule §3.9), because it is the same mechanism —
 a tenant-scoped, attributed, "grower-supplied, not registry-verified" facts row. Built once, it
 serves Bhutan **and** the US tenant-override case council P1 asked for.
+
+**Also owned here (recorded by S3a, council GQ1):** the **coded pest vocabulary** that populates
+`spray_application.targetPestCode` — S3a stores free-text `targetPest` plus the nullable code slot
+so no migration is needed later; an unmapped pest resolves to *cannot-determine* at PUR-export
+time (rule §3.6). **S2b must also implement the S3a `ProductFactsResolver` port**
+(`src/lib/spray/product-facts-port.ts`, `resolveMany`) — registering the real resolver replaces
+the null resolver and back-fills nothing (facts-as-of is per-entry, rule §3.8).
 
 **Gate:** every curated row carries source + as-of date + reviewer; a product with no facts row
 resolves to *cannot-determine*, never *permitted*; the non-US path proven end-to-end on a
@@ -507,6 +514,16 @@ the trailing PHI window and raises a hard warning at the moment of the change.**
 Output contract: an opaque `blockReasonCode` + a canonical human string (§5) so the assistant can
 never mis-attribute a block.
 
+**Constraints inherited from S3a's build (2026-07-26):**
+- **(a)** PHI evaluates against the **EARLIEST open planned harvest date** for a block-vintage —
+  split picks mean `currentPlannedHarvestDatesCore` returns SEVERAL open passes (council G4); the
+  early pick is the binding constraint.
+- **(b)** The harvest-date reverse-check consumes **`plannedHarvestChangesSinceCore(cursor)` as a
+  WATERMARK read** over the append-only event stream (council C4) — never an in-process callback.
+  The derived `direction` (`PULLED_FORWARD` is the dangerous one) is computed for you.
+- **(c)** A `spray_block_line` with a null `finishedAt` yields REI **UNKNOWN** (`reiWindow` in
+  `src/lib/spray/read-core.ts`) and must never borrow the header timestamp (council G2/C14).
+
 **Gate:** rotation goldens incl. the premix double-count; the seasonal-maximum budget **refuses
 rather than warns**; an unknown product produces *cannot-determine*, never *permitted*; **the
 harvest-date reverse-check fires** (pull a pick date forward into a PHI window → hard warning);
@@ -626,6 +643,11 @@ internal for goldens; never surface it.
 
 Non-negotiable: **rain total alone never triggers a respray recommendation.**
 
+**Inherited from S3a (council G3):** `materialRatePerHa` (`src/lib/spray/read-core.ts`) returns
+**`null` for an unconvertible `quantityBasis`** (e.g. `PER_CARRIER_VOLUME` with no carrier volume
+recorded) — a legitimately-entered material line can have NO computable rate, and the residual
+model must handle that as *unknown*, never as zero dose.
+
 **Gate:** residual goldens across the documented cases (0.5″ on a 9-day-old protectant vs 1.2″ on a
 2-day-old systemic vs 0″ with 6″ of shoot growth); a spray that did not dry before rain is scored
 materially less effective; missing spray history produces *unknown protection*, never *full
@@ -692,8 +714,12 @@ alone, and must decline when the source toggle is off rather than answering from
 
 **Gate:** goldens + fleet cases green; **the `blockReason` verbatim golden** — a copper-slow-drying
 block is never explained as a PHI violation (council D2); `verify:ai-native` green with the earlier
-INTERNAL entries retired; the over-claim guard exercised; tool-count and fleet accuracy recorded in
-`assistant-coverage.md`; **QA report**.
+INTERNAL entries retired — **including the FIVE S3a entries** (`spray/record-core`,
+`spray/correction-core`, `spray/drying-override-core`, `harvest/planned-harvest-core`,
+`spray/legacy-mapping-core` in `scripts/ai-native-allowlist.mjs` + the mirrored test-local map in
+`test/verify-ai-native.test.ts`), whose reason strings name this phase as their retirement
+condition (S3a open decision D2); the over-claim guard exercised; tool-count and fleet accuracy
+recorded in `assistant-coverage.md`; **QA report**.
 
 ### SKB — Knowledge-base IPM source expansion (background lane, any wave)
 

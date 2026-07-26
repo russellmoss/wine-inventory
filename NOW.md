@@ -7,7 +7,10 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**SPRAY INTELLIGENCE — Wave 1 lane B (S2) is BUILT. Others still planning.**
+**SPRAY INTELLIGENCE — Wave 1 lanes LANDING in parallel (S2 built · S3a SHIPPED · S4 built).
+S3a's record cores are MERGED (2026-07-26) → Wave 2 (S7a · S8 · S6 · S7b) can start.**
+
+🟩 **S3a (lane C — spray record + planned harvest): SHIPPED.** PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) merged; PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) **browser-QA'd GREEN** same day (2 findings — area provenance + correction datetime shift — found, fixed `d11c38d8`, re-proven). QA report: `docs/spray_assistant/qa/S3a-qa-report.md`.
 
 🟩 **S2 (registration + resistance master): ALL 12 UNITS BUILT, 3 PRs.**
 [PR-1 #522 MERGED](https://github.com/russellmoss/wine-inventory/pull/522) (schema slice, 8 GLOBAL
@@ -984,6 +987,15 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Spray Intelligence S3a — record + planned harvest: SHIPPED (2026-07-26). PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED → WAVE 2 UNBLOCKED (S7a, S8, S6, S7b start against the merged cores); PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) browser-QA'd GREEN.**
+  Seven append-only tables (DB triggers + at-most-once correction incl. VOID), facts-as-of
+  snapshots (copied verbatim on correction — KD-14), knownness CHECKs (SPRAY-3), planned-harvest
+  event stream with the `plannedHarvestChangesSince` watermark, legacy field-note seam.
+  `verify:spray-record` = 14/14 on Demo. In-browser QA caught 2 real bugs, both fixed in-phase
+  (`d11c38d8`): untouched prefill area provenance, and the correction-prefill UTC→datetime-local
+  shift (+4 h on every instant). QA report `docs/spray_assistant/qa/S3a-qa-report.md`;
+  ADR 0010 (facts-as-of replay); S7a/S2b/S6 constraints written into runbook §9.
+
 - **Spray S2 — registration + resistance master BUILT (all 12 units, 2026-07-26).** PR-1
   [#522](https://github.com/russellmoss/wine-inventory/pull/522) merged (schema slice landed alone
   and first, as planned, so the three sibling lanes serialize behind it); PR-2
@@ -1001,6 +1013,7 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   the write-confirmation card, and `markRemainingHealthy`'s `JSON.stringify` comparison that adding
   any `BlockStatus` key would have broken. Open: interactive UI-placement QA, blocked by a non-S4
   RLS bug in `getCurrentUser` (task chip raised, possible `app_rls` activation blocker).
+>>>>>>> origin/main
 
 - **CI flake killed: `test/compliance-fill-pdf.test.ts` vs. the 5s vitest default** — **MERGED to
   `main`** ([PR #492](https://github.com/russellmoss/wine-inventory/pull/492), squash `896fec40`;
@@ -1337,7 +1350,9 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 — **Spray Wave 1: S2 (registration + resistance) BUILT — schema slice merged (#522), Units 2-11 green (#525), 2,420 grape registrations + 361 AIs live with zero unclassified. S4 (phenology + growth) BUILT — PR 1 #521 MERGED, PR 2 open, 135 new tests; its interactive UI QA is blocked by a non-S4 RLS bug in getCurrentUser.** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+_Last updated: 2026-07-26 — **S3a spray record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd
+GREEN (2 findings found+fixed: prefill area provenance, correction UTC→datetime-local shift).** Also this
+date: **Spray Wave 1: S2 (registration + resistance) BUILT — schema slice merged (#522), Units 2-11 green (#525), 2,420 grape registrations + 361 AIs live with zero unclassified. S4 (phenology + growth) BUILT — PR 1 #521 MERGED, PR 2 open, 135 new tests; its interactive UI QA is blocked by a non-S4 RLS bug in getCurrentUser.** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.
