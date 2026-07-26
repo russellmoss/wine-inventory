@@ -3,8 +3,36 @@
 **Program:** Spray Intelligence · [runbook](../SPRAY_ASSISTANT_RUNBOOK.md) §9 S2b
 **Depends on:** S2 (shipped + live, deploy `147b75c3`) · S3a (shipped, PR1–PR3 merged)
 **Unblocks:** S7a (legality + rotation), S8 (lot residue), S6 (protection budget), S7b (interlocks)
-**Status:** 🟦 planning — **v2, council-reconciled 2026-07-26** ([council feedback](S2b-council-feedback.md))
-**Plan depth:** Deep (10 units) · **Date:** 2026-07-26
+**Status:** 🟨 **building — Units 0-5 DONE and merged-ready; Units 6-10 remain** ([council feedback](S2b-council-feedback.md))
+**Plan depth:** Deep (12 units) · **Date:** 2026-07-26
+
+> ## Build status (2026-07-26)
+>
+> | Unit | State | Evidence |
+> |---|---|---|
+> | 0 · CDPR interval probe | ✅ done | [probe report](S2b-cdpr-interval-probe.md) |
+> | 1 · jurisdiction + per-block-line snapshot | ✅ built | schema + migration |
+> | 2 · curated facts master (global) | ✅ **tables** built | `verify:product-facts` 1, 2, 3 |
+> | 3 · separation rules + conditional PHI/REI | ✅ **tables** built | `verify:product-facts` 4 |
+> | 4 · fifth source + fact-group provenance | ✅ built | schema + migration |
+> | 5 · tenant grower-supplied override + RLS | ✅ built | `verify:product-facts` 5, 5b, 6 |
+> | 6 · the real `ProductFactsResolver` | ⬜ next PR | — |
+> | 7 · coverage report · 7b · pest-code ingest | ⬜ next PR | — |
+> | 8 · verify + invariant note | 🟨 partial — `verify:product-facts` exists with 8 assertions | |
+> | 9 · monthly drift detector · 10 · QA | ⬜ next PR | — |
+>
+> Gates green: `verify:product-facts` 8/8 · `verify:tenant-isolation` · `verify:naming` 25/25 ·
+> `verify:invariants` 47/47 · `verify:ai-native` (KD-7 held — no allowlist entry spent) ·
+> `tsc` clean · 4,613 unit tests · lint 0 errors.
+>
+> ⛔ **NOT built, and not mine to build: the curated CONTENT.** These units ship the *machinery*. A
+> curated row's `reviewedBy` is a human signature on a legal fact (rule §3.1 — "the label is the law,
+> and we are not it"), so an agent populating it would be fabricating a review. The tables ship empty;
+> Unit 2's CDPR seeder writes **proposals with `reviewedBy: null`** and a human signs them.
+>
+> ⚠️ **`prisma migrate diff` is NOT safe against this database** — see the migration header. It
+> proposes DROPping tenant FK constraints repo-wide because the composite `(tenantId, id)` FKs are raw
+> SQL with no Prisma `@relation`. Hand-author, then `migrate deploy`.
 
 > **v2 changes.** The council found the plan treated *the row* as the unit of provenance, freshness,
 > and override. It is not — a product's facts come from two sources on two cadences. **KD-11 (fact
