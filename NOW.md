@@ -48,6 +48,12 @@ Water in a distinct blue, legend "39% Mardin / 26% Volusia / …". `verify:soil`
 dropped); 30 overlay unit tests. ⚠️ QA fixture "QA-Soil Overlay Vineyard" left in Demo for viewing — clean up after.
 
 ▶️ **PR OPEN → [#502](https://github.com/russellmoss/wine-inventory/pull/502)** (soil docs + map overlay + click-panel + labels). Merged `main` (P3 #498) in. Post-merge + follow-on gates green (vitest **4060/0**, verify:soil 25/25, invariants/ai-native/tenant-isolation).
+✅ **TWO MAP PAGES FOLDED INTO ONE "Map Explorer" at `/vineyards/maps` (2026-07-26).** The old NDVI console
+(`/vineyards/ndvi`) + block-summary map merged into a single layer-stack explorer: blocks + NDVI + soil,
+toggle + reorder + click-inspect. **The map now renders even with no NDVI scene** (NDVI is one optional layer)
+so a soil-only vineyard still gets a map. `/vineyards/ndvi` → permanent redirect (links/bookmarks/assistant
+navigate keep working); single nav entry; old `MapsClient` modal retired (block details + soil cards still on
+`/reference`). Live QA: /maps=explorer, /ndvi redirects, RRR shows NDVI+soil, no-scene vineyard shows map+soil.
 ✅ **SOIL LAYER ON THE NDVI MAP (2026-07-26)** — `NdviMapPanel` now stacks NDVI + soil via a `MapLayerControl`
 (per-layer visibility toggle + up/down reorder, top-of-map-first) → ordered `overlays` painted bottom→top.
 **Live QA on Russian River Ranch: NDVI raster + soil polygons render together** (labels FaD/HtC/GdE), toggle
