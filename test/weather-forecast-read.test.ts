@@ -63,6 +63,30 @@ describe("composeForecastViewCore", () => {
   });
 });
 
+describe("attachForecastBadges (plan 096 U23 — same classification core as notifications)", () => {
+  it("worst tier per day; sustained runs badge their whole span; dormant frost flagged", async () => {
+    const { attachForecastBadges } = await import("@/lib/weather/forecast-read-core");
+    const days = ["2026-08-01", "2026-08-02", "2026-08-03"].map((targetDate) => ({
+      targetDate,
+      tmaxC: 36,
+      tminC: 1,
+      precipMm: null,
+      precipProbabilityPct: null,
+      conditionCode: "CLEAR" as const,
+      windMaxKph: null,
+      reducedConfidence: false,
+    }));
+    const badged = attachForecastBadges(days, [
+      { alertType: "HEAT", targetDate: "2026-08-01", tier: "HEAT_WATCH", rank: 1, valueC: 36, withinVulnerableWindow: false, notifyEligible: true },
+      { alertType: "FROST", targetDate: "2026-08-01", tier: "HARD_FREEZE", rank: 3, valueC: -3, withinVulnerableWindow: false, notifyEligible: false },
+      { alertType: "SUSTAINED_HEAT", targetDate: "2026-08-02", tier: "SUSTAINED_HEAT", rank: 1, valueC: 37, withinVulnerableWindow: false, notifyEligible: true, runEndDate: "2026-08-03" },
+    ]);
+    expect(badged[0].badge).toMatchObject({ tier: "HARD_FREEZE", dormant: true }); // worst wins; out-of-window frost = dormant styling
+    expect(badged[1].badge).toMatchObject({ tier: "SUSTAINED_HEAT", dormant: false });
+    expect(badged[2].badge).toMatchObject({ tier: "SUSTAINED_HEAT" }); // the run's span is covered
+  });
+});
+
 describe("isForecastStale", () => {
   it("6-hour cadence boundary", () => {
     const now = new Date("2026-08-01T12:00:00.000Z");

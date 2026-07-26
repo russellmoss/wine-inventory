@@ -9,8 +9,10 @@ import { runAsTenant } from "@/lib/tenant/context";
 import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { composeClimateSummaryCore, type ClimateSummary, type DailyRow, type ClimateConfig } from "./read-core";
 import { composeRainfallRangeCore, type RainfallRangeResult } from "./rainfall-range-core";
-import { composeForecastViewCore, isForecastStale, type ForecastView } from "./forecast-read-core";
+import { attachForecastBadges, composeForecastViewCore, isForecastStale, type ForecastView } from "./forecast-read-core";
+import { classifyForecastAlertsCore } from "./alert-core";
 import { ingestVineyardForecastCore } from "./forecast-ingest-core";
+import type { NwsActiveAlert } from "./providers/nws-alerts";
 import { effectivePrimary } from "./source-selection-core";
 import { ingestVineyardWeatherCore, type IngestResult } from "./ingest-core";
 import { resolveVineyardCentroid } from "./location";
@@ -204,18 +206,33 @@ export async function setVineyardPrimarySource(
  */
 export async function loadVineyardForecast(
   vineyardId: string,
-): Promise<{ ok: true; view: ForecastView | null; unitSystem: string; stale: boolean } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; view: ForecastView | null; unitSystem: string; stale: boolean; activeAlerts: NwsActiveAlert[] }
+  | { ok: false; error: string }
+> {
   try {
     await requireReadyUser();
-    const configRow = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { timeZone: true, unitSystem: true } });
-    if (!configRow) return { ok: true, view: null, unitSystem: "METRIC", stale: false };
+    const configRow = await prisma.vineyardWeatherConfig.findFirst({
+      where: { vineyardId },
+      select: {
+        timeZone: true,
+        unitSystem: true,
+        activeAlertsJson: true,
+        frostWatchC: true,
+        frostWarnC: true,
+        hardFreezeC: true,
+        heatWatchC: true,
+        extremeHeatC: true,
+      },
+    });
+    if (!configRow) return { ok: true, view: null, unitSystem: "METRIC", stale: false, activeAlerts: [] };
     const wineryTz = await getWineryTimeZone().catch(() => null);
     const todayIso = siteTodayIso(resolveSiteTimeZone(configRow.timeZone, wineryTz));
     const rows = await prisma.vineyardForecastDaily.findMany({
       where: { vineyardId },
       orderBy: { targetDate: "asc" },
     });
-    const view = composeForecastViewCore(
+    let view = composeForecastViewCore(
       rows.map((r) => ({
         providerKey: r.providerKey,
         targetDate: r.targetDate.toISOString().slice(0, 10),
@@ -229,8 +246,30 @@ export async function loadVineyardForecast(
       })),
       todayIso,
     );
+    // U23 — warning badges from the SAME classification core that drives notifications (one truth).
+    if (view) {
+      const centroid = await resolveVineyardCentroid(vineyardId);
+      if (centroid) {
+        const candidates = classifyForecastAlertsCore(
+          view.days.map((d) => ({ targetDate: d.targetDate, tminC: d.tminC, tmaxC: d.tmaxC })),
+          {
+            latitude: centroid.lat,
+            todayIso,
+            thresholds: {
+              frostWatchC: dec(configRow.frostWatchC) ?? undefined,
+              frostWarnC: dec(configRow.frostWarnC) ?? undefined,
+              hardFreezeC: dec(configRow.hardFreezeC) ?? undefined,
+              heatWatchC: dec(configRow.heatWatchC) ?? undefined,
+              extremeHeatC: dec(configRow.extremeHeatC) ?? undefined,
+            },
+          },
+        );
+        view = { ...view, days: attachForecastBadges(view.days, candidates) };
+      }
+    }
     const stale = view ? isForecastStale(view.issuedAt, new Date()) : false;
-    return { ok: true, view, unitSystem: configRow.unitSystem, stale };
+    const activeAlerts = Array.isArray(configRow.activeAlertsJson) ? (configRow.activeAlertsJson as unknown as NwsActiveAlert[]) : [];
+    return { ok: true, view, unitSystem: configRow.unitSystem, stale, activeAlerts };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

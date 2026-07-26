@@ -111,6 +111,28 @@ describe("sumQpfToLocalDays — council S6: interval END day, whole amount, neve
   });
 });
 
+describe("parseNwsActiveAlerts (plan 096 U22 — verbatim, severity-desc, ends??expires)", () => {
+  it("keeps ALL alerts ordered by severity; falls back to expires when ends is null (live-verified)", async () => {
+    const { parseNwsActiveAlerts } = await import("@/lib/weather/providers/nws-alerts");
+    const out = parseNwsActiveAlerts({
+      features: [
+        { id: "u1", properties: { event: "Frost Advisory", headline: "Frost Advisory until 9 AM", severity: "Minor", ends: null, expires: "2026-04-04T09:00:00-07:00" } },
+        { id: "u2", properties: { event: "Freeze Warning", headline: "Freeze Warning tonight", severity: "Severe", ends: "2026-04-04T08:00:00-07:00", expires: "2026-04-04T09:00:00-07:00" } },
+        { properties: {} }, // no event → dropped
+      ],
+    });
+    expect(out.map((a) => a.event)).toEqual(["Freeze Warning", "Frost Advisory"]); // Severe before Minor
+    expect(out[0].endsAt).toBe("2026-04-04T08:00:00-07:00"); // ends wins
+    expect(out[1].endsAt).toBe("2026-04-04T09:00:00-07:00"); // expires fallback
+    expect(out[1].headline).toBe("Frost Advisory until 9 AM"); // verbatim
+  });
+  it("empty features → empty (a quiet point)", async () => {
+    const { parseNwsActiveAlerts } = await import("@/lib/weather/providers/nws-alerts");
+    expect(parseNwsActiveAlerts({ features: [] })).toEqual([]);
+    expect(parseNwsActiveAlerts({})).toEqual([]);
+  });
+});
+
 describe("fetchNwsForecast (fixture fetch)", () => {
   it("resolves grid, pairs periods, attaches QPF amounts by local end-day, reports timeZone", async () => {
     const fixtures: Record<string, unknown> = {
