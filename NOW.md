@@ -7,11 +7,27 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**NEXT: Vineyard Intelligence P3 — NDVI DISPLAY (viz half of Release 1B). ⬜ Not started.**
-NDVI raster map overlay + scale modes (vineyard-relative p5–p95, absolute, locked, baseline, custom) + palette +
-legend + histogram + date comparison. Renders directly from what P2 stored: the `SpatialDataset` raster (blob) +
-`BlockSpatialMetric` per-block stats — the mask is already validated, so P3 doesn't redo it. Inherits `render.ts`/
-`color.ts`. Plan next via `/plan`. Scale-register tripwire (>2M-px streaming) is load-bearing; decoder refuses >4M px.
+**Vineyard Intelligence P3 — NDVI DISPLAY: BUILT + browser-QA'd on `feat/vi-p3-ndvi-display`, PR open, not yet merged.**
+All 11 units. Ship = review + merge the PR. Plan `docs/GIS/phases/phase-3-ndvi-display-plan.md` (completed) · report
+`phase-3-report.md`. ⚠️ **The P3 plan + council files were LOST (never saved) — reconstructed from memory at build time.**
+
+<details><summary>✅ Vineyard Intelligence P3 — NDVI display (viz half) — BUILT 2026-07-25 (PR open)</summary>
+
+Schema (`SpatialDatasetDerivative` + `SpatialStyle`, RLS applied to live DB, `verify:tenant-isolation` 141 tables) ·
+`warp.ts` UTM→north-up-3857 (council #1, **sub-pixel registration test is the merge gate**) · `resolveDomain` +
+min-spread clamp (#4) · NDVI value histogram · Int16×10000/−32768 derivative cache (#6, idempotent claim-first) ·
+serving route (zero-dep `node:zlib` PNG + ETag/must-revalidate #7) · `SatelliteMap` raster arm · map UI (6 modes,
+palette, legend+badges) · locked-domain side-by-side comparison + saved styles · `compare_ndvi_dates` tool.
+- **Proven:** registration gate (synthetic + real fixture), `verify:ndvi-display` 20/20, `verify:ndvi`/`ai-native`
+  green, 103 gis tests, tsc+eslint clean. Browser-QA'd Demo Winery (`qa_ndvi_display_vy`): overlay registers on
+  block outlines, modes re-domain live, nearest→pixelated, styles apply, 2-date locked comparison renders.
+- ⚠️ **Gotchas:** (1) UTM raster on a 3857 basemap misregisters ~10 m — **WARP first**, only the registration test
+  catches it; (2) `SpatialStyle` SYSTEM uniqueness needs PARTIAL indexes (Postgres NULL ≠ NULL); (3) `@vercel/blob`
+  now needs `allowOverwrite:true` for deterministic-key idempotent writes (latent P2 bug, fixed); (4) Leaflet
+  `imageOverlay.getElement()` is null before onAdd — set `image-rendering` AFTER `addTo(map)`.
+- **Deferred (documented):** pixel B−A diff MAP (per-block delta ships via the tool); analytical 3×3 stored
+  smoothing; polygon-exact display clip (v1 = estate AOI masked to valid pixels); TENANT-scope styles.
+</details>
 
 <details><summary>✅ Vineyard Intelligence P2 — NDVI core (data half) — SHIPPED + LIVE IN PROD 2026-07-25</summary>
 
