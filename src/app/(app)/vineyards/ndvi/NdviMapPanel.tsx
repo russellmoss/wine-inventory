@@ -192,33 +192,71 @@ export function NdviMapPanel({
 
   const pickMode = (m: ColorScaleMode) => setMode(m);
 
-  if (datasets.length === 0) {
-    return (
-      <Card>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, margin: "0 0 6px" }}>Map</h2>
-        <p style={{ color: "var(--text-secondary)", margin: 0, fontSize: 14 }}>
-          No processed NDVI scene yet. Queue a look above; once it processes, the map appears here.
-        </p>
-      </Card>
-    );
-  }
+  // The map (blocks + layer stack: NDVI + soil) always renders — NDVI is just one optional layer, so a
+  // vineyard with soil but no processed scene still gets a map. The NDVI-only controls below are gated on
+  // a scene being available.
+  const hasScene = datasets.length > 0;
+  const mapSection = (
+    <>
+      {compare && datasets.length < 2 && (
+        <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "0 0 10px" }}>Need two processed scenes to compare — only one is available.</p>
+      )}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <MapLayerControl layers={layerRows} onToggle={toggleLayer} onMove={moveLayer} />
+      </div>
+      <SatelliteMap
+        lat={center?.lat ?? null}
+        lng={center?.lng ?? null}
+        blocks={blocks}
+        unit="imperial"
+        overlays={overlays}
+        onOverlayFeatureClick={soilShown ? (props) => setSelectedSoilMukey(props.mukey ? String(props.mukey) : null) : undefined}
+        height={420}
+        exportName={vineyardName}
+      />
+      {error && <p style={{ color: "var(--danger, #b00020)", fontSize: 13, margin: "10px 0 0" }}>{error}</p>}
+      {loading && !meta && <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "10px 0 0" }}>Loading NDVI…</p>}
+      {soilShown && soilData ? (
+        <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
+          {soilData.legend.entries.map((e) => (
+            <span key={e.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-secondary)" }}>
+              <span aria-hidden style={{ width: 12, height: 12, borderRadius: 3, background: e.color, border: "1px solid var(--border-subtle)" }} />
+              {e.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {selectedSoil ? <SoilUnitPanel unit={selectedSoil} displayUnit="imperial" onClose={() => setSelectedSoilMukey(null)} /> : null}
+      {meta && <NdviLegend meta={meta} paletteId={paletteId} reverse={reverse} mode={mode} />}
+    </>
+  );
 
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, margin: 0 }}>Map</h2>
-        <label style={{ ...label, display: "flex", alignItems: "center", gap: 6 }}>
-          Scene
-          <select value={datasetId ?? ""} onChange={(e) => setDatasetId(e.target.value)} style={control}>
-            {datasets.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.acquiredAt ? d.acquiredAt.slice(0, 10) : d.id.slice(0, 8)}
-              </option>
-            ))}
-          </select>
-        </label>
+        {hasScene && (
+          <label style={{ ...label, display: "flex", alignItems: "center", gap: 6 }}>
+            Scene
+            <select value={datasetId ?? ""} onChange={(e) => setDatasetId(e.target.value)} style={control}>
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.acquiredAt ? d.acquiredAt.slice(0, 10) : d.id.slice(0, 8)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
+      {!hasScene && (
+        <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "6px 0 10px" }}>
+          No NDVI scene processed yet — queue a look above to add the vigor layer. The map still shows blocks and any soil you&rsquo;ve pulled.
+        </p>
+      )}
 
+      {/* NDVI-only controls — hidden until a scene exists. */}
+      {hasScene && (
+        <>
       {/* Scale-mode selector — 3 prominent + Advanced disclosure (Q2). */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "12px 0 6px" }}>
         {PROMINENT.map((m) => (
@@ -299,42 +337,13 @@ export function NdviMapPanel({
         </label>
         {styleMsg && <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{styleMsg}</span>}
       </div>
+        </>
+      )}
 
-      {compare && datasets.length >= 2 ? (
+      {hasScene && compare && datasets.length >= 2 ? (
         <NdviCompare datasets={datasets} blocks={blocks} center={center} vineyardName={vineyardName} paletteId={paletteId} reverse={reverse} initialA={datasets[1]?.id ?? null} initialB={datasetId} />
       ) : (
-        <>
-          {compare && datasets.length < 2 && (
-            <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "0 0 10px" }}>Need two processed scenes to compare — only one is available.</p>
-          )}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-            <MapLayerControl layers={layerRows} onToggle={toggleLayer} onMove={moveLayer} />
-          </div>
-          <SatelliteMap
-            lat={center?.lat ?? null}
-            lng={center?.lng ?? null}
-            blocks={blocks}
-            unit="imperial"
-            overlays={overlays}
-            onOverlayFeatureClick={soilShown ? (props) => setSelectedSoilMukey(props.mukey ? String(props.mukey) : null) : undefined}
-            height={420}
-            exportName={vineyardName}
-          />
-          {error && <p style={{ color: "var(--danger, #b00020)", fontSize: 13, margin: "10px 0 0" }}>{error}</p>}
-          {loading && !meta && <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "10px 0 0" }}>Loading NDVI…</p>}
-          {soilShown && soilData ? (
-            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
-              {soilData.legend.entries.map((e) => (
-                <span key={e.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-secondary)" }}>
-                  <span aria-hidden style={{ width: 12, height: 12, borderRadius: 3, background: e.color, border: "1px solid var(--border-subtle)" }} />
-                  {e.label}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {selectedSoil ? <SoilUnitPanel unit={selectedSoil} displayUnit="imperial" onClose={() => setSelectedSoilMukey(null)} /> : null}
-          {meta && <NdviLegend meta={meta} paletteId={paletteId} reverse={reverse} mode={mode} />}
-        </>
+        mapSection
       )}
     </Card>
   );
