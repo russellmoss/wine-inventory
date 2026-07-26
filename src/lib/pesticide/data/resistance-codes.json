@@ -1,0 +1,524 @@
+[
+  {
+    "subject": "azoxystrobin",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "11"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "Bacillus pumilis",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "BM 02"
+    ],
+    "siteType": "UNKNOWN",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "Bacillus subtilis",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "BM 02"
+    ],
+    "siteType": "UNKNOWN",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "boscalid",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "7"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "pyraclostrobin",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "11"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "captan",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "M 04"
+    ],
+    "siteType": "MULTI",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "copper",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "M 01"
+    ],
+    "siteType": "MULTI",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "copper hydroxide",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "M 01"
+    ],
+    "siteType": "MULTI",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "copper sulfate",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "M 01"
+    ],
+    "siteType": "MULTI",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "cyflufenamid",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "U 06"
+    ],
+    "siteType": "UNKNOWN",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "cyprodinil",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "9"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "fludioxonil",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "12"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "difenoconazole",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "3"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "fenhexamid",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "17"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "fluopyram",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "7"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "tebuconazole",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "3"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "iprodione",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "2"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "kresoxim-methyl",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "11"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "mancozeb",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "M 03"
+    ],
+    "siteType": "MULTI",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "mefenoxam",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "4"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "metrafenone",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "50"
+    ],
+    "siteType": "UNKNOWN",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "mineral oil",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "NO_CODE_EXISTS",
+    "codes": [],
+    "siteType": "UNKNOWN",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "myclobutanil",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "3"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "potassium bicarbonate",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "NO_CODE_EXISTS",
+    "codes": [],
+    "siteType": "UNKNOWN",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "potassium salts of fatty acids",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "NO_CODE_EXISTS",
+    "codes": [],
+    "siteType": "UNKNOWN",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "pyrimethanil",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "9"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "quinoxyfen",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "13"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "sulfur",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "M 02"
+    ],
+    "siteType": "MULTI",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "tetraconazole",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "3"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "thiophanate-methyl",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "1"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "trifloxystrobin",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "11"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "triflumizole",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "3"
+    ],
+    "siteType": "SINGLE",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "subject": "ziram",
+    "subjectKind": "ACTIVE_INGREDIENT",
+    "scheme": "FRAC",
+    "resolution": "CODED",
+    "codes": [
+      "M 03"
+    ],
+    "siteType": "MULTI",
+    "derivedFrom": "AI_KEYED_TABLE",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  }
+]

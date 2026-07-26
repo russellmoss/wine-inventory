@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { getRecentFieldNotes } from "@/lib/fieldnotes/actions";
 import { parseBriefing } from "@/lib/fieldnotes/prompt";
 import type { InputApplication, BlockStatus } from "@/lib/fieldnotes/types";
+import { wasScouted } from "@/lib/phenology/observation-types";
+import { loadVineyardPhenology } from "@/lib/phenology/read";
+import type { PhenologyBlockDTO } from "@/lib/phenology/dto";
+import { stageSourceLabel } from "@/lib/phenology/labels";
 import type { AssistantTool } from "../registry";
 import { resolveVineyards } from "../scope";
 
@@ -15,15 +19,79 @@ function appsWithLabels(apps: InputApplication[], labelOf: (id: string) => strin
   }));
 }
 
-function summarizeBlock(s: BlockStatus) {
+/**
+ * The per-block payload the model sees. Every field is passed through EXPLICITLY (never via a
+ * truthiness gate) so `shootLengthCm: 0` and `hedgedThisWeek: false` reach the model as the
+ * readings they are rather than vanishing into "not recorded".
+ *
+ * `scoutingNote` exists because a raw enum is not self-explaining to a model: it states in words
+ * that NOT_ASSESSED means nobody looked, so the assistant can never relay it as a clean result.
+ */
+export function summarizeBlock(s: BlockStatus) {
+  const scoutingGaps: string[] = [];
+  if (!wasScouted(s.clusterDamage)) scoutingGaps.push("cluster damage");
+  if (!wasScouted(s.vinegarFlyPressure)) scoutingGaps.push("vinegar-fly pressure");
   return {
     phenoStage: s.phenoStage,
     phenoStagePct: s.phenoStagePct,
+    shootTip: s.shootTip, // was silently omitted before S4
     canopyDensity: s.canopyDensity,
     waterStress: s.waterStress,
     weedPressure: s.weedPressure,
     leafConditions: s.leafConditions,
     diseaseOrPest: s.diseasePestSpotted ? (s.diseaseDescription ?? "flagged, no detail") : null,
+    // S4 growth + canopy management
+    shootLengthCm: s.shootLengthCm,
+    shootLengthBand: s.shootLengthBand,
+    hedgedThisWeek: s.hedgedThisWeek,
+    fruitZoneLeafRemoval: s.fruitZoneLeafRemoval,
+    // S4 scouting — three distinct states, never collapsed
+    clusterDamage: s.clusterDamage,
+    vinegarFlyPressure: s.vinegarFlyPressure,
+    scoutingNote: scoutingGaps.length
+      ? `Not scouted this report: ${scoutingGaps.join(", ")}. "NOT_ASSESSED" and a missing value both mean NOBODY LOOKED — do not report either as "no damage" or "clear".`
+      : null,
+  };
+}
+
+/**
+ * The S4 phenology block of the payload.
+ *
+ * ⚠️ `verify:ai-native` proves REACHABILITY, not SERIALIZATION (council S2). A tool can import the
+ * read seam and serialize none of it, and the check would still pass — so the fact that this
+ * function exists is not the guarantee; `test/phenology-tool-payload.test.ts` asserting each field
+ * is. `source`, `anchorAgeDays`, `fruitPresent`, and `boundaryRisk` are all mandatory, because
+ * without them the assistant can present an estimate as an observation.
+ */
+export function summarizePhenology(dto: PhenologyBlockDTO) {
+  return {
+    block: dto.blockLabel,
+    stage: dto.stage,
+    stagePct: dto.stagePct,
+    // Provenance travels WITH the value. Rule §3.5.
+    source: dto.stageSource,
+    sourceExplanation: stageSourceLabel(dto.stageSource, dto.anchorAgeDays),
+    anchorDate: dto.anchorDate,
+    anchorAgeDays: dto.anchorAgeDays,
+    confidence: dto.stageConfidence,
+    stageUnknownReason: dto.stageReason,
+    fruitPresent: dto.fruitPresent,
+    fruitPresentSource: dto.fruitPresentSource,
+    boundaryRisk: dto.boundaryRisk,
+    boundaryRiskNote: dto.boundaryRisk
+      ? "This stage is an ESTIMATE sitting close to a stage change. Say so, and suggest confirming in the field before acting on it."
+      : null,
+    shootsAtLeast10cm: dto.shootsAtLeast10cm,
+    cmPerWeek: dto.cmPerWeek,
+    cmPerWeekRange: dto.cmPerWeekRange,
+    unprotectedNewLeafFraction: dto.unprotectedNewLeafFraction,
+    unprotectedNewLeafRange: dto.unprotectedNewLeafRange,
+    growthBasis: dto.growthBasis,
+    growthUnknownReason: dto.growthReason,
+    trellisSystem: dto.trellisSystem,
+    clusterCompactness: dto.clusterCompactness,
+    clusterCompactnessSource: dto.clusterCompactnessSource,
+    honesty: dto.honesty,
   };
 }
 
@@ -49,9 +117,13 @@ export const queryFieldReportsTool: AssistantTool = {
     const vineyard = vineyards[0];
     const n = Math.min(Math.max(Number(input.weeks) || 4, 1), 12);
 
-    const [notes, blocks] = await Promise.all([
+    const [notes, blocks, phenology] = await Promise.all([
       getRecentFieldNotes(vineyard.id, n),
       prisma.vineyardBlock.findMany({ where: { vineyardId: vineyard.id }, select: { id: true, blockLabel: true } }),
+      // Today's phenology + growth per block, each value married to its provenance. Reports tell
+      // you what was SEEN on the days somebody walked the block; this tells you where the block is
+      // NOW, and says out loud when that is an estimate or cannot be determined at all.
+      loadVineyardPhenology(vineyard.id, { viewerTimeZone: ctx.timeZone ?? null }).catch(() => []),
     ]);
     if (notes.length === 0) {
       return { message: `No weekly reports recorded yet for ${vineyard.name}.` };
@@ -61,6 +133,9 @@ export const queryFieldReportsTool: AssistantTool = {
 
     return {
       vineyard: vineyard.name,
+      phenologyToday: phenology.map(summarizePhenology),
+      phenologyNote:
+        "phenologyToday is the CURRENT estimate per block. Read `source` before quoting a stage: OBSERVED means somebody saw it, INTERPOLATED and MODELED are estimates and must be described as estimates. A null stage means it cannot be determined — relay `stageUnknownReason`, never treat it as a stage of 'none' or as nothing to worry about.",
       reports: notes.map((note) => ({
         weekOf: note.weekOf,
         recordedBy: note.userEmail,

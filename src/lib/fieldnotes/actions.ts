@@ -11,6 +11,7 @@ import { writeAudit } from "@/lib/audit";
 import { isValidReportDate, parseISODateUTC } from "@/lib/fieldnotes/week";
 import {
   SCHEMA_VERSION,
+  FieldNoteParseError,
   parseWeatherData,
   parseInputApplications,
   parseBlockStatuses,
@@ -75,8 +76,13 @@ export const createFieldNote = action(
       spraysApplied = parseInputApplications(input.spraysApplied);
       fertilizersApplied = parseInputApplications(input.fertilizersApplied);
       blockLevelStatuses = parseBlockStatuses(input.blockLevelStatuses);
-    } catch {
-      throw new ActionError("Report data is malformed. Please retry.");
+    } catch (e) {
+      // Keep the validator's own message (council S4). S4 rolls out six newly-validated fields;
+      // behind one opaque "malformed" string every bad payload looks identical in QA and the
+      // manager gets no idea which control to fix. FieldNoteParseError messages are authored
+      // for humans and name the failing field; anything else stays generic.
+      const detail = e instanceof FieldNoteParseError ? ` ${e.message}` : "";
+      throw new ActionError(`Report data is malformed.${detail || " Please retry."}`);
     }
 
     // Block coverage: every CURRENT block of this vineyard must have a status.

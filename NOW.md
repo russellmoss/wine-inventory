@@ -7,25 +7,66 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**SPRAY INTELLIGENCE — Wave 1 BUILDING in parallel worktrees (S0 · S2 · S3a · S4).
+**SPRAY INTELLIGENCE — Wave 1 lanes LANDING in parallel (S2 built · S3a SHIPPED · S4 built).
 S3a's record cores are MERGED (2026-07-26) → Wave 2 (S7a · S8 · S6 · S7b) can start.**
 
 🟩 **S3a (lane C — spray record + planned harvest): SHIPPED.** PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) merged; PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) **browser-QA'd GREEN** same day (2 findings — area provenance + correction datetime shift — found, fixed `d11c38d8`, re-proven). QA report: `docs/spray_assistant/qa/S3a-qa-report.md`.
 
-🟦 **S4 (lane D — phenology + growth): PLAN v2 COUNCIL-RECONCILED, ready for `/work`.**
-[plan](docs/spray_assistant/phases/S4-phenology-growth-model-plan.md) ·
-[council](docs/spray_assistant/phases/S4-council-feedback.md) (23 findings, 20 folded, 0 rejected).
-**Sour rot DECIDED — YES**, S4 adds `clusterDamage` (gated `FRUIT_SET`) + `vinegarFlyPressure`
-(gated `VERAISON`), `NOT_ASSESSED` ≠ `NONE` ≠ `null`; sour rot returns to **S5b** behind a
-rolling-4-week 60% coverage gate (runbook §12 q3 answered, §9 S5b + Later bucket updated).
-Two council catches that changed the model: **(1)** `shootTip: STAGNANT` does **NOT** mean zero
-growth dilution — leaf expansion continues ~14–21 d after internode elongation stops, so v1 would
-have reported "protected" on a diluted canopy (**written back into runbook §9 S6**); **(2)** the
-hard-coded NH Apr 1–Oct 31 season window would silently truncate **Bhutan** → GDD now anchors to the
-`BUD_BREAK` biofix, not the calendar. Schema slice = `VineyardBlock.{trellisSystem,clusterCompactness}`
-+ `Variety.clusterCompactness`; everything else is additive JSON on `BlockStatus`, **no migration of
-historical rows**. ⚠️ Lane-shares `src/lib/fieldnotes/types.ts` with **S3a** — S4's diff there is ~7
-additive lines by design (new vocabulary lives in `src/lib/phenology/observation-types.ts`).
+🟩 **S2 (registration + resistance master): ALL 12 UNITS BUILT, 3 PRs.**
+[PR-1 #522 MERGED](https://github.com/russellmoss/wine-inventory/pull/522) (schema slice, 8 GLOBAL
+models + the CHECKs/partial-uniques that make the safety rules uninsertable) ·
+[PR-2 #525](https://github.com/russellmoss/wine-inventory/pull/525) **CI green, awaiting merge**
+(reg-number gate, APPRIL parse+ingest, lookup service, CA DPR layer, restrictions, source toggle) ·
+**PR-3 open** (resistance derivation + coverage report, monthly re-derivation, `verify:pesticide` +
+8 boundary guards + PEST-1/PEST-2 invariants).
+**Live data in prod tables:** 2,420 active grape registrations · 833 CA-registered on grapes ·
+361 AIs with **zero unclassified** (35 CODED / 1 NO_CODE_EXISTS / 325 GAP; fungicide-scoped 153 →
+35/1/117). Golden proofs: Switch **9+12** (never 9 alone), Pristine 7+11, captan M 04/MULTI,
+Gavel + Fusilade both CA-registered on `GRAPES, WINE`.
+⚠️ **Zampro resolves GAP, not 45/40** — plan 086's measured free-source miss, now VISIBLE in the
+coverage report rather than silently wrong. Closing it is a Cornell purchase decision;
+`biologicalsShareOfGap: 59` is the number to decide against.
+⚠️ **The plan's grape regex had a hole** — `/\bGrapes?\b(?!fruit)/` matches "Grape-Ivy" (hyphen is a
+word boundary). Fixed + tested. ⚠️ **`exceljs` cannot read the APPRIL dump at all** (fails on the
+zip's data-descriptor entries) → unzip-entry + SAX is the primary path (366k rows, ~15 s, ~134 MB).
+Cross-lane: the composite `factsAsOf` shape is FROZEN in
+[S2-S3a-factsAsOf-contract.md](docs/spray_assistant/phases/S2-S3a-factsAsOf-contract.md) — **S3a
+consumes it, does not re-derive it.**
+QA: [S2-qa-report.md](docs/spray_assistant/qa/S2-qa-report.md) — one row deferred (the settings-card
+click-through needs the main checkout + a user login).
+
+🟪 **S4 (lane D — phenology + growth): BUILT. Both PRs out; PR 1 MERGED. One QA line open.**
+[plan v2](docs/spray_assistant/phases/S4-phenology-growth-model-plan.md) ·
+[council](docs/spray_assistant/phases/S4-council-feedback.md) ·
+[QA report](docs/spray_assistant/qa/S4-qa-report.md) ·
+[phase report](docs/spray_assistant/phases/S4-report.md).
+**PR 1 (schema slice) = [#521](https://github.com/russellmoss/wine-inventory/pull/521), MERGED**,
+migrations live in the DB. **PR 2 (Units 3–10, the feature)** on
+`claude/s4-phenology-feature-e9b928`. 135 new tests; full suite 4386 pass / 0 fail; `verify:phenology`
+24/24; `verify:tenant-isolation`, `verify:naming` (before AND after), `verify:ai-native` (no new tool,
+no allowlist entry) all green. Lane boundary held **mechanically** — zero files touched under
+`src/lib/{weather,spray,pesticide}`, and the two weather regression tests pass byte-unmodified.
+The five council findings that had to survive the build all did: the **STAGNANT leaf-expansion tail**
+(a stagnant tip still dilutes at day 7 — v1 would have reported a diluted canopy as fully protected),
+**biofix-anchored GDD** (two Bhutan goldens: a February bud break, and accumulation past Oct 31),
+**bands never yield a point rate** (range or unknown; the ≥10 cm answer stays exact),
+**`undefined` ≠ `false` ≠ `0`** through all five projections (which also fixed a *pre-existing*
+`diseasePestSpotted: false` bug), and **`NOT_ASSESSED` ≠ `NONE` ≠ `null`** as a contract test.
+
+⛔ **The one open gate line — and it is NOT S4's bug.** The manager form could not be driven in the
+browser: `getCurrentUser` (`src/lib/dal.ts:78`) reads `vineyardMemberships` with no tenant context,
+and `user_vineyard` RLS fails closed, so an assigned manager still sees *"You haven't been assigned a
+vineyard yet."* Proven three ways (owner read sees the row, `prismaBase` sees `[]`, page unchanged
+after cache-busted reload). ⚠️ **Possibly a release blocker for the `app_rls` activation** — latent
+if prod still connects as owner, breaks every manager the moment `DATABASE_URL` switches. Task chip
+raised. The production build passes and the route serves 200 with a clean console, so what is
+unverified is **placement**, not correctness — which is exactly why the honesty copy was forced into
+pure CI-tested functions (council S3).
+
+📉 **Recorded because it is unflattering, not despite it:** the rolling-4-week scouting coverage —
+S5b's sour-rot gate input — is **0/0**. No live block reached `FRUIT_SET` in the window, so the
+denominator is EMPTY. **That is "not yet measurable", NOT 0 % and NOT a failed gate**; runbook §9 S5b
+now says so explicitly. Re-run `npm run verify:phenology` when S5b is planned.
 
 🏛️ **COUNCIL RE-SHAPED THE PROGRAM** — [RUNBOOK-council-feedback.md](docs/spray_assistant/RUNBOOK-council-feedback.md)
 (Codex structure/data-layer + Gemini domain/liability; 10 CRITICAL, 11 SHOULD-FIX, 1 pushed back).
@@ -946,14 +987,33 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
-- **Spray Intelligence S3a — record + planned harvest: PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED (2026-07-26) → WAVE 2 UNBLOCKED (S7a, S8, S6, S7b start against the merged cores).**
+- **Spray Intelligence S3a — record + planned harvest: SHIPPED (2026-07-26). PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED → WAVE 2 UNBLOCKED (S7a, S8, S6, S7b start against the merged cores); PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) browser-QA'd GREEN.**
   Seven append-only tables (DB triggers + at-most-once correction incl. VOID), facts-as-of
   snapshots (copied verbatim on correction — KD-14), knownness CHECKs (SPRAY-3), planned-harvest
   event stream with the `plannedHarvestChangesSince` watermark, legacy field-note seam.
-  `verify:spray-record` = 14/14 on Demo. PR3 (minimal surface + doc reconciliation) OPEN;
-  **⚠️ ledger stays 🟪 — the in-browser QA pass still needs Russell's Demo-Winery login**
-  (SAFE-2/SAFE-10 + persistence proofs, per `docs/spray_assistant/qa/QA-PROTOCOL.md`).
+  `verify:spray-record` = 14/14 on Demo. In-browser QA caught 2 real bugs, both fixed in-phase
+  (`d11c38d8`): untouched prefill area provenance, and the correction-prefill UTC→datetime-local
+  shift (+4 h on every instant). QA report `docs/spray_assistant/qa/S3a-qa-report.md`;
   ADR 0010 (facts-as-of replay); S7a/S2b/S6 constraints written into runbook §9.
+
+- **Spray S2 — registration + resistance master BUILT (all 12 units, 2026-07-26).** PR-1
+  [#522](https://github.com/russellmoss/wine-inventory/pull/522) merged (schema slice landed alone
+  and first, as planned, so the three sibling lanes serialize behind it); PR-2
+  [#525](https://github.com/russellmoss/wine-inventory/pull/525) CI green; PR-3 open. Live in the
+  prod tables: 2,420 active grape registrations, 833 CA-registered, 361 AIs bucketed with zero
+  unclassified, `verify:pesticide` 31/31, `verify:invariants` 42/42, 4,330 unit tests green.
+
+- **S4 (Spray Intelligence lane D) — phenology precision + the growth-dilution model: BUILT.**
+  PR 1 (schema slice) **MERGED** as [#521](https://github.com/russellmoss/wine-inventory/pull/521);
+  PR 2 (the feature, Units 3–10) opened on `claude/s4-phenology-feature-e9b928`. Six new weekly
+  block observations through all five projections, a biofix-anchored GDD phenology interpolator, a
+  growth-dilution model with a post-stagnation leaf-expansion tail, a provenance-carrying read DTO,
+  pure honesty labels, the authoring UI, the assistant payload, and `verify:phenology`. 135 new
+  tests. Two *pre-existing* bugs fixed in passing: falsy values (`false`/`0`) silently dropped from
+  the write-confirmation card, and `markRemainingHealthy`'s `JSON.stringify` comparison that adding
+  any `BlockStatus` key would have broken. Open: interactive UI-placement QA, blocked by a non-S4
+  RLS bug in `getCurrentUser` (task chip raised, possible `app_rls` activation blocker).
+>>>>>>> origin/main
 
 - **CI flake killed: `test/compliance-fill-pdf.test.ts` vs. the 5s vitest default** — **MERGED to
   `main`** ([PR #492](https://github.com/russellmoss/wine-inventory/pull/492), squash `896fec40`;
@@ -1290,8 +1350,9 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 — S3a spray record PR1+PR2 merged (Wave 2 unblocked), PR3 open, browser QA
-handed back to Russell. Previous entry (2026-07-24): **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+_Last updated: 2026-07-26 — **S3a spray record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd
+GREEN (2 findings found+fixed: prefill area provenance, correction UTC→datetime-local shift).** Also this
+date: **Spray Wave 1: S2 (registration + resistance) BUILT — schema slice merged (#522), Units 2-11 green (#525), 2,420 grape registrations + 361 AIs live with zero unclassified. S4 (phenology + growth) BUILT — PR 1 #521 MERGED, PR 2 open, 135 new tests; its interactive UI QA is blocked by a non-S4 RLS bug in getCurrentUser.** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.

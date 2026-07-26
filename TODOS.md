@@ -480,3 +480,22 @@ old modal masked by trapping focus. Raised by Gemini in the plan-089 council rev
 **Context:** the confirm path is security-relevant — a Confirm hotkey must go through the same
 signed-token / single-use nonce flow as a tap, never a shortcut around it.
 **Depends on:** plan 089 shipping first.
+
+## Per-worktree Prisma generated-client output path (raised by S2, program-level)
+
+**What:** Give each worktree its own `generator client { output = ... }` path so parallel lanes stop
+sharing one generated Prisma client.
+
+**Why:** the current instruction — "run `npx prisma generate` immediately before any `tsc` / `verify`
+/ `dev` in any worktree" — is a **ritual, not isolation**. A sibling lane can regenerate the shared
+client between our `tsc` and our `vitest`, and the second command then runs against a client that
+does not match the schema it was checked against. Observed repeatedly across the VI and spray lanes
+(see the "isolated-worktree prisma client goes STALE" notes in auto-memory).
+
+**Pros:** removes a whole class of phantom type errors and "works on the second run" flakiness that
+currently costs minutes per lane, per command.
+**Cons:** touches `prisma/schema.prisma` (the single most contended file in the repo) plus every
+script and import that resolves `@prisma/client`, and would collide with all three sibling spray
+lanes if attempted mid-wave.
+**Context:** S2 council finding C11, accepted as a known limitation for that lane rather than fixed
+unilaterally. **Do this between waves, not inside one**, and land it alone.
