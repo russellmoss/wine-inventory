@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getWineryTimeZone } from "@/lib/settings/data";
 import { resolveSiteTimeZone, siteTodayIso } from "@/lib/weather/site-time-core";
 import { composeRainfallRangeCore } from "@/lib/weather/rainfall-range-core";
+import { composeForecastViewCore, isForecastStale, type ForecastRow } from "@/lib/weather/forecast-read-core";
 import { gddCToF } from "@/lib/weather/units-core";
 import { composeClimateSummaryCore, type DailyRow, type ClimateConfig } from "@/lib/weather/read-core";
 import { resolveVineyardCentroid } from "@/lib/weather/location";
@@ -21,11 +22,12 @@ const dec = (v: unknown): number | null => (v === null || v === undefined ? null
 export const queryClimateTool: AssistantTool = {
   name: "query_climate",
   description:
-    "Get a vineyard's weather & climate: growing degree days (GDD) vs last year, whether the season is warmer " +
-    "or cooler than last year, the Winkler region, frost risk (including 'was last night a frost?'), heat days, " +
-    "and rainfall. Call this for questions about weather, temperature, GDD, degree days, heat, frost, Winkler, " +
-    "growing season, or 'how does this year compare'. Answers in the vineyard's chosen primary source; reads " +
-    "stored data only.",
+    "Get a vineyard's weather & climate: the 7-DAY FORECAST (highs/lows, conditions, expected rain), growing " +
+    "degree days (GDD) vs last year, whether the season is warmer or cooler than last year, the Winkler region, " +
+    "frost risk (including 'was last night a frost?'), heat days, season rainfall, and the last 30 days of rain. " +
+    "Call this for questions about the forecast, this week's weather, rain coming, temperature, GDD, degree days, " +
+    "heat, frost, Winkler, growing season, or 'how does this year compare'. Answers in the vineyard's chosen " +
+    "primary source; reads stored data only.",
   kind: "read",
   inputSchema: {
     type: "object",
@@ -133,6 +135,39 @@ export const queryClimateTool: AssistantTool = {
         })(),
         compareSources: s.spread ? { gddRange: `${s.spread.min}–${s.spread.max} GDD across ${s.spread.sources.join(", ")}`, perSource: s.perSource } : undefined,
         lastRefresh: s.lastRefreshAt,
+        // 7-day forecast (plan 096 Phase 2) — stored rows only, ONE primary series (council C3),
+        // R11 no-fabrication: no rows → an honest note, never inferred weather.
+        forecast: await (async () => {
+          const frows = await prisma.vineyardForecastDaily.findMany({ where: { vineyardId: v.id }, orderBy: { targetDate: "asc" } });
+          const fr: ForecastRow[] = frows.map((r) => ({
+            providerKey: r.providerKey,
+            targetDate: r.targetDate.toISOString().slice(0, 10),
+            issuedAt: r.issuedAt.toISOString(),
+            tmaxC: dec(r.tmaxC),
+            tminC: dec(r.tminC),
+            precipMm: dec(r.precipMm),
+            precipProbabilityPct: dec(r.precipProbabilityPct),
+            conditionCode: r.conditionCode,
+            windMaxKph: dec(r.windMaxKph),
+          }));
+          const view = composeForecastViewCore(fr, todayLocal);
+          if (!view) return { note: "No forecast stored for this vineyard yet — it loads on the Weather & climate page and refreshes every 6 hours." };
+          return {
+            source: view.providerKey,
+            issuedAt: view.issuedAt,
+            stale: isForecastStale(view.issuedAt, new Date()),
+            days: view.days.map((d) => ({
+              date: d.targetDate,
+              highC: d.tmaxC,
+              lowC: d.tminC,
+              condition: d.conditionCode,
+              expectedRainMm: d.precipMm,
+              rainProbabilityPct: d.precipProbabilityPct,
+              lowerConfidence: d.reducedConfidence || undefined,
+            })),
+            note: "Days 6–7 are lower confidence. One source shown, never an average of providers.",
+          };
+        })(),
       });
     }
     return { results, timeZone: tz };

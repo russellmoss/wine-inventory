@@ -82,6 +82,15 @@ export const INTERNAL = {
       "answered by query_climate → composeClimateSummaryCore.",
     coveredBy: "query_climate → composeClimateSummaryCore (frost/heat read); weather sweep (alert emit)",
   },
+  "src/lib/weather/forecast-ingest-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "Plan 096: fetching/replacing a vineyard's 7-day forecast is the 6-hourly forecast-poll cron + the " +
+      "strip's on-view refresh — a background REFRESH mechanism, exactly like its observation twin " +
+      "(ingest-core, INTERNAL above); you don't converse to trigger a fetch. The grower-facing forecast " +
+      "CAPABILITY (ask for the week's outlook) is query_climate → composeForecastViewCore.",
+    coveredBy: "query_climate → composeForecastViewCore (read); forecast-poll cron + refreshVineyardForecast (write)",
+  },
 };
 
 // Temporary — real gaps deferred with a tracked reason. Ratcheted by MAX_ALLOWED.

@@ -921,6 +921,9 @@ model VineyardWeatherConfig {
   timeZone                String? // IANA zone, provider-reported (NWS points.timeZone / Open-Meteo timezone=auto); null = not yet resolved. Site-local "today" chain: this → AppSettings.timeZone → UTC (site-time-core)
   unitSystem              String    @default("METRIC") // String union: "METRIC" | "IMPERIAL" (like coverageState — NOT a Prisma enum). Display-edge only; storage stays metric. Default IMPERIAL for US-forecast-coverage sites (us-coverage helper, NOT the CONUS-only coverageState — council S2)
   lastHistoryTopUpAt      DateTime? // last monthly 3-yr full-year history top-up (sweep; council S3 — keeps the 13–24-month rainfall window from decaying)
+  nwsGridId               String? // NWS /points grid cache (plan 096 U11) — the mapping never changes for a fixed coordinate
+  nwsGridX                Int?
+  nwsGridY                Int?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -944,6 +947,39 @@ model WeatherProviderUsage {
   @@id([tenantId, dayKey, provider]) // one row per tenant per day per provider (the daily enforcement key)
   @@index([tenantId])
   @@map("weather_provider_usage")
+}
+
+// Plan 096 Phase 2 (U11) — the 7-day forecast, per-provider per-target-day. REPLACED, never
+// accumulated: ingest deletes the forward horizon for a (vineyard, provider) then bulk-inserts
+// (council C1 — a shortened horizon can't strand a stale future row); the natural key is the
+// upsert identity and `issuedAt` is a COLUMN (staleness label), not part of the key. All five
+// value columns are NULLABLE end-to-end (council C7 — an evening NWS fetch's day-1 has a low and
+// no high; that's a first-class row, never a zero). Never-blend: one row per provider; display/
+// alerts/assistant all consume ONE primary series via selectPrimaryForecastSeries. Past
+// targetDates are pruned by the daily sweep (no unbounded growth); forecast-vs-actual accuracy
+// history is a deliberate LATER (needs its own append-only table).
+model VineyardForecastDaily {
+  tenantId             String   @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                   String   @id @default(cuid())
+  vineyardId           String // composite FK → vineyard(tenantId, id)
+  providerKey          String // "nws" | "open_meteo" (String union — no enum)
+  targetDate           DateTime @db.Date // vineyard-local civil day this row forecasts
+  issuedAt             DateTime // when the provider issued/we fetched this forecast (staleness label)
+  tmaxC                Decimal? @db.Decimal(6, 3)
+  tminC                Decimal? @db.Decimal(6, 3)
+  precipMm             Decimal? @db.Decimal(8, 3)
+  precipProbabilityPct Decimal? @db.Decimal(6, 3)
+  conditionCode        String   @default("UNKNOWN") // ConditionCode union (condition-core)
+  windMaxKph           Decimal? @db.Decimal(7, 2)
+  provenance           Json
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([tenantId, vineyardId, providerKey, targetDate]) // the replace-upsert identity
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, vineyardId, targetDate]) // the read path (strip + alerts + assistant)
+  @@map("vineyard_forecast_daily")
 }
 
 // ───────────────────────── Vineyard Intelligence P3: NDVI display (viz half of Release 1B) ─────────────────────────
