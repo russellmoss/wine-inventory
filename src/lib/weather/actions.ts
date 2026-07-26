@@ -12,6 +12,8 @@ import { ingestVineyardWeatherCore, type IngestResult } from "./ingest-core";
 import { resolveVineyardCentroid } from "./location";
 import { fetchAcisStationSeries, listAcisStations, type AcisStation } from "./providers/rcc-acis";
 import { seasonWindowFor, seasonYearFor } from "./season-core";
+import { addDaysIso } from "./obs-time-core";
+import { ROLLING_INGEST_DAYS } from "./backfill-window-core";
 import { resolveSiteTimeZone, siteTodayIso } from "./site-time-core";
 import { getWineryTimeZone } from "@/lib/settings/data";
 import { revalidatePath } from "next/cache";
@@ -252,8 +254,9 @@ export async function refreshVineyardWeatherCurrentSeason(vineyardId: string): P
       const centroid = await resolveVineyardCentroid(vineyardId);
       if (!centroid) return { ok: false as const, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
       const today = await siteTodayFor(vineyardId);
-      const seasonYear = seasonYearFor(centroid.lat, today);
-      const { startIso } = seasonWindowFor(centroid.lat, seasonYear);
+      // Plan 096 U6: rolling window (not season-start→today) so the recent OFF-season lands too —
+      // that's what makes "last 30 days of rain" work in January. Covers the whole current season.
+      const startIso = addDaysIso(today, -ROLLING_INGEST_DAYS);
       // Preserve a grower's map-picked station across refreshes (else it'd revert to auto-nearest).
       const stationOverride = await resolveChosenStation(vineyardId, centroid.lat, centroid.lon);
       const res = await ingestVineyardWeatherCore({ vineyardId, lat: centroid.lat, lon: centroid.lon, startIso, endIso: today, stationOverride });

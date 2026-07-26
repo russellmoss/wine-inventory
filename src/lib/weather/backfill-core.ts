@@ -13,6 +13,7 @@ import { gridmetProvider } from "./providers/gridmet";
 import { nasaPowerProvider } from "./providers/nasa-power";
 import { mapSeriesToLocalDaily } from "./obs-time-core";
 import { hemisphereFor } from "./season-core";
+import { keepBackfillDay } from "./backfill-window-core";
 
 /** Fetch + store `years` of historical growing-season days for a vineyard (gridMET in US, else NASA POWER). */
 export async function backfillVineyardGridmetHistory(
@@ -32,10 +33,10 @@ export async function backfillVineyardGridmetHistory(
   const endIso = `${toYear + (nh ? 0 : 1)}-12-31`;
 
   const series = await provider.fetchDailySeries(lat, lon, startIso, endIso);
-  // Keep only growing-season months (NH Apr–Oct = 4..10; SH Oct–Apr = 10,11,12,1,2,3,4).
-  const inSeasonMonth = (m: number) => (nh ? m >= 4 && m <= 10 : m >= 10 || m <= 4);
-  const seasonRecords = series.records.filter((r) => inSeasonMonth(Number(r.sourceDate.slice(5, 7))));
-  const local = mapSeriesToLocalDaily({ ...series, records: seasonRecords });
+  // Plan 096 U6: FULL-YEAR days for the recent FULL_YEAR_WINDOW_YEARS (rainfall needs winter),
+  // growing-season months only beyond (the normals never read off-season). One pure decision.
+  const keptRecords = series.records.filter((r) => keepBackfillDay(r.sourceDate, toYear, nh));
+  const local = mapSeriesToLocalDaily({ ...series, records: keptRecords });
 
   const tenantId = requireTenantId();
   const provenanceBase = JSON.stringify({
