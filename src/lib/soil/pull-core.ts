@@ -86,9 +86,11 @@ export async function pullBlockSoil(
   if (!deps?.forceRefresh) {
     const current = await prisma.blockSoilSnapshot.findFirst({
       where: { blockId, supersededAt: null },
-      select: { polygonFingerprint: true, coveredPct: true },
+      select: { polygonFingerprint: true, coveredPct: true, displayGeometry: true },
     });
-    if (current && current.polygonFingerprint === fingerprint) {
+    // Short-circuit only when the polygon is unchanged AND the map geometry is already stored — otherwise a
+    // snapshot whose best-effort geometry call had failed would be pinned forever with nothing to paint.
+    if (current && current.polygonFingerprint === fingerprint && current.displayGeometry != null) {
       return { state: "cached", coveredPct: Number(current.coveredPct) };
     }
   }
@@ -113,10 +115,16 @@ export async function pullBlockSoil(
 
   // SDA call 3 (best-effort): block-clipped display geometry for the optional map overlay (design §13.6).
   // A fault here NEVER blocks the pull — the composition snapshot is authoritative and stands on its own.
+  // This is the HEAVIEST SDA query (STIntersection + STAsText over every feature) and the one most likely
+  // to time out on a slow response, so retry a few times before giving up — otherwise a block silently
+  // paints nothing on the map despite having composition data.
   let displayGeometry: SoilDisplayGeometry | null = null;
   if (mukeys.length > 0 && result.coverageState !== "none") {
-    const geomRes = await client.post(buildGeometryQuery(wkt));
-    if (geomRes.ok) displayGeometry = soilDisplayFromRows(parseGeometryRows(geomRes.table));
+    const geomQuery = buildGeometryQuery(wkt);
+    for (let attempt = 0; attempt < 3 && displayGeometry == null; attempt++) {
+      const geomRes = await client.post(geomQuery);
+      if (geomRes.ok) displayGeometry = soilDisplayFromRows(parseGeometryRows(geomRes.table));
+    }
   }
 
   // Persist under a geometry-version CAS (council C1) inside a tenant-scoped Serializable tx (council C10).
