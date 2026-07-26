@@ -10,6 +10,7 @@ import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { composeClimateSummaryCore, type ClimateSummary, type DailyRow, type ClimateConfig } from "./read-core";
 import { composeRainfallRangeCore, type RainfallRangeResult } from "./rainfall-range-core";
 import { attachForecastBadges, composeForecastViewCore, isForecastStale, type ForecastView } from "./forecast-read-core";
+import { composeForecastHoursCore, type ForecastHourlyDay } from "./forecast-hourly-read-core";
 import { classifyForecastAlertsCore } from "./alert-core";
 import { ingestVineyardForecastCore } from "./forecast-ingest-core";
 import type { NwsActiveAlert } from "./providers/nws-alerts";
@@ -270,6 +271,56 @@ export async function loadVineyardForecast(
     const stale = view ? isForecastStale(view.issuedAt, new Date()) : false;
     const activeAlerts = Array.isArray(configRow.activeAlertsJson) ? (configRow.activeAlertsJson as unknown as NwsActiveAlert[]) : [];
     return { ok: true, view, unitSystem: configRow.unitSystem, stale, activeAlerts };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/**
+ * One day's hourly forecast for the modal (plan 097 U4). STORED rows only; ONE provider (the same
+ * rank discipline as the strip — C3); thresholds returned so the chart's reference lines and the
+ * crossing copy use identical numbers. Null day = no hourly detail stored (honest empty state).
+ */
+export async function loadVineyardForecastHours(
+  vineyardId: string,
+  targetDate: string,
+): Promise<
+  | { ok: true; day: ForecastHourlyDay | null; unitSystem: string; thresholds: { frostWarnC: number; hardFreezeC: number; heatWatchC: number; extremeHeatC: number } }
+  | { ok: false; error: string }
+> {
+  try {
+    await requireReadyUser();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return { ok: false, error: "Invalid date." };
+    const configRow = await prisma.vineyardWeatherConfig.findFirst({
+      where: { vineyardId },
+      select: { unitSystem: true, frostWarnC: true, hardFreezeC: true, heatWatchC: true, extremeHeatC: true },
+    });
+    const thresholds = {
+      frostWarnC: dec(configRow?.frostWarnC) ?? 0,
+      hardFreezeC: dec(configRow?.hardFreezeC) ?? -2,
+      heatWatchC: dec(configRow?.heatWatchC) ?? 35,
+      extremeHeatC: dec(configRow?.extremeHeatC) ?? 38,
+    };
+    const rows = await prisma.vineyardForecastHourly.findMany({
+      where: { vineyardId, localDate: new Date(`${targetDate}T00:00:00.000Z`) },
+      orderBy: { hourStartUtc: "asc" },
+    });
+    const day = composeForecastHoursCore(
+      rows.map((r) => ({
+        providerKey: r.providerKey,
+        hourStartUtc: r.hourStartUtc.toISOString(),
+        localDate: r.localDate.toISOString().slice(0, 10),
+        localHour: r.localHour,
+        tempC: dec(r.tempC),
+        popPct: dec(r.popPct),
+        precipMm: dec(r.precipMm),
+        precipDurationH: r.precipDurationH,
+        conditionCode: r.conditionCode,
+        windKph: dec(r.windKph),
+      })),
+      { targetDate, frostWarnC: thresholds.frostWarnC, heatWatchC: thresholds.heatWatchC },
+    );
+    return { ok: true, day, unitSystem: configRow?.unitSystem ?? "METRIC", thresholds };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
