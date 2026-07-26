@@ -3,8 +3,8 @@
 // and the mutation call — the UI and the mutation can never disagree about what is correctable.
 //
 // The two rules that make this file what it is:
-//   1. A correction COPIES the predecessor's facts snapshot VERBATIM — factsRevision and
-//      factsAsOf included. It re-resolves ONLY a line whose own product identity changed
+//   1. A correction COPIES the predecessor's facts snapshot VERBATIM — every component of the
+//      composite watermark included. It re-resolves ONLY a line whose own product identity changed
 //      (KD-14, reversing the original design per council G1: re-resolving would repaint a July
 //      application with November's registration data and break rule §3.8). Don't "fix" this back.
 //   2. A VOID is a SUCCESSOR ROW, not the absence of one (council C2) — so the at-most-once
@@ -116,7 +116,12 @@ export async function correctSprayApplicationCore(
           snapshotActiveIngredientKeys: pred.snapshotActiveIngredientKeys,
           activeIngredientsKnown: pred.activeIngredientsKnown,
           snapshotActiveIngredients: (pred.snapshotActiveIngredients as FactsSnapshot["snapshotActiveIngredients"]) ?? null,
-          factsRevision: pred.factsRevision,
+          // The COMPOSITE watermark copies component-for-component (KD-14). Copying only the
+          // display `factsAsOf` would silently drop which revision/sources the snapshot came from.
+          factsPublishedRevisionId: pred.factsPublishedRevisionId,
+          factsApprilAsOf: pred.factsApprilAsOf,
+          factsCdprAsOf: pred.factsCdprAsOf,
+          factsResistanceArtifactSha256: pred.factsResistanceArtifactSha256,
           factsAsOf: pred.factsAsOf,
           factsSource: pred.factsSource,
           factsCompleteness: pred.factsCompleteness,
@@ -224,7 +229,10 @@ export async function correctSprayApplicationCore(
           snapshotActiveIngredientKeys: snap.snapshotActiveIngredientKeys,
           activeIngredientsKnown: snap.activeIngredientsKnown,
           snapshotActiveIngredients: snap.snapshotActiveIngredients === null ? Prisma.DbNull : (snap.snapshotActiveIngredients as unknown as Prisma.InputJsonValue),
-          factsRevision: snap.factsRevision,
+          factsPublishedRevisionId: snap.factsPublishedRevisionId,
+          factsApprilAsOf: snap.factsApprilAsOf,
+          factsCdprAsOf: snap.factsCdprAsOf,
+          factsResistanceArtifactSha256: snap.factsResistanceArtifactSha256,
           factsAsOf: snap.factsAsOf,
           factsSource: snap.factsSource,
           factsCompleteness: snap.factsCompleteness,

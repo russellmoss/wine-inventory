@@ -5999,7 +5999,18 @@ model SprayMaterialLine {
   snapshotActiveIngredientKeys String[] // normalized AI keys ("SULFUR"); GIN index in migration
   activeIngredientsKnown       Boolean                @default(false)
   snapshotActiveIngredients    Json? // [{ name, percentByWeight, casNumber }] — human-readable decomposition
-  factsRevision                Int? // Int watermark, never a timestamp (COST-3 pattern)
+  // The facts-as-of watermark is a COMPOSITE, not a scalar — it mirrors S2's frozen
+  // `PesticideFactsAsOf` contract verbatim (docs/spray_assistant/phases/S2-S3a-factsAsOf-contract.md).
+  // One legality lookup spans four sources on different cadences (EPA APPRIL publishes when it
+  // publishes, CDPR nightly, the curated resistance artifact only when a human commits it, plus the
+  // revision row); a single scalar would falsely imply they all moved together. A NULL component
+  // means "we have never published that source" — render unknown, never "current" (rule §3.6).
+  factsPublishedRevisionId     String? // S2's PesticideDataRevision cuid (NOT an Int — that was the S3a↔S2 seam defect)
+  factsApprilAsOf              DateTime? // EPA APPRIL dump's own Last-Modified
+  factsCdprAsOf                DateTime? // CA DPR product.dat's own Last-Modified
+  factsResistanceArtifactSha256 String? // sha256 of the committed resistance-codes.json
+  /// Display/staleness convenience ONLY — the newest non-null component above. Never the key an
+  /// engine compares on; compare the component that matters to the question being asked.
   factsAsOf                    DateTime?
   factsSource                  SprayFactsSource       @default(NONE)
   factsCompleteness            SprayFactsCompleteness @default(UNKNOWN)

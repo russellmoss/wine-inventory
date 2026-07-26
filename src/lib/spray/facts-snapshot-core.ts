@@ -20,10 +20,31 @@ export interface FactsSnapshot {
   snapshotActiveIngredientKeys: string[];
   activeIngredientsKnown: boolean;
   snapshotActiveIngredients: ResolvedActiveIngredient[] | null;
-  factsRevision: number | null;
+  // The COMPOSITE watermark, flattened onto columns (S2's frozen contract — never a scalar).
+  factsPublishedRevisionId: string | null;
+  factsApprilAsOf: Date | null;
+  factsCdprAsOf: Date | null;
+  factsResistanceArtifactSha256: string | null;
+  /** Display/staleness convenience: the NEWEST non-null component. Engines compare components. */
   factsAsOf: Date | null;
   factsSource: SprayFactsSource;
   factsCompleteness: SprayFactsCompleteness;
+}
+
+/** Parse an ISO component to a Date, or null. A malformed string is null — never Invalid Date. */
+function parseComponent(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** The newest non-null component — what a human reads as "these facts are from …". */
+export function newestFactsComponent(components: (Date | null)[]): Date | null {
+  let newest: Date | null = null;
+  for (const c of components) {
+    if (c && (newest === null || c.getTime() > newest.getTime())) newest = c;
+  }
+  return newest;
 }
 
 /**
@@ -61,6 +82,8 @@ export function buildFactsSnapshot(resolved: ResolvedProductFacts): FactsSnapsho
   );
   const resistanceGroupsKnown = groups.length > 0;
   const activeIngredientsKnown = aiKeys.length > 0;
+  const apprilAsOf = parseComponent(resolved.factsAsOf?.apprilAsOf);
+  const cdprAsOf = parseComponent(resolved.factsAsOf?.cdprAsOf);
 
   const discrete = [resolved.phiDays, resolved.reiHours, resolved.rainfastHours, resolved.mobilityClass];
   const presentCount = discrete.filter((v) => v != null).length + (resistanceGroupsKnown ? 1 : 0) + (activeIngredientsKnown ? 1 : 0);
@@ -78,8 +101,11 @@ export function buildFactsSnapshot(resolved: ResolvedProductFacts): FactsSnapsho
     snapshotActiveIngredientKeys: activeIngredientsKnown ? aiKeys : [],
     activeIngredientsKnown,
     snapshotActiveIngredients: resolved.activeIngredients && resolved.activeIngredients.length ? resolved.activeIngredients : null,
-    factsRevision: resolved.factsRevision,
-    factsAsOf: resolved.factsAsOf,
+    factsPublishedRevisionId: resolved.factsAsOf?.publishedRevisionId ?? null,
+    factsApprilAsOf: apprilAsOf,
+    factsCdprAsOf: cdprAsOf,
+    factsResistanceArtifactSha256: resolved.factsAsOf?.resistanceArtifactSha256 ?? null,
+    factsAsOf: newestFactsComponent([apprilAsOf, cdprAsOf]),
     factsSource: resolved.source,
     factsCompleteness,
   };
