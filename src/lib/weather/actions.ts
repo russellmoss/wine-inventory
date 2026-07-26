@@ -168,6 +168,28 @@ export async function refreshVineyardWeather(vineyardId: string, startIso: strin
   return ingestVineyardWeatherCore({ vineyardId, lat: centroid.lat, lon: centroid.lon, startIso, endIso });
 }
 
+/** Backfill N years of historical gridMET so the card can show the Winkler normal + 10/20-yr GDD curves. */
+export async function backfillVineyardWeatherHistory(
+  vineyardId: string,
+  years = 20,
+): Promise<{ ok: true; rows: number; fromYear: number; toYear: number } | { ok: false; error: string }> {
+  try {
+    await requireReadyUser();
+    const centroid = await resolveVineyardCentroid(vineyardId);
+    if (!centroid) return { ok: false, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
+    const currentYear = seasonYearFor(centroid.lat, new Date().toISOString().slice(0, 10));
+    const { backfillVineyardGridmetHistory } = await import("./backfill-core");
+    const res = await backfillVineyardGridmetHistory(vineyardId, centroid.lat, centroid.lon, years, currentYear);
+    if (res.rowsWritten === 0) {
+      return { ok: false, error: "No historical gridMET available here (gridMET is CONUS-only). The long-term Winkler needs a US site." };
+    }
+    revalidatePath("/vineyards/weather");
+    return { ok: true, rows: res.rowsWritten, fromYear: res.fromYear, toYear: res.toYear };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** Refresh the CURRENT growing season (season start → today) — the button on the climate card. */
 export async function refreshVineyardWeatherCurrentSeason(vineyardId: string): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
   try {
