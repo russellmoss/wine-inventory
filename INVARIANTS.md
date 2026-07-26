@@ -324,3 +324,17 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   host↔AP (distinct BWN) → title + symmetric transfer-in-bond (council C1). Compliance keys off BOND, not
   ownerId, but an AP owner's bond wins in `deriveBond`. Owner-scope RLS is plan 092, not this invariant.
   Guarded by `npm run verify:owner-model` (16 assertions, Demo tenant, no RLS).
+
+## Vineyard Intelligence — soil (P4)
+
+> Machine-readable note: [[SOIL-1-no-blended-properties]].
+
+- **No blended block soil properties (SOIL-1, guarded — `verify:soil`).** A block's `BlockSoilSnapshot`
+  invents NO property value: area share (%) is the ONLY value we aggregate. Every soil property (pH,
+  drainage, AWC, restrictive depth) stays PER-MAP-UNIT, cited to its `mukey` at the level NRCS publishes it
+  (labelled via `*Basis`). No block-level averaged pH / drainage / AWC / restrictive depth exists anywhere —
+  pH is logarithmic, drainage categorical, and averaged restrictive depth is actively dangerous (the shallow
+  half is where the vines die). We inherit NRCS's own published roll-ups (e.g. `muaggatt.drclassdcd`) but
+  labelled as such, never re-aggregated. Non-soil map units (Water/Pits/Rock outcrop) are classified
+  explicitly and never presented as a soil (spike NEW-1). This is NOT a lint (the design says so); the guard
+  proves the positive shape and this note + review checklist enforce the absence. `npm run verify:soil`.
