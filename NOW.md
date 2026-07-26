@@ -979,6 +979,39 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **🔴 RELEASE BLOCKER FOUND + FIXED (2026-07-26): `AppUser.vineyardIds` was ALWAYS `[]` under
+  `app_rls`.** Surfaced during S4 browser QA (it blocked the pass) but pre-existing and unrelated to S4.
+  **[PR #530](https://github.com/russellmoss/wine-inventory/pull/530)** (branch
+  `claude/relaxed-bardeen-5cfae9`). Complementary to #529, NOT superseded by it — see the S4 entry below.
+  **Root cause — the GLOBAL-parent / RLS-child read seam:** `userSelect` in `src/lib/dal.ts` selected
+  `vineyardMemberships`. `User` is a GLOBAL model, so the tenant extension passes `prisma.user.*`
+  **straight through** and never opens its `set_config('app.tenant_id', …)` tx; `user_vineyard` is
+  RLS-FORCED, so the nested join was evaluated with **no tenant GUC** and fail-closed to zero rows —
+  silently, no error. Reproduced deterministically against the live DB (`app_rls` `rolbypassrls=false`:
+  nested read `[]`, same read with the GUC set returns the row).
+  **Blast radius (every non-admin manager):** field notes unreachable; the vineyard-scoped assistant
+  dead (`assistant/scope.ts`, `query-brix`, `query-recent-harvests`, `db-create`/`db-update`); `/lots`
+  lens off; and on `/users` **silent DATA LOSS** — checkboxes render from those ids and
+  `setUserVineyards` REPLACES the set, so ticking one vineyard dropped every existing membership.
+  ⚠️ **Local `DATABASE_URL` is ALREADY `app_rls`** (owner URL kept as `DATABASE_URL_OWNER_POOLED_BACKUP`).
+  **Vercel's `DATABASE_URL` is UNCONFIRMED — Russell must check.** If prod still connects as
+  `neondb_owner` (BYPASSRLS) this was latent and would have become total at the app_rls cutover.
+  **Fix:** membership set moved to `src/lib/users/vineyard-memberships.ts`
+  (`loadVineyardMembershipIds` / `…ByUser`), read AFTER `getCurrentUser` resolves the effective tenant
+  (support org → active org), with `tenantId` as an EXPLICIT arg (K12-safe, can't recurse via
+  `resolveTenantFromSession`). `toAppUser` now REQUIRES `vineyardIds`. All 3 call sites fixed
+  (`dal.ts`, `users/actions.ts`, `(app)/users/page.tsx`).
+  **Guards:** `test/global-model-tenant-relation-select.test.ts` (static, DMMF-driven — proven
+  non-vacuous by reintroducing the bug) + 4 new `verify:tenant-isolation` checks that pin BOTH the empty
+  pass-through read and the correct scoped one. tsc/eslint clean, `verify:tenant-isolation` ALL PASSED.
+  ⛔ **Trap found in passing — do NOT re-derive:** `runAsTenant(id, () => prisma.x.op(…))` with a
+  NON-async arrow **does not work**. Prisma returns a LAZY thenable, so `$allOperations` runs after
+  `store.run()` has exited → "Tenant context required", or worse, silently the OUTER tenant. Must be
+  `async () => await …`. ~6 pre-existing sites still have the broken shape (masked today) — logged in
+  the security register's watch list + a task chip.
+  ℹ️ The DB holds exactly **ONE** `user_vineyard` row (`awerth@gmail.com` → Demo Winery) — the row the
+  QA report attributed to `russellmoss87@gmail.com` (id `50d97614-…`) is **not there**.
+
 - **TENANT-3 — the lazy-`PrismaPromise` tenancy bug class: SWEPT + CLOSED STRUCTURALLY**
   (branch `claude/silly-goldwasser-d2aedf`, 2026-07-26). `runAsTenant(t, () => prisma.x.op())` with a
   **non-async** arrow BUILDS the query inside the ALS scope and **runs it after the scope exits** —
@@ -1001,7 +1034,7 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   "GLOBAL model may never select a relation to a tenant-scoped table" existed on no branch. **Wrong.**
   They are on **[#530](https://github.com/russellmoss/wine-inventory/pull/530)** (`claude/relaxed-bardeen-5cfae9`),
   which was still OPEN — the sweep searched local refs before that branch carried the work. #530 is the
-  real fix for the sibling bug and is still unmerged.
+  real fix for the sibling bug (CI green: `check` + `tenant-isolation` + `review`).
   (2) #531 then re-graded the GLOBAL-model/RLS-child seam to LOW-MED, following #529's note. **Also
   wrong** — #530 browser-proved it side by side on `/users` (unfixed server: Aaron Werth `[]`; fixed:
   `["WV Oregon"]`). #529's `isTenantAdminLike` gate is a real fix but only routes **admin-like** roles
@@ -1009,8 +1042,8 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   where the checkboxes render from those ids and `setUserVineyards` REPLACES the set — **a silent
   membership WIPE**. Invisible while the runtime connects as owner (BYPASSRLS); **total the moment
   `DATABASE_URL` is `app_rls`.** So it IS an app_rls-activation blocker. See
-  [[global-model-rls-child-read-seam]]. ⚠️ **#530 now conflicts with #531 in `NOW.md` +
-  `docs/architecture/security-register.md` — merge `main` into it before landing.**
+  [[global-model-rls-child-read-seam]]. ✅ `main` has since been merged INTO #530 (TENANT-3 + both
+  corrections included), so the `NOW.md` / `security-register.md` overlap is resolved.
 - **Spray Intelligence S3a — record + planned harvest: SHIPPED (2026-07-26). PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED → WAVE 2 UNBLOCKED (S7a, S8, S6, S7b start against the merged cores); PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) browser-QA'd GREEN.**
   Seven append-only tables (DB triggers + at-most-once correction incl. VOID), facts-as-of
   snapshots (copied verbatim on correction — KD-14), knownness CHECKs (SPRAY-3), planned-harvest
@@ -1040,7 +1073,12 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   all three states, `shootLengthCm: 0` / `hedgedThisWeek: false` / `clusterDamage: NOT_ASSESSED`
   all survived UI → action → DB, and read-back renders a gap and a checked-clean as two different
   sentences. The blocker turned out to be a one-line `isTenantAdminLike` gate on the field-notes
-  page, not the RLS theory — that observation is re-graded LOW-MED and still has a task chip.
+  page (#529) — that fix is correct and is what unblocked this QA.
+  ⚠️ **CORRECTION to this entry's original "not the RLS theory / re-graded LOW-MED" call: that
+  re-grade was wrong.** #529 only routes ADMIN-LIKE roles away from the manager branch; a genuine
+  `role: "user"` manager still reads `vineyardIds: []`, and #529 does not touch `/users`, where the
+  silent membership WIPE lives. The RLS seam is real, measured, and fixed separately in **PR #530**
+  (see the entry above) — the two changes are complementary, not alternatives.
 
 - **CI flake killed: `test/compliance-fill-pdf.test.ts` vs. the 5s vitest default** — **MERGED to
   `main`** ([PR #492](https://github.com/russellmoss/wine-inventory/pull/492), squash `896fec40`;
@@ -1388,8 +1426,11 @@ S4 blocker was a one-line isTenantAdminLike gate on the field-notes page); scout
 MEASURABLE, recorded as-is.** ⛔ **Do NOT read #529 as clearing the GLOBAL-model/RLS-child seam — that
 re-grade was WRONG. It only routes admin-like roles; a real `role:"user"` manager still gets
 `vineyardIds: []` and `/users` silently WIPES memberships the moment `DATABASE_URL` is `app_rls`.
-[#530](https://github.com/russellmoss/wine-inventory/pull/530) is the fix and is still OPEN (and now
-conflicts with #531 — merge `main` into it).** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+[#530](https://github.com/russellmoss/wine-inventory/pull/530) is the fix — CI green (`check` +
+`tenant-isolation` + `review`), `main` merged in, browser-QA'd on Demo, ready to land. ⚠️ Still open for
+Russell: is Vercel's production `DATABASE_URL` `app_rls` or still `neondb_owner`? That decides whether
+this was already live in prod or latent (the Vercel env page is blocked to the agent, prod needs a
+login, and Neon telemetry is unavailable in this region).** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.
