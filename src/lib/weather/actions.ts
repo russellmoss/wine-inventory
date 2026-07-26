@@ -8,7 +8,7 @@ import { requireReadyUser } from "@/lib/dal";
 import { composeClimateSummaryCore, type ClimateSummary, type DailyRow, type ClimateConfig } from "./read-core";
 import { ingestVineyardWeatherCore, type IngestResult } from "./ingest-core";
 import { resolveVineyardCentroid } from "./location";
-import { listAcisStations, type AcisStation } from "./providers/rcc-acis";
+import { fetchAcisStationSeries, listAcisStations, type AcisStation } from "./providers/rcc-acis";
 import { seasonWindowFor, seasonYearFor } from "./season-core";
 import { revalidatePath } from "next/cache";
 
@@ -55,16 +55,31 @@ export async function setVineyardStation(vineyardId: string, station: StationOpt
     if (!centroid) return { ok: false, error: "This vineyard has no planting-area geometry yet." };
     const cfg = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { id: true } });
     if (!cfg) return { ok: false, error: "Refresh this vineyard's weather first, then choose a station." };
-    // Record the choice + make the station the primary source.
-    await prisma.vineyardWeatherConfig.update({ where: { id: cfg.id }, data: { stationOverrideId: station.sid, primaryProviderOverride: "rcc_acis" } });
     const today = new Date().toISOString().slice(0, 10);
     const { startIso } = seasonWindowFor(centroid.lat, seasonYearFor(centroid.lat, today));
-    // Clear the season's existing rcc_acis rows first so the NEW station fully replaces the old one — an
-    // upsert alone would leave stale rows from the previous station on dates the new station doesn't cover
-    // (mixing two stations under one providerKey). Scoped to the re-ingested window; older data untouched.
-    await prisma.vineyardClimateDaily.deleteMany({ where: { vineyardId, providerKey: "rcc_acis", localDate: { gte: new Date(`${startIso}T00:00:00.000Z`) } } });
     const full: AcisStation = { sid: station.sid, name: station.name, lat: station.lat, lon: station.lon, elevM: station.elevM, distanceM: station.distanceKm * 1000 };
+
+    // VALIDATE FIRST (bug caught in browser QA): some stations report no daily data this season. Probe before
+    // mutating — else we'd delete the current station's rows and replace them with nothing, leaving the
+    // primary source empty. Refuse the pick and change nothing.
+    let probe;
+    try {
+      probe = await fetchAcisStationSeries(full, startIso, today);
+    } catch {
+      probe = null;
+    }
+    if (!probe || probe.records.length === 0) {
+      return { ok: false, error: `${station.name} has no reported data for this season — try a different station.` };
+    }
+
+    // Clear the season's existing rcc_acis rows so the NEW station fully replaces the old one — an upsert
+    // alone would leave stale rows from the previous station on dates the new station doesn't cover (mixing
+    // two stations under one providerKey). Scoped to the re-ingested window; older data untouched.
+    await prisma.vineyardClimateDaily.deleteMany({ where: { vineyardId, providerKey: "rcc_acis", localDate: { gte: new Date(`${startIso}T00:00:00.000Z`) } } });
     const res = await ingestVineyardWeatherCore({ vineyardId, lat: centroid.lat, lon: centroid.lon, startIso, endIso: today, stationOverride: full });
+    // Only AFTER a successful ingest do we lock in the override flags — so a mid-ingest failure self-heals to
+    // the auto-nearest on the next refresh instead of pinning a half-written station.
+    await prisma.vineyardWeatherConfig.update({ where: { id: cfg.id }, data: { stationOverrideId: station.sid, primaryProviderOverride: "rcc_acis" } });
     revalidatePath("/vineyards/weather");
     return { ok: true, rows: res.rowsWritten };
   } catch (e) {
