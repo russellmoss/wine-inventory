@@ -739,11 +739,42 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     crawlCadence: "monthly",
     defaultEnabled: false,
   },
+  {
+    // Spray S2 — US EPA pesticide registration + resistance master. NOT a crawled corpus source:
+    // the data is RELATIONAL (pesticide_* tables, scripts/ingest-appril.ts + ingest-cdpr.ts); this
+    // row exists for the per-tenant TOGGLE + citation plumbing only. src/lib/pesticide/lookup.ts
+    // checks this source's subscription on every read and fails closed (the S2 entitlement boundary
+    // for S9/S10/S11 alike).
+    //
+    // defaultEnabled:false — the feature ships DARK and non-US tenants stay clean; a tenant is
+    // entitled only by an explicit enabling subscription row (admin toggle in Settings).
+    // autoCrawl:false — no pages are crawled, and it keeps this source out of the monthly recrawl
+    // sweep, which is exactly why the pesticide refresh is its OWN step in knowledge-recrawl.yml
+    // (crawlCadence is documentation only — nothing schedules from it).
+    key: "epa-pesticide",
+    publisher: "US EPA — Pesticide Product and Label System",
+    homeDomain: "www3.epa.gov",
+    tier: 1,
+    license:
+      "US EPA public-domain registration data (APPRIL product dump + PPLS labels) and CA DPR public " +
+      "product database — US government / CA state works, no copyright restriction; cited with " +
+      "registration numbers and source dates.",
+    seedRoots: [],
+    allowPrefixes: ["/pesticides/"],
+    denyPrefixes: [],
+    autoCrawl: false,
+    crawlCadence: "monthly",
+    defaultEnabled: false,
+  },
 ];
 
 // Domains the crawler may follow links INTO (allowlist-gated cross-domain following). A link to a domain
 // NOT listed here is logged to CandidateSource for human promotion, never crawled. Includes www + apex.
 export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
+  // Spray S2 — the pesticide bulk endpoints (host gate and path gate are separate concerns; the
+  // relational ingest ALSO carries its own allowlist in src/lib/pesticide/bulk-fetch.ts).
+  { domain: "www3.epa.gov", sourceKey: "epa-pesticide" },
+  { domain: "files.cdpr.ca.gov", sourceKey: "epa-pesticide" },
   // IVES Technical Reviews. Whole host is the journal, and crawl-ives.ts only ever fetches
   // /article/view/<id> URLs recovered from the journal's own OAI-PMH feed — so reach is bounded by
   // the feed, not just by the host.

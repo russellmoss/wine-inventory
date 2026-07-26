@@ -1,0 +1,102 @@
+[
+  {
+    "apprilName": "Copper sulfate pentahydrate",
+    "citedParent": "copper sulfate",
+    "reason": "Hydrate of the cited compound. UC IPM codes 'copper sulfate' M 01 (multi-site); the pentahydrate is the same compound with water of crystallization, not a different mode of action. Naming normalization over ONE cited compound — not a genus/class generalization (K5).",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "apprilName": "Basic copper sulfate",
+    "citedParent": "copper sulfate",
+    "reason": "Basic (tribasic) copper sulfate is the cited copper-sulfate fungicide form; UC IPM codes copper sulfate M 01.",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "apprilName": "Copper oxychloride   (Cu2Cl(OH)3)",
+    "citedParent": "copper",
+    "reason": "UC IPM carries a generic 'copper' row at M 01 alongside the named copper salts, which is the cited basis for the inorganic-copper class. Copper oxychloride is one of those fixed-copper fungicides.",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "apprilName": "Cuprous oxide",
+    "citedParent": "copper",
+    "reason": "Fixed-copper fungicide; UC IPM's generic 'copper' row (M 01) is the cited basis.",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "apprilName": "Copper - ammonia complex",
+    "citedParent": "copper",
+    "reason": "Fixed-copper fungicide (copper ammonium complex); UC IPM's generic 'copper' row (M 01) is the cited basis.",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "apprilName": "Copper, bis(acetato-O)diammine-",
+    "citedParent": "copper",
+    "reason": "Copper coordination complex used as a fixed-copper fungicide; UC IPM's generic 'copper' row (M 01) is the cited basis.",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "apprilName": "Octanoic acid, copper salt",
+    "citedParent": "copper",
+    "reason": "Copper octanoate — a copper soap fungicide; UC IPM's generic 'copper' row (M 01) is the cited basis. NOTE this is a copper compound, NOT the octanoic-acid (caprylic acid) sanitizer, which stays uncoded.",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "apprilName": "Metalaxyl-M",
+    "citedParent": "mefenoxam",
+    "reason": "Metalaxyl-M and mefenoxam are two names for the SAME single enantiomer (the R-isomer of metalaxyl). UC IPM codes mefenoxam 4. A synonym, not an inference.",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "apprilName": "Bacillus subtilis strain QST 713",
+    "citedParent": "Bacillus subtilis",
+    "reason": "Strain-suffix collapse onto an EXPLICITLY CITED species (K5): UC IPM's own row is 'Bacillus subtilis (Serenade)' at BM 02, and Serenade IS the QST 713 product. Genus generalization is NOT permitted — B. amyloliquefaciens and B. mycoides get no inferred code.",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  },
+  {
+    "apprilName": "Bacillus subtilis strain IAB/BS03",
+    "citedParent": "Bacillus subtilis",
+    "reason": "Strain-suffix collapse onto the cited species Bacillus subtilis (BM 02) — same-species normalization only (K5).",
+    "sourceUrl": "https://ipm.ucanr.edu/agriculture/grape/general-properties-of-fungicides-used-in-grapes",
+    "sourceTitle": "General Properties of Fungicides Used in Grapes — UC IPM Grape Pest Management Guidelines",
+    "sourceAsOf": "2024-07-01",
+    "reviewedBy": "russellmoss",
+    "reviewedAt": "2026-07-26"
+  }
+]

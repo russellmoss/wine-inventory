@@ -43,6 +43,7 @@ const VINEYARDS: NavItem[] = [
   { href: "/vineyards/harvest/weigh-tags", label: "Weigh-tags", customCrush: true }, // Plan 093 (gated on the custom-crush program)
   { href: "/vineyards/maps", label: "Map Explorer" }, // VI — unified map surface: blocks + NDVI + soil layers (the old /vineyards/ndvi redirects here)
   { href: "/vineyards/weather", label: "Weather & climate" }, // VI-P8
+  { href: "/vineyards/sprays", label: "Spray records" }, // Spray Intelligence S3a — the ONE nav entry (P8 lesson)
 ];
 
 const SETUP: NavItem[] = [
