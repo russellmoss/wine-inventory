@@ -26,7 +26,7 @@ export default async function WeatherPage({ searchParams }: { searchParams: Prom
     <div style={{ maxWidth: 900, margin: "0 auto" }}>
       <Eyebrow rule>Vineyard Intelligence</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: "10px 0 4px" }}>Weather &amp; climate</h1>
-      <p style={{ color: "var(--color-text-muted)", marginTop: 0, marginBottom: 16 }}>
+      <p style={{ color: "var(--text-muted)", marginTop: 0, marginBottom: 16 }}>
         One climate estimate per vineyard, terrain-aware, beside your nearest station. Blocks share it — grids resolve site-vs-region, not block-vs-block.
       </p>
       {vineyards.length === 0 ? (

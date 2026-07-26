@@ -14,12 +14,12 @@ import { StationMapClient } from "./StationMap.client";
 type VineyardOpt = { id: string; name: string };
 
 const card: React.CSSProperties = {
-  border: "1px solid var(--color-border)",
+  border: "1px solid var(--border-default)",
   borderRadius: 12,
   padding: 18,
-  background: "var(--color-surface)",
+  background: "var(--surface-raised)",
 };
-const label: React.CSSProperties = { fontSize: 12, textTransform: "uppercase", letterSpacing: 0.6, color: "var(--color-text-muted)" };
+const label: React.CSSProperties = { fontSize: 12, textTransform: "uppercase", letterSpacing: 0.6, color: "var(--text-muted)" };
 const big: React.CSSProperties = { fontFamily: "var(--font-display)", fontSize: 40, lineHeight: 1.05 };
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
@@ -106,7 +106,7 @@ export function WeatherCard({
         <select
           value={selectedId ?? ""}
           onChange={(e) => startTransition(() => router.push(`/vineyards/weather?vineyard=${e.target.value}`))}
-          style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--color-border)", background: "var(--color-surface)", color: "var(--color-text)" }}
+          style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border-default)", background: "var(--surface-raised)", color: "var(--text-primary)" }}
           aria-label="Vineyard"
         >
           {vineyards.map((v) => (
@@ -116,7 +116,7 @@ export function WeatherCard({
         <button
           onClick={refresh}
           disabled={busy || pending || !selectedId}
-          style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--color-border)", background: "var(--color-accent)", color: "var(--color-on-accent, #fff)", cursor: busy ? "wait" : "pointer" }}
+          style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border-default)", background: "var(--accent)", color: "var(--accent-on)", cursor: busy ? "wait" : "pointer" }}
         >
           {busy ? "Refreshing…" : "Refresh weather"}
         </button>
@@ -125,7 +125,7 @@ export function WeatherCard({
         )}
       </div>
 
-      {err && <div style={{ ...card, borderColor: "var(--color-danger, #c0392b)", color: "var(--color-danger, #c0392b)" }}>{err}</div>}
+      {err && <div style={{ ...card, borderColor: "var(--danger)", color: "var(--danger)" }}>{err}</div>}
 
       {!summary || !h ? (
         <div style={card}>
@@ -139,12 +139,12 @@ export function WeatherCard({
             <div style={label}>Season {summary.seasonYear} · Growing Degree Days (base 10 °C)</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
               <span style={big}>{h.seasonGddC.toLocaleString()}</span>
-              <span style={{ color: "var(--color-text-muted)" }}>GDD to date · {trustLabel(h.gddCompletenessPct)} confidence ({h.gddCompletenessPct}% of season)</span>
+              <span style={{ color: "var(--text-muted)" }}>GDD to date · {trustLabel(h.gddCompletenessPct)} confidence ({h.gddCompletenessPct}% of season)</span>
             </div>
-            <div style={{ color: "var(--color-text)" }}>{gddComparisonLabel(h.priorYear?.deltaC ?? null)}</div>
+            <div style={{ color: "var(--text-primary)" }}>{gddComparisonLabel(h.priorYear?.deltaC ?? null)}</div>
             {h.gddCumulative.length > 1 && (
               <svg viewBox="0 0 320 60" width="100%" height="60" role="img" aria-label="Cumulative GDD this season" style={{ maxWidth: 480 }}>
-                <polyline points={sparklinePoints(h.gddCumulative.map((p) => ({ date: p.date, cumC: p.cumC })), 320, 60, 3)} fill="none" stroke="var(--color-accent)" strokeWidth={2} />
+                <polyline points={sparklinePoints(h.gddCumulative.map((p) => ({ date: p.date, cumC: p.cumC })), 320, 60, 3)} fill="none" stroke="var(--accent)" strokeWidth={2} />
               </svg>
             )}
           </div>
@@ -153,7 +153,7 @@ export function WeatherCard({
             <Panel title="Winkler region">
               <div style={big}>{h.winkler.region}</div>
               {h.winkler.nearBoundary && (
-                <div style={{ ...label, textTransform: "none", color: "var(--color-warning, #b8860b)" }}>
+                <div style={{ ...label, textTransform: "none", color: "var(--warning)" }}>
                   Only {h.winkler.nearestBoundaryDeltaC} GDD from the next class — treat as approximate.
                 </div>
               )}
@@ -185,7 +185,7 @@ export function WeatherCard({
                   value={summary.primaryProviderOverride ?? "auto"}
                   onChange={(e) => changeSource(e.target.value)}
                   disabled={busy}
-                  style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--color-border)", background: "var(--color-surface)", color: "var(--color-text)" }}
+                  style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border-default)", background: "var(--surface-raised)", color: "var(--text-primary)" }}
                   aria-label="Primary climate source"
                 >
                   <option value="auto">Auto — {providerLabel(summary.primaryProviderResolved, summary.station.name)} (recommended)</option>
@@ -196,7 +196,7 @@ export function WeatherCard({
                   ))}
                 </select>
                 {summary.primaryProviderOverride && (
-                  <button onClick={() => changeSource("auto")} disabled={busy} style={{ background: "none", border: "none", color: "var(--color-accent)", cursor: "pointer", fontSize: 13, padding: 0 }}>
+                  <button onClick={() => changeSource("auto")} disabled={busy} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 13, padding: 0 }}>
                     reset to auto
                   </button>
                 )}
@@ -219,7 +219,7 @@ export function WeatherCard({
                   <button
                     onClick={toggleMap}
                     disabled={busy}
-                    style={{ background: "none", border: "none", color: "var(--color-accent)", cursor: "pointer", padding: 0, fontSize: 14 }}
+                    style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, fontSize: 14 }}
                     aria-expanded={mapOpen}
                   >
                     {mapOpen ? "▾ Hide station map" : "▸ Choose a different station on the map"}
@@ -249,7 +249,7 @@ export function WeatherCard({
           <div style={card}>
             <button
               onClick={() => setShowCompare((s) => !s)}
-              style={{ background: "none", border: "none", color: "var(--color-accent)", cursor: "pointer", padding: 0, fontSize: 14 }}
+              style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, fontSize: 14 }}
               aria-expanded={showCompare}
             >
               {showCompare ? "▾ Hide" : "▸ Compare sources / data trust"}
@@ -264,7 +264,7 @@ export function WeatherCard({
                 )}
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                   <thead>
-                    <tr style={{ textAlign: "left", color: "var(--color-text-muted)" }}>
+                    <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                       <th style={{ padding: "4px 8px" }}>Source</th>
                       <th style={{ padding: "4px 8px" }}>Season GDD</th>
                       <th style={{ padding: "4px 8px" }}>Completeness</th>
@@ -272,7 +272,7 @@ export function WeatherCard({
                   </thead>
                   <tbody>
                     {summary.perSource.map((p) => (
-                      <tr key={p.provider} style={{ borderTop: "1px solid var(--color-border)" }}>
+                      <tr key={p.provider} style={{ borderTop: "1px solid var(--border-default)" }}>
                         <td style={{ padding: "4px 8px" }}>{p.provider}{p.provider === summary.primaryProviderKey ? " (primary)" : ""}</td>
                         <td style={{ padding: "4px 8px" }}>{p.seasonGddC}</td>
                         <td style={{ padding: "4px 8px" }}>{p.completenessPct}% ({trustLabel(p.completenessPct)})</td>
