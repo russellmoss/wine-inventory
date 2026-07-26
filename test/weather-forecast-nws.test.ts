@@ -1,0 +1,150 @@
+import { describe, expect, it } from "vitest";
+import {
+  fetchNwsForecast,
+  pairNwsPeriods,
+  parseIsoDurationHours,
+  parseWindMaxKph,
+  sumQpfToLocalDays,
+  type NwsPeriod,
+} from "@/lib/weather/providers/forecast-nws";
+
+// Plan 096 U12 — the NWS adapter's fiddly parts, fixture-driven: day/night pairing (incl. the
+// afternoon-fetch edge where day-1 has a low and NO high), QPF ISO-duration summing with
+// interval-END day assignment (council S6 — a bucket straddling local midnight lands WHOLE on the
+// day it ends, never pro-rata), non-PT6H buckets, °F-arrival defense.
+
+const day = (date: string, temp: number, over: Partial<NwsPeriod> = {}): NwsPeriod => ({
+  startTime: `${date}T06:00:00-07:00`,
+  endTime: `${date}T18:00:00-07:00`,
+  isDaytime: true,
+  temperature: temp,
+  temperatureUnit: "C",
+  probabilityOfPrecipitation: { value: 20 },
+  windSpeed: "10 to 15 km/h",
+  icon: "https://api.weather.gov/icons/land/day/sct",
+  shortForecast: "Partly Cloudy",
+  ...over,
+});
+const night = (date: string, temp: number, over: Partial<NwsPeriod> = {}): NwsPeriod => ({
+  startTime: `${date}T18:00:00-07:00`,
+  endTime: `${date}T06:00:00-07:00`,
+  isDaytime: false,
+  temperature: temp,
+  temperatureUnit: "C",
+  probabilityOfPrecipitation: { value: 40 },
+  windSpeed: "5 km/h",
+  icon: "https://api.weather.gov/icons/land/night/rain",
+  shortForecast: "Rain",
+  ...over,
+});
+
+describe("pairNwsPeriods", () => {
+  it("pairs 14 half-day periods into 7 daily cards (day + FOLLOWING night)", () => {
+    const periods: NwsPeriod[] = [];
+    for (let d = 1; d <= 7; d++) {
+      const date = `2026-07-0${d}`;
+      periods.push(day(date, 30 + d), night(date, 10 + d));
+    }
+    const cards = pairNwsPeriods(periods);
+    expect(cards).toHaveLength(7);
+    expect(cards[0]).toMatchObject({ targetDate: "2026-07-01", tmaxC: 31, tminC: 11 });
+    expect(cards[6]).toMatchObject({ targetDate: "2026-07-07", tmaxC: 37, tminC: 17 });
+  });
+
+  it("AFTERNOON-FETCH EDGE: leading night period → day-1 has a low and NO high (null, not 0, not dropped)", () => {
+    const periods = [night("2026-07-01", 12), day("2026-07-02", 33), night("2026-07-02", 14)];
+    const cards = pairNwsPeriods(periods);
+    expect(cards[0]).toMatchObject({ targetDate: "2026-07-01", tmaxC: null, tminC: 12 });
+    expect(cards[1]).toMatchObject({ targetDate: "2026-07-02", tmaxC: 33, tminC: 14 });
+  });
+
+  it("card probability is the MAX of its two periods; condition is the more consequential", () => {
+    const cards = pairNwsPeriods([day("2026-07-01", 30), night("2026-07-01", 12)]);
+    expect(cards[0].precipProbabilityPct).toBe(40);
+    expect(cards[0].conditionCode).toBe("RAIN"); // night rain beats day partly-cloudy
+  });
+
+  it("°F-arriving defense: temperatureUnit F converts to °C", () => {
+    const cards = pairNwsPeriods([day("2026-07-01", 95, { temperatureUnit: "F" })]);
+    expect(cards[0].tmaxC).toBe(35);
+  });
+});
+
+describe("parseWindMaxKph", () => {
+  it("takes the max of a range; converts mph; null on absence", () => {
+    expect(parseWindMaxKph("15 to 20 km/h")).toBe(20);
+    expect(parseWindMaxKph("10 mph")).toBeCloseTo(16.1, 1);
+    expect(parseWindMaxKph("10 to 15 mph")).toBeCloseTo(24.1, 1);
+    expect(parseWindMaxKph(null)).toBeNull();
+  });
+});
+
+describe("parseIsoDurationHours", () => {
+  it("handles PT6H, PT1H, PT30M, P1D, P1DT6H", () => {
+    expect(parseIsoDurationHours("PT6H")).toBe(6);
+    expect(parseIsoDurationHours("PT1H")).toBe(1);
+    expect(parseIsoDurationHours("PT30M")).toBe(0.5);
+    expect(parseIsoDurationHours("P1D")).toBe(24);
+    expect(parseIsoDurationHours("P1DT6H")).toBe(30);
+  });
+});
+
+describe("sumQpfToLocalDays — council S6: interval END day, whole amount, never pro-rata", () => {
+  it("a bucket straddling LOCAL midnight lands whole on the day it ENDS", () => {
+    // America/Los_Angeles: 2026-07-02T06:00Z = Jul 1 23:00 local; +PT6H ends Jul 2 05:00 local.
+    const out = sumQpfToLocalDays([{ validTime: "2026-07-02T06:00:00+00:00/PT6H", value: 6 }], "America/Los_Angeles");
+    expect(out.get("2026-07-02")).toBe(6);
+    expect(out.get("2026-07-01")).toBeUndefined(); // NOT split
+  });
+  it("sums multiple buckets into their end days; skips nulls/zeros; handles the live PT1H bucket", () => {
+    const out = sumQpfToLocalDays(
+      [
+        { validTime: "2026-07-01T12:00:00+00:00/PT1H", value: 1.5 }, // ends Jul 1 06:00 local (LA)
+        { validTime: "2026-07-01T18:00:00+00:00/PT6H", value: 2.5 }, // ends Jul 1 17:00 local
+        { validTime: "2026-07-02T00:00:00+00:00/PT6H", value: null },
+        { validTime: "2026-07-02T06:00:00+00:00/PT6H", value: 0 },
+      ],
+      "America/Los_Angeles",
+    );
+    expect(out.get("2026-07-01")).toBe(4);
+    expect(out.size).toBe(1);
+  });
+});
+
+describe("fetchNwsForecast (fixture fetch)", () => {
+  it("resolves grid, pairs periods, attaches QPF amounts by local end-day, reports timeZone", async () => {
+    const fixtures: Record<string, unknown> = {
+      points: { properties: { gridId: "STO", gridX: 40, gridY: 60, timeZone: "America/Los_Angeles" } },
+      forecast: { properties: { periods: [day("2026-07-01", 30), night("2026-07-01", 12), day("2026-07-02", 31), night("2026-07-02", 13)] } },
+      raw: { properties: { quantitativePrecipitation: { values: [{ validTime: "2026-07-01T18:00:00+00:00/PT6H", value: 3.2 }] } } },
+    };
+    const fetchFx = (async (_key: unknown, url: string) => {
+      if (url.includes("/points/")) return fixtures.points;
+      if (url.includes("/forecast")) return fixtures.forecast;
+      return fixtures.raw;
+    }) as never;
+    const s = await fetchNwsForecast({ lat: 38.5, lon: -121.5 }, { fetch: fetchFx, now: new Date("2026-07-01T00:00:00Z") });
+    expect(s.grid).toMatchObject({ gridId: "STO", gridX: 40, gridY: 60 });
+    expect(s.timeZone).toBe("America/Los_Angeles");
+    expect(s.records[0]).toMatchObject({ targetDate: "2026-07-01", tmaxC: 30, tminC: 12, precipMm: 3.2 });
+    expect(s.records[1]).toMatchObject({ targetDate: "2026-07-02", precipMm: null }); // no QPF that day → null, not 0
+  });
+
+  it("grid cache short-circuits /points", async () => {
+    let pointsCalls = 0;
+    const fetchFx = (async (_key: unknown, url: string) => {
+      if (url.includes("/points/")) {
+        pointsCalls += 1;
+        return {};
+      }
+      if (url.includes("/forecast")) return { properties: { periods: [day("2026-07-01", 30)] } };
+      return { properties: {} };
+    }) as never;
+    const s = await fetchNwsForecast(
+      { lat: 38.5, lon: -121.5 },
+      { fetch: fetchFx, grid: { gridId: "STO", gridX: 40, gridY: 60, timeZone: "America/Los_Angeles" } },
+    );
+    expect(pointsCalls).toBe(0);
+    expect(s.records).toHaveLength(1);
+  });
+});
