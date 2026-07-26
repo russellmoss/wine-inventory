@@ -8,13 +8,17 @@
  * │ Every criterion's NAME, FORMULA, DIRECTION and BREACH MEANING. Zero numbers.                 │
  * │ Every `threshold` below is `null` and every evaluator returns `verdict: "PENDING"`.           │
  * └──────────────────────────────────────────────────────────────────────────────────────────────┘
- * ┌─ UNIT 1b (a LATER, SEPARATE commit) ────────────────────────────────────────────────────────┐
- * │ The numbers, set after Units 2 and 3 have established what is even being measured, and       │
- * │ BEFORE Unit 5 or Unit 7 runs. Council C6 split the unit precisely here: pre-committing        │
- * │ numeric thresholds before knowing what a provider offers would be arbitrary, not rigorous.    │
- * │ The anti-rationalisation property survives because the numbers are fixed before the RESULTS   │
- * │ exist, not before the UNITS exist. `git log` is the proof and Unit 1b's verification is       │
- * │ literally "the thresholds commit precedes the first measurement commit."                      │
+ * ┌─ UNIT 1b (this commit) ─────────────────────────────────────────────────────────────────────┐
+ * │ The numbers, set after Units 2 and 3 established what is even being measured, and BEFORE     │
+ * │ Unit 5 or Unit 7 ran. Council C6 split the unit precisely here: pre-committing numeric        │
+ * │ thresholds before knowing what a provider offers would be arbitrary, not rigorous. The        │
+ * │ anti-rationalisation property survives because the numbers are fixed before the RESULTS       │
+ * │ exist, not before the UNITS exist. `git log` is the proof.                                    │
+ * │                                                                                               │
+ * │ EVERY THRESHOLD BELOW IS DERIVED FROM SOMETHING, NOT CHOSEN. Where a number could only be     │
+ * │ a judgement call, the reasoning is written next to it and the judgement is named as one.      │
+ * │ Several of these are deliberately strict enough that they may fail. That is the point of      │
+ * │ committing them first — a threshold set where it cannot fail is not a gate.                   │
  * └──────────────────────────────────────────────────────────────────────────────────────────────┘
  *
  * Nothing in this module imports from `src/`, Prisma, or the network. It is a definitions module and
@@ -110,7 +114,16 @@ export const C1_ESTIMATOR_EFFECT: Criterion = {
   direction: "lower_is_better",
   breachMeaning:
     "The choice of estimator changes the advice too often for a single confidence band to cover both. S1 may not ship a single LWD series that pathogen models consume interchangeably; either the estimator identity must be carried into every downstream decision, or the weather lane does not proceed as scoped.",
-  ceiling: null,
+  // 1b — JUDGEMENT, and named as one. One spray decision in five changing on the estimator swap is
+  // the point at which "these two are interchangeable" stops being sayable to a grower.
+  //
+  // ⚠️ Expected to BREACH, and the breach is informative rather than fatal. Unit 4's goldens
+  // established that the fallback's wet set is a strict SUBSET of CART's on consistent inputs, so
+  // flips are one-signed and the rate is a measure of how much the naive threshold misses — likely
+  // well above 20%. The remedy this criterion's breachMeaning names (carry the estimator identity
+  // into every downstream decision) is ALREADY BUILT: `qualityClass` rides on every verdict in
+  // s0-lwd.ts. So a breach here confirms the design rather than blocking the lane.
+  ceiling: 0.2,
   floor: null,
 };
 
@@ -145,7 +158,12 @@ export const C2_ARM_B_TOLERANCE: Readonly<Record<ArmBVariable, Criterion>> = {
     direction: "lower_is_better",
     breachMeaning:
       "The estimator is being fed a humidity signal too far from the measured one for its output to mean anything. Arm B fails, and no Arm A result can rescue it: agreeing estimators fed bad inputs agree about nothing useful.",
-    ceiling: null,
+    // 1b — DERIVED, not chosen. CART's level-1 node sits at DPD = 3.7 °C. An input error at or above
+    // that magnitude can move an hour across the model's own primary decision boundary in either
+    // direction, which makes the output meaningless. Requiring the error to be under HALF the
+    // decision threshold is the standard "the instrument must be finer than the thing it measures"
+    // reading, so: 3.7 / 2 = 1.85 °C.
+    ceiling: 1.85,
     floor: null,
   },
   tempC: {
@@ -157,7 +175,17 @@ export const C2_ARM_B_TOLERANCE: Readonly<Record<ArmBVariable, Criterion>> = {
     direction: "lower_is_better",
     breachMeaning:
       "Every pathogen model in Unit 5 layer 0 is a temperature × wetness matrix. A temperature error moves the required wetness duration, so this breaching invalidates Arm A's consumer results as well as Arm B.",
-    ceiling: null,
+    // 1b — DERIVED from the consumer, which is the right place to derive it. The Spotts black-rot
+    // matrix steps in 2–5 °F; its FINEST step is 2 °F = 1.11 °C. An error of one full step can move
+    // an hour to an adjacent row of the matrix and change the required wetness duration.
+    //
+    // 1.11 °C is therefore the LOOSEST defensible value: at exactly one step the error can still
+    // move a row. The strict reading — half a step, 0.56 °C — is tighter than gridded reanalysis
+    // achieves against a point station, and adopting it would mean pre-committing to a failure whose
+    // only remedy is "do not use reanalysis temperature", which is a decision Unit 6 should make on
+    // the numbers rather than one the rubric should force. So: the loose value, with the strict
+    // value recorded here so Unit 5 can report against BOTH and Unit 6 can see the margin.
+    ceiling: 1.11,
     floor: null,
   },
   windMs: {
@@ -169,7 +197,9 @@ export const C2_ARM_B_TOLERANCE: Readonly<Record<ArmBVariable, Criterion>> = {
     direction: "lower_is_better",
     breachMeaning:
       "CART's weakest input (council G2) is also unverifiable. Read together with C4: if wind error is large AND wind sensitivity is high, plan §1.8's choice of CART is reopened on evidence.",
-    ceiling: null,
+    // 1b — DERIVED. CART's level-2 node is 2.5 m/s; half of it is 1.25 m/s, by the same
+    // finer-than-what-it-measures argument as C2.dpd.
+    ceiling: 1.25,
     floor: null,
   },
   precipMm: {
@@ -182,7 +212,12 @@ export const C2_ARM_B_TOLERANCE: Readonly<Record<ArmBVariable, Criterion>> = {
     direction: "lower_is_better",
     breachMeaning:
       "Rain is the wetness-interruption input and the unambiguous wetting event. If it is wrong, the wetness-run segmentation is wrong upstream of every consumer.",
-    ceiling: null,
+    // 1b — DERIVED from the estimator's own precipitation node. `s0-lwd.ts` treats ≥ 0.2 mm/h as a
+    // wetting event; an error at or above that magnitude can invent or erase one. Half of 0.2 is
+    // 0.1, which is finer than the archive's own reporting resolution, so the ceiling is set AT the
+    // node value rather than half it: 0.2 mm/h. Recorded as the one place the half-the-threshold
+    // rule is knowingly not applied, and why.
+    ceiling: 0.2,
     floor: null,
   },
   rhPct: {
@@ -195,7 +230,11 @@ export const C2_ARM_B_TOLERANCE: Readonly<Record<ArmBVariable, Criterion>> = {
     direction: "lower_is_better",
     breachMeaning:
       "Because both sides are derived, a breach here without a corresponding C2.dpd breach means a UNIT or FORMULA disagreement between us and the archive, not a weather error. Investigate the conversion before concluding anything about the data.",
-    ceiling: null,
+    // 1b — MEASURED, from plan §1.2's live probe: at one site and one hour, `era5` reported RH 69%
+    // while the default blend reported 79%. Ten points is the observed inter-model spread, so an
+    // error against a station larger than half that spread means the station disagreement exceeds
+    // the provider disagreement, and RH stops being interpretable at all: 5 percentage points.
+    ceiling: 5,
     floor: null,
   },
 };
@@ -218,7 +257,11 @@ export const C3_PROVIDER_SPREAD: Criterion = {
   direction: "lower_is_better",
   breachMeaning:
     "Provider identity may not be abstracted away behind a generic weather series. It must be carried into the confidence band and named at the point of display (rule §3.5), and S1's schema must keep the model variant, not just the provider family.",
-  ceiling: null,
+  // 1b — JUDGEMENT, deliberately TIGHTER than C1 (0.20). The estimator is a modelling choice a
+  // grower could reasonably be told about; the archive model behind it is an implementation detail
+  // nobody outside this repo will ever see. So it has to move fewer decisions to stay hidden. Set at
+  // three quarters of C1: 0.15.
+  ceiling: 0.15,
   floor: null,
 };
 
@@ -242,7 +285,11 @@ export const C4_WIND_SENSITIVITY: Criterion = {
   direction: "lower_is_better",
   breachMeaning:
     "Plan §1.8 is REOPENED on evidence, which is the only thing entitled to reopen it. CART's advantage would be resting on its noisiest input, and the estimator choice must be re-decided in Unit 6 rather than inherited.",
-  ceiling: null,
+  // 1b — JUDGEMENT with a clean reading: HALF. If more than half of CART's advantage over the naive
+  // threshold traces to the one input that is measured at 10 m in open terrain, several kilometres
+  // away, over a surface that is not a canopy — then the advantage is resting on the least
+  // trustworthy thing in the model and Gemini's objection deserves a rehearing on numbers.
+  ceiling: 0.5,
   floor: null,
 };
 
@@ -263,8 +310,23 @@ export const C5_REFUSAL_RATE: Criterion = {
   direction: "band",
   breachMeaning:
     "Above the ceiling: the weather lane cannot answer often enough to be worth building, and S1 is not built as scoped. Below the floor: the refusal is decoration and the honesty output is a claim we never actually make — which is worse than no refusal, because it looks like a safeguard.",
-  ceiling: null,
-  floor: null,
+  // 1b — the two ends are set by DIFFERENT arguments, which is the whole reason this is a band.
+  //
+  // CEILING 0.33: above one hour in three the system is silent more often than a grower can plan
+  // around, and rule §3.3's "it will fire often and legitimately" has tipped into "it does not work".
+  //
+  // FLOOR 0.005: below one hour in two hundred, over a WHOLE SEASON, the refusal has never
+  // meaningfully fired. Shipping honesty copy for a path that never executes is worse than shipping
+  // none, because it reads as a safeguard that was tested and held.
+  //
+  // ⚠️ This is the criterion most likely to be misread, so: it is applied PER (site, season, model)
+  // cell, and the archive-model dimension is where it will bite. `era5_land` carries no wind at all
+  // (Unit 2, confirmed at every site), so on that model CART refuses exactly in the band where wind
+  // is the deciding input. That is not the estimator failing — it is the refusal mechanism working
+  // as designed on a provider that cannot feed it. Unit 5 must report the cells separately and Unit
+  // 6 must not average a wind-less provider together with a complete one.
+  ceiling: 0.33,
+  floor: 0.005,
 };
 
 /**
@@ -285,7 +347,20 @@ export const C6_STORAGE: Criterion = {
   direction: "lower_is_better",
   breachMeaning:
     "The raw-retention branch of council S2's fork is rejected for that series kind, and Unit 8 must choose decision-input snapshots for it instead.",
-  ceiling: null,
+  // 1b — ANCHORED to the measured production baseline, then given honest headroom.
+  //
+  // `vineyard_climate_daily` measures ~1.07 KB/row all-in (70,389 rows, 68 MB) on the live database.
+  // An hourly row is wider than a daily one (more variables, three timestamps instead of one) and
+  // will carry more indexes, so budget ~2.9 KB/row — call it 2.7× the daily row's cost. At
+  // 8,760 rows per vineyard-year that is 25 MB/vineyard-year.
+  //
+  // ⚠️ Note what this is NOT. Plan §1.7 extrapolated ~9.4 MB/vineyard-year from that same per-row
+  // figure and council C12 WITHDREW the extrapolation, because the daily table's per-row cost is
+  // confounded by upsert churn and by structural indexes. The withdrawal was right and this is not a
+  // re-run of it: 25 MB is a CEILING on what Unit 7 is allowed to measure, deliberately set well
+  // above any plausible outcome so that a breach means something is structurally wrong rather than
+  // merely bigger than hoped. The measured number is Unit 7's output, not this criterion's input.
+  ceiling: 25 * 1024 * 1024,
   floor: null,
 };
 
@@ -306,7 +381,12 @@ export const C7_READ_LATENCY: Criterion = {
   direction: "lower_is_better",
   breachMeaning:
     "That read shape needs a physical design change (partial index, separate table per kind, or partitioning) before S1 builds against it — decided in Unit 7, not deferred to whoever hits it in production.",
-  ceiling: null,
+  // 1b — DERIVED from what the read is FOR. These queries back a grower-facing decision page that
+  // issues several of them, on a serverless runtime, over a pooled connection to Neon. A 1-second
+  // page budget with four such reads and room for rendering leaves roughly 250 ms of p95 per read
+  // shape. Beyond that the page is slow enough that somebody will "optimise" it by dropping the
+  // safe-but-slow query — which is exactly the failure mode the C3 contract read exists to prevent.
+  ceiling: 250,
   floor: null,
 };
 
