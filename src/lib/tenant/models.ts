@@ -50,6 +50,14 @@ export const GLOBAL_MODELS: ReadonlySet<string> = new Set([
   "PesticideStateRegistration",
   "PesticideUseRestriction",
   "PesticideResistanceAssignment",
+  // Spray S2b — the curated product-facts master (global reference; same posture as S2). The
+  // grower-supplied override `TenantProductFacts` is TENANT-SCOPED and RLS'd — it is deliberately
+  // NOT listed here, and adding it would silently disable its isolation.
+  "PesticideProductFacts",
+  "PesticideProductReiCondition",
+  "PesticideProductPhiCondition",
+  "PesticideSeparationRule",
+  "PesticideProductCondition",
 ]);
 
 export function isGlobalModel(model: string | undefined): boolean {
