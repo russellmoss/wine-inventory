@@ -73,6 +73,15 @@ export const INTERNAL = {
       "read tool + core (query_climate → composeClimateSummaryCore).",
     coveredBy: "query_climate → composeClimateSummaryCore (read); weather-poll cron + refresh action (write)",
   },
+  "src/lib/weather/alert-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "VI-P8: frost/heat crossing detection runs inside the daily weather SWEEP and pushes a thin inbox alert " +
+      "— a background notification mechanism, not a conversational surface (you don't chat to get an alert). " +
+      "The grower-facing frost/heat CAPABILITY (ask about frost risk / heat days / the vulnerable window) is " +
+      "answered by query_climate → composeClimateSummaryCore.",
+    coveredBy: "query_climate → composeClimateSummaryCore (frost/heat read); weather sweep (alert emit)",
+  },
 };
 
 // Temporary — real gaps deferred with a tracked reason. Ratcheted by MAX_ALLOWED.
