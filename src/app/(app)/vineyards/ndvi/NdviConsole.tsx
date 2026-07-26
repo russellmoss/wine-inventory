@@ -49,8 +49,9 @@ export function NdviConsole({ vineyards, selectedId, selectedName, jobs, blocks,
         const res = await enqueueNdviJobAction({ vineyardId: selectedId, aroundIso: new Date(date).toISOString() });
         setMsg(res.deduped ? "Already queued for that day." : "Queued. It processes on the next satellite sweep (or press “Run sweep now”).");
         router.refresh();
-      } catch (e) {
-        setMsg(e instanceof Error ? e.message : "Could not queue.");
+      } catch {
+        // The usual cause is a vineyard whose blocks are drawn but planting setup isn't finished (no AOI).
+        setMsg("Couldn't queue NDVI. Finish this vineyard's setup first — Reference → Varieties & vineyards → open the vineyard → “Finish setup” — then try again.");
       }
     });
 

@@ -1,16 +1,7 @@
-import { prisma } from "@/lib/prisma";
-import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
-import { PlantingSetupClient } from "./PlantingSetupClient";
+import { redirect } from "next/navigation";
 
-// Vineyard Intelligence P1 — the planting-geometry setup surface: review/migrate existing block
-// polygons into planting-area parents, see topology, and inspect the governed layer stack.
-export default async function PlantingSetupPage() {
-  const user = await requireReadyUser();
-  await requireActiveTenant();
-  const vineyards = await prisma.vineyard.findMany({
-    where: { isActive: true },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
-  return <PlantingSetupClient vineyards={vineyards} memberVineyardIds={user.vineyardIds} />;
+// Planting setup folded into the Reference vineyard editor ("Varieties & vineyards"): draw blocks, then
+// "Finish setup" creates the planting area in one place. This route redirects so old links keep working.
+export default function PlantingSetupRedirect() {
+  redirect("/reference");
 }
