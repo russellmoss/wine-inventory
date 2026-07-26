@@ -1,6 +1,6 @@
 # S4 — Phenology precision and the growth model (phase report)
 
-**Phase:** S4 · Wave 1, lane D · **Status:** 🟪 QA — code MERGED to `main` and live, gates green, one QA line open
+**Phase:** S4 · Wave 1, lane D · **Status:** 🟩 SHIPPED — merged, live, all gates green including browser QA
 **Plan:** [S4-phenology-growth-model-plan.md](./S4-phenology-growth-model-plan.md) (v2, council-reconciled)
 **Council:** [S4-council-feedback.md](./S4-council-feedback.md) — 23 findings
 **QA:** [qa/S4-qa-report.md](../qa/S4-qa-report.md)
@@ -32,7 +32,7 @@ the assistant payload; and `verify:phenology`.
 |---|---|---|
 | Growth-rate goldens | U6 | `test/phenology-growth-core.test.ts` — 27 cases incl. the hedge refusal and the C6 leaf-expansion tail |
 | Interpolator goldens incl. the "no field note for 3 weeks" degrade | U5 | `test/phenology-stage-core.test.ts` — 27 cases; the named degrade is its own test, and `verify:phenology` re-proves it against the DB |
-| Measured vs estimated distinguishable in the read DTO **and** the UI | U7, U8 | DTO negative assertion (every field enumerated) + 21 `labels.ts` copy tests. ⚠️ **UI half is copy-verified, not placement-verified** — see the open line below |
+| Measured vs estimated distinguishable in the read DTO **and** the UI | U7, U8 | DTO negative assertion (every field enumerated) + 21 `labels.ts` copy tests + **browser QA: the gap chip and the checked-clean chip are two different sentences in two different tones** |
 | Canopy state and fruit-present readable by S6/S7b | U7 | `dto.ts` exports; `fruitPresent` inherits provenance; `boundaryRisk` cases |
 | Back-compat, no historical migration | U4, U10 | legacy 10-key parse test + draft-upgrade test + `verify:phenology` on a byte-exact legacy row |
 | QA report | U10 | [qa/S4-qa-report.md](../qa/S4-qa-report.md) |
@@ -100,24 +100,34 @@ The plan's UI-adoption reasoning rests on 10 block-week observations from one te
 (every one-tap `Segmented` control at 100 %, photos at 0 %). Nothing in this phase improved that
 sample. Confidence in UI adoption stays MEDIUM.
 
-## What is still open
+## The QA gate closed
 
-**One gate line: interactive UI placement.** The authoring form could not be driven in the browser.
-The cause is **not S4** — `getCurrentUser` reads `vineyardMemberships` with no tenant context and
-`user_vineyard` RLS fails closed, so an assigned manager still sees *"You haven't been assigned a
-vineyard yet."* Proven three ways in the QA report. A task chip is raised.
+The browser pass is complete and green — authoring, persistence, and read-back all driven through
+the real form on Demo Winery. See [qa/S4-qa-report.md](../qa/S4-qa-report.md).
 
-⚠️ **This may be a release blocker for the `app_rls` activation**, not a cosmetic bug: if prod
-currently connects as the owner role (BYPASSRLS) it is latent today and breaks every manager the
-moment `DATABASE_URL` switches to the `app_rls` credential.
+The blocker in the first attempt turned out **not** to be the RLS theory it was first written up as.
+`field-notes/page.tsx` was the only one of the four vineyard pages gating on a raw
+`user.role === "admin"` instead of `isTenantAdminLike`, which already treats a developer as
+admin-like — so a developer got the admin view on harvest, maps, and weather but the manager empty
+state on field notes, with no route to either. **One-line fix**, shipped alongside this report.
 
-Mitigating evidence that the UI code itself is sound: the **production build passes** with
-`/vineyards/field-notes` in the route table (which compiles the whole chain through `BlockCard` and
-`NoteDetail`), the dev server serves the route 200 with no console or server errors, and the page is
-free of horizontal overflow at 375×812. What is unverified is **placement**, not correctness — which
-is precisely why council S3 forced the honesty strings into pure, CI-tested functions.
+Highlights worth keeping:
 
-The ledger row therefore stays **🟪 QA**, not 🟩 shipped.
+- The **stage gate works in all three states** — no scouting controls with no stage, cluster damage
+  only at `FRUIT_SET`, both at `VERAISON`. Council S6 landing exactly as specified.
+- All three dangerous values survived UI → server action → DB: `shootLengthCm: 0`,
+  `hedgedThisWeek: false`, and `clusterDamage: NOT_ASSESSED` stored **distinct from**
+  `vinegarFlyPressure: NONE` on the same block.
+- Read-back renders the gap and the clean result as **two different sentences**, in two different
+  tones — so the distinction survives for a colour-blind reader.
+- Bulk-apply copied stage, band, and fly pressure, and refused to copy cluster damage or a measured
+  length.
+- Mobile 375×812: no overflow, all 39 controls in a block card ≥36 px tall.
+
+The separate RLS observation (a `UserVineyard` row is invisible without tenant context) stands as a
+real finding, re-graded from HIGH to LOW-MED because it blocked nothing and affects no S4 code. It
+is still worth confirming against a real manager account before the `app_rls` switch, and a task
+chip tracks it.
 
 ## Deviations from the plan
 

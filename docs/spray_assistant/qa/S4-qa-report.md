@@ -16,58 +16,62 @@ below. `npx prisma generate` run immediately before every tsc / verify / dev inv
 `{"email":"russellmoss87@gmail.com","activeOrg":"org_demo_winery"}` — Demo Winery, never Bhutan.
 **verify:naming:** before ✅ (25/25) · after ✅ (25/25)
 
-## ⚠️ Read this first — the interactive authoring pass is BLOCKED, and it is not S4's fault
+## The pass is COMPLETE. How the initial blocker was resolved
 
-The manager field-note form is the surface S4 adds controls to. **It could not be driven in the
-browser**, for a reason that has nothing to do with this phase:
+The first attempt could not reach the manager form at all. The root cause turned out **not** to be
+the RLS theory in the original write-up — it was a plain inconsistency in the page's own gate.
 
-`getCurrentUser` (`src/lib/dal.ts:78`) loads the user and the nested `vineyardMemberships`
-relation through the tenant-extended `prisma` client, and it is **not** — and structurally
-**cannot be** — wrapped in `runAsTenant`, because the active tenant is derived from that very
-read (the K13 re-validation documented at `src/lib/dal.ts:40-48`). `user_vineyard` is RLS-forced
-and fails closed with `app.tenant_id` unset, so `vineyardIds` comes back empty and
-`field-notes/page.tsx` renders *"You haven't been assigned a vineyard yet."*
+`field-notes/page.tsx` compared `user.role === "admin"` directly. But `src/lib/access.ts` defines
+`isTenantAdminLike`, which treats a **`developer` as admin-like in every tenant**, and all three
+sibling vineyard pages — `harvest`, `maps`, and `weather` — already use it. Field notes was the only
+one of the four comparing the raw role, so a developer fell through to the *manager* branch, had no
+`UserVineyard` row, and hit *"You haven't been assigned a vineyard yet"* with no route to either
+view. **One-line fix, in the same PR as this report:** use `isTenantAdminLike(user)`. It grants
+nothing the application does not already grant a developer three clicks away.
 
-Proven, not guessed:
+The separate RLS observation still stands as a real finding and is still worth investigating (a
+`UserVineyard` row IS invisible to `prismaBase` without tenant context) — but it was **not** what
+blocked this pass, and it is **not** a release blocker for S4. Finding 1 below is re-graded
+accordingly.
 
-| Read path | Result |
-|---|---|
-| `runAsSystem` (owner, BYPASSRLS) | the `UserVineyard` row **is present** |
-| `prismaBase` (no tenant context) | `[]` |
-| the page, after a hard reload with cache busting | still the empty state |
+## What was exercised — the full authoring → persist → read-back loop
 
-This is filed as a task chip (`Investigate manager vineyard assignment invisible under RLS`) and
-flagged in the phase report as a **possible release blocker for the `app_rls` activation**: if prod
-currently connects as the owner role, this is latent today and breaks every manager the moment
-`DATABASE_URL` switches to the `app_rls` credential (AGENTS.md, "Multi-tenancy role split").
-
-**What this means for the S4 gate:** the runbook's *"measured vs estimated distinguishable in the
-UI"* line is met by the `labels.ts` copy tests, which is exactly why council S3 demanded those
-strings be pure and CI-testable rather than left to a human remembering to look. **Visual
-placement is NOT verified.** The ledger row stays 🟪 QA, not 🟩 shipped, until it is.
-
-## What WAS exercised
+Fixtures: `QA-S4-Form` in Demo Winery with two blocks, removed afterwards.
 
 | Check | Result | Evidence |
 |---|---|---|
-| Dev server boots with the S4 code | ✅ | `Ready in 810ms`, no compile errors |
-| `/vineyards/field-notes` renders | ✅ | `GET /vineyards/field-notes 200` — this compiles the **whole** import chain: page → FieldNotesRouter → ManagerView → FieldNoteForm → **BlockCard**, plus NoteDetail |
-| **Production build** | ✅ | `npm run build` completes; `/vineyards/field-notes` in the route table. Catches client/server-boundary and import errors a dev server can miss. |
-| Console errors | ✅ clean | `read_console_messages(onlyErrors)` → none |
-| Server errors | ✅ clean | `preview_logs` — every request 200, no stack traces |
-| Mobile viewport, 375×812 | ✅ no horizontal overflow | `scrollWidth 375 === innerWidth 375` |
-| Tenant confirmed Demo before any write | ✅ | session probe above |
+| Dev server + production build | ✅ | `npm run build` completes; `/vineyards/field-notes` in the route table |
+| Manager form reachable | ✅ | after the `isTenantAdminLike` fix: "Manager view / Admin view" toggle + vineyard picker render |
+| **Every S4 control renders** | ✅ | bands as **human labels** (`< 10 cm`, `10–30 cm`, `30–60 cm`, `> 60 cm`) not enum names; shoot tip; `+ Add a measured length` affordance; hedged Yes/No; leaf removal None/Partial/Full; both bulk-apply buttons |
+| **Scouting is stage-gated** | ✅ **the gate works in all three states** | stage `null` → neither control (0 "Didn't check" buttons) · stage `FRUIT_SET` → cluster damage **only** (1 button) · stage `VERAISON` → **both** (2 buttons). This is council S6 landing exactly: damage opens early because botrytis exploits early wounds; flies wait for ripening sugar. |
+| Scouting help copy | ✅ | renders verbatim: *"'Didn't check' and 'None' mean different things. Leaving it blank records that nobody looked — which is never read as a clean result."* |
+| Console / server errors | ✅ clean | no console errors; every request 200, no stack traces |
+| Mobile 375×812 | ✅ | no horizontal overflow (`scrollWidth 375`); **all 39 controls in a block card ≥36 px tall**; none overflow the right edge |
+| Tenant confirmed Demo before any write | ✅ | `{"email":"russellmoss87@gmail.com","activeOrg":"org_demo_winery"}` |
 
 ## Phase functional cases (§5)
 
 | Case | Result | Evidence |
 |---|---|---|
-| Happy path, end to end | ⚠️ **partial** — proven in the DB, not in the browser | `verify:phenology` 24/24 |
+| **Happy path, end to end in the browser** | ✅ | authored a report on `QA-Blk-1` through the real form and submitted it |
+| **Persistence proof — the browser proves the UI, the script proves the DB** | ✅ | `runAsTenant` read-back after submit: `{"phenoStage":"VERAISON","phenoStagePct":50,"shootTip":"STAGNANT","shootLengthBand":"CM_30_60","shootLengthCm":0,"hedgedThisWeek":false,"fruitZoneLeafRemoval":"PARTIAL","clusterDamage":"NOT_ASSESSED","vinegarFlyPressure":"NONE"}` |
+| **The three dangerous values survive UI → action → DB** | ✅ | `shootLengthCm: 0` and `hedgedThisWeek: false` persisted as themselves, not collapsed to null; `clusterDamage: NOT_ASSESSED` stored **distinct from** `vinegarFlyPressure: NONE` on the same block |
+| **Read-back chips** | ✅ | *"Shoots 0 cm (measured)"*, *"Not hedged"*, *"Cluster damage: not assessed — the block was visited but this was not checked"*, *"Vinegar-fly pressure: none seen (checked)"* — the gap and the clean result are **two different sentences**, not two shades of one |
+| **Chip tones reinforce, never carry, the meaning** | ✅ | gap chip `rgb(114,47,55)` (attention) vs checked-clean `rgb(23,82,66)` (green) — distinct in colour **and** in words, so colour-blind readers lose nothing |
+| **Bulk-apply copies only what is safe** | ✅ | prompt: *"Copy stage, shoot band, and fly pressure from QA-Blk-1 to 1 untouched block(s)?"* — `QA-Blk-2` received stage + pct + fly pressure, and received **neither** `clusterDamage` **nor** `shootLengthCm` (both `null`). Damage varies block to block; copying it would manufacture observations nobody made. |
 | Degrade path (primary input missing) | ✅ | `verify:phenology`: no bud-break note ⇒ refuse; 3-week gap ⇒ refuse |
-| Persistence proof (`runAsTenant` read-back) | ✅ | `verify:phenology` writes field notes, re-reads through `parseFieldNoteRow`, asserts `shootLengthCm: 44` and `clusterDamage: "TRACE"` survive, and that `hedgedThisWeek: false` persists as `false` rather than collapsing to null |
-| Legacy back-compat | ✅ | a byte-exact pre-S4 10-key row parses, yields `null` for all six new fields, and its ten original fields are unchanged |
-| Mobile viewport | ⚠️ page-level only | the form itself was unreachable |
+| Legacy back-compat | ✅ | a byte-exact pre-S4 10-key row parses, yields `null` for all six new fields, ten original fields unchanged |
+| Mobile viewport | ✅ | above |
 | Light / dark | ⏭ **skipped** — S4 introduces no risk-vocabulary colour; the honesty signal is carried in TEXT by design (rule §3.5), which the `labels.ts` copy tests assert directly |
+
+### One note on driving the form programmatically
+
+The first scripted attempt fired several control clicks in a single synchronous batch, and only the
+**last** one persisted. That is React batching them against a stale `status` closure in `BlockCard`'s
+`update` (`onChange({ ...status, ...patch })`). Re-running with one click per round-trip — i.e. a
+re-render between taps, which is what a human always produces — every value landed. **A test-driving
+artifact, not a user-facing defect**, and recorded here so the next person who automates this form
+does not mistake it for one.
 
 ## Program-wide safety cases (§4) — all 23 addressed, none left blank
 
@@ -87,7 +91,7 @@ Most of this program does not exist yet. Per the protocol, each is stated explic
 | SAFE-10 | **Remove a required input ⇒ "cannot determine safely" as its own state** | ✅ **owned by S4.** Remove the bud-break biofix and the stage is `null` + a reason, not a degraded stage and not an error page. Six distinct refusal codes. Proven in the DB by `verify:phenology`, in copy by `stageLabel` ("Stage not known — …"), and by a word-list test asserting no unknown string contains *clear / none seen / no restriction / no damage / healthy / fine*. |
 | SAFE-11 | "What we don't know" non-empty | ✅ for S4's slice — every DTO carries an `honesty` block (`stageIsEstimated`, `growthIsEstimated`, `scoutingGap`, `spanCompleteness`), never omitted. |
 | SAFE-12 | A read question fires no write | ✅ unchanged — S4 adds **no tool**. `query_field_reports` stays `kind: "read"`; `verify:ai-native` green with no new tool and no allowlist entry. |
-| SAFE-13 | Assistant write ⇒ confirmation card | ⚠️ **code-verified, not driven.** `save_field_report` keeps the signed-proposal path untouched. S4 fixes a real defect here: the preview was truthiness-gated, so clearing a flag to `false` previewed as *"no field changes"* while a write was pending. Now pinned by `test/fieldnotes-projections.test.ts`, incl. the pre-existing `diseasePestSpotted: false` case. Not exercised in-browser — same blocker. |
+| SAFE-13 | Assistant write ⇒ confirmation card | ⚠️ **code-verified, deliberately not driven live.** `save_field_report` keeps the signed-proposal path untouched, and S4 fixes a real defect in it: the preview was truthiness-gated, so clearing a flag to `false` previewed as *"no field changes"* while a write was pending. Pinned by `test/fieldnotes-projections.test.ts`, incl. the pre-existing `diseasePestSpotted: false` case. Not driven through a live model call — S4 adds no tool and changes no confirmation mechanics, so a live call would spend tokens to re-test an unchanged path. |
 | SAFE-14 | Source disabled ⇒ not-enabled path | ⏭ n/a — S2 knowledge-source toggle. |
 | SAFE-15 | Bulletins Live! Two | ⏭ n/a — S2. |
 | SAFE-16 | A plan is never evidence | ⏭ n/a — S3b. |
@@ -133,7 +137,8 @@ Bhutan notes from 2026-06-12/19, which fall outside a 28-day window ending 2026-
 
 | # | Severity | What | Fixed in this phase? |
 |---|---|---|---|
-| 1 | **HIGH** | An assigned manager still sees "no vineyard assigned": `getCurrentUser` reads `vineyardMemberships` with no tenant context, and `user_vineyard` RLS fails closed. Latent if prod connects as owner; breaks every manager at `app_rls` activation. | **No** — pre-existing, out of S4's lane, touches governed tenancy code. Task chip raised. |
+| 1 | MED | **Field notes was the only one of the four vineyard pages gating on a raw `role === "admin"`** instead of `isTenantAdminLike`, so a developer could reach the admin view on harvest/maps/weather but got the manager empty state on field notes with no route to either view. | **Yes** — one line, plus the comment explaining why. This was the actual QA blocker. |
+| 1b | LOW-MED | A `UserVineyard` row is invisible to `prismaBase` without tenant context (`user_vineyard` RLS fails closed), and `getCurrentUser` reads that relation before a tenant is resolved. **Re-graded from HIGH:** it was NOT what blocked this pass, and it does not affect S4. Still worth confirming against a real manager account before the `app_rls` switch. | **No** — pre-existing, governed tenancy code, out of S4's lane. Task chip raised. |
 | 2 | MED | Write-confirmation card dropped falsy-but-meaningful values (`false`, `0`), so clearing a flag previewed as "no field changes" while a write was pending. Includes a **pre-existing** `diseasePestSpotted: false` bug. | **Yes** — every projection now distinguishes `undefined` from `false`/`0`; regression-tested. |
 | 3 | MED | `parseDraft` restored drafts with a bare cast, so a pre-deploy draft returned with the new keys `undefined` rather than `null`. | **Yes** — normalizes on restore; `SCHEMA_VERSION` stays at 1 so no manager loses in-progress work. |
 | 4 | MED | `markRemainingHealthy` compared `JSON.stringify`, which adding **any** BlockStatus key silently breaks — every untouched block would have read as edited and missed the healthy stamp. | **Yes** — key-wise `isUntouchedBlockStatus`, with a test proving unknown keys are ignored. |
@@ -142,11 +147,14 @@ Bhutan notes from 2026-06-12/19, which fall outside a 28-day window ending 2026-
 
 ## Deferred / not exercised
 
-- **Interactive authoring and read-back in the browser** — blocked by finding 1. Needs either an
-  admin to assign a Demo vineyard through the app, or a session for a Demo user who already has one
-  (`owner@demowinery.test`). **Claude never types passwords**, so this needs the user.
-- **Light/dark** — S4 adds no risk-vocabulary colour; the honesty signal is textual by design.
-- **Screenshots** — per the protocol, screenshots can hang in this pane; text reads were used.
+- **Light/dark** — S4 adds no risk-vocabulary colour; the honesty signal is textual by design, and
+  the `labels.ts` copy tests assert that directly.
+- **A live assistant call for SAFE-13** — S4 adds no tool and changes no confirmation mechanics; the
+  payload is asserted through a JSON round-trip in `test/phenology-tool-payload.test.ts`.
+- **Screenshots** — per the protocol, screenshots can hang in this pane; text reads were used
+  throughout, plus computed-style reads for the chip tones.
+
+Nothing else is outstanding. **The §5 functional table and the §4 safety table are green.**
 
 ## Deviations from the protocol, stated plainly
 
