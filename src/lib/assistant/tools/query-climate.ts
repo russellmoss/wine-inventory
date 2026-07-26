@@ -101,7 +101,14 @@ export const queryClimateTool: AssistantTool = {
         siteElevationM: s.siteElevationM,
         seasonYear: s.seasonYear,
         gdd: { seasonToDateC: s.headline.seasonGddC, completenessPct: s.headline.gddCompletenessPct, vsLastYearC: s.headline.priorYear?.deltaC ?? null, lastYearC: s.headline.priorYear?.seasonGddC ?? null },
-        winkler: { region: s.headline.winkler.region, nearBoundary: s.headline.winkler.nearBoundary, note: s.headline.winkler.nearBoundary ? `Only ${s.headline.winkler.nearestBoundaryDeltaC} GDD from the next class — treat the region as approximate.` : undefined },
+        winkler: (() => {
+          // Winkler is classified on the LONG-TERM full-season average (20-yr preferred), NOT the partial
+          // current season. Falls back to a prompt to load history if none is backfilled yet.
+          const n = s.normals.winkler20 ?? s.normals.winkler10;
+          if (!n) return { region: null, note: "No long-term history loaded yet — Winkler needs the multi-year full-season average. Load history on the Weather & climate page." };
+          return { region: n.region, basis: `${n.yearsUsed}-yr average`, avgGddF: n.avgGddF };
+        })(),
+        gddThisYearVsAverageF: s.normals.graph.avg20.length ? { thisYearToDateF: Math.round(s.headline.seasonGddC * 1.8) } : undefined,
         gst: { degC: s.headline.gst.gstC, group: s.headline.gst.group },
         frostLastNight,
         frostSeason: { vulnerableWindow: s.headline.frost.vulnerableWindow, lightNights: s.headline.frost.lightCount, killingNights: s.headline.frost.killingCount, framing: s.honesty.frostFraming },

@@ -13,6 +13,7 @@ import { heatDays, type HeatResult } from "./heat-core";
 import { rainfall, type RainfallResult } from "./rainfall-core";
 import { filterToSeason, seasonCompleteness, seasonWindowFor, seasonYearFor, hemisphereFor } from "./season-core";
 import { computeSpreadCore, effectivePrimary, gapFillCore, type Spread, type WeatherConfigLike } from "./source-selection-core";
+import { gddGraphCurves, perYearSeasonGdd, winklerNormal, type CurvePoint, type WinklerNormal, type YearGdd } from "./normals-core";
 import type { ProviderKey } from "./providers/types";
 
 /** A stored daily row (Prisma Decimals already coerced to number|null). */
@@ -71,6 +72,16 @@ export interface ClimateSummary {
     gridFilledGddC: number | null;
     /** Cumulative GDD by local date (primary season), for the card sparkline. */
     gddCumulative: Array<{ date: string; cumC: number }>;
+  };
+  // Long-term climate NORMAL — the correct basis for Winkler (full-season average over many years), from
+  // backfilled gridMET history. Null pieces when history hasn't been backfilled yet.
+  normals: {
+    source: string; // provider the normals were computed from (gridmet when backfilled)
+    perYear: YearGdd[];
+    winkler10: WinklerNormal | null;
+    winkler20: WinklerNormal | null;
+    graph: { current: CurvePoint[]; avg10: CurvePoint[]; avg20: CurvePoint[]; avg10Years: number; avg20Years: number };
+    hasHistory: boolean; // ≥1 complete past season available
   };
   // Compare-sources view (R3/R14): the spread across sources, never an average.
   spread: Spread | null;
@@ -161,6 +172,22 @@ export function composeClimateSummaryCore(input: {
     gridFilledGddC = accumulateGdd(composed).gddTotal;
   }
 
+  // Long-term normals — computed from gridMET (the backfilled consistent long series), else the primary.
+  const normalsSource = byProvider.has("gridmet") ? "gridmet" : primary;
+  const normalsRows = toLocal(byProvider.get(normalsSource) ?? []);
+  const perYearNormals = perYearSeasonGdd(normalsRows, latitude);
+  const winkler10 = winklerNormal(perYearNormals, 10, seasonYear);
+  const winkler20 = winklerNormal(perYearNormals, 20, seasonYear);
+  const graph = gddGraphCurves(normalsRows, latitude, seasonYear);
+  const normals = {
+    source: normalsSource,
+    perYear: perYearNormals,
+    winkler10,
+    winkler20,
+    graph,
+    hasHistory: perYearNormals.some((y) => y.complete && y.seasonYear < seasonYear),
+  };
+
   // Spread across sources (R3) — the only ensemble output, a range not a mean.
   const spread = computeSpreadCore(perSource.map((p) => ({ source: p.provider, value: p.seasonGddC })));
 
@@ -189,6 +216,7 @@ export function composeClimateSummaryCore(input: {
       gridFilledGddC,
       gddCumulative,
     },
+    normals,
     spread,
     perSource,
     honesty: {

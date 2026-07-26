@@ -1,0 +1,145 @@
+// VI-P8b — climate NORMALS: the long-term view the Winkler index actually requires. Winkler classifies a
+// site on its AVERAGE full-season (Apr 1–Oct 31 NH) GDD over many years, NOT a single partial season. This
+// core computes, from stored daily rows: per-year full-season GDD, the moving-window average (10/20 yr), the
+// Winkler region on that average, and the cumulative-GDD curves (current year + historical average) for the
+// graph. GDD is base 10 °C (= 50 °F); display is °F (×1.8) per US viticulture convention. Pure + testable.
+
+import type { LocalDailyRecord } from "./obs-time-core";
+import { dailyGdd } from "./gdd-core";
+import { filterToSeason, seasonWindowFor, windowDayCount } from "./season-core";
+import { winklerRegion, type WinklerResult } from "./winkler-core";
+
+export const C_TO_F_GDD = 1.8; // a °C growing-degree-day is 1.8 °F growing-degree-days.
+
+export interface YearGdd {
+  seasonYear: number;
+  gddC: number;
+  gddF: number;
+  daysCounted: number;
+  windowDays: number;
+  complete: boolean; // ≥95% of the Apr–Oct window has paired temps
+}
+
+/** Full-season GDD for every SeasonYear present in the records (one provider's rows, already single-source). */
+export function perYearSeasonGdd(records: LocalDailyRecord[], latitude: number): YearGdd[] {
+  const years = new Set<number>();
+  for (const r of records) years.add(Number(r.localDate.slice(0, 4)));
+  // In the SH a season spans two calendar years; include both the year and year+1 as candidate SeasonYears.
+  const candidates = new Set<number>();
+  for (const y of years) {
+    candidates.add(y);
+    candidates.add(y + 1);
+  }
+  const out: YearGdd[] = [];
+  for (const seasonYear of [...candidates].sort((a, b) => a - b)) {
+    const season = filterToSeason(records, latitude, seasonYear);
+    if (season.length === 0) continue;
+    let gddC = 0;
+    let daysCounted = 0;
+    for (const r of season) {
+      const g = dailyGdd(r.tmaxC, r.tminC);
+      if (g !== null) {
+        gddC += g;
+        daysCounted += 1;
+      }
+    }
+    const { startIso, endIso } = seasonWindowFor(latitude, seasonYear);
+    const windowDays = windowDayCount(startIso, endIso);
+    out.push({
+      seasonYear,
+      gddC: Math.round(gddC * 10) / 10,
+      gddF: Math.round(gddC * C_TO_F_GDD),
+      daysCounted,
+      windowDays,
+      complete: daysCounted >= windowDays * 0.95,
+    });
+  }
+  return out;
+}
+
+export interface WinklerNormal {
+  window: number; // 10 or 20
+  yearsUsed: number; // complete years actually averaged (may be < window if history is short)
+  avgGddF: number;
+  avgGddC: number;
+  region: WinklerResult["region"];
+  winkler: WinklerResult;
+  years: number[]; // the SeasonYears averaged
+}
+
+/**
+ * Winkler on the moving-window average of COMPLETE past seasons (excludes the current, still-running season).
+ * `window` = 10 or 20. Averages the most recent `window` complete years before `currentSeasonYear`.
+ */
+export function winklerNormal(perYear: YearGdd[], window: number, currentSeasonYear: number): WinklerNormal | null {
+  const complete = perYear.filter((y) => y.complete && y.seasonYear < currentSeasonYear).sort((a, b) => b.seasonYear - a.seasonYear);
+  const used = complete.slice(0, window);
+  if (used.length === 0) return null;
+  const avgGddC = used.reduce((s, y) => s + y.gddC, 0) / used.length;
+  const winkler = winklerRegion(avgGddC);
+  return {
+    window,
+    yearsUsed: used.length,
+    avgGddF: Math.round(avgGddC * C_TO_F_GDD),
+    avgGddC: Math.round(avgGddC * 10) / 10,
+    region: winkler.region,
+    winkler,
+    years: used.map((y) => y.seasonYear).sort((a, b) => a - b),
+  };
+}
+
+export interface CurvePoint {
+  dayIndex: number; // 0-based day offset from Apr 1 (NH) / season start
+  cumF: number; // cumulative GDD in °F to this day
+}
+
+/** Cumulative GDD curve (°F) for ONE SeasonYear, indexed by day-of-season. */
+export function cumulativeCurve(records: LocalDailyRecord[], latitude: number, seasonYear: number): CurvePoint[] {
+  const season = filterToSeason(records, latitude, seasonYear);
+  const { startIso } = seasonWindowFor(latitude, seasonYear);
+  const start = Date.parse(`${startIso}T00:00:00Z`);
+  let cumC = 0;
+  const out: CurvePoint[] = [];
+  for (const r of season) {
+    const g = dailyGdd(r.tmaxC, r.tminC);
+    if (g === null) continue;
+    cumC += g;
+    const dayIndex = Math.round((Date.parse(`${r.localDate}T00:00:00Z`) - start) / 86_400_000);
+    out.push({ dayIndex, cumF: Math.round(cumC * C_TO_F_GDD) });
+  }
+  return out;
+}
+
+/**
+ * Average cumulative curve across several years' curves: at each day-index, the mean cumulative GDD across the
+ * years that have a value there. Produces the smooth "10-yr / 20-yr average" line for the graph.
+ */
+export function averageCurve(curves: CurvePoint[][]): CurvePoint[] {
+  const byDay = new Map<number, { sum: number; n: number }>();
+  for (const curve of curves) {
+    for (const p of curve) {
+      const acc = byDay.get(p.dayIndex) ?? { sum: 0, n: 0 };
+      acc.sum += p.cumF;
+      acc.n += 1;
+      byDay.set(p.dayIndex, acc);
+    }
+  }
+  return [...byDay.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([dayIndex, { sum, n }]) => ({ dayIndex, cumF: Math.round(sum / n) }));
+}
+
+/** Build the graph payload: the current (partial) year + the 10-yr and 20-yr average curves. */
+export function gddGraphCurves(records: LocalDailyRecord[], latitude: number, currentSeasonYear: number) {
+  const perYear = perYearSeasonGdd(records, latitude);
+  const completeYears = perYear.filter((y) => y.complete && y.seasonYear < currentSeasonYear).map((y) => y.seasonYear).sort((a, b) => b - a);
+  const curveFor = (yr: number) => cumulativeCurve(records, latitude, yr);
+  const avgOverLast = (n: number) => averageCurve(completeYears.slice(0, n).map(curveFor));
+  return {
+    current: curveFor(currentSeasonYear),
+    avg10: completeYears.length ? avgOverLast(10) : [],
+    avg20: completeYears.length ? avgOverLast(20) : [],
+    avg10Years: completeYears.slice(0, 10).length,
+    avg20Years: completeYears.slice(0, 20).length,
+  };
+}

@@ -7,9 +7,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ClimateSummary } from "@/lib/weather/read-core";
-import { coverageLabel, gddComparisonLabel, providerLabel, sparklinePoints, trustLabel } from "@/lib/weather/card-core";
-import { listNearbyStations, refreshVineyardWeatherCurrentSeason, setVineyardPrimarySource, setVineyardStation, type StationOption } from "@/lib/weather/actions";
+import { coverageLabel, gddComparisonLabel, providerLabel, trustLabel } from "@/lib/weather/card-core";
+import { backfillVineyardWeatherHistory, listNearbyStations, refreshVineyardWeatherCurrentSeason, setVineyardPrimarySource, setVineyardStation, type StationOption } from "@/lib/weather/actions";
+import { C_TO_F_GDD } from "@/lib/weather/normals-core";
 import { StationMapClient } from "./StationMap.client";
+import { GddChart } from "./GddChart";
+
+const gddF = (gddC: number) => Math.round(gddC * C_TO_F_GDD);
 
 type VineyardOpt = { id: string; name: string };
 
@@ -48,6 +52,18 @@ export function WeatherCard({
   const [mapData, setMapData] = useState<{ stations: StationOption[]; center: { lat: number; lon: number } } | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
+  const [winklerWindow, setWinklerWindow] = useState<10 | 20>(20);
+  const [backfilling, setBackfilling] = useState(false);
+
+  async function loadHistory() {
+    if (!selectedId) return;
+    setBackfilling(true);
+    setErr(null);
+    const res = await backfillVineyardWeatherHistory(selectedId, 20);
+    setBackfilling(false);
+    if (!res.ok) setErr(res.error);
+    else router.refresh();
+  }
 
   async function refresh() {
     if (!selectedId) return;
@@ -134,29 +150,54 @@ export function WeatherCard({
         </div>
       ) : (
         <>
-          {/* Headline — in the PRIMARY source's numbers (R14). */}
+          {/* Headline — cumulative GDD in °F (US viticulture convention), from the PRIMARY source (R14). */}
           <div style={{ ...card, display: "grid", gap: 10 }}>
-            <div style={label}>Season {summary.seasonYear} · Growing Degree Days (base 10 °C)</div>
+            <div style={label}>Season {summary.seasonYear} · Cumulative Growing Degree Days (base 50 °F, Apr 1–Oct 31)</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
-              <span style={big}>{h.seasonGddC.toLocaleString()}</span>
-              <span style={{ color: "var(--text-muted)" }}>GDD to date · {trustLabel(h.gddCompletenessPct)} confidence ({h.gddCompletenessPct}% of season)</span>
+              <span style={big}>{gddF(h.seasonGddC).toLocaleString()}<span style={{ fontSize: 18, color: "var(--text-muted)" }}> °F-GDD</span></span>
+              <span style={{ color: "var(--text-muted)" }}>to date · {trustLabel(h.gddCompletenessPct)} confidence ({h.gddCompletenessPct}% of season) · {h.seasonGddC.toLocaleString()} °C</span>
             </div>
-            <div style={{ color: "var(--text-primary)" }}>{gddComparisonLabel(h.priorYear?.deltaC ?? null)}</div>
-            {h.gddCumulative.length > 1 && (
-              <svg viewBox="0 0 320 60" width="100%" height="60" role="img" aria-label="Cumulative GDD this season" style={{ maxWidth: 480 }}>
-                <polyline points={sparklinePoints(h.gddCumulative.map((p) => ({ date: p.date, cumC: p.cumC })), 320, 60, 3)} fill="none" stroke="var(--accent)" strokeWidth={2} />
-              </svg>
+            {summary.normals.hasHistory ? (
+              <GddChart current={summary.normals.graph.current} avg10={summary.normals.graph.avg10} avg20={summary.normals.graph.avg20} />
+            ) : (
+              <div style={{ ...card, background: "var(--surface-muted)", display: "grid", gap: 8 }}>
+                <div>Load 20 years of history to chart this season against the 10- and 20-year average curves and classify the Winkler region.</div>
+                <button
+                  onClick={loadHistory}
+                  disabled={backfilling}
+                  style={{ justifySelf: "start", padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border-default)", background: "var(--accent)", color: "var(--accent-on)", cursor: backfilling ? "wait" : "pointer" }}
+                >
+                  {backfilling ? "Loading history… (~20s)" : "Load 20-year history"}
+                </button>
+              </div>
             )}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12 }}>
-            <Panel title="Winkler region">
-              <div style={big}>{h.winkler.region}</div>
-              {h.winkler.nearBoundary && (
-                <div style={{ ...label, textTransform: "none", color: "var(--warning)" }}>
-                  Only {h.winkler.nearestBoundaryDeltaC} GDD from the next class — treat as approximate.
-                </div>
-              )}
+            <Panel title="Winkler region (long-term average)">
+              {(() => {
+                const n = winklerWindow === 10 ? summary.normals.winkler10 : summary.normals.winkler20;
+                if (!n) {
+                  return <div style={{ ...label, textTransform: "none" }}>Load history above to classify — Winkler needs the multi-year full-season average.</div>;
+                }
+                return (
+                  <>
+                    <div style={big}>{n.region}</div>
+                    <div style={{ ...label, textTransform: "none" }}>{n.avgGddF.toLocaleString()} °F-GDD avg over {n.yearsUsed} yr</div>
+                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                      {[10, 20].map((w) => (
+                        <button
+                          key={w}
+                          onClick={() => setWinklerWindow(w as 10 | 20)}
+                          style={{ padding: "4px 10px", borderRadius: 6, fontSize: 13, cursor: "pointer", border: "1px solid var(--border-default)", background: winklerWindow === w ? "var(--accent)" : "transparent", color: winklerWindow === w ? "var(--accent-on)" : "var(--text-secondary)" }}
+                        >
+                          {w}-yr
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
             </Panel>
             <Panel title="Growing-season temp (Jones)">
               <div style={big}>{h.gst.gstC ?? "—"}°C</div>
