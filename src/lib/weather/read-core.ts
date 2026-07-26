@@ -28,6 +28,7 @@ export interface DailyRow {
 
 export interface ClimateConfig extends WeatherConfigLike {
   coverageState: string;
+  stationId: string | null;
   stationName: string | null;
   stationDistanceM: number | null;
   stationElevationDeltaM: number | null;
@@ -52,7 +53,7 @@ export interface ClimateSummary {
   primaryProviderKey: string; // the EFFECTIVE primary (override ?? resolved) — what the headline speaks in
   primaryProviderResolved: string; // the auto-resolved default (nearest quality station / best grid)
   primaryProviderOverride: string | null; // the grower's explicit pick, if any (null = auto)
-  station: { name: string | null; distanceM: number | null; elevationDeltaM: number | null };
+  station: { id: string | null; name: string | null; distanceM: number | null; elevationDeltaM: number | null };
   siteElevationM: number | null;
   attribution: string | null;
   lastRefreshAt: string | null;
@@ -172,7 +173,7 @@ export function composeClimateSummaryCore(input: {
     primaryProviderKey: primary,
     primaryProviderResolved: config.primaryProviderKey,
     primaryProviderOverride: config.primaryProviderOverride ?? null,
-    station: { name: config.stationName, distanceM: config.stationDistanceM, elevationDeltaM: config.stationElevationDeltaM },
+    station: { id: config.stationId, name: config.stationName, distanceM: config.stationDistanceM, elevationDeltaM: config.stationElevationDeltaM },
     siteElevationM: config.siteElevationM,
     attribution: config.attribution,
     lastRefreshAt: config.lastRefreshAt,

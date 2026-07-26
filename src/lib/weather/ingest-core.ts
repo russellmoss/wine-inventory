@@ -17,6 +17,7 @@ import { selectPrimaryCore, type PrimaryCandidate } from "./source-selection-cor
 import { recordWeatherUsage } from "./usage-core";
 import { coverageStateFor, providersForLocation } from "./providers/registry";
 import { fetchElevationM } from "./providers/usgs-epqs";
+import { fetchAcisStationSeries, type AcisStation } from "./providers/rcc-acis";
 import { ProviderFetchError, type ClimateProvider, type ProviderKey, type ProviderSeries } from "./providers/types";
 
 const PROVISIONAL_WINDOW_DAYS = 10; // days back from "now" that are still legitimately mutable (gridMET finalizes).
@@ -27,6 +28,8 @@ export interface IngestInput {
   lon: number;
   startIso: string;
   endIso: string;
+  /** Grower's map-picked station — when set, the rcc_acis series comes from THIS station, not the auto-nearest. */
+  stationOverride?: AcisStation | null;
 }
 
 export interface IngestDeps {
@@ -79,7 +82,11 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
   const providersFailed: Array<{ provider: ProviderKey; error: string }> = [];
   for (const p of providers) {
     try {
-      const series = await fetchSeries(p, lat, lon, startIso, endIso);
+      // Honor a grower's map-picked station for the rcc_acis series (else the provider's auto-nearest).
+      const series =
+        p.key === "rcc_acis" && input.stationOverride
+          ? await fetchAcisStationSeries(input.stationOverride, startIso, endIso)
+          : await fetchSeries(p, lat, lon, startIso, endIso);
       succeeded.push({ series, local: mapSeriesToLocalDaily(series) });
       await recordWeatherUsage(p.key, { requests: 1 }, now).catch(() => {});
     } catch (e) {

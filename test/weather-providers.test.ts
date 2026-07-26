@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizePowerResponse } from "@/lib/weather/providers/nasa-power";
 import { normalizeAcisRows, cleanAcis } from "@/lib/weather/providers/gridmet";
-import { nearestStation } from "@/lib/weather/providers/rcc-acis";
+import { allStations, nearestStation } from "@/lib/weather/providers/rcc-acis";
 import { normalizeDaymetCsv, leapDec31 } from "@/lib/weather/providers/daymet";
 import { normalizeCdoResults } from "@/lib/weather/providers/noaa-cdo";
 import { parseEpqsElevationM } from "@/lib/weather/providers/usgs-epqs";
@@ -50,6 +50,19 @@ describe("ACIS nearest-station selection", () => {
     const s = nearestStation(json, 38.5, -122.8);
     expect(s?.name).toBe("NEAR");
     expect(s?.sid).toBe("047109");
+  });
+  it("allStations returns all, nearest-first, de-duplicated", () => {
+    const json = {
+      meta: [
+        { name: "FAR", ll: [-123.5, 39.0], sids: ["040001 2"] },
+        { name: "NEAR", ll: [-122.81, 38.5], sids: ["047109 2"] },
+        { name: "MID", ll: [-122.9, 38.6], sids: ["047500 2"] },
+        { name: "NEAR-DUP", ll: [-122.81, 38.5], sids: ["047109 2"] }, // same sid → deduped
+      ],
+    };
+    const all = allStations(json, 38.5, -122.8);
+    expect(all.map((s) => s.name)).toEqual(["NEAR", "MID", "FAR"]); // sorted by distance, dup dropped
+    expect(all[0].distanceM).toBeLessThan(all[1].distanceM);
   });
 });
 

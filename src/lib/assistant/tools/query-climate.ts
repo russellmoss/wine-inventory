@@ -74,6 +74,7 @@ export const queryClimateTool: AssistantTool = {
         primaryProviderKey: configRow.primaryProviderKey,
         primaryProviderOverride: configRow.primaryProviderOverride,
         coverageState: configRow.coverageState,
+        stationId: configRow.stationId,
         stationName: configRow.stationName,
         stationDistanceM: dec(configRow.stationDistanceM),
         stationElevationDeltaM: dec(configRow.stationElevationDeltaM),
