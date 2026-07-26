@@ -28,6 +28,10 @@
       "schedule": "20 15 * * *"
     },
     {
+      "path": "/api/cron/soil-sweep",
+      "schedule": "40 15 * * *"
+    },
+    {
       "path": "/api/cron/commerce7-inventory",
       "schedule": "15 14 * * *"
     },
