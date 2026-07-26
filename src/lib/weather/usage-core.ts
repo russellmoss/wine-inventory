@@ -10,7 +10,7 @@ import "server-only";
 import { runInTenantRawTx } from "@/lib/tenant/tx";
 import { prisma } from "@/lib/prisma";
 import { CDO_DAILY_CAP } from "./config";
-import type { ProviderKey } from "./providers/types";
+import type { ProviderKey, WeatherSourceKey } from "./providers/types";
 
 /** PURE: the UTC civil-day key for a moment (YYYY-MM-DD). */
 export function usageDayKey(date: Date): string {
@@ -19,7 +19,7 @@ export function usageDayKey(date: Date): string {
 
 /** Atomically add `requests` to the current tenant's counter for (day, provider). */
 export async function recordWeatherUsage(
-  provider: ProviderKey,
+  provider: WeatherSourceKey,
   opts: { requests?: number; error?: string } = {},
   date: Date = new Date(),
 ): Promise<void> {

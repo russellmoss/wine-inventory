@@ -100,6 +100,12 @@ export async function runWeatherSweep(): Promise<WeatherSweepSummary> {
             summary.historyTopUps += 1;
           }
 
+          // Forecast retention (plan 096 U15): past target-dates are dead weight — prune anything
+          // older than yesterday (site-local). Accuracy history is a deliberate Later (own table).
+          await prisma.vineyardForecastDaily
+            .deleteMany({ where: { vineyardId: v.id, targetDate: { lt: new Date(`${addDaysIso(today, -1)}T00:00:00.000Z`) } } })
+            .catch(() => {});
+
           // Alert detection on the PRIMARY series (recent window), idempotent via per-date dedup.
           const recentIso = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
           const primaryRows = await prisma.vineyardClimateDaily.findMany({

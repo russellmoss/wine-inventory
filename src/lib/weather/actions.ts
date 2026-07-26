@@ -9,6 +9,8 @@ import { runAsTenant } from "@/lib/tenant/context";
 import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { composeClimateSummaryCore, type ClimateSummary, type DailyRow, type ClimateConfig } from "./read-core";
 import { composeRainfallRangeCore, type RainfallRangeResult } from "./rainfall-range-core";
+import { composeForecastViewCore, isForecastStale, type ForecastView } from "./forecast-read-core";
+import { ingestVineyardForecastCore } from "./forecast-ingest-core";
 import { effectivePrimary } from "./source-selection-core";
 import { ingestVineyardWeatherCore, type IngestResult } from "./ingest-core";
 import { resolveVineyardCentroid } from "./location";
@@ -194,6 +196,73 @@ export async function setVineyardPrimarySource(
   });
   revalidatePath("/vineyards/weather");
   return { ok: true };
+}
+
+/**
+ * The 7-day forecast view for the strip (plan 096 U15/U16). Reads STORED rows only — the cron and
+ * the on-view refresh write; a page load never fetches a provider. Null view = no forecast yet.
+ */
+export async function loadVineyardForecast(
+  vineyardId: string,
+): Promise<{ ok: true; view: ForecastView | null; unitSystem: string; stale: boolean } | { ok: false; error: string }> {
+  try {
+    await requireReadyUser();
+    const configRow = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { timeZone: true, unitSystem: true } });
+    if (!configRow) return { ok: true, view: null, unitSystem: "METRIC", stale: false };
+    const wineryTz = await getWineryTimeZone().catch(() => null);
+    const todayIso = siteTodayIso(resolveSiteTimeZone(configRow.timeZone, wineryTz));
+    const rows = await prisma.vineyardForecastDaily.findMany({
+      where: { vineyardId },
+      orderBy: { targetDate: "asc" },
+    });
+    const view = composeForecastViewCore(
+      rows.map((r) => ({
+        providerKey: r.providerKey,
+        targetDate: r.targetDate.toISOString().slice(0, 10),
+        issuedAt: r.issuedAt.toISOString(),
+        tmaxC: dec(r.tmaxC),
+        tminC: dec(r.tminC),
+        precipMm: dec(r.precipMm),
+        precipProbabilityPct: dec(r.precipProbabilityPct),
+        conditionCode: r.conditionCode,
+        windMaxKph: dec(r.windMaxKph),
+      })),
+      todayIso,
+    );
+    const stale = view ? isForecastStale(view.issuedAt, new Date()) : false;
+    return { ok: true, view, unitSystem: configRow.unitSystem, stale };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Refresh a vineyard's 7-day forecast from live providers (on-view when stale >6h, or manual). */
+export async function refreshVineyardForecast(vineyardId: string): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
+  try {
+    const tenantId = await requireTenant();
+    return await runAsTenant(tenantId, async () => {
+      const centroid = await resolveVineyardCentroid(vineyardId);
+      if (!centroid) return { ok: false as const, error: "This vineyard has no location yet — draw its boundary or drop a GPS pin first." };
+      const cfg = await prisma.vineyardWeatherConfig.findFirst({
+        where: { vineyardId },
+        select: { siteElevationM: true, nwsGridId: true, nwsGridX: true, nwsGridY: true, timeZone: true },
+      });
+      const res = await ingestVineyardForecastCore({
+        vineyardId,
+        lat: centroid.lat,
+        lon: centroid.lon,
+        elevationM: cfg?.siteElevationM === null || cfg?.siteElevationM === undefined ? null : Number(cfg.siteElevationM),
+        nwsGrid:
+          cfg?.nwsGridId && cfg.nwsGridX !== null && cfg.nwsGridY !== null
+            ? { gridId: cfg.nwsGridId, gridX: cfg.nwsGridX!, gridY: cfg.nwsGridY!, timeZone: cfg.timeZone ?? null }
+            : null,
+      });
+      revalidatePath("/vineyards/weather");
+      return { ok: true as const, rows: res.rowsWritten };
+    });
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 /**
