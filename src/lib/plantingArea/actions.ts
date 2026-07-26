@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
-import { action, ActionError } from "@/lib/actions";
+import { action, safeAction, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import type { VineyardPolygon } from "@/lib/gis/geometry";
 import type { MigrationProposal } from "./migration-core";
@@ -185,6 +185,37 @@ export const confirmPlantingMigration = action(
     return result;
   },
 );
+
+/** One-click "finish setup" (Reference vineyard editor): propose planting areas from the drawn block
+ *  polygons and confirm them in one step. The grouping is road-safe (blocks only join within 1 m), so no
+ *  review is needed for the common case. All-or-nothing per vineyard; never mutates source block polygons. */
+export const autoCreatePlantingAreasAction = safeAction(async ({ actor }, vineyardId: string) => {
+  const { proposals } = await proposePlantingAreasFromBlocksCore(vineyardId);
+  if (proposals.length === 0) {
+    throw new ActionError("Draw at least one block boundary on the map first, then finish setup.", "VALIDATION");
+  }
+  const result = await toActionError(() =>
+    runInTenantTx(async (tx) => {
+      const out = await confirmProposedPlantingAreasCore(tx, {
+        vineyardId,
+        proposals: proposals.map((p) => ({ name: p.name, geometry: p.geometry, memberBlockIds: p.memberBlockIds })),
+        createdBy: actor.actorEmail,
+      });
+      await writeAudit(tx, {
+        ...actor,
+        action: "CREATE",
+        entityType: "VineyardPlantingArea",
+        entityId: out.createdIds[0] ?? vineyardId,
+        changes: diff(null, { createdFrom: "blocks", created: out.createdIds.length, migrated: out.migrated }),
+        summary: summarize("CREATE", "VineyardPlantingArea", { label: `finished setup — ${out.createdIds.length} planting area(s)` }),
+      });
+      return out;
+    }),
+  );
+  revalidatePath(PATH);
+  revalidatePath("/reference");
+  return result;
+});
 
 /** READ: planting/block structure for a vineyard (also the assistant tool's core). */
 export const getPlantingStructure = action(async (_ctx, vineyardId: string): Promise<PlantingStructure> => {

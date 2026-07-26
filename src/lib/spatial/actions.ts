@@ -5,7 +5,7 @@
 // cron sweep (job-sweep) does the slow STAC selection + fetch + materialization (ADR 0009, no worker).
 // Importing job-sweep here also anchors the P2 cores (scene-selection / process-scene / block-metrics /
 // usage) in the assistant import graph so verify:ai-native sees them reachable.
-import { action } from "@/lib/actions";
+import { action, ActionError } from "@/lib/actions";
 import { prisma } from "@/lib/prisma";
 import { runNdviJobSweep, estateAoiBbox } from "@/lib/spatial/job-sweep";
 
@@ -15,7 +15,7 @@ export type EnqueueNdviInput = { vineyardId: string; aroundIso: string };
  *  per (vineyard, day): a same-day re-request adopts the existing pending/complete job via the unique key. */
 export const enqueueNdviJobAction = action(async (_ctx, input: EnqueueNdviInput) => {
   const aoiBbox = await estateAoiBbox(input.vineyardId);
-  if (!aoiBbox) throw new Error("This vineyard has no confirmed planting-area geometry yet — draw the vineyard boundary first.");
+  if (!aoiBbox) throw new ActionError("This vineyard isn't set up for analysis yet — finish setup (Reference → Varieties & vineyards → Finish setup) to create its planting area first.", "VALIDATION");
   const day = input.aroundIso.slice(0, 10);
   const idempotencyKey = `ndvi:manual:${input.vineyardId}:${day}`;
   const existing = await prisma.spatialAnalysisJob.findFirst({ where: { idempotencyKey } });

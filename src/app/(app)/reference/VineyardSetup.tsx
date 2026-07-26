@@ -24,6 +24,7 @@ import {
 } from "@/lib/vineyard/units";
 import type { SerializedBlock, SerializedDetail } from "@/lib/vineyard/data";
 import { BlockDetails } from "./BlockDetails";
+import { FinishSetupSection } from "./FinishSetupSection";
 
 type VarietyOption = { id: string; name: string; color: string | null };
 
@@ -505,6 +506,8 @@ export function VineyardSetup({
           })}
         </div>
       )}
+
+      <FinishSetupSection vineyardId={vineyardId} hasBlocksWithPolygons={blocks.some((b) => b.polygon != null)} />
     </div>
   );
 }
