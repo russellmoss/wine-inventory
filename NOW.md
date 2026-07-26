@@ -13,15 +13,18 @@ legend + histogram + date comparison. Renders directly from what P2 stored: the 
 `BlockSpatialMetric` per-block stats — the mask is already validated, so P3 doesn't redo it. Inherits `render.ts`/
 `color.ts`. Plan next via `/plan`. Scale-register tripwire (>2M-px streaming) is load-bearing; decoder refuses >4M px.
 
-**⚡ PARALLEL LANE OPENED — P4 soil (Wave 1 lane B). PLANNED + COUNCIL-REVIEWED 2026-07-25, ⬜ not built.**
-Now that P1+P2 shipped, P4/P5/P8 all unblocked (deps `P4←block polygons`, `P5←P1`, `P8←P1`) and are file-disjoint
-from P3 — build in parallel. P4 plan: [phase-4-soil-documentation-plan.md](docs/GIS/phases/phase-4-soil-documentation-plan.md)
-(Deep, 9 units) · council: [phase-4-council-feedback.md](docs/GIS/phases/phase-4-council-feedback.md). NRCS SSURGO
-per-block soil cards, cards-only (no map), one SDA clip query, supersede-not-delete snapshots. Council folded 11
-findings — the report-wrong-data ones: **stale-write geometry-version CAS** (older in-flight SDA response must not
-supersede a newer snapshot), **SDA join multiplicity** (clip one-row-per-mukey in a CTE before joining props),
-**geodesic `areaSqM`** (never persist cos(lat)-scaled m²). Unit 0 (schema slice) is the serialization point vs P3/P8
-on `prisma/schema.prisma`. `/work` it in a separate worktree.
+**⚡ P4 soil (Wave 1 lane B) — ✅ BUILT + LIVE-QA'd on `feat/vi-p4-soil`, NOT yet PR'd (2026-07-25).**
+All 9 units committed (8 feat commits + planning). Migration `20260725140000_soil_snapshot` **applied to prod**
+(additive, Bhutan untouched). Gates: tsc 0, **vitest 4024/0**, **`verify:soil` 23/23** (e2e DB, injected SDA),
+`verify:tenant-isolation` (+soil RLS), `verify:invariants` 39/39 (SOIL-1), `verify:ai-native`, `verify:naming` 25/25.
+**Live browser QA PASSED** (in-app pane, Demo): pulled a real Finger Lakes block through the UI → live NRCS →
+6 soil cards (Mardin 39% pH 6.6, Volusia 26%, Valois 18%…) + "Other (4 slivers <1%)" with Water folded+retained,
+100% covered, survey NY123; DB read-back matched (9 comps, geodesic areaSqM 912,832). Plan:
+[phase-4-soil-documentation-plan.md](docs/GIS/phases/phase-4-soil-documentation-plan.md) · council (11 findings folded):
+[phase-4-council-feedback.md](docs/GIS/phases/phase-4-council-feedback.md).
+▶️ **NEXT:** `/review` + `/ship` (PR to protected main). ⚠️ Shares `prisma/schema.prisma` + the shared prisma CLIENT
+with the parallel P3/P8 lanes — **`prisma generate` gets clobbered by their generates; regenerate right before any
+tsc/verify/dev-server run.** P3 display migrations (`..._ndvi_display_*`) are already in prod but not on this branch (fine).
 
 <details><summary>✅ Vineyard Intelligence P2 — NDVI core (data half) — SHIPPED + LIVE IN PROD 2026-07-25</summary>
 

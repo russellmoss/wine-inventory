@@ -8,9 +8,14 @@ aggregation core with subtle correctness rules, 8 UI states, an assistant tool, 
 `verify:soil` e2e gate.
 **Dependency:** only existing `VineyardBlock.polygon` (GeoJSON WGS84). No dependency on
 P2/P3/P5. Runs in parallel with P3 (NDVI display) and P8 (weather).
-**Status:** ⬜ not started. Gating spike **COMPLETE 2026-07-20** (2 adversarial rounds,
-6/10 → 8/10 → BUILD). Spike results override three design-body decisions — they are folded
-into this plan already, do not re-derive them.
+**Status:** ✅ **BUILT + browser-QA'd on branch `feat/vi-p4-soil` (2026-07-25), not yet PR'd.**
+All 9 units committed; migration applied to prod (additive). Gates green: tsc 0, full vitest
+4024/0, `verify:soil` 23/23 (e2e DB, injected SDA), `verify:tenant-isolation` (+soil A/B RLS),
+`verify:invariants` 39/39 (SOIL-1), `verify:ai-native`, `verify:naming` 25/25. Live browser QA
+in Demo (in-app pane): pulled a real Finger Lakes block → 6 soil cards + "Other (4 slivers)" +
+Water folded/retained, cited pH/drainage/depth, 100% covered, survey NY123; DB read-back matched.
+Gating spike **COMPLETE 2026-07-20** (2 adversarial rounds, 6/10 → 8/10 → BUILD); re-verified live
+2026-07-25. Spike results override three design-body decisions — already folded in, do not re-derive.
 
 **Authoritative inputs (read before building):**
 - Runbook §5 "P4 — Soil documentation layer" (`docs/GIS/VINEYARD_INTELLIGENCE_RUNBOOK.md`).
