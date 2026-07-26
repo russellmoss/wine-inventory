@@ -42,12 +42,34 @@ export interface ForecastDailyRecord {
   windMaxKph: number | null;
 }
 
+/**
+ * One hourly forecast slot (plan 097). One row per slot per provider; for NWS, rain AMOUNTS only
+ * exist as raw-gridpoint QPF buckets (PT3H/PT6H, live-verified) — a bucket becomes ONE record at
+ * its start hour with `precipDurationH` = the bucket length, and the chart draws the bar at that
+ * native width (the S6 honesty rule: never split a bucket into invented uniform hours). Open-Meteo
+ * is true per-hour (`precipDurationH` 1). `localDate`/`localHour` are computed AT INGEST from the
+ * vineyard tz — never recomputed at read. All value fields nullable (the C7 rule).
+ */
+export interface ForecastHourlyRecord {
+  hourStartUtc: string; // ISO instant
+  localDate: string; // vineyard-local civil day (YYYY-MM-DD)
+  localHour: number; // 0–23 in the vineyard tz
+  tempC: number | null;
+  popPct: number | null;
+  precipMm: number | null;
+  precipDurationH: number; // 1 = per-hour; 3/6 = an NWS QPF bucket starting at this hour
+  conditionCode: ConditionCode;
+  windKph: number | null;
+}
+
 export interface ForecastSeries {
   providerKey: ForecastProviderKey;
   issuedAt: Date;
   /** Provider-reported IANA zone (NWS points.timeZone / Open-Meteo timezone=auto) — persisted to config (U1). */
   timeZone: string | null;
   records: ForecastDailyRecord[];
+  /** Hourly slots (plan 097) — optional; both adapters fill it when available. */
+  hourly?: ForecastHourlyRecord[];
   attribution: string;
   sourceUrl: string;
 }

@@ -14,7 +14,8 @@ import { composeClimateSummaryCore, type DailyRow } from "../src/lib/weather/rea
 import { ingestVineyardForecastCore } from "../src/lib/weather/forecast-ingest-core";
 import { composeForecastViewCore, type ForecastRow } from "../src/lib/weather/forecast-read-core";
 import type { ClimateProvider, DailyRecord, ProviderSeries } from "../src/lib/weather/providers/types";
-import type { ForecastDailyRecord, ForecastProviderKey, ForecastSeries } from "../src/lib/weather/providers/forecast-types";
+import type { ForecastDailyRecord, ForecastHourlyRecord, ForecastProviderKey, ForecastSeries } from "../src/lib/weather/providers/forecast-types";
+import { composeForecastHoursCore, type ForecastHourRow } from "../src/lib/weather/forecast-hourly-read-core";
 import type { NwsGrid } from "../src/lib/weather/providers/forecast-nws";
 import { addDaysIso } from "../src/lib/weather/obs-time-core";
 
@@ -137,11 +138,29 @@ async function main() {
         windMaxKph: 14,
         ...over,
       });
+      // Plan 097 U7 — hourly arms: NWS carries a native-width PT6H QPF bucket at 14:00; OM per-hour.
+      const fHour = (dayOffset: number, localHour: number, over: Partial<ForecastHourlyRecord> = {}): ForecastHourlyRecord => ({
+        hourStartUtc: new Date(`${addDaysIso(todayIso, dayOffset)}T00:00:00.000Z`).toISOString().slice(0, 11) + `${String(localHour).padStart(2, "0")}:00:00.000Z`,
+        localDate: addDaysIso(todayIso, dayOffset),
+        localHour,
+        tempC: 18 + localHour / 4,
+        popPct: 20,
+        precipMm: null,
+        precipDurationH: 1,
+        conditionCode: "PARTLY_CLOUDY",
+        windKph: 10,
+        ...over,
+      });
       const nwsSeries = (days: number[], issued: Date): ForecastSeries & { grid: NwsGrid } => ({
         providerKey: "nws",
         issuedAt: issued,
         timeZone: "America/Los_Angeles",
         records: days.map((o) => fDay(o, o === 0 ? { tmaxC: null } : {})), // day-1 afternoon edge: low only
+        hourly: days.flatMap((o) => [
+          fHour(o, 6),
+          fHour(o, 14, o === 1 ? { precipMm: 5.5, precipDurationH: 6 } : {}), // the native-width bucket
+          fHour(o, 22),
+        ]),
         attribution: "nws fixture",
         sourceUrl: "fixture://nws",
         grid: { gridId: "QAX", gridX: 1, gridY: 2, timeZone: "America/Los_Angeles" },
@@ -151,6 +170,7 @@ async function main() {
         issuedAt: issued,
         timeZone: "America/Los_Angeles",
         records: days.map((o) => fDay(o, { tmaxC: 33 })), // disagrees by +3 → spread
+        hourly: days.flatMap((o) => [fHour(o, 8, { precipMm: 0.4 }), fHour(o, 9)]),
         attribution: "om fixture",
         sourceUrl: "fixture://om",
       });
@@ -162,7 +182,15 @@ async function main() {
         { vineyardId: vy.id, lat: LAT, lon: LON, elevationM: 100 },
         { fetchSeries: fetchFx([0, 1, 2, 3, 4, 5, 6], issue1) },
       );
-      check("forecast ingest wrote both providers (7 days each)", fres.rowsWritten === 14, fres.rowsWritten);
+      check("forecast ingest wrote both providers (7 days + hourly rows)", fres.rowsWritten === 14 + 7 * 3 + 7 * 2, fres.rowsWritten);
+      const nwsHourlyCount = await prisma.vineyardForecastHourly.count({ where: { vineyardId: vy.id, providerKey: "nws" } });
+      const omHourlyCount = await prisma.vineyardForecastHourly.count({ where: { vineyardId: vy.id, providerKey: "open_meteo" } });
+      check("hourly rows landed per provider (plan 097)", nwsHourlyCount === 21 && omHourlyCount === 14, { nwsHourlyCount, omHourlyCount });
+      const bucketRow = await prisma.vineyardForecastHourly.findFirst({
+        where: { vineyardId: vy.id, providerKey: "nws", precipDurationH: 6 },
+        select: { localHour: true, precipMm: true, precipDurationH: true },
+      });
+      check("the PT6H QPF bucket stored at NATIVE width (S6)", bucketRow?.localHour === 14 && Number(bucketRow?.precipMm) === 5.5, bucketRow);
       const cfgAfter = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId: vy.id }, select: { timeZone: true, nwsGridId: true, nwsGridX: true, nwsGridY: true } });
       check("config cache persisted IN the ingest tx (tz + NWS grid — council S4)", cfgAfter?.timeZone === "America/Los_Angeles" && cfgAfter?.nwsGridId === "QAX" && cfgAfter?.nwsGridX === 1 && cfgAfter?.nwsGridY === 2, cfgAfter);
 
@@ -176,6 +204,25 @@ async function main() {
       const day7 = await prisma.vineyardForecastDaily.count({ where: { vineyardId: vy.id, targetDate: new Date(`${addDaysIso(todayIso, 6)}T00:00:00.000Z`) } });
       check("re-ingest REPLACED the horizon (6 nws rows, not 7)", nwsCount === 6, nwsCount);
       check("the dropped day-7 row is GONE, not stale (council C1)", day7 === 0, day7);
+      const hourlyDay7 = await prisma.vineyardForecastHourly.count({ where: { vineyardId: vy.id, localDate: new Date(`${addDaysIso(todayIso, 6)}T00:00:00.000Z`) } });
+      check("hourly rows for the dropped day are GONE too (plan 097 replace)", hourlyDay7 === 0, hourlyDay7);
+
+      // The modal's day-slice: primary provider (nws), the bucket at native width, crossing summary.
+      const hourlyRaw = await prisma.vineyardForecastHourly.findMany({ where: { vineyardId: vy.id, localDate: new Date(`${addDaysIso(todayIso, 1)}T00:00:00.000Z`) }, orderBy: { hourStartUtc: "asc" } });
+      const hourRows: ForecastHourRow[] = hourlyRaw.map((r) => ({
+        providerKey: r.providerKey,
+        hourStartUtc: r.hourStartUtc.toISOString(),
+        localDate: r.localDate.toISOString().slice(0, 10),
+        localHour: r.localHour,
+        tempC: r.tempC == null ? null : Number(r.tempC),
+        popPct: r.popPct == null ? null : Number(r.popPct),
+        precipMm: r.precipMm == null ? null : Number(r.precipMm),
+        precipDurationH: r.precipDurationH,
+        conditionCode: r.conditionCode,
+        windKph: r.windKph == null ? null : Number(r.windKph),
+      }));
+      const modalDay = composeForecastHoursCore(hourRows, { targetDate: addDaysIso(todayIso, 1) });
+      check("modal day-slice: nws primary, 3 slots, bucket at 14:00 ×6h (plan 097 U4/U7)", modalDay?.providerKey === "nws" && modalDay.slots.length === 3 && modalDay.slots[1]?.precipDurationH === 6 && modalDay.summary.totalPrecipMm === 5.5, { p: modalDay?.providerKey, n: modalDay?.slots.length, s: modalDay?.slots[1] });
 
       // Compose the view from stored rows: primary NWS, day-1 null high, spread present.
       const frows = await prisma.vineyardForecastDaily.findMany({ where: { vineyardId: vy.id }, orderBy: { targetDate: "asc" } });
@@ -248,6 +295,7 @@ async function main() {
       // Cleanup the QA fixtures. Inbox rows are owner-only under RLS (INBOX-1), so the QA weather
       // digests are removed via runAsSystem (owner) — scoped to Demo + WEATHER_ALERT + this run.
       await prisma.vineyardWeatherAlertState.deleteMany({ where: { vineyardId: vy.id } }).catch(() => {});
+      await prisma.vineyardForecastHourly.deleteMany({ where: { vineyardId: vy.id } }).catch(() => {});
       await prisma.vineyardForecastDaily.deleteMany({ where: { vineyardId: vy.id } });
       await prisma.vineyardClimateDaily.deleteMany({ where: { vineyardId: vy.id } });
       await prisma.vineyardWeatherConfig.deleteMany({ where: { vineyardId: vy.id } });

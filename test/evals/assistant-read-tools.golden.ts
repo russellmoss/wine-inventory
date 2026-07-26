@@ -212,6 +212,12 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     args: { vineyard: "Oakville Estate" },
     note: "rolling recent rainfall — answerable YEAR-ROUND since the off-season ingest (plan 096 U6)",
   },
+  {
+    utterance: "What time will it drop below freezing tonight at Paro?",
+    tool: "query_climate",
+    args: { vineyard: "Paro" },
+    note: "plan 097 — hourly crossingTimes (vineyard-local hours) answer WHEN, not just whether; R11: no hourly rows → an honest note",
+  },
   // VI-P3 — NDVI date COMPARISON (change over time). Distinct from a single-date read (query_ndvi_stats).
   {
     utterance: "How has the NDVI changed in Estate Vineyard since last month?",

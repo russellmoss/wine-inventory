@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   fetchNwsForecast,
+  mergeQpfIntoHourly,
   pairNwsPeriods,
   parseIsoDurationHours,
+  parseNwsHourly,
   parseWindMaxKph,
   sumQpfToLocalDays,
+  type NwsHourlyPeriod,
   type NwsPeriod,
 } from "@/lib/weather/providers/forecast-nws";
 
@@ -133,6 +136,49 @@ describe("parseNwsActiveAlerts (plan 096 U22 — verbatim, severity-desc, ends??
   });
 });
 
+describe("plan 097 U2 — NWS hourly arm", () => {
+  const hourlyP = (startTime: string, temp: number | null, over: Partial<NwsHourlyPeriod> = {}): NwsHourlyPeriod => ({
+    startTime,
+    temperature: temp,
+    temperatureUnit: "C",
+    probabilityOfPrecipitation: { value: 30 },
+    windSpeed: "10 km/h",
+    icon: "https://api.weather.gov/icons/land/day/sct",
+    shortForecast: "Partly Cloudy",
+    ...over,
+  });
+
+  it("parseNwsHourly: offset startTime → UTC instant; local keys off the string; °F defense; durationH=1", () => {
+    const out = parseNwsHourly([hourlyP("2026-07-26T22:00:00-07:00", 20), hourlyP("2026-07-26T23:00:00-07:00", 68, { temperatureUnit: "F" })]);
+    expect(out[0]).toMatchObject({ hourStartUtc: "2026-07-27T05:00:00.000Z", localDate: "2026-07-26", localHour: 22, tempC: 20, precipMm: null, precipDurationH: 1 });
+    expect(out[1].tempC).toBe(20); // 68 °F → 20 °C
+  });
+
+  it("mergeQpfIntoHourly: a PT6H bucket lands WHOLE at its start hour with native duration", () => {
+    const hourly = parseNwsHourly([hourlyP("2026-07-26T11:00:00-07:00", 25)]);
+    const merged = mergeQpfIntoHourly(hourly, [{ validTime: "2026-07-26T18:00:00+00:00/PT6H", value: 4.5 }], "America/Los_Angeles");
+    // 18:00Z = 11:00 PDT — merges onto the existing temp slot.
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ tempC: 25, precipMm: 4.5, precipDurationH: 6 });
+  });
+
+  it("a bucket with no matching temp slot creates a precip-only record with local keys from the tz", () => {
+    const merged = mergeQpfIntoHourly([], [{ validTime: "2026-07-27T06:00:00+00:00/PT3H", value: 2 }], "America/Los_Angeles");
+    // 06:00Z Jul 27 = 23:00 PDT Jul 26 — a bucket STARTING late evening belongs to that local day (timing view).
+    expect(merged[0]).toMatchObject({ localDate: "2026-07-26", localHour: 23, precipMm: 2, precipDurationH: 3, tempC: null });
+  });
+
+  it("zero/null buckets are skipped; output stays sorted by instant", () => {
+    const hourly = parseNwsHourly([hourlyP("2026-07-26T10:00:00-07:00", 24), hourlyP("2026-07-26T11:00:00-07:00", 25)]);
+    const merged = mergeQpfIntoHourly(hourly, [
+      { validTime: "2026-07-26T17:00:00+00:00/PT1H", value: 0 },
+      { validTime: "2026-07-26T18:00:00+00:00/PT1H", value: null },
+    ], "America/Los_Angeles");
+    expect(merged.every((r) => r.precipMm === null)).toBe(true);
+    expect(merged.map((r) => r.localHour)).toEqual([10, 11]);
+  });
+});
+
 describe("fetchNwsForecast (fixture fetch)", () => {
   it("resolves grid, pairs periods, attaches QPF amounts by local end-day, reports timeZone", async () => {
     const fixtures: Record<string, unknown> = {
@@ -142,6 +188,7 @@ describe("fetchNwsForecast (fixture fetch)", () => {
     };
     const fetchFx = (async (_key: unknown, url: string) => {
       if (url.includes("/points/")) return fixtures.points;
+      if (url.includes("/forecast/hourly")) return { properties: { periods: [] } }; // hourly arm exercised in its own describe
       if (url.includes("/forecast")) return fixtures.forecast;
       return fixtures.raw;
     }) as never;
@@ -159,6 +206,7 @@ describe("fetchNwsForecast (fixture fetch)", () => {
         pointsCalls += 1;
         return {};
       }
+      if (url.includes("/forecast/hourly")) return { properties: { periods: [] } };
       if (url.includes("/forecast")) return { properties: { periods: [day("2026-07-01", 30)] } };
       return { properties: {} };
     }) as never;

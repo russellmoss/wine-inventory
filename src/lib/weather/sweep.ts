@@ -105,6 +105,10 @@ export async function runWeatherSweep(): Promise<WeatherSweepSummary> {
           await prisma.vineyardForecastDaily
             .deleteMany({ where: { vineyardId: v.id, targetDate: { lt: new Date(`${addDaysIso(today, -1)}T00:00:00.000Z`) } } })
             .catch(() => {});
+          // Plan 097 U3: the hourly slots prune on the same boundary.
+          await prisma.vineyardForecastHourly
+            .deleteMany({ where: { vineyardId: v.id, localDate: { lt: new Date(`${addDaysIso(today, -1)}T00:00:00.000Z`) } } })
+            .catch(() => {});
 
           // Alert detection on the PRIMARY series (recent window), idempotent via per-date dedup.
           const recentIso = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
