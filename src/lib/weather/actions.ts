@@ -8,6 +8,8 @@ import { requireReadyUser } from "@/lib/dal";
 import { runAsTenant } from "@/lib/tenant/context";
 import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { composeClimateSummaryCore, type ClimateSummary, type DailyRow, type ClimateConfig } from "./read-core";
+import { composeRainfallRangeCore, type RainfallRangeResult } from "./rainfall-range-core";
+import { effectivePrimary } from "./source-selection-core";
 import { ingestVineyardWeatherCore, type IngestResult } from "./ingest-core";
 import { resolveVineyardCentroid } from "./location";
 import { fetchAcisStationSeries, listAcisStations, type AcisStation } from "./providers/rcc-acis";
@@ -192,6 +194,41 @@ export async function setVineyardPrimarySource(
   });
   revalidatePath("/vineyards/weather");
   return { ok: true };
+}
+
+/**
+ * Rainfall-over-time for the chart (plan 096 U8). Reads STORED rows only (no live fetch), primary
+ * provider only (never-blend — a missing day is a labeled gap, not a fill). Range is site-local ISO
+ * dates from the client control; capped at 24 months by the core.
+ */
+export async function loadVineyardRainfallRange(
+  vineyardId: string,
+  startIso: string,
+  endIso: string,
+): Promise<{ ok: true; range: RainfallRangeResult; unitSystem: string } | { ok: false; error: string }> {
+  try {
+    await requireReadyUser();
+    const configRow = await prisma.vineyardWeatherConfig.findFirst({
+      where: { vineyardId },
+      select: { primaryProviderKey: true, primaryProviderOverride: true, unitSystem: true },
+    });
+    if (!configRow) return { ok: false, error: "This vineyard has no weather set up yet — refresh its weather first." };
+    const primary = effectivePrimary({ primaryProviderKey: configRow.primaryProviderKey, primaryProviderOverride: configRow.primaryProviderOverride });
+    const rows = await prisma.vineyardClimateDaily.findMany({
+      where: { vineyardId, providerKey: primary, localDate: { gte: new Date(`${startIso}T00:00:00.000Z`), lte: new Date(`${endIso}T00:00:00.000Z`) } },
+      select: { providerKey: true, localDate: true, precipMm: true },
+      orderBy: { localDate: "asc" },
+    });
+    const range = composeRainfallRangeCore({
+      rows: rows.map((r) => ({ providerKey: r.providerKey, localDate: r.localDate.toISOString().slice(0, 10), precipMm: dec(r.precipMm) })),
+      primaryProviderKey: primary,
+      startIso,
+      endIso,
+    });
+    return { ok: true, range, unitSystem: configRow.unitSystem };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 /**
