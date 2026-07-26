@@ -445,8 +445,25 @@ time (rule §3.6). **S2b must also implement the S3a `ProductFactsResolver` port
 (`src/lib/spray/product-facts-port.ts`, `resolveMany`) — registering the real resolver replaces
 the null resolver and back-fills nothing (facts-as-of is per-entry, rule §3.8).
 
-🔴 **S2b UNIT 1 — reconcile the `factsAsOf` shape BEFORE writing any real facts. Cross-lane defect,
-found 2026-07-26 auditing S2 against S3a; both lanes shipped, neither is wrong alone.**
+✅ **DONE — the `factsAsOf` seam is already reconciled (shipped 2026-07-26, same day it was found).
+S2b does NOT need to do this; if the S2b plan still carries it as a unit, delete that unit.**
+`spray_material_line` now carries the composite verbatim — `factsPublishedRevisionId String?`
+(cuid), `factsApprilAsOf`, `factsCdprAsOf`, `factsResistanceArtifactSha256` — the misleading
+`factsRevision Int?` is dropped, and `factsAsOf DateTime?` survives narrowed to a display/staleness
+convenience (the newest non-null component). `ProductFactsAsOf` in
+`src/lib/spray/product-facts-port.ts` is the type S2b's resolver returns; it is declared
+structurally rather than imported from `src/lib/pesticide/` on purpose, because the same port also
+serves the tenant-defined / grower-supplied path (rule §3.9). Proven by `verify:spray-record`
+assertion 6 (a header-only correction copies every COMPONENT verbatim — no November data on a June
+spray) plus 5 unit tests in `test/spray-facts-snapshot.test.ts`.
+**What S2b still owns here:** its OWN facts (PHI, REI, rainfast, mobility class) carry
+fact-group-level provenance per S2b's KD-11 — that is a SEPARATE axis from this registry watermark,
+and it will need its own columns. Do not conflate the two.
+
+<details><summary>The original defect, kept for the record</summary>
+
+🔴 **Cross-lane defect, found 2026-07-26 auditing S2 against S3a; both lanes shipped, neither was
+wrong alone.**
 S2 froze a **composite** (`phases/S2-S3a-factsAsOf-contract.md`):
 `{ publishedRevisionId: string, apprilAsOf, cdprAsOf, resistanceArtifactSha256 }` + a separate
 `provenance: "registry" | "grower-supplied"`. S3a shipped a **scalar pair** on
@@ -461,6 +478,8 @@ additive widening (add `factsPublishedRevisionId String?`, `factsApprilAsOf`, `f
 backfill-then-enforce on a live compliance table later. Keep `factsAsOf DateTime?` as the
 human-facing display date, derived from the newest non-null component. `factsSource` already
 carries S2's `provenance` arms plus a `NONE` arm for the null resolver — that part is fine.
+
+</details>
 
 **Gate:** every curated row carries source + as-of date + reviewer; a product with no facts row
 resolves to *cannot-determine*, never *permitted*; the non-US path proven end-to-end on a

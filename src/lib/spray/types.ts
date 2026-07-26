@@ -93,7 +93,10 @@ export interface SprayMaterialLineRow {
   resistanceGroupsKnown: boolean;
   snapshotActiveIngredientKeys: string[];
   activeIngredientsKnown: boolean;
-  factsRevision: number | null;
+  factsPublishedRevisionId: string | null;
+  factsApprilAsOf: Date | null;
+  factsCdprAsOf: Date | null;
+  factsResistanceArtifactSha256: string | null;
   factsAsOf: Date | null;
   factsSource: SprayFactsSource;
   factsCompleteness: SprayFactsCompleteness;

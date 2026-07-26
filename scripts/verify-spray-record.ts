@@ -9,8 +9,9 @@
  *   4  correction-as-event — new revision; original byte-identical + SUPERSEDED; current view = 1;
  *      a SECOND correction of the same revision is rejected by the unique
  *   5  the void race — two concurrent voids: exactly one commits (council C2); ditto void×amend
- *   6  facts-as-of-then — a header-only correction copies every line's factsAsOf/factsRevision
- *      VERBATIM; changing one line's EPA number re-resolves THAT LINE ONLY (KD-14 / council G1)
+ *   6  facts-as-of-then — a header-only correction copies every COMPONENT of the composite
+ *      watermark VERBATIM (S2's frozen PesticideFactsAsOf shape); changing one line's EPA number
+ *      re-resolves THAT LINE ONLY (KD-14 / council G1)
  *   7  driedBeforeRain — null/INSUFFICIENT_DATA with no series; an attributed override flips it
  *   8  unknown product ⇒ UNKNOWN, never clear (null resolver — rule §3.6)
  *   9  the knownness CHECK bites — empty array + known=true is refused by the DATABASE (C7)
@@ -67,24 +68,33 @@ async function raises(fn: () => Promise<unknown>): Promise<boolean> {
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** A fake REGISTRY resolver stamping a fixed factsRevision — assertion 6's probe. */
-const registryResolver = (revision: number): ProductFactsResolver => ({
-  async resolveMany(keys) {
-    return keys.map(() => ({
-      completeness: "KNOWN" as const,
-      source: "REGISTRY" as const,
-      phiDays: 14,
-      reiHours: 24,
-      rainfastHours: 2,
-      mobilityClass: "TRANSLAMINAR" as const,
-      resistanceGroups: ["FRAC:7", "FRAC:11"],
-      activeIngredientKeys: ["BOSCALID", "PYRACLOSTROBIN"],
-      activeIngredients: [{ name: "Boscalid", percentByWeight: 25.2, casNumber: null }],
-      factsRevision: revision,
-      factsAsOf: new Date("2026-06-01T00:00:00Z"),
-    }));
-  },
-});
+/**
+ * A fake REGISTRY resolver stamping a distinct COMPOSITE watermark per generation — assertion 6's
+ * probe. Shaped exactly like S2's frozen `PesticideFactsAsOf` (ISO strings, cuid revision id), so
+ * this fixture also pins the contract S2b must satisfy.
+ */
+const registryResolver = (gen: 1 | 2): ProductFactsResolver => {
+  const facts =
+    gen === 1
+      ? { publishedRevisionId: "rev_cuid_gen1", apprilAsOf: "2026-06-01T00:00:00.000Z", cdprAsOf: "2026-06-10T00:00:00.000Z", resistanceArtifactSha256: "sha_gen1" }
+      : { publishedRevisionId: "rev_cuid_gen2", apprilAsOf: "2026-11-01T00:00:00.000Z", cdprAsOf: "2026-11-10T00:00:00.000Z", resistanceArtifactSha256: "sha_gen2" };
+  return {
+    async resolveMany(keys) {
+      return keys.map(() => ({
+        completeness: "KNOWN" as const,
+        source: "REGISTRY" as const,
+        phiDays: 14,
+        reiHours: 24,
+        rainfastHours: 2,
+        mobilityClass: "TRANSLAMINAR" as const,
+        resistanceGroups: ["FRAC:7", "FRAC:11"],
+        activeIngredientKeys: ["BOSCALID", "PYRACLOSTROBIN"],
+        activeIngredients: [{ name: "Boscalid", percentByWeight: 25.2, casNumber: null }],
+        factsAsOf: facts,
+      }));
+    },
+  };
+};
 
 async function main() {
   const vineyardId = `qa-spray-vy-${runId}`;
@@ -222,22 +232,44 @@ async function main() {
       const factsPass = await recordSprayApplicationCore(
         actor,
         passInput({ blockLines: [{ blockId: blockIds[4] }] }),
-        { factsResolver: registryResolver(42) },
+        { factsResolver: registryResolver(1) },
       );
       const factsLines = await prisma.sprayMaterialLine.findMany({ where: { applicationId: factsPass.applicationId }, orderBy: { lineNo: "asc" } });
-      check("fixture resolver stamped factsRevision 42", factsLines.every((l) => l.factsRevision === 42));
+      check(
+        "fixture resolver stamped the COMPOSITE watermark (cuid revision id, per-source dates, artifact sha)",
+        factsLines.every(
+          (l) =>
+            l.factsPublishedRevisionId === "rev_cuid_gen1" &&
+            l.factsApprilAsOf?.toISOString() === "2026-06-01T00:00:00.000Z" &&
+            l.factsCdprAsOf?.toISOString() === "2026-06-10T00:00:00.000Z" &&
+            l.factsResistanceArtifactSha256 === "sha_gen1",
+        ),
+        factsLines.map((l) => ({ rev: l.factsPublishedRevisionId, april: l.factsApprilAsOf, cdpr: l.factsCdprAsOf })),
+      );
+      check(
+        "the display factsAsOf derives from the NEWEST component (cdpr 06-10, not april 06-01)",
+        factsLines.every((l) => l.factsAsOf?.toISOString() === "2026-06-10T00:00:00.000Z"),
+      );
 
-      // Header-only correction under a NEWER registry (revision 99): snapshot must NOT move.
+      // Header-only correction under a NEWER registry (gen 2 — November): snapshot must NOT move.
       const headerOnly = await correctSprayApplicationCore(
         actor,
         factsPass.applicationId,
         { ...passInput({ blockLines: [{ blockId: blockIds[4] }] }), groundSpeedKph: 5.1, correctionReason: "ground-speed typo" },
-        { factsResolver: registryResolver(99) },
+        { factsResolver: registryResolver(2) },
       );
       const afterHeaderFix = await prisma.sprayMaterialLine.findMany({ where: { applicationId: headerOnly.applicationId }, orderBy: { lineNo: "asc" } });
       check(
-        "a ground-speed-only correction leaves every line's factsRevision AND factsAsOf untouched (still 42)",
-        afterHeaderFix.every((l, i) => l.factsRevision === 42 && l.factsAsOf?.getTime() === factsLines[i].factsAsOf?.getTime()),
+        "a ground-speed-only correction copies EVERY component verbatim — no November data on a June spray",
+        afterHeaderFix.every(
+          (l, i) =>
+            l.factsPublishedRevisionId === "rev_cuid_gen1" &&
+            l.factsApprilAsOf?.getTime() === factsLines[i].factsApprilAsOf?.getTime() &&
+            l.factsCdprAsOf?.getTime() === factsLines[i].factsCdprAsOf?.getTime() &&
+            l.factsResistanceArtifactSha256 === "sha_gen1" &&
+            l.factsAsOf?.getTime() === factsLines[i].factsAsOf?.getTime(),
+        ),
+        afterHeaderFix.map((l) => ({ rev: l.factsPublishedRevisionId, april: l.factsApprilAsOf })),
       );
 
       // Now change line 1's product identity: THAT line re-resolves (99); line 2 stays 42.
@@ -249,11 +281,21 @@ async function main() {
         actor,
         headerOnly.applicationId,
         { ...identityInput, correctionReason: "wrong EPA reg number on line 1" },
-        { factsResolver: registryResolver(99) },
+        { factsResolver: registryResolver(2) },
       );
       const afterIdentityFix = await prisma.sprayMaterialLine.findMany({ where: { applicationId: identityFix.applicationId }, orderBy: { lineNo: "asc" } });
-      check("the changed line re-resolved to revision 99", afterIdentityFix[0].factsRevision === 99);
-      check("the untouched line KEPT revision 42 (per-line, not per-document)", afterIdentityFix[1].factsRevision === 42);
+      check(
+        "the changed line re-resolved to the gen-2 composite (every component moved together)",
+        afterIdentityFix[0].factsPublishedRevisionId === "rev_cuid_gen2" &&
+          afterIdentityFix[0].factsApprilAsOf?.toISOString() === "2026-11-01T00:00:00.000Z" &&
+          afterIdentityFix[0].factsResistanceArtifactSha256 === "sha_gen2",
+      );
+      check(
+        "the untouched line KEPT the gen-1 composite (per-line, not per-document)",
+        afterIdentityFix[1].factsPublishedRevisionId === "rev_cuid_gen1" &&
+          afterIdentityFix[1].factsApprilAsOf?.toISOString() === "2026-06-01T00:00:00.000Z" &&
+          afterIdentityFix[1].factsResistanceArtifactSha256 === "sha_gen1",
+      );
 
       // ── 4. correction-as-event mechanics ──
       console.log("\n── 4. correction-as-event ──");

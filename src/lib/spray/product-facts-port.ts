@@ -16,6 +16,25 @@ export interface ProductFactsKey {
   productName: string;
 }
 
+/**
+ * The facts-as-of watermark — a COMPOSITE, structurally identical to S2's frozen
+ * `PesticideFactsAsOf` (docs/spray_assistant/phases/S2-S3a-factsAsOf-contract.md). Declared
+ * here rather than imported from `src/lib/pesticide/` on purpose: this port is also how a
+ * NON-registry resolver answers (the S2b tenant-defined / grower-supplied path, rule §3.9), and
+ * the spray family must not take a hard dependency on the US registry lane.
+ *
+ * A null component means **we have never published that source** — render unknown, never "current".
+ * ISO strings, not Dates: this object is snapshot-COPIED onto an immutable record, and a
+ * JSON-round-trippable value survives that copy without a serialization seam (S2 contract, rule 1).
+ */
+export interface ProductFactsAsOf {
+  /** S2's `PesticideDataRevision` cuid. A STRING — never an Int (that was the shipped seam defect). */
+  publishedRevisionId: string;
+  apprilAsOf: string | null;
+  cdprAsOf: string | null;
+  resistanceArtifactSha256: string | null;
+}
+
 export interface ResolvedActiveIngredient {
   name: string;
   percentByWeight: number | null;
@@ -39,8 +58,9 @@ export interface ResolvedProductFacts {
   /** Normalized AI keys ("SULFUR"). null (or empty) = could not determine. */
   activeIngredientKeys: string[] | null;
   activeIngredients: ResolvedActiveIngredient[] | null;
-  factsRevision: number | null;
-  factsAsOf: Date | null;
+  /** The composite watermark naming WHICH facts these are. Null = the resolver has no provenance
+   * to offer (the null resolver, or a source that has never published). */
+  factsAsOf: ProductFactsAsOf | null;
 }
 
 export interface ProductFactsResolver {
@@ -58,7 +78,6 @@ export const UNRESOLVED_PRODUCT_FACTS: ResolvedProductFacts = {
   resistanceGroups: null,
   activeIngredientKeys: null,
   activeIngredients: null,
-  factsRevision: null,
   factsAsOf: null,
 };
 

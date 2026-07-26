@@ -96,3 +96,51 @@ describe("normalization", () => {
     expect(snap.snapshotResistanceGroups).toEqual(["FRAC:7"]);
   });
 });
+
+describe("S2↔S3a seam — the facts-as-of watermark is a COMPOSITE, not a scalar", () => {
+  // Shaped exactly like S2's frozen PesticideFactsAsOf (contract doc: phases/S2-S3a-factsAsOf-contract.md).
+  const registryFacts = {
+    publishedRevisionId: "cmxyz0000abcd", // a cuid STRING — the seam defect was an Int column
+    apprilAsOf: "2026-06-01T00:00:00.000Z",
+    cdprAsOf: "2026-06-10T00:00:00.000Z",
+    resistanceArtifactSha256: "sha256-of-the-committed-artifact",
+  };
+
+  it("flattens every component onto its own column — nothing is collapsed", () => {
+    const snap = buildFactsSnapshot(resolved({ source: "REGISTRY", factsAsOf: registryFacts }));
+    expect(snap.factsPublishedRevisionId).toBe("cmxyz0000abcd");
+    expect(snap.factsApprilAsOf?.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+    expect(snap.factsCdprAsOf?.toISOString()).toBe("2026-06-10T00:00:00.000Z");
+    expect(snap.factsResistanceArtifactSha256).toBe("sha256-of-the-committed-artifact");
+  });
+
+  it("the display factsAsOf is the NEWEST component, not the first or an average", () => {
+    const snap = buildFactsSnapshot(resolved({ source: "REGISTRY", factsAsOf: registryFacts }));
+    expect(snap.factsAsOf?.toISOString()).toBe("2026-06-10T00:00:00.000Z"); // cdpr, not april
+  });
+
+  it("a null component stays null — 'never published' is not 'current' (rule §3.6)", () => {
+    const snap = buildFactsSnapshot(
+      resolved({ source: "REGISTRY", factsAsOf: { ...registryFacts, cdprAsOf: null, resistanceArtifactSha256: null } }),
+    );
+    expect(snap.factsCdprAsOf).toBeNull();
+    expect(snap.factsResistanceArtifactSha256).toBeNull();
+    // …and the display date falls back to the newest component that DOES exist.
+    expect(snap.factsAsOf?.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+  });
+
+  it("no watermark at all (the null resolver) leaves every component null", () => {
+    const snap = buildFactsSnapshot(resolved({}));
+    expect(snap.factsPublishedRevisionId).toBeNull();
+    expect(snap.factsApprilAsOf).toBeNull();
+    expect(snap.factsCdprAsOf).toBeNull();
+    expect(snap.factsResistanceArtifactSha256).toBeNull();
+    expect(snap.factsAsOf).toBeNull();
+  });
+
+  it("a malformed ISO component is null, never an Invalid Date", () => {
+    const snap = buildFactsSnapshot(resolved({ source: "REGISTRY", factsAsOf: { ...registryFacts, apprilAsOf: "not-a-date" } }));
+    expect(snap.factsApprilAsOf).toBeNull();
+    expect(snap.factsAsOf?.toISOString()).toBe("2026-06-10T00:00:00.000Z");
+  });
+});
