@@ -338,3 +338,34 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   labelled as such, never re-aggregated. Non-soil map units (Water/Pits/Rock outcrop) are classified
   explicitly and never presented as a soil (spike NEW-1). This is NOT a lint (the design says so); the guard
   proves the positive shape and this note + review checklist enforce the absence. `npm run verify:soil`.
+
+## Spray Intelligence — the application record (S3a)
+
+> Machine-readable notes: [[SPRAY-1-append-only-correction-as-event]] · [[SPRAY-2-facts-as-of-snapshot]] ·
+> [[SPRAY-3-gap-renders-unknown]] · [[SPRAY-4-planned-harvest-audited]] · [[SPRAY-5-dried-before-rain-derived]].
+> All five guarded by `npm run verify:spray-record`.
+
+- **Spray history is append-only, corrected as an event (SPRAY-1, critical, database).** A Postgres
+  `BEFORE UPDATE` trigger refuses any content change on all six append-only tables (per-table
+  bookkeeping allowlists only: `status`+`supersededByApplicationId` on the header, `effectiveTo`+`status`
+  on the harvest event, the derived `driedBeforeRain*` on the block line, NOTHING on the override).
+  A correction appends a full new revision; `UNIQUE(tenantId, supersedesApplicationId)` makes it
+  at-most-once, and a VOID is a SUCCESSOR ROW so the same unique kills the void race (council C2).
+  DELETE requires the `app.allow_spray_purge` GUC on a non-app_rls connection (C15) — QA teardown only.
+- **Decisions replay under facts-as-of-then (SPRAY-2, critical, core).** Each material line freezes a
+  facts snapshot with `factsRevision`+`factsAsOf`. A correction COPIES the snapshot verbatim and
+  re-resolves ONLY a line whose product identity changed (KD-14 — council G1 reversed the original
+  re-resolve design; do not "fix" it back).
+- **A gap renders as UNKNOWN, never clear (SPRAY-3, critical, database).** DB CHECKs make
+  `snapshotResistanceGroups=[] ∧ resistanceGroupsKnown=true` impossible and force both knownness flags
+  for `factsCompleteness=KNOWN` (council C7). `rotationContribution` keys off knownness, never array
+  length; an unconfirmed legacy field-note spray BLOCKS a rotation-OK claim.
+- **The planned harvest date is an audited event stream (SPRAY-4, high, database).** Closed-interval
+  versions (Shape D), one open row per (block, vintage, passLabel) by partial unique, zero open rows =
+  no planned date; point-in-time reads; the stream IS the outbox — S7a consumes
+  `plannedHarvestChangesSince(cursor)` as a watermark (council C4). Split picks coexist (G4); PHI reads
+  the EARLIEST open date.
+- **driedBeforeRain is derived, never self-reported (SPRAY-5, high, core).** Computed from the block's
+  own finish time + hourly precip through an injected port, or UNKNOWN; the human correction is an
+  attributed append-only override row. A null block `finishedAt` yields REI/residual UNKNOWN and never
+  borrows the header timestamp (G2/C14 — worker safety, not data quality).
