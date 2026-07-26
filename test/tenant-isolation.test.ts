@@ -166,6 +166,11 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await owner.vineyardBlock.upsert({ where: { id: "isov_blk_b" }, update: {}, create: { id: "isov_blk_b", vineyardId: "isov_vy_b", tenantId: B, updatedAt: now } });
     await owner.brixLog.upsert({ where: { id: "isov_brix_a" }, update: {}, create: { id: "isov_brix_a", blockId: "isov_blk_a", vineyardId: "isov_vy_a", brixValue: "22.5", createdByEmail: "iso@test", tenantId: A } });
     await owner.brixLog.upsert({ where: { id: "isov_brix_b" }, update: {}, create: { id: "isov_brix_b", blockId: "isov_blk_b", vineyardId: "isov_vy_b", brixValue: "23.5", createdByEmail: "iso@test", tenantId: B } });
+    // S3a: spray record fixtures (append-only tables — cleanup runs in a purge-GUC owner tx).
+    await owner.sprayApplication.upsert({ where: { id: "isov_spray_a" }, update: {}, create: { id: "isov_spray_a", tenantId: A, vineyardId: "isov_vy_a", applicatorName: "Iso A", applicationMethod: "AIRBLAST", startedAt: now, enteredByEmail: "iso@test" } });
+    await owner.sprayApplication.upsert({ where: { id: "isov_spray_b" }, update: {}, create: { id: "isov_spray_b", tenantId: B, vineyardId: "isov_vy_b", applicatorName: "Iso B", applicationMethod: "AIRBLAST", startedAt: now, enteredByEmail: "iso@test" } });
+    await owner.sprayBlockLine.upsert({ where: { id: "isov_sbl_a" }, update: {}, create: { id: "isov_sbl_a", tenantId: A, applicationId: "isov_spray_a", blockId: "isov_blk_a", blockLabelSnapshot: "Iso Block A", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } });
+    await owner.sprayBlockLine.upsert({ where: { id: "isov_sbl_b" }, update: {}, create: { id: "isov_sbl_b", tenantId: B, applicationId: "isov_spray_b", blockId: "isov_blk_b", blockLabelSnapshot: "Iso Block B", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } });
     // Phase 14 compliance tables (checklist item 9).
     const period = { periodStart: now, periodEnd: now, onHandEnd: {}, computed: {}, overrides: {} };
     await owner.complianceReport.upsert({ where: { id: "isov_rep_a" }, update: {}, create: { id: "isov_rep_a", tenantId: A, updatedAt: now, ...period } });
@@ -235,6 +240,12 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await owner.workOrder.deleteMany({ where: { id: { in: ["isov_wo_a", "isov_wo_b", "isov_wo_x"] } } });
     await owner.complianceReport.deleteMany({ where: { id: { in: ["isov_rep_a", "isov_rep_b"] } } });
     await owner.brixLog.deleteMany({ where: { id: { in: ["isov_brix_a", "isov_brix_b"] } } });
+    // S3a: append-only spray rows — DELETE needs the purge GUC on a non-app_rls connection (C15).
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.allow_spray_purge', 'on', true)`;
+      await tx.sprayBlockLine.deleteMany({ where: { id: { in: ["isov_sbl_a", "isov_sbl_b", "isov_sbl_fk"] } } });
+      await tx.sprayApplication.deleteMany({ where: { id: { in: ["isov_spray_a", "isov_spray_b", "isov_spray_x"] } } });
+    });
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["isov_blk_a", "isov_blk_b"] } } });
     await owner.vineyard.deleteMany({ where: { id: { in: ["isov_vy_a", "isov_vy_b"] } } });
     await owner.lot.deleteMany({ where: { id: { in: ["isov_a", "isov_b"] } } });
@@ -406,6 +417,20 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
         const op = await db.lotOperation.create({ data: { type: "SEED", enteredBy: "iso@test", tenantId: A }, select: { id: true } });
         await db.lotOperationLine.create({ data: { tenantId: A, operationId: op.id, lotId: "isov_b", deltaL: 1, bucket: "EXTERNAL", lotCode: "X" } });
       }),
+    ).rejects.toThrow();
+  });
+
+  it("spray_application + spray_block_line tenant-isolated (S3a): A can't see B's; foreign INSERT + cross-tenant block FK rejected", async () => {
+    expect(await asTenant(A, (db) => db.sprayApplication.findFirst({ where: { id: "isov_spray_a" } }))).not.toBeNull();
+    expect(await asTenant(A, (db) => db.sprayApplication.findFirst({ where: { id: "isov_spray_b" } }))).toBeNull();
+    expect(await asTenant(A, (db) => db.sprayBlockLine.findFirst({ where: { id: "isov_sbl_b" } }))).toBeNull();
+    // WITH CHECK: inserting a foreign tenantId while in tenant A raises.
+    await expect(
+      asTenant(A, (db) => db.sprayApplication.create({ data: { id: "isov_spray_x", tenantId: B, vineyardId: "isov_vy_a", applicatorName: "Iso X", applicationMethod: "AIRBLAST", startedAt: new Date(), enteredByEmail: "iso@test" } })),
+    ).rejects.toThrow();
+    // Composite (tenantId, blockId) FK (K11): a block line cannot reference another tenant's block.
+    await expect(
+      asTenant(A, (db) => db.sprayBlockLine.create({ data: { id: "isov_sbl_fk", tenantId: A, applicationId: "isov_spray_a", blockId: "isov_blk_b", blockLabelSnapshot: "X", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } })),
     ).rejects.toThrow();
   });
 

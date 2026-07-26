@@ -204,6 +204,12 @@ async function main() {
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_b" }, update: {}, create: { id: "iso_blk_b", vineyardId: "iso_vy_b", tenantId: B, updatedAt: now } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_a" }, update: {}, create: { id: "iso_brix_a", blockId: "iso_blk_a", vineyardId: "iso_vy_a", brixValue: "22.5", createdByEmail: "iso@test", tenantId: A } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_b" }, update: {}, create: { id: "iso_brix_b", blockId: "iso_blk_b", vineyardId: "iso_vy_b", brixValue: "23.5", createdByEmail: "iso@test", tenantId: B } });
+  // S3a: spray record fixtures (header + block line per tenant). Append-only tables — cleanup
+  // below runs in a purge-GUC transaction (owner role) or the DELETE trigger refuses it.
+  await owner.sprayApplication.upsert({ where: { id: "iso_spray_a" }, update: {}, create: { id: "iso_spray_a", tenantId: A, vineyardId: "iso_vy_a", applicatorName: "Iso A", applicationMethod: "AIRBLAST", startedAt: now, enteredByEmail: "iso@test" } });
+  await owner.sprayApplication.upsert({ where: { id: "iso_spray_b" }, update: {}, create: { id: "iso_spray_b", tenantId: B, vineyardId: "iso_vy_b", applicatorName: "Iso B", applicationMethod: "AIRBLAST", startedAt: now, enteredByEmail: "iso@test" } });
+  await owner.sprayBlockLine.upsert({ where: { id: "iso_sbl_a" }, update: {}, create: { id: "iso_sbl_a", tenantId: A, applicationId: "iso_spray_a", blockId: "iso_blk_a", blockLabelSnapshot: "Iso Block A", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } });
+  await owner.sprayBlockLine.upsert({ where: { id: "iso_sbl_b" }, update: {}, create: { id: "iso_sbl_b", tenantId: B, applicationId: "iso_spray_b", blockId: "iso_blk_b", blockLabelSnapshot: "Iso Block B", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } });
   // VI-P1: a planting area per tenant (analysis mask parent). geometry/fingerprint/anchor are opaque here.
   const isoGeom = { type: "Polygon", coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] };
   const isoAnchor = { epsg: 32617, originX: 0, originY: 0 };
@@ -679,6 +685,22 @@ async function main() {
     } catch { soilBlockFkRaised = true; }
     check("soil cross-tenant block reference rejected (composite FK, K11)", soilBlockFkRaised);
 
+    // 5c-S3a. spray_application + spray_block_line: RLS isolation, WITH CHECK on a foreign INSERT,
+    // and the composite (tenantId, blockId) FK (K11) rejecting a cross-tenant block reference.
+    check("tenant A sees its own spray_application", (await asTenant(A, (db) => db.sprayApplication.findFirst({ where: { id: "iso_spray_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's spray_application (RLS)", (await asTenant(A, (db) => db.sprayApplication.findFirst({ where: { id: "iso_spray_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's spray_block_line (RLS)", (await asTenant(A, (db) => db.sprayBlockLine.findFirst({ where: { id: "iso_sbl_b" } }))) === null);
+    let sprayInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.sprayApplication.create({ data: { id: "iso_spray_x", tenantId: B, vineyardId: "iso_vy_a", applicatorName: "Iso X", applicationMethod: "AIRBLAST", startedAt: new Date(), enteredByEmail: "iso@test" } }));
+    } catch { sprayInsertRaised = true; }
+    check("foreign-tenant spray_application INSERT raises (WITH CHECK)", sprayInsertRaised);
+    let sprayBlockFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.sprayBlockLine.create({ data: { id: "iso_sbl_fk", tenantId: A, applicationId: "iso_spray_a", blockId: "iso_blk_b", blockLabelSnapshot: "X", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } }));
+    } catch { sprayBlockFkRaised = true; }
+    check("spray_block_line cross-tenant block reference rejected (composite FK, K11)", sprayBlockFkRaised);
+
     // 5d. Phase 15: accounting_connection (the ENCRYPTED-TOKEN table) is tenant-isolated through the
     // pooled endpoint. This is the one that matters most — a leak here is a cross-tenant token read.
     const aSeesConnB = await asTenant(A, (db) => db.accountingConnection.findFirst({ where: { id: "iso_acct_conn_b" } }));
@@ -1061,6 +1083,13 @@ async function main() {
     await owner.spatialDataset.deleteMany({ where: { id: { in: ["iso_ds_a", "iso_ds_b"] } } });
     await owner.spatialScene.deleteMany({ where: { id: { in: ["iso_scene_a", "iso_scene_b", "iso_scene_x"] } } });
     await owner.cdseUsageCounter.deleteMany({ where: { yearMonth: "2026-07", tenantId: { in: [A, B] } } });
+    // S3a: spray rows are append-only — DELETE requires the purge GUC on a non-app_rls connection
+    // (council C15), so the teardown runs inside one owner transaction with the flag set.
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.allow_spray_purge', 'on', true)`;
+      await tx.sprayBlockLine.deleteMany({ where: { id: { in: ["iso_sbl_a", "iso_sbl_b", "iso_sbl_fk"] } } });
+      await tx.sprayApplication.deleteMany({ where: { id: { in: ["iso_spray_a", "iso_spray_b", "iso_spray_x"] } } });
+    });
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["iso_blk_a", "iso_blk_b"] } } });
     // VI-P1: geometry_version FK's organization (RESTRICT), so delete before the org drop; planting areas
     // after their blocks (block→planting is RESTRICT) and before the vineyard (which would cascade them).
