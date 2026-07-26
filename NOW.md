@@ -30,6 +30,27 @@ palette, legend+badges) · locked-domain side-by-side comparison + saved styles 
   smoothing; polygon-exact display clip (v1 = estate AOI masked to valid pixels); TENANT-scope styles.
 </details>
 
+<details><summary>✅ VI P8 — Weather & Climate spine — BUILT (Units 1–11) + browser-verified 2026-07-25, UNMERGED</summary>
+
+`docs/GIS/phases/phase-8-weather-climate-spine-plan.md` (BUILT) · report `phase-8-report.md`. Branch
+`claude/distracted-edison-bcf259` (11 commits). **Migration `20260725150000_weather_schema` is APPLIED to prod**
+(bumped past the parallel P3 `ndvi_display` + P4 `soil_snapshot` slices already in the DB).
+
+**Proven with REAL live data** (Russian River Ranch + Bhutan) + a deterministic fixture gate:
+- 3 tenant tables (fact-table `vineyard_climate_daily` + 1:1 `vineyard_weather_config` + daily-keyed
+  `weather_provider_usage`); 6-provider registry (gridMET-via-ACIS, RCC-ACIS station, NASA POWER, USGS EPQS
+  LIVE; Daymet+CDO fixture-tested); ingest (344 rows/4.7s, obs-shift visible); `query_climate` tool (R9
+  freshness fallback + operating-tz-beats-viewer both proven live); grower card (browser-rendered real data:
+  GDD 656.5, Winkler I, GST 18.42 Warm, **3-source spread 499–656**).
+- Gates: `verify:weather` 12/12, `verify:tenant-isolation` ✓, `verify:ai-native` ✓, 46 weather unit tests, +4 goldens.
+- ⚠️ **Isolated worktree Prisma client** (copied @prisma into worktree + generated) so DB/dev-server work here
+  never touched the P4 session's main-checkout client. `.env` copied into worktree (gitignored).
+
+**Follow-ons (small):** alert INBOX EMIT stubbed (detection done); explicit weather case in
+`verify-tenant-isolation.ts`; gridMET RH needs a direct adapter (4B); doc weave (brief §13/§14 + runbook
+ledger); **merge the code PR after P3/P4 slices settle** (Unit 1 migration already in prod).
+</details>
+
 <details><summary>✅ Vineyard Intelligence P2 — NDVI core (data half) — SHIPPED + LIVE IN PROD 2026-07-25</summary>
 
 All 11 units merged: schema slice **[#495](https://github.com/russellmoss/wine-inventory/pull/495)** + feature units

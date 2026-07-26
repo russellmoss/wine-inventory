@@ -49,6 +49,7 @@ import { queryOperationsTool } from "./tools/query-operations";
 import { estimatePackagingNeedsTool } from "./tools/estimate-packaging-needs";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryNdviStatsTool } from "./tools/query-ndvi-stats";
+import { queryClimateTool } from "./tools/query-climate";
 import { compareNdviDatesTool } from "./tools/compare-ndvi-dates";
 import { processNdviTool } from "./tools/process-ndvi";
 import { describePlantingStructureTool } from "./tools/describe-planting-structure";
@@ -144,6 +145,7 @@ const ALL_TOOLS: AssistantTool[] = [
   estimatePackagingNeedsTool,
   queryVineyardStatusTool,
   queryNdviStatsTool,
+  queryClimateTool,
   processNdviTool,
   describePlantingStructureTool,
   queryFieldReportsTool,
