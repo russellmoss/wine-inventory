@@ -668,7 +668,15 @@ function renderManifest(o: {
   return L.join("\n");
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// ⚠️ ENTRY-POINT GUARD. This module EXPORTS `readFixture`, `siteLocal` and `ARCHIVE_MODELS`, which
+// Unit 5 imports. Without this guard, importing any of them re-runs the entire fixture harvest and
+// verification as a side effect of the import — which is exactly what happened on Unit 5's first run:
+// its output was interleaved with a full re-verification of all 100 fixtures. Harmless here only
+// because the harvest is idempotent; in a script that wrote anywhere else it would not have been.
+const isEntryPoint = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop()!);
+if (isEntryPoint) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
