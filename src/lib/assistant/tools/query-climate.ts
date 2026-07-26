@@ -123,12 +123,13 @@ export const queryClimateTool: AssistantTool = {
         // Rolling recent rainfall (plan 096 U8) — year-round rows make this answerable in winter too.
         rainfallLast30Days: (() => {
           const r = composeRainfallRangeCore({
-            rows: primaryRows.map((row) => ({ providerKey: row.providerKey, localDate: row.localDate, precipMm: row.precipMm })),
+            rows: dailyRows.map((row) => ({ providerKey: row.providerKey, localDate: row.localDate, precipMm: row.precipMm })),
             primaryProviderKey: s.primaryProviderKey,
+            historyProviderKey: s.coverageState === "US_HIGH_RES" ? "gridmet" : "nasa_power",
             startIso: addDaysIso(todayLocal, -29),
             endIso: todayLocal,
           });
-          return { totalMm: r.stats.totalMm, wetDays: r.stats.wetDays, daysSinceLastRain: r.stats.daysSinceLastRain, missingDays: r.stats.missingDays };
+          return { totalMm: r.stats.totalMm, wetDays: r.stats.wetDays, daysSinceLastRain: r.stats.daysSinceLastRain, missingDays: r.stats.missingDays, filledDays: r.stats.filledDays };
         })(),
         compareSources: s.spread ? { gddRange: `${s.spread.min}–${s.spread.max} GDD across ${s.spread.sources.join(", ")}`, perSource: s.perSource } : undefined,
         lastRefresh: s.lastRefreshAt,

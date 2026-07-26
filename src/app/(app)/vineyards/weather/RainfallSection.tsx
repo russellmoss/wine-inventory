@@ -133,7 +133,8 @@ export function RainfallSection({ vineyardId, unitSystem }: { vineyardId: string
           <RainfallChart days={data.days} unitSystem={unitSystem} />
           <div style={{ ...label, textTransform: "none" }}>
             Regional Rainfall Estimate (≈4 km average, not your rain gauge).
-            {data.stats.missingDays > 0 && ` ${data.stats.missingDays} of ${data.days.length} days have no reading from the primary source — gaps, not zeros.`}
+            {data.stats.filledDays > 0 && ` ${data.stats.filledDays} of ${data.days.length} days come from the regional history grid (${data.historyProviderKey}) where the primary source has no reading — one labeled source per day, never a blend.`}
+            {data.stats.missingDays > 0 && ` ${data.stats.missingDays} of ${data.days.length} days have no reading from either source — gaps, not zeros.`}
           </div>
         </>
       )}

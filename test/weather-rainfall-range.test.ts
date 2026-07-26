@@ -74,6 +74,36 @@ describe("composeRainfallRangeCore", () => {
     expect(r.stats.lowConfidence).toBe(true);
   });
 
+  it("labeled history fallback: a day the primary lacks comes from the history provider, stamped", () => {
+    const r2 = composeRainfallRangeCore({
+      rows: [row("2026-01-01", 5, "rcc_acis"), row("2026-01-02", 3, "gridmet")],
+      primaryProviderKey: "rcc_acis",
+      historyProviderKey: "gridmet",
+      startIso: "2026-01-01",
+      endIso: "2026-01-02",
+    });
+    expect(r2.days[0]).toMatchObject({ precipMm: 5, source: "primary" });
+    expect(r2.days[1]).toMatchObject({ precipMm: 3, source: "history" });
+    expect(r2.stats.filledDays).toBe(1);
+    expect(r2.stats.missingDays).toBe(0);
+    expect(r2.historyProviderKey).toBe("gridmet");
+    expect(r2.stats.totalMm).toBe(8);
+  });
+
+  it("primary wins over history on the same day; a NON-designated provider is still ignored", () => {
+    const r = composeRainfallRangeCore({
+      rows: [row("2026-01-01", 5, "rcc_acis"), row("2026-01-01", 99, "gridmet"), row("2026-01-02", 42, "daymet")],
+      primaryProviderKey: "rcc_acis",
+      historyProviderKey: "gridmet",
+      startIso: "2026-01-01",
+      endIso: "2026-01-02",
+    });
+    expect(r.days[0]).toMatchObject({ precipMm: 5, source: "primary" }); // never averaged with gridmet's 99
+    expect(r.days[1].precipMm).toBeNull(); // daymet is not the designated history source
+    expect(r.stats.filledDays).toBe(0);
+    expect(r.historyProviderKey).toBeNull(); // no fills happened
+  });
+
   it("rejects an over-cap range and a backwards range", () => {
     expect(() =>
       composeRainfallRangeCore({ rows: [], primaryProviderKey: "gridmet", startIso: "2020-01-01", endIso: "2026-01-01" }),

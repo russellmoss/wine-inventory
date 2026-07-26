@@ -210,18 +210,22 @@ export async function loadVineyardRainfallRange(
     await requireReadyUser();
     const configRow = await prisma.vineyardWeatherConfig.findFirst({
       where: { vineyardId },
-      select: { primaryProviderKey: true, primaryProviderOverride: true, unitSystem: true },
+      select: { primaryProviderKey: true, primaryProviderOverride: true, unitSystem: true, coverageState: true },
     });
     if (!configRow) return { ok: false, error: "This vineyard has no weather set up yet — refresh its weather first." };
     const primary = effectivePrimary({ primaryProviderKey: configRow.primaryProviderKey, primaryProviderOverride: configRow.primaryProviderOverride });
+    // The deep-history source (mirrors backfill-core's provider choice) — labeled per-day fallback
+    // where the primary (e.g. a station) has no off-season coverage. One source per day, never a mix.
+    const historyKey = configRow.coverageState === "US_HIGH_RES" ? "gridmet" : "nasa_power";
     const rows = await prisma.vineyardClimateDaily.findMany({
-      where: { vineyardId, providerKey: primary, localDate: { gte: new Date(`${startIso}T00:00:00.000Z`), lte: new Date(`${endIso}T00:00:00.000Z`) } },
+      where: { vineyardId, providerKey: { in: [primary, historyKey] }, localDate: { gte: new Date(`${startIso}T00:00:00.000Z`), lte: new Date(`${endIso}T00:00:00.000Z`) } },
       select: { providerKey: true, localDate: true, precipMm: true },
       orderBy: { localDate: "asc" },
     });
     const range = composeRainfallRangeCore({
       rows: rows.map((r) => ({ providerKey: r.providerKey, localDate: r.localDate.toISOString().slice(0, 10), precipMm: dec(r.precipMm) })),
       primaryProviderKey: primary,
+      historyProviderKey: historyKey,
       startIso,
       endIso,
     });
