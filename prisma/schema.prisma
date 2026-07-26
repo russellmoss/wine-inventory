@@ -437,6 +437,7 @@ model Vineyard {
   isActive           Boolean                @default(true)
   plantingMigratedAt DateTime? // VI-P1: set when the vineyard's blocks were migrated into planting areas (all-or-nothing gate). NULL = not migrated.
   ndviAutoAdd        Boolean                @default(false) // VI-P2: DARK per-vineyard flag — cron auto-enqueues the best new clear NDVI scene ONLY when true (rule §2.8, default off)
+  weatherAutoRefresh Boolean                @default(false) // VI-P8: DARK per-vineyard flag — cron auto-refreshes the daily weather series ONLY when true (default off, mirrors ndviAutoAdd)
   createdAt          DateTime               @default(now())
   components         VesselComponent[]
   bottlingSources    BottlingSource[]
@@ -861,6 +862,85 @@ model BlockSoilSnapshot {
   @@index([tenantId, blockId]) // read the current + history for a block
   @@index([tenantId, vineyardId]) // per-vineyard soil overview (sums block areas; never blends properties)
   @@map("block_soil_snapshot")
+}
+
+// ───────────────────────── VI-P8: Weather & Climate spine (Release 4A) ─────────────────────────
+
+// The AUTHORITATIVE daily climate series (council R1): ONE row per (tenant, vineyard, localDate, providerKey) —
+// a raw per-provider daily observation, metrics wide. There is NO mutable snapshot / CURRENT-SUPERSEDED
+// machine; rows are UPSERTED on the unique key (recent days PROVISIONAL→FINAL as gridMET/CFSv2 finalize), so
+// there is no supersede race. `localDate` is the canonical vineyard-LOCAL civil day normalized AT INGEST
+// (council R2 obs-time shift — Tmax→date−1 for AM-obs stations, grids UTC/midnight converted); it is NEVER a
+// raw provider date. Every row is strictly SINGLE-PROVIDER — `providerKey` IS the source (no metricSource
+// column). Gap-fill + spread are computed ON READ from these pure rows (council confirmatory gate): there is
+// deliberately NO filledFromProvider column. Numeric-sanity CHECKs (tminC≤tmaxC, RH 0..100, precip≥0) in the migration.
+model VineyardClimateDaily {
+  tenantId    String   @default("") // Phase 12 tenant scope; FK+RLS at DB level (AGENTS.md 9-step)
+  id          String   @id @default(cuid())
+  vineyardId  String // composite FK → vineyard(tenantId, id) (raw SQL, K11)
+  providerKey String // the SINGLE source of this row: "gridmet" | "daymet" | "nasa_power" | "rcc_acis" | "noaa_cdo"
+  localDate   DateTime @db.Date // canonical vineyard-local civil day (obs-time normalized at ingest, R2)
+  tmaxC       Decimal? @db.Decimal(6, 3) // daily max temp °C (nullable — a provider may not carry a metric)
+  tminC       Decimal? @db.Decimal(6, 3) // daily min temp °C
+  precipMm    Decimal? @db.Decimal(8, 3) // daily precipitation mm
+  rhMaxPct    Decimal? @db.Decimal(6, 3) // daily max relative humidity % (grids only; stored for 4B disease inputs)
+  rhMinPct    Decimal? @db.Decimal(6, 3) // daily min relative humidity %
+  dataStatus  String   @default("PROVISIONAL") // String union (no enum): "PROVISIONAL" | "FINAL"
+  provenance  Json // { fetchedAt, sourceUrl, obsConvention, sourceDate, units, resolutionM, attribution }
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, vineyardId, localDate, providerKey]) // R1: the upsert identity; no CURRENT flag → no supersede race
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, vineyardId, localDate]) // the real read path (a vineyard's series over a window)
+  @@map("vineyard_climate_daily")
+}
+
+// Replaces the mutable snapshot (council R1): EXACTLY ONE row per vineyard (1:1), so the "one current config"
+// invariant is STRUCTURAL — no partial index, no status flag. Holds the resolved primary provider + the
+// grower override (effectivePrimary = primaryProviderOverride ?? primaryProviderKey, R14 — one shared helper
+// so ingest and every read agree), the chosen reference station + station-vs-site elevation delta that
+// explains the gap, and the coverage state (US_HIGH_RES via gridMET/Daymet | GLOBAL_COARSE via NASA POWER for
+// non-US like Bhutan | UNAVAILABLE — never a blank). Attribution + last-refresh for the offline-rendered card.
+model VineyardWeatherConfig {
+  tenantId                String    @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                      String    @id @default(cuid())
+  vineyardId              String // composite FK → vineyard(tenantId, id); 1:1 per vineyard
+  primaryProviderKey      String // resolved default primary (nearest quality station, else grid)
+  primaryProviderOverride String? // grower's explicit choice; effectivePrimary = override ?? primaryProviderKey (R14)
+  stationOverrideId       String? // grower-chosen ACIS station sid (map pick); when set, ingest uses THIS station, not the auto-nearest
+  stationId               String? // active reference station id (RCC-ACIS / NOAA) — the override if chosen, else the auto-nearest
+  stationName             String?
+  stationDistanceM        Decimal?  @db.Decimal(12, 2) // station→site distance (m)
+  stationElevationDeltaM  Decimal?  @db.Decimal(10, 2) // station elevation − site elevation (m); explains any gap
+  siteElevationM          Decimal?  @db.Decimal(10, 2) // vineyard site elevation (USGS EPQS)
+  coverageState           String    @default("UNAVAILABLE") // String union: "US_HIGH_RES" | "GLOBAL_COARSE" | "UNAVAILABLE"
+  attribution             String? // combined provider attribution for the card
+  lastRefreshAt           DateTime? // last successful ingest
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([tenantId, vineyardId]) // 1:1 per vineyard — the structural "one current" invariant
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11)
+  @@index([tenantId])
+  @@map("vineyard_weather_config")
+}
+
+// Per-tenant/DAY per-provider request counter (council R1/Codex#4): the enforcement key is DAILY (`dayKey
+// @db.Date`) because NOAA CDO's cap is 10k/DAY (5 req/s) — a monthly key would mis-enforce it. Counts BILLABLE
+// provider attempts (success or fail). Drives the sweep's headroom gate. Atomic upsert increments (usage-core).
+model WeatherProviderUsage {
+  tenantId     String   @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  dayKey       DateTime @db.Date // the daily billing bucket (UTC civil day) — the CDO daily-cap enforcement key
+  provider     String // "gridmet" | "daymet" | "nasa_power" | "rcc_acis" | "noaa_cdo" | "usgs_epqs"
+  requestCount Int      @default(0) // billable provider requests that day (success or fail)
+  lastError    String?
+  updatedAt    DateTime @updatedAt
+
+  @@id([tenantId, dayKey, provider]) // one row per tenant per day per provider (the daily enforcement key)
+  @@index([tenantId])
+  @@map("weather_provider_usage")
 }
 
 // ───────────────────────── Vineyard Intelligence P3: NDVI display (viz half of Release 1B) ─────────────────────────

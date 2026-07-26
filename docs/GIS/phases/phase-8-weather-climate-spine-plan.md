@@ -1,7 +1,7 @@
 ---
 title: Release 4A — Weather & Climate spine (Vineyard Intelligence phase P8)
 type: feat
-status: planning (council-revised 2026-07-25)
+status: BUILT (Units 1–11, unmerged) 2026-07-25 — see phase-8-report.md
 date: 2026-07-25
 branch: (unset — plan only)
 depth: deep
@@ -11,11 +11,14 @@ design: docs/GIS/vineyard-weather-climate-design.md
 council: docs/GIS/phases/phase-8-council-feedback.md
 ---
 
-> **Council-revised + owner-decided.** Codex + Gemini review ([phase-8-council-feedback.md](phase-8-council-feedback.md))
-> surfaced a schema-authority tension, an observation-time timezone hole, a gap-fill/spread contradiction,
-> and several agronomic bugs. All folded as **Council revisions R1–R16** below — **authoritative where they
-> conflict with the original units; read them before executing.** The three product questions (primary-source
-> model, frost framing, card placement) are decided: R14/R15/R16. Ready for `/work` after P3 ships.
+> **Council-revised + owner-decided + units reconciled.** Codex + Gemini review
+> ([phase-8-council-feedback.md](phase-8-council-feedback.md)) surfaced a schema-authority tension, an
+> observation-time timezone hole, a gap-fill/spread contradiction, and several agronomic bugs. All folded as
+> **Council revisions R1–R16** below, and — as of the 2026-07-25 reconciliation pass — **folded DOWN into the
+> Implementation Units themselves**, so the units no longer describe the superseded mutable-snapshot schema.
+> Units 1/2/4/5/6/7 and the Requirements/Success Criteria now match R1–R16; where a unit and a revision ever
+> disagree, **the revision still wins.** The three product questions (primary-source model, frost framing,
+> card placement) are decided: R14/R15/R16. **Execution-ready for `/work`** (build after or in parallel with P3).
 
 ## Overview
 
@@ -78,16 +81,20 @@ one assistant tool + one grower card.
   the operating timezone beats the viewer, is resolved **route-side** (never a DB read inside
   `runAssistant`), and tool handlers use `ctx.timeZone` + `zonedDateKey`. `"EST"` fixed-offset is a trap —
   reuse `resolveOperatingTimeZone`/`zonedDateKey` from `src/lib/work-orders/due-at.ts`.
-- **MUST** persist three tenant-scoped tables per the AGENTS.md Phase-12 checklist:
-  `VineyardWeatherSnapshot` (dated pull + provenance + station/elevation delta + coverage state +
-  current/superseded/stale), `VineyardClimateDaily` (the daily series — tmax/tmin/precip/RH per date, per
-  source, gap-fill stamp), `WeatherProviderUsage` (per-tenant/month per-provider request counter, for the
-  CDO 10k/day, 5 req/s cap). Prefer **String-union status fields over enums** (Windows enum-ordering trap;
-  mirror the P2 `withheldReason`/`faultClass` pattern).
-- **MUST** ingest via a **cron-driven, claim-first, idempotent snapshot job** (mirror the P2
-  `SpatialAnalysisJob` sweep + `AccountingDelivery`), NOT a worker. Idempotency key on
-  `(tenant, vineyard, providerKey, dateWindow)`. A daily append + weekly season-aggregate recompute.
-- **MUST** render **offline from the stored snapshot** (no live provider call on page open), with a
+- **MUST** persist three tenant-scoped tables per the AGENTS.md Phase-12 checklist (R1 — fact-table
+  authoritative, no mutable-snapshot machine): **`VineyardClimateDaily`** (the authoritative daily series —
+  one row per `(tenant, vineyard, localDate, providerKey)`, tmax/tmin/precip/RH per source, `PROVISIONAL`/
+  `FINAL`, gap-fill stamp, provenance), **`VineyardWeatherConfig`** (1:1 per vineyard — resolved/overridden
+  primary provider + station/elevation delta + coverage state + attribution; replaces the snapshot's
+  mutable status, so the "one current" invariant is structural), **`WeatherProviderUsage`** (per-tenant/**day**
+  per-provider request counter for the CDO 10k/day, 5 req/s cap). Prefer **String-union status fields over
+  enums** (Windows enum-ordering trap; mirror the P2 `withheldReason`/`faultClass` pattern).
+- **MUST** ingest via a **cron-driven, claim-first, idempotent job** (mirror the P2 `SpatialAnalysisJob`
+  sweep + `AccountingDelivery`), NOT a worker. Daily rows are **upserted** on
+  `(tenant, vineyard, localDate, providerKey)` (recent days `PROVISIONAL`→`FINAL`); enqueue-idempotency is
+  separate from data identity (R1). A daily append; **season aggregates are computed on read** (R10), NOT a
+  weekly recompute job.
+- **MUST** render **offline from the stored daily rows** (no live provider call on page open), with a
   **coherent coverage state** for non-US (Bhutan → `GLOBAL_COARSE` via POWER, never a blank).
 - **MUST** surface the whole thing to the grower on the **existing vineyard surface** (design §8) — a
   climate card with a GDD-vs-prior-years chart (reuse `src/lib/harvest/chart.ts` + `BrixChart` pattern),
@@ -228,8 +235,11 @@ convert. Query-side `zonedDateKey(now, ctx.timeZone)` stays, but is not sufficie
 **R3 — Aggregate strictly per-source with completeness %; never cross-pollinate (Gemini #10, resolves the
 gap-fill/spread contradiction).** GDD/rain/frost are computed **per provider over the days that provider has**,
 carrying a completeness % (`Station GDD 1450 (92% complete)` vs `Grid GDD 1520 (100%)`). Gap-fill produces a
-**separately labeled "continuous (grid-filled)" series**, never the headline aggregate. `season-core` returns
-per-source aggregates + completeness, not one blended number. `assertNeverBlended` (U3) covers this too.
+**separately labeled "continuous (grid-filled)" series**, never the headline aggregate. **This gap-filled
+series is composed ON READ (U3 `gapFillCore`) from the pure per-provider stored rows — it is NEVER persisted
+as a DB row and never carries a DB `filledFromProvider` column** (council confirmatory gate: every stored
+`VineyardClimateDaily` row is strictly single-provider). `season-core` returns per-source aggregates +
+completeness, not one blended number. `assertNeverBlended` (U3) covers this too.
 
 **R4 — Hemisphere-aware seasons + SeasonYear (Gemini #9).** Derive the growing-season window from latitude
 (NH Apr 1–Oct 31; SH Oct 1–Apr 30, which crosses the calendar year; document the equatorial/continuous case as
@@ -302,73 +312,83 @@ one-estimate-per-vineyard honesty boundary. Affects U10.
 | Architecture | **JSON point-fetch → dated snapshot, cron claim-first outbox, NO worker/blob** | Worker + raster | Point value is tiny JSON; preserves the VI no-worker posture (ADR 0009) even more cleanly than NDVI. |
 | Status fields | **String unions in code, no DB enums** | Postgres enums | Windows enum-ordering trap; mirror P2 `withheldReason`/`faultClass`. |
 | Resolution honesty | **One climate estimate per vineyard**; blocks share it | Per-block microclimate | Grids resolve site-vs-region only; sub-km needs a physical model (design P2, Later). |
-| Season aggregates | **Compute on read from stored daily rows** (a season ≈ 200 rows) in 4A; materialize later | Materialize now | Keeps 4A to 3 tables; weekly recompute added by the sweep if reads get heavy. |
+| Season aggregates | **Compute on read from stored daily rows** (a season ≈ 200 rows) — no recompute job (R10) | Materialize now / weekly recompute | Keeps 4A to 3 tables; deterministic code (the tool's cores) does the math, not the LLM/a job. Revisit a materialized summary only if org-wide dashboards arrive. |
 | Timezone | **Operating-tz-beats-viewer, resolved route-side, `zonedDateKey` in handlers** | Viewer tz / fixed offset | "Frost last night" and daily buckets are tz-sensitive; #472/#473; `"EST"` fixed-offset is a trap. |
 | Disease | **Deferred to 4B/P9**; 4A only stores RH | Build disease in 4A | Disease needs diurnal reconstruction + heavy honesty copy; ship the clean climate spine first (design Approach A). |
 
 ## Implementation Units
 
-### Unit 1: Schema-first slice — weather snapshot, daily series, provider usage (own PR)
+### Unit 1: Schema-first slice — daily climate fact table, weather config, provider usage (own PR)
+> **Reconciled to R1/R2 (authoritative).** The daily fact table is the authoritative artifact; there is
+> **no mutable `VineyardWeatherSnapshot` / CURRENT-SUPERSEDED-STALE machine** (Codex #3/#6 killed it). The
+> "snapshot" collapses to a 1:1 `VineyardWeatherConfig`. Build the tables exactly as below.
+
 **Goal:** Land the three tenant-scoped tables + RLS as one schema+migration PR ahead of the feature units.
 **Files:** `prisma/schema.prisma`; new migrations under `prisma/migrations/` (`_weather_schema` + `_weather_rls`); `test/tenant-isolation.test.ts`; `scripts/verify-tenant-isolation.ts`.
 **Approach:** Copy the P2 slice + RLS migration structure (Phase-12 checklist verbatim). Tables:
-- `VineyardWeatherSnapshot` (dated pull, current-per-vineyard): `vineyardId`, `primaryProvider`, `primaryResolutionM`, `coverageState` (String union: `US_HIGH_RES`|`GLOBAL_COARSE`|`UNAVAILABLE`), `stationId?`/`stationName?`/`stationDistanceM?`/`stationElevationDeltaM?`, `siteElevationM?`, `windowStart`/`windowEnd`, `sourceFingerprint`, `status` (String union: `CURRENT`|`SUPERSEDED`|`STALE`), `attribution`, `pulledAt`; per-tenant uniques + `@@unique([tenantId, id])`.
-- `VineyardClimateDaily` (the daily series): composite FK → `VineyardWeatherSnapshot` + `vineyardId`, `date` (zone-local `YYYY-MM-DD` string or `@db.Date`), `metricSource` (which provider/station supplied each value — or per-metric source columns), `tmaxC?`/`tminC?`/`precipMm?`/`rhMaxPct?`/`rhMinPct?` (Decimal, nullable), `filledFromProvider?` (gap-fill stamp), `provenance Json`; `@@unique([tenantId, vineyardId, date, metricSource])`, `@@index([tenantId, vineyardId, date])`.
-- `WeatherProviderUsage` (quota): `@@id([tenantId, yearMonth, provider])`, `requestCount Int @default(0)`, `lastError?`, `updatedAt`.
+- `VineyardClimateDaily` — **the authoritative daily series; one row per `(tenantId, vineyardId, localDate, providerKey)`** (a raw per-provider daily observation, metrics wide): `id String @id @default(cuid())`, `vineyardId`, `providerKey` (String), `localDate DateTime @db.Date` (canonical **vineyard-local civil day** — normalized at ingest per R2, NOT a raw provider date), `tmaxC?`/`tminC?`/`precipMm?`/`rhMaxPct?`/`rhMinPct?` (Decimal, nullable), `dataStatus` (String union: `PROVISIONAL`|`FINAL` — recent days are legitimately mutable as gridMET/CFSv2 finalizes), `provenance Json`, `createdAt`/`updatedAt`. **Upserted on the unique key** each refresh — no CURRENT flag, so no supersede race. `@@unique([tenantId, vineyardId, localDate, providerKey])`, `@@index([tenantId, vineyardId, localDate])`, `@@unique([tenantId, id])`. **Numeric-sanity CHECKs** in the migration (R1/Codex #7): `tminC ≤ tmaxC`, `rhMaxPct`/`rhMinPct` in `0..100`, `precipMm ≥ 0`.
+  - **Every stored row is strictly single-provider — the DB is never blended and never carries a gap-fill stamp** (council confirmatory gate, both reviewers). `providerKey` **is** the per-row source (no `metricSource` column). **Gap-fill is a READ-TIME composition, not a stored row** (see R3-clarification below + U3/U5): the read core composes the primary series in memory, falling back to another provider's row for a missing `localDate`, and attaches a `filledFromProvider` stamp **to the returned DTO, never to a DB column.** This keeps each provider's stored series pure and is the same on-read discipline as R10.
+  - **Per-metric sourcing is provenance, not a blended headline** (R14 clarification): the primary summary's temperature/GDD/frost/Winkler numbers come from **one** primary provider. RH is the one metric a COOP station can't measure, so when needed (it is stored for 4B, not shown as a headline) it is read from a grid row and **labeled as a distinct per-metric source** — this is provenance-tagged composition for the compare view, never averaged into the primary's temperature or GDD number.
+- `VineyardWeatherConfig` — **replaces the mutable snapshot; exactly one row per vineyard** (1:1, so the "one current" invariant is structural — no partial index): `id String @id @default(cuid())`, `vineyardId` (`@@unique([tenantId, vineyardId])`), `primaryProviderKey` (resolved default), `primaryProviderOverride?` (grower choice, R14). **Effective primary = `primaryProviderOverride ?? primaryProviderKey`** — one helper (`effectivePrimary(config)`) used by BOTH ingest and every read path so they can't diverge (council confirmatory gate, Codex #3). Also: `stationId?`/`stationName?`/`stationDistanceM?`/`stationElevationDeltaM?`, `siteElevationM?`, `coverageState` (String union: `US_HIGH_RES`|`GLOBAL_COARSE`|`UNAVAILABLE`), `attribution`, `lastRefreshAt?`; `@@unique([tenantId, id])`.
+- `WeatherProviderUsage` — quota; **gated on a DAILY key** for the CDO 10k/day cap (R1/Codex #4): `@@id([tenantId, dayKey, provider])` with `dayKey DateTime @db.Date`, `requestCount Int @default(0)`, `lastError?`, `updatedAt`. (Keep a monthly rollup for telemetry only — not the enforcement path.)
+- (Optional) `VineyardWeatherPull` pull-log for provenance/debugging, OR fold pull metadata into `WeatherProviderUsage` — **not authoritative for data** (R1). Defer unless a unit needs it.
 - `Vineyard.weatherAutoRefresh Boolean @default(false)` (the DARK sweep opt-in, mirrors `ndviAutoAdd`).
-**Tests:** per-table isolation (A-sees-own / A-can't-see-B / foreign-INSERT reject + composite-FK reject snapshot↔daily); RLS-coverage guard.
+**Tests:** per-table isolation for all three tables (A-sees-own / A-can't-see-B / foreign-INSERT reject); FK → `organization` reject; RLS-coverage guard; a migration test that the numeric-sanity CHECKs reject `tminC > tmaxC` / RH out of range / negative precip.
 **Depends on:** none (P1 #494 planting geometry already merged; vineyard exists).
 **Execution note:** no enums (String unions) — sidesteps the Windows enum rule.
 **Verification:** `npm run db:migrate` (owner) clean; `verify:tenant-isolation`; `npx prisma validate`.
 
 ### Unit 2: Provider registry + point-extraction clients (`src/lib/weather/providers/*`)
 **Goal:** A `ClimateProvider` interface + the six launch providers, each a thin adapter returning a normalized daily series.
-**Files:** `src/lib/weather/providers/types.ts` (interface), `gridmet.ts`, `daymet.ts`, `nasa-power.ts`, `rcc-acis.ts`, `noaa-cdo.ts` (history/normals), `usgs-epqs.ts` (elevation); `src/lib/weather/config.ts` (env gates); `test/weather-providers.test.ts`.
-**Approach:** `ClimateProvider = { key, kind:"grid"|"station", capabilities: Metric[], coverageFor(lat,lon): CoverageState, fetchDailySeries(lat,lon,startIso,endIso): Promise<DailyRecord[]> }`. Keep the **impure fetch edge** separate from **pure normalization** (parse provider JSON/CSV → `DailyRecord` = `{ date, tmaxC?, tminC?, precipMm?, rhMaxPct?, rhMinPct?, source }`). gridMET/Daymet/POWER/ACIS/EPQS keyless; NOAA CDO reads `NOAA_CDO_TOKEN` (env-gated, hidden when unset). SSRF: fixed provider allowlist (brief §18), bounded response size, generous timeout, never on a render path. Never fabricate — a failed fetch throws a typed fault, no partial record.
-**Tests:** per-provider **fixture-response normalization** (committed sample JSON/CSV → expected `DailyRecord[]`); coverage classification (CONUS→gridMET, NA→Daymet, Bhutan→POWER `GLOBAL_COARSE`); CDO hidden without token; malformed/oversized response rejected. No live calls in CI.
+**Files:** `src/lib/weather/providers/types.ts` (interface), `gridmet.ts`, `daymet.ts`, `nasa-power.ts`, `rcc-acis.ts`, `noaa-cdo.ts` (history/normals), `usgs-epqs.ts` (elevation); `src/lib/weather/obs-time-core.ts` (pure obs-time → `localDate` mapping, R2); `src/lib/weather/config.ts` (env gates); `test/weather-providers.test.ts`; `test/weather-obs-time.test.ts`.
+**Approach:** `ClimateProvider = { key, kind:"grid"|"station", obsConvention:"AM_LST"|"MIDNIGHT_LOCAL"|"UTC", capabilities: Metric[], coverageFor(lat,lon): CoverageState, fetchDailySeries(lat,lon,startIso,endIso): Promise<DailyRecord[]> }`. Keep the **impure fetch edge** separate from **pure normalization** (parse provider JSON/CSV → `DailyRecord` = `{ sourceDate, tmaxC?, tminC?, precipMm?, rhMaxPct?, rhMinPct?, source, obsConvention }`). **R2 — obs-time is the "Y-FLIP" of weather:** `obs-time-core.ts` maps each record's `sourceDate` into the canonical **vineyard-local civil day** `localDate` given the vineyard tz + the provider's `obsConvention` — applying the met shift for AM-obs stations (ACIS/COOP report ~7–8 am LST for the prior 24 h → `Tmax`→date−1, `Tmin`→date) and the UTC/midnight-local conversion for grids. This mapping is **pure** (tz + convention in, `localDate` out) and is invoked at ingest (U5) where the vineyard tz is known; providers themselves stay tz-agnostic. **R7 — Daymet 365-day calendar:** `daymet.ts` null-pads/interpolates Dec 31 in leap years so cross-provider daily joins don't skew. gridMET/Daymet/POWER/ACIS/EPQS keyless; NOAA CDO reads `NOAA_CDO_TOKEN` (env-gated, hidden when unset). SSRF: fixed provider allowlist (brief §18), redirect rejection, bounded response size, generous timeout, never on a render path. Never fabricate — a failed fetch throws a typed fault, no partial record.
+**Tests:** per-provider **fixture-response normalization** (committed sample JSON/CSV → expected `DailyRecord[]`); **obs-time shift** (AM-obs station Tmax→date−1 / Tmin→date; grid midnight/UTC → correct `localDate`; a frost that would land on the wrong day under a naïve join lands right); Daymet Dec-31 leap-year null-pad; coverage classification (CONUS→gridMET, NA→Daymet, Bhutan→POWER `GLOBAL_COARSE`); CDO hidden without token; malformed/oversized/redirected response rejected. No live calls in CI.
 **Depends on:** none.
-**Patterns to follow:** `src/lib/gis/satellite/client.ts` (impure adapter), `config.ts`/`token.ts` env gating.
-**Verification:** `npx vitest run test/weather-providers.test.ts`.
+**Patterns to follow:** `src/lib/gis/satellite/client.ts` (impure adapter), `config.ts`/`token.ts` env gating, `work-orders/due-at.ts` tz helpers.
+**Verification:** `npx vitest run test/weather-providers.test.ts test/weather-obs-time.test.ts`.
 
 ### Unit 3: Source selection + gap-fill + spread (`src/lib/weather/source-selection-core.ts`, pure)
 **Goal:** Pick the primary, fill gaps from the grid, compute spread — never blend.
 **Files:** `src/lib/weather/source-selection-core.ts`; `test/weather-source-selection.test.ts`.
-**Approach:** `selectPrimaryCore(vineyard, candidates)` ranks by station distance, elevation delta, and daily-completeness → chosen primary (grower override respected via a stored preference field, added minimally). `resolvePerMetricSourceCore` (RH always from a grid). `gapFillCore(primarySeries, gridSeries)` fills only missing dates and **stamps `filledFromProvider`**. `computeSpreadCore(perSourceValues)` returns `{min,max,range,agreement}` — **and a guard export `assertNeverBlended` used by the contract test.** All pure.
-**Tests:** primary selection prefers the closer/lower-delta/more-complete station; gap-fill stamps and never overwrites present days; spread computed, and a **contract test asserts no code path emits an averaged value**.
+**Approach:** `selectPrimaryCore(vineyard, candidates)` ranks by station distance, elevation delta, and daily-completeness → chosen primary; the grower override is applied via `effectivePrimary(config)` = `primaryProviderOverride ?? primaryProviderKey` (U1). `resolvePerMetricSourceCore` tags RH to a grid source as **provenance** (not a blend). `gapFillCore(primarySeries, fallbackSeries)` is a **pure read-time composition**: it returns an **in-memory DTO series** where a `localDate` missing from the primary is filled from the fallback provider's stored row and the filled entry carries a `filledFromProvider` stamp **on the DTO** — it writes **nothing to the DB** (the stored per-provider rows stay pure; council confirmatory gate). `computeSpreadCore(perSourceValues)` returns `{min,max,range,agreement}` — **and a guard export `assertNeverBlended` used by the contract test.** All pure.
+**Tests:** primary selection prefers the closer/lower-delta/more-complete station; `effectivePrimary` honors override then default; `gapFillCore` returns a DTO that fills only missing dates, stamps the filled entries, and **never mutates/returns a DB-shaped write**; spread computed, and a **contract test asserts no code path emits an averaged value**.
 **Depends on:** Unit 2 (types).
 **Verification:** `npx vitest run test/weather-source-selection.test.ts`.
 
 ### Unit 4: Pure climate math (`src/lib/weather/*-core.ts`)
 **Goal:** GDD, Winkler, GST, frost, heat, rainfall, season-to-date + year-over-year — pure and tested.
 **Files:** `src/lib/weather/gdd-core.ts`, `winkler-core.ts`, `gst-core.ts`, `frost-core.ts`, `heat-core.ts`, `rainfall-core.ts`, `season-core.ts`; `test/weather-climate-math.test.ts`.
-**Approach:** `gddCore(daily, {baseC:10, capC?:30})` = Σ `max(0,(tmax+tmin)/2 − base)` (cap optional). `winklerCore(seasonGdd)` → region I–V + the boundary-proximity flag (design honesty). `gstCore(daily)` = Apr–Oct mean → Jones grouping. `frostCore(daily, thresholds)` → last-spring/first-fall dates + sub-threshold events, always framed as risk. `heatCore(daily, thresholds)` → day counts. `rainfallCore(daily)` → accumulation + dry/wet spells (flagged low-confidence). `seasonCore` → season-to-date accumulation + prior-year comparison keyed by season year. All pure `*Core`, node-testable.
-**Tests:** GDD against a hand-computed fixture (with/without cap); Winkler region boundaries + the boundary flag; frost event detection at thresholds; heat-day counts; season-to-date vs prior-year delta; empty/partial-season handled.
+**Approach:** `gddCore(daily, {baseC:10, capC?:30})` = Σ `max(0, min(capC,(tmax+tmin)/2) − baseC)` — **cap the AVERAGE, not Tmax** (R5); `capC` optional (30 when on). `winklerCore(seasonGdd)` → region I–V + the boundary-proximity flag (design honesty). `gstCore(daily)` = growing-season mean → Jones grouping (season window from `seasonCore`, R4). `frostCore(daily, thresholds, window)` → **primary output = sub-threshold events within the lat-derived vulnerable window** (R6/R15: NH Apr 1–Jun 15), distinguishing 0 °C (light) vs −2 °C (killing), framed "risk → check"; **raw last-spring/first-fall dates are a SECONDARY stat**, not the headline. `heatCore(daily, thresholds)` → day counts. `rainfallCore(daily)` → accumulation + dry/wet spells (flagged low-confidence). `seasonCore` → **hemisphere-aware season window + `SeasonYear` derivation** (R4: NH Apr 1–Oct 31; SH Oct 1–Apr 30 crossing the calendar year; equatorial/continuous documented as a known gap) → season-to-date accumulation + prior-year comparison **keyed by `SeasonYear`, never calendar year**. **Aggregates are computed strictly per-source with a completeness %** (R3) — `gddCore`/`rainfallCore`/`frostCore` operate over one provider's days and return the completeness fraction; never cross-pollinate providers into one total. All pure `*Core`, node-testable.
+**Tests:** GDD against a hand-computed fixture (with/without cap, asserting the AVERAGE is capped); Winkler region boundaries + the boundary flag; **frost vulnerable-window event detection** at 0/−2 °C thresholds (primary) + secondary last/first-frost dates; heat-day counts; **SH `SeasonYear` grouping crosses the calendar year** (R4 fixture); per-source completeness % returned; season-to-date vs prior-year delta; empty/partial-season handled.
 **Depends on:** Unit 2 (`DailyRecord`).
 **Verification:** `npx vitest run test/weather-climate-math.test.ts`.
 
-### Unit 5: Snapshot ingest job — fetch → normalize → store (`src/lib/weather/ingest-core.ts`)
-**Goal:** Turn a pending refresh into a stored snapshot + daily rows, idempotently, no worker/blob.
+### Unit 5: Ingest job — fetch → normalize → upsert daily rows + config (`src/lib/weather/ingest-core.ts`)
+> **Reconciled to R1/R8/R10/R11.** No snapshot to supersede (fact-table upsert), no season recompute here
+> (aggregates are computed on read, R10), and **no outbound fetch inside the tx** (R8).
+
+**Goal:** Turn a pending refresh into upserted daily rows + a refreshed vineyard config, idempotently, no worker/blob.
 **Files:** `src/lib/weather/ingest-core.ts`; `src/lib/weather/actions.ts` (`"use server"` — anchors the cores for verify:ai-native); `test/weather-ingest.test.ts`.
-**Approach:** `ingestVineyardWeatherCore(vineyardId, window, deps)`: resolve lat/lon (planting-area centroid) + EPQS elevation → choose providers by coverage (U2) → fetch primary + comparison + grid gap-fill (U3) → build the snapshot (station distance/elevation delta, coverage state, provenance, fingerprint) + daily rows in **one serializable `runInTenantTx`**; mark the prior snapshot `SUPERSEDED`. Idempotency: key on `(tenant, vineyard, primaryProvider, windowEnd)`; a same-window re-run adopts, never double-writes. Record the billable request in `WeatherProviderUsage` (U7) per provider call. No fabricated data ever persisted.
-**Tests:** fixture-provider path (no live call): fetch→normalize→snapshot+daily rows with full provenance; a same-window re-run is idempotent (no dup); a failed primary with a working grid → gap-filled + stamped; a failed fetch → typed fault + no rows; prior snapshot superseded.
+**Approach:** `ingestVineyardWeatherCore(vineyardId, window, deps)`: resolve lat/lon (planting-area centroid) + EPQS elevation → choose providers by coverage (U2) → **fetch + normalize + obs-time-map (U2/R2) + validate + decide gap-fill/selection (U3) ALL OUTSIDE any tx** (R8) → then open **one short `runInTenantTx`** for the write set only: **upsert `VineyardClimateDaily` rows on `(tenantId, vineyardId, localDate, providerKey)`** (recent days re-upsert `PROVISIONAL`→`FINAL`; **no CURRENT flag to flip, so no supersede race**, R1/Codex #6), upsert the 1:1 `VineyardWeatherConfig` (resolved primary, station distance/elevation delta, coverage state, attribution, `lastRefreshAt`), and increment `WeatherProviderUsage` (U7) per provider call. Enqueue-idempotency is separate from data identity (R1/Codex #6): a same-window re-run re-upserts the same rows, never duplicates. **R11 — no fabricated weather:** a **primary** fetch failure writes **no** daily rows for that provider/date; a **comparison** provider failure is non-fatal — the primary rows still land and the missing source is simply absent from the spread (recorded, not fabricated). **Ingest writes only strictly single-provider rows** — it does NOT write gap-filled/synthesized rows; gap-fill is composed on read (U3 `gapFillCore`), so there is no `filledFromProvider` write here at all (council confirmatory gate).
+**Tests:** fixture-provider path (no live call): fetch→normalize→daily-row upserts + config with full provenance; a same-window re-run is idempotent (no dup rows); `PROVISIONAL`→`FINAL` re-upsert updates in place; a failed **primary** → typed fault + no rows for that provider; a failed **comparison** provider → the other providers' rows still land; **every stored row is single-provider (no synthesized/gap-filled row ever persisted)**; **no fetch occurs inside the tx** (assert via a deps seam).
 **Depends on:** Units 1, 2, 3, 4, 7.
-**Patterns to follow:** `process-scene-core.ts` claim/adopt; `runInTenantTx`.
+**Patterns to follow:** `process-scene-core.ts` claim/adopt; `runInTenantTx` (writes only).
 **Verification:** `npx vitest run test/weather-ingest.test.ts`.
 
 ### Unit 6: Sweep + Vercel cron (`src/lib/weather/sweep.ts` + `src/app/api/cron/weather-poll/route.ts`)
 **Goal:** Refresh weather daily per tenant/vineyard on a schedule; DARK auto-refresh opt-in.
 **Files:** `src/lib/weather/sweep.ts`; `src/app/api/cron/weather-poll/route.ts`; `vercel.json` (+cron entry); `test/weather-sweep.test.ts`.
-**Approach:** `runWeatherSweep()` mirrors `runNdviJobSweep`: enumerate tenants (`listAllOrgIds` + `runAsTenant`), for each `Vineyard.weatherAutoRefresh=true` append the latest daily data (U5) and recompute the season aggregate; claim-first lease so two crons don't double-refresh; quota-headroom gated (U7 — respect CDO 10k/day). Cron route: `runtime="nodejs"`, `maxDuration=300`, constant-time `Bearer $CRON_SECRET`, enumerates tenants. Daily schedule in `vercel.json`.
+**Approach:** `runWeatherSweep()` mirrors `runNdviJobSweep`: enumerate tenants (`listAllOrgIds` + `runAsTenant`), for each `Vineyard.weatherAutoRefresh=true` append/refresh the latest daily data via ingest (U5); claim-first lease so two crons don't double-refresh; quota-headroom gated (U7 — respect CDO 10k/day). **No season-aggregate recompute here** (R10 — season math is computed on read by the U4 cores when the tool/card asks, not by a job and not by the LLM). Cron route: `runtime="nodejs"`, `maxDuration=300`, constant-time `Bearer $CRON_SECRET`, enumerates tenants. Daily schedule in `vercel.json`.
 **Tests:** claim/lease/idempotency (a stuck lease self-heals; two sweeps don't double-write a day); auto-refresh skips `weatherAutoRefresh=false`; quota-exhausted provider is skipped, not retried to the cap.
 **Depends on:** Units 5, 7.
 **Patterns to follow:** `spatial/job-sweep.ts`, `api/cron/ndvi-poll/route.ts`.
 **Verification:** `npx vitest run test/weather-sweep.test.ts`; `npm run build`.
 
 ### Unit 7: Provider usage/quota telemetry (`src/lib/weather/usage-core.ts`)
-**Goal:** Meter per-tenant/month per-provider requests; enforce CDO headroom; visible counter.
+**Goal:** Meter per-tenant/day per-provider requests; enforce the CDO **daily** cap; visible counter.
 **Files:** `src/lib/weather/usage-core.ts`; `test/weather-usage.test.ts`.
-**Approach:** Mirror `spatial/usage-core.ts` — `recordWeatherUsage(provider, {requests})` atomic `INSERT … ON CONFLICT DO UPDATE` on `@@id([tenantId, yearMonth, provider])`; `readWeatherUsage()` for the visible counter + the sweep headroom gate; `CDO_DAILY_CAP`/`CDO_RATE_LIMIT` pure gates. Called by U5 on each provider call.
-**Tests:** increments accumulate within a month/provider; rollover fresh; concurrent increments don't lose counts.
+**Approach:** Mirror `spatial/usage-core.ts` — `recordWeatherUsage(provider, {requests})` atomic `INSERT … ON CONFLICT DO UPDATE` on **`@@id([tenantId, dayKey, provider])`** (`dayKey DateTime @db.Date`, R1/Codex #4 — CDO's cap is 10k/**day**, so the enforcement key is daily, not monthly); `readWeatherUsage()` for the visible counter + the sweep headroom gate; `CDO_DAILY_CAP`/`CDO_RATE_LIMIT` pure gates. Keep an optional monthly rollup for telemetry only (not the enforcement path). Called by U5 on each provider call.
+**Tests:** increments accumulate within a day/provider; **day rollover starts fresh** (the CDO daily cap resets); concurrent increments don't lose counts; the headroom gate blocks once `CDO_DAILY_CAP` is reached.
 **Depends on:** Unit 1.
 **Patterns to follow:** `spatial/usage-core.ts`.
 **Verification:** `npx vitest run test/weather-usage.test.ts`.
@@ -376,7 +396,7 @@ one-estimate-per-vineyard honesty boundary. Affects U10.
 ### Unit 8: `query_climate` assistant tool + goldens (timezone-correct)
 **Goal:** The grower asks weather questions in plain English and gets stored data, correct for their timezone.
 **Files:** `src/lib/assistant/tools/query-climate.ts`; `src/lib/assistant/registry.ts`; `test/evals/assistant-read-tools.golden.ts`; `test/evals/assistant-tools.eval.test.ts` (`REQUIRED_READ_TOOL_NAMES`).
-**Approach:** `query_climate` (`kind:"read"`) resolves scope via `resolveVineyards(ctx.user, input.vineyard)`, reads `VineyardClimateDaily` for the vineyard, and via the U4 cores answers: **GDD vs last year** (season-to-date + prior-year), **"warmer than last year"** (GST/GDD delta), **"frost last night"** (`zonedDateKey(now, ctx.timeZone)` → prior zone-local date's `tminC` vs threshold), **Winkler region**, current-season summary. Returns a plain object with numbers + the source/station/elevation-delta provenance + the honesty flags (boundary/precip). It **imports the U4 cores** so `verify:ai-native` sees them. Domain-composite (one tool, several intents), not one tool per metric. No committer/confirm (read).
+**Approach:** `query_climate` (`kind:"read"`) resolves scope via `resolveVineyards(ctx.user, input.vineyard)`, reads `VineyardClimateDaily` + `VineyardWeatherConfig` for the vineyard, composes the primary series on read (`effectivePrimary(config)` + U3 `gapFillCore` for provenance-stamped fill — never a blend, R14), and via the U4 cores answers **in the primary's numbers**: **GDD vs last year** (season-to-date + prior-year by `SeasonYear`), **"warmer than last year"** (GST/GDD delta), **"frost last night"** (`zonedDateKey(now, ctx.timeZone)` → prior zone-local date's `tminC` vs threshold; **R9 freshness fallback** — if that `localDate`'s `tminC` is absent, return a typed "data-not-in-yet, latest is [date]" result, never infer a frost from missing data), **Winkler region**, current-season summary. Returns a plain object with numbers + the source/station/elevation-delta provenance + the honesty flags (boundary/precip). It **imports the U4 cores** so `verify:ai-native` sees them. Domain-composite (one tool, several intents), not one tool per metric. No committer/confirm (read).
 **Tests:** golden cases for each utterance shape (design examples verbatim) in `assistant-read-tools.golden.ts`; add `query_climate` to `REQUIRED_READ_TOOL_NAMES`; `verify:ai-native` green (cores reachable); a "frost last night" handler test asserts the **operating** timezone (not the viewer) drives the date bucket.
 **Depends on:** Units 1, 4 (and 5 for data in the e2e).
 **Patterns to follow:** `tools/query-ndvi-stats.ts`, `scope.resolveVineyards`, `work-orders/due-at.zonedDateKey`.
@@ -436,7 +456,7 @@ one-estimate-per-vineyard honesty boundary. Affects U10.
 - [ ] Provider registry + 6 launch providers; each normalizes a committed fixture response; CDO hidden without token; coverage classification correct (CONUS/NA/Bhutan).
 - [ ] Primary + comparison + **gap-fill (stamped)** + **spread**; a contract test proves **no blended value** is ever emitted.
 - [ ] GDD/Winkler/GST/frost/heat/rain/season-comparison pure math matches hand-computed fixtures; Winkler boundary flag present.
-- [ ] Ingest is idempotent per window; a failed fetch yields **no** snapshot/daily row; prior snapshot superseded; usage recorded per provider.
+- [ ] Ingest is idempotent per window (daily rows upsert on `(tenant, vineyard, localDate, providerKey)`, `PROVISIONAL`→`FINAL` in place, no supersede race); a failed **primary** fetch yields **no** daily row; usage recorded per provider on a **daily** key; no fetch inside the tx (R8).
 - [ ] Daily cron sweep + DARK `weatherAutoRefresh` (default off); quota-headroom gated; two sweeps don't double-write.
 - [ ] `query_climate` answers GDD-vs-last-year / warmer-than-last-year / **frost-last-night (operating tz)** / Winkler / summary; golden + `REQUIRED_READ_TOOL_NAMES`; `verify:ai-native` green.
 - [ ] Grower card on the existing vineyard surface + **one** nav entry; summary-first with progressive disclosure; renders offline; honesty lines visible; non-US coherent state.

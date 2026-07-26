@@ -63,6 +63,25 @@ export const INTERNAL = {
       "conversational surface for planting structure (READ) is covered by describe_planting_structure.",
     coveredBy: "planting-setup migration review UI + describe_planting_structure (read)",
   },
+  "src/lib/weather/ingest-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "VI-P8: fetching/refreshing a vineyard's weather series from the live providers is a cron + button " +
+      "REFRESH mechanism (the daily weather-poll sweep and a manual 'refresh weather' action), not a " +
+      "winemaker natural-language capability — you don't converse to trigger a background fetch. The " +
+      "grower-facing weather CAPABILITY (ask about GDD vs last year, frost, Winkler, the season) has its own " +
+      "read tool + core (query_climate → composeClimateSummaryCore).",
+    coveredBy: "query_climate → composeClimateSummaryCore (read); weather-poll cron + refresh action (write)",
+  },
+  "src/lib/weather/alert-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "VI-P8: frost/heat crossing detection runs inside the daily weather SWEEP and pushes a thin inbox alert " +
+      "— a background notification mechanism, not a conversational surface (you don't chat to get an alert). " +
+      "The grower-facing frost/heat CAPABILITY (ask about frost risk / heat days / the vulnerable window) is " +
+      "answered by query_climate → composeClimateSummaryCore.",
+    coveredBy: "query_climate → composeClimateSummaryCore (frost/heat read); weather sweep (alert emit)",
+  },
 };
 
 // Temporary — real gaps deferred with a tracked reason. Ratcheted by MAX_ALLOWED.
