@@ -944,6 +944,38 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **🔴 RELEASE BLOCKER FOUND + FIXED (2026-07-26): `AppUser.vineyardIds` was ALWAYS `[]` under
+  `app_rls`.** Surfaced during S4 browser QA (it blocked the pass) but pre-existing and unrelated to S4.
+  Branch `claude/relaxed-bardeen-5cfae9`, **not yet PR'd**.
+  **Root cause — the GLOBAL-parent / RLS-child read seam:** `userSelect` in `src/lib/dal.ts` selected
+  `vineyardMemberships`. `User` is a GLOBAL model, so the tenant extension passes `prisma.user.*`
+  **straight through** and never opens its `set_config('app.tenant_id', …)` tx; `user_vineyard` is
+  RLS-FORCED, so the nested join was evaluated with **no tenant GUC** and fail-closed to zero rows —
+  silently, no error. Reproduced deterministically against the live DB (`app_rls` `rolbypassrls=false`:
+  nested read `[]`, same read with the GUC set returns the row).
+  **Blast radius (every non-admin manager):** field notes unreachable; the vineyard-scoped assistant
+  dead (`assistant/scope.ts`, `query-brix`, `query-recent-harvests`, `db-create`/`db-update`); `/lots`
+  lens off; and on `/users` **silent DATA LOSS** — checkboxes render from those ids and
+  `setUserVineyards` REPLACES the set, so ticking one vineyard dropped every existing membership.
+  ⚠️ **Local `DATABASE_URL` is ALREADY `app_rls`** (owner URL kept as `DATABASE_URL_OWNER_POOLED_BACKUP`).
+  **Vercel's `DATABASE_URL` is UNCONFIRMED — Russell must check.** If prod still connects as
+  `neondb_owner` (BYPASSRLS) this was latent and would have become total at the app_rls cutover.
+  **Fix:** membership set moved to `src/lib/users/vineyard-memberships.ts`
+  (`loadVineyardMembershipIds` / `…ByUser`), read AFTER `getCurrentUser` resolves the effective tenant
+  (support org → active org), with `tenantId` as an EXPLICIT arg (K12-safe, can't recurse via
+  `resolveTenantFromSession`). `toAppUser` now REQUIRES `vineyardIds`. All 3 call sites fixed
+  (`dal.ts`, `users/actions.ts`, `(app)/users/page.tsx`).
+  **Guards:** `test/global-model-tenant-relation-select.test.ts` (static, DMMF-driven — proven
+  non-vacuous by reintroducing the bug) + 4 new `verify:tenant-isolation` checks that pin BOTH the empty
+  pass-through read and the correct scoped one. tsc/eslint clean, `verify:tenant-isolation` ALL PASSED.
+  ⛔ **Trap found in passing — do NOT re-derive:** `runAsTenant(id, () => prisma.x.op(…))` with a
+  NON-async arrow **does not work**. Prisma returns a LAZY thenable, so `$allOperations` runs after
+  `store.run()` has exited → "Tenant context required", or worse, silently the OUTER tenant. Must be
+  `async () => await …`. ~6 pre-existing sites still have the broken shape (masked today) — logged in
+  the security register's watch list + a task chip.
+  ℹ️ The DB holds exactly **ONE** `user_vineyard` row (`awerth@gmail.com` → Demo Winery) — the row the
+  QA report attributed to `russellmoss87@gmail.com` (id `50d97614-…`) is **not there**.
+
 - **CI flake killed: `test/compliance-fill-pdf.test.ts` vs. the 5s vitest default** — **MERGED to
   `main`** ([PR #492](https://github.com/russellmoss/wine-inventory/pull/492), squash `896fec40`;
   branch + worktree deleted). The TTB round-trip parses the 3.1 MB
@@ -1279,7 +1311,17 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-24 — **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+_Last updated: 2026-07-26 — **detour (from S4 browser QA), FIXED but NOT YET PR'd: `AppUser.vineyardIds`
+was always `[]` under the `app_rls` role.** `userSelect` selected `vineyardMemberships`, but `User` is a
+GLOBAL model so the tenant extension never sets `app.tenant_id` — the RLS-forced `user_vineyard` join
+fail-closed to zero rows, silently, locking every manager out of field notes / the vineyard-scoped
+assistant / the `/lots` lens, and making the `/users` vineyard checkboxes a silent membership wipe.
+Fixed via a separate tenant-scoped read (`src/lib/users/vineyard-memberships.ts`); static + runtime guards
+added, `verify:tenant-isolation` all-green. ⚠️ **Russell: confirm whether Vercel's `DATABASE_URL` is
+`app_rls` or still `neondb_owner`** — that decides whether this was live or latent. ⛔ Also learned:
+`runAsTenant(id, () => prisma.x.op(…))` needs `async () => await` (lazy thenable escapes the ALS scope);
+~6 other sites still carry the broken shape. Branch `claude/relaxed-bardeen-5cfae9`.
+Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.

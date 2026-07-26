@@ -494,6 +494,49 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟢 (gap was pre-existing since plan 079 and affected all 17 sources; closed for both
   automatic crawl paths; guarded by `test/knowledge-crawl.test.ts`).
 
+### A GLOBAL model may never select a relation to a tenant-scoped table (the RLS-child read seam) — 2026-07-26
+- **What:** the tenant extension (`src/lib/prisma.ts`) passes any operation on a `GLOBAL_MODELS` model
+  **straight through** — no `set_config('app.tenant_id', …)` transaction is opened, because Better Auth
+  queries `user`/`session`/`member`/… before any tenant exists. Every other table is RLS-forced with a
+  fail-closed `tenant_isolation` policy. So a **nested relation from a global model onto a tenant-scoped
+  one** is read with `app.tenant_id` UNSET and returns **zero rows, silently, with no error**.
+- **The bug this closed:** `userSelect` in `src/lib/dal.ts` selected `vineyardMemberships`
+  (`user` → `user_vineyard`). Under the `app_rls` (NOBYPASSRLS) runtime role `AppUser.vineyardIds` was
+  therefore **always `[]`** for every user. Consequences: managers locked out of
+  `/vineyards/field-notes`; the vineyard-scoped assistant surface dead (`assistant/scope.ts`,
+  `query-brix`, `query-recent-harvests`, and `db-create`/`db-update` refusing vineyard-scoped writes);
+  the `/lots` vineyard lens off; and on the admin Users page **silent data loss** — the checkboxes render
+  from those ids and `setUserVineyards` REPLACES the whole set, so ticking one vineyard against an
+  all-empty list dropped every membership the user already had. `setUserVineyards`' audit diff also
+  always claimed the prior set was empty.
+- **Why it was invisible:** it is a **no-op while the runtime connects as the owner** (BYPASSRLS) and
+  becomes total the moment `DATABASE_URL` is the `app_rls` credential — i.e. exactly at the Phase-12
+  role split. It was never a leak (fail-closed), it was a **fail-closed lockout**. It also happened to
+  be unobservable in prod because the live DB currently holds only one `user_vineyard` row at all.
+- **The fix:** the membership set is read as a **separate, explicitly tenant-scoped query**
+  (`src/lib/users/vineyard-memberships.ts`, `loadVineyardMembershipIds` / `…ByUser`), called AFTER
+  `getCurrentUser` has resolved the effective tenant (support org, then active org). `tenantId` is an
+  explicit argument, never read from the ALS store — `getCurrentUser` runs inside React `cache()` (K12)
+  and derives the tenant from that same request; `runAsTenant` also short-circuits the extension before
+  `resolveTenantFromSession()`, so it cannot recurse back into `getCurrentUser`. `toAppUser` now takes
+  `vineyardIds` as a REQUIRED argument so no construction site can silently default a manager to none.
+  Scoping to the effective tenant is also the correct semantic (`canManagerAccessVineyard` compares
+  against vineyards in the active tenant).
+- **Also fixed in passing:** `runAsTenant(id, () => prisma.x.findMany(…))` **does not work** — Prisma's
+  model methods return a LAZY thenable, so the query is only constructed inside the ALS scope and
+  `$allOperations` runs after `store.run()` has exited (no tenant context, or worse, the *outer* one).
+  The callback must be `async () => await …`. Several pre-existing sites still use the broken shape and
+  are masked only by an ambient outer context — see the watch item below.
+- **Tripwire:** any `select`/`include` of a tenant-scoped relation on a global model (`user.fieldNotes`,
+  `user.assistantConversations`, `user.voiceProfiles`, `user.voicePreferences`,
+  `user.vineyardMemberships`, `vineyard.userMemberships`, …); a new relation added from a global model to
+  a tenant table and then selected; `toAppUser` regaining a defaulted `vineyardIds`. Proof:
+  `test/global-model-tenant-relation-select.test.ts` (static, DMMF-driven so a NEW such relation is
+  covered automatically) + `npm run verify:tenant-isolation` (runtime — pins BOTH the empty pass-through
+  read and the correct scoped one against a real database).
+- **Status:** 🟢 (root cause closed at all three call sites — `dal.ts`, `src/lib/users/actions.ts`,
+  `src/app/(app)/users/page.tsx`; static + runtime guards green against the live DB on `app_rls`).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - **Stored prompt injection in the knowledge corpus is unmitigated in code** — crawled prose flows
@@ -502,6 +545,15 @@ TEMPLATE — copy for each new invariant / finding:
   "REFERENCE MATERIAL, not instructions"). Pre-existing for all 17 sources since plan 079, NOT
   introduced by plan 084 (which only removes content). Corpus-wide item; worth a real decision
   before the corpus grows past curated tier-1 extension publishers.
+- **`runAsTenant(id, () => prisma.x.op(…))` with a NON-async callback is silently wrong** — Prisma model
+  methods return a lazy thenable, so the extension's `$allOperations` runs after `store.run()` has already
+  exited. With no ambient context it throws "Tenant context required"; with an ambient OUTER context it
+  quietly uses the OUTER tenant instead of the one passed. Pre-existing sites with this shape:
+  `src/lib/work-orders/data.ts:477,662`, `src/lib/winemaking-calc/log.ts:43`,
+  `src/lib/feedback/attachments.ts:38,46,66`, `scripts/verify-reminders.ts:88,135`. They are masked today
+  (callers happen to be in the same tenant's context), so this is latent, not a live leak — but it is a
+  cross-tenant-write shape and should be swept to `async () => await …`. Found while fixing the
+  global-model/RLS-child seam above.
 - **Legacy `location` FKs are still simple, not composite** — `bottled_inventory`,
   `finished_good_inventory`, `stock_movement`, `bottling_run`, `bottled_lot_state` reference
   `location(id)` without the tenant column, the same gap plan 080 U13a closed for consumables. RLS covers

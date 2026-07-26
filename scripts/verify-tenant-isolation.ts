@@ -204,6 +204,10 @@ async function main() {
   await owner.vineyard.upsert({ where: { id: "iso_vy_b" }, update: {}, create: { id: "iso_vy_b", name: "ISO VY B", tenantId: B } });
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_a" }, update: {}, create: { id: "iso_blk_a", vineyardId: "iso_vy_a", tenantId: A, updatedAt: now } });
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_b" }, update: {}, create: { id: "iso_blk_b", vineyardId: "iso_vy_b", tenantId: B, updatedAt: now } });
+  // D9 vineyard MEMBERSHIP set. `user_vineyard` is tenant-scoped + RLS-forced even though `user`
+  // itself is GLOBAL — the seam that silently emptied AppUser.vineyardIds. One membership per tenant.
+  await owner.userVineyard.upsert({ where: { id: "iso_uv_a" }, update: {}, create: { id: "iso_uv_a", tenantId: A, userId: "iso_um_user_a", vineyardId: "iso_vy_a" } });
+  await owner.userVineyard.upsert({ where: { id: "iso_uv_b" }, update: {}, create: { id: "iso_uv_b", tenantId: B, userId: "iso_um_user_b", vineyardId: "iso_vy_b" } });
   // S4: a variety per tenant carrying the DURABLE cluster-compactness default (D12). The block
   // columns (trellisSystem / clusterCompactness) ride the existing vineyard_block fixtures.
   await owner.variety.upsert({ where: { id: "iso_var_a" }, update: { clusterCompactness: "TIGHT" }, create: { id: "iso_var_a", name: "ISO VAR A", clusterCompactness: "TIGHT", tenantId: A } });
@@ -1004,6 +1008,35 @@ async function main() {
     const umListA = (await owner.user.findMany({ where: { memberships: { some: { organizationId: A } } }, select: { id: true } })).map((u) => u.id);
     check("user mgmt: A's user list excludes B's user", umListA.includes("iso_um_user_a") && !umListA.includes("iso_um_user_b"));
 
+    // 5m. D9 vineyard memberships — the GLOBAL-parent / RLS-CHILD seam.
+    // `user` is GLOBAL, so the tenant extension passes a `prisma.user.*` query straight through and
+    // NEVER sets `app.tenant_id`. `user_vineyard` is tenant-scoped + FORCE RLS. So a nested
+    // `vineyardMemberships` relation on a user read is evaluated with no tenant GUC and fails closed
+    // to [] — silently, for every user. That emptied `AppUser.vineyardIds` and locked managers out of
+    // field notes, the vineyard-scoped assistant tools and the /lots lens the moment the runtime
+    // switched from the owner role to app_rls. The first check PINS the pass-through behaviour (so
+    // nobody "fixes" it by re-adding the nested select); the second proves the separate tenant-scoped
+    // read that `loadVineyardMembershipIds` (src/lib/dal.ts) actually performs.
+    const nestedMemberships = await app.user.findUnique({
+      where: { id: "iso_um_user_a" },
+      select: { vineyardMemberships: { select: { vineyardId: true } } },
+    });
+    check(
+      "D9: nested vineyardMemberships off the GLOBAL user model reads EMPTY (no tenant GUC) — dal.ts must NOT select it",
+      nestedMemberships !== null && nestedMemberships.vineyardMemberships.length === 0,
+    );
+    const scopedMemberships = await asTenant(A, (db) => db.userVineyard.findMany({ where: { userId: "iso_um_user_a" }, select: { vineyardId: true } }));
+    check(
+      "D9: the SAME membership is visible via a tenant-scoped user_vineyard read (the dal.ts fix)",
+      scopedMemberships.length === 1 && scopedMemberships[0].vineyardId === "iso_vy_a",
+    );
+    check("tenant A CANNOT see tenant B's user_vineyard (RLS)", (await asTenant(A, (db) => db.userVineyard.findFirst({ where: { id: "iso_uv_b" } }))) === null);
+    let uvInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.userVineyard.create({ data: { id: "iso_uv_x", tenantId: B, userId: "iso_um_user_b", vineyardId: "iso_vy_b" } }));
+    } catch { uvInsertRaised = true; }
+    check("foreign-tenant user_vineyard INSERT raises (WITH CHECK)", uvInsertRaised);
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -1120,6 +1153,9 @@ async function main() {
     // after their blocks (block→planting is RESTRICT) and before the vineyard (which would cascade them).
     await owner.vineyardGeometryVersion.deleteMany({ where: { id: { in: ["iso_gv_a", "iso_gv_b", "iso_gv_dup"] } } });
     await owner.vineyardPlantingArea.deleteMany({ where: { id: { in: ["iso_pa_a", "iso_pa_b", "iso_pa_x"] } } });
+    // D9: user_vineyard FK's organization (RESTRICT) → drop explicitly before the org, not just via
+    // the vineyard/user CASCADEs.
+    await owner.userVineyard.deleteMany({ where: { id: { in: ["iso_uv_a", "iso_uv_b", "iso_uv_x"] } } });
     await owner.vineyard.deleteMany({ where: { id: { in: ["iso_vy_a", "iso_vy_b"] } } });
     await owner.lot.deleteMany({ where: { id: { in: ["iso_lot_a", "iso_lot_b", "iso_lot_x"] } } });
     // Phase 2: bonds are FK'd to organization → delete before org B drops.

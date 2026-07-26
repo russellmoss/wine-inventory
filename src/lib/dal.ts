@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { accessDecision, isDeveloper, resolveActiveOrg, DEVELOPER_HOME_ORG_ID, type AppUser } from "@/lib/access";
 import { readSupportTenantContext } from "@/lib/developer/support-context";
+import { loadVineyardMembershipIds } from "@/lib/users/vineyard-memberships";
 
 export { accessDecision, canManagerAccessVineyard, canAccessVineyard, canAccessLot, isDeveloper, isTenantAdminLike } from "@/lib/access";
 export type { AppUser, AccessDecision } from "@/lib/access";
@@ -13,7 +14,12 @@ export type { AppUser, AccessDecision } from "@/lib/access";
 /**
  * THE canonical column set for building an AppUser. Every site that loads a user
  * into an AppUser MUST go through `userSelect` + `toAppUser`, so adding a field
- * (e.g. the vineyard membership set) can never silently skip a construction site.
+ * can never silently skip a construction site.
+ *
+ * ⚠️ This select may contain ONLY columns of `user` itself and relations to OTHER GLOBAL models
+ * (`memberships` → `member`). It must NEVER include a relation to a tenant-scoped, RLS'd table —
+ * see `src/lib/users/vineyard-memberships.ts` for why that silently reads back EMPTY. The D9
+ * vineyard membership set used to live here and did exactly that.
  */
 export const userSelect = {
   id: true,
@@ -22,8 +28,7 @@ export const userSelect = {
   role: true,
   banned: true,
   mustChangePassword: true,
-  vineyardMemberships: { select: { vineyardId: true } }, // D9 membership set
-  memberships: { select: { organizationId: true } }, // Phase 12: org (tenant) membership set
+  memberships: { select: { organizationId: true } }, // Phase 12: org (tenant) membership set — `member` is GLOBAL
 } as const;
 
 type UserRecord = {
@@ -33,7 +38,6 @@ type UserRecord = {
   role: string | null;
   banned: boolean | null;
   mustChangePassword: boolean | null;
-  vineyardMemberships: { vineyardId: string }[];
   memberships: { organizationId: string }[];
 };
 
@@ -45,8 +49,13 @@ type UserRecord = {
  * user is actually a member; a revoked/stale claim falls back to their earliest membership, and a
  * user with no membership resolves to `null` (denied by tenant scoping downstream). Never trust
  * the session's claim on its own — memberships are the source of truth, reloaded each request.
+ *
+ * `vineyardIds` is a REQUIRED argument rather than a field read off `record`: it cannot be selected
+ * alongside the user (see `src/lib/users/vineyard-memberships.ts`), and it can only be loaded once the active
+ * tenant this function resolves is known. Making it explicit stops a construction site from
+ * silently defaulting a manager to "no vineyards".
  */
-export function toAppUser(record: UserRecord, activeOrgClaim?: string | null): AppUser {
+export function toAppUser(record: UserRecord, activeOrgClaim: string | null | undefined, vineyardIds: string[]): AppUser {
   const organizationIds = record.memberships.map((m) => m.organizationId);
   // Developers default into the Demo Winery sandbox (never a real tenant) whenever they are members
   // of it. Explicit real-tenant access goes through the short-lived support context, not stale
@@ -60,7 +69,7 @@ export function toAppUser(record: UserRecord, activeOrgClaim?: string | null): A
     role: record.role ?? null,
     banned: record.banned ?? false,
     mustChangePassword: record.mustChangePassword ?? false,
-    vineyardIds: record.vineyardMemberships.map((m) => m.vineyardId),
+    vineyardIds,
     organizationIds,
     activeOrganizationId,
     supportOrganizationId: null,
@@ -85,15 +94,23 @@ export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
   if (!record) return null; // session points at a deleted user -> deny
   // K13: re-validate the session's active-org claim against the freshly-loaded membership set.
   const activeOrgClaim = session.session?.activeOrganizationId ?? null;
-  const user = toAppUser(record, activeOrgClaim);
-  const support = await readSupportTenantContext(user);
-  if (!support) return user;
-  return {
-    ...user,
-    supportOrganizationId: support.tenantId,
-    supportOrganizationName: support.tenantName,
-    supportExpiresAt: support.expiresAt,
-  };
+  const base = toAppUser(record, activeOrgClaim, []);
+  const support = await readSupportTenantContext(base);
+  const user = support
+    ? {
+        ...base,
+        supportOrganizationId: support.tenantId,
+        supportOrganizationName: support.tenantName,
+        supportExpiresAt: support.expiresAt,
+      }
+    : base;
+  // D9 membership set — loaded LAST, as a separate tenant-scoped read, because it needs the
+  // effective tenant this function just resolved (support org, then active org) and because it
+  // cannot be selected off the GLOBAL `user` model at all — see src/lib/users/vineyard-memberships.ts.
+  // No effective tenant -> no vineyards (every tenant-scoped read is denied downstream anyway).
+  const effectiveTenant = user.supportOrganizationId ?? user.activeOrganizationId;
+  if (!effectiveTenant) return user;
+  return { ...user, vineyardIds: await loadVineyardMembershipIds(user.id, effectiveTenant) };
 });
 
 /**
