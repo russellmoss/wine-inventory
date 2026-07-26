@@ -557,7 +557,10 @@ async function main() {
     station: string | null;
     distanceKm: number | null;
     source: string;
-    measuresRh: boolean;
+    /** the archive hands us an RH column — it does NOT say anyone measured RH */
+    rhPublished: boolean;
+    /** what the station INDEPENDENTLY MEASURES. RH is on nobody's list. */
+    measured: readonly string[];
     note: string;
   }> = [];
   for (const site of S0_SITES) {

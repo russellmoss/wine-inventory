@@ -494,8 +494,14 @@ export function tally(verdicts: readonly Verdict[]) {
     } else if (v.state === "DRY") {
       dry++;
       if (v.determinedUnderPartialInputs) partial++;
-    } else if (v.cause === "MISSING_INPUT") refusedMissing++;
-    else refusedQc++;
+    } else if (v.state === "CANNOT_DETERMINE") {
+      // Narrowed POSITIVELY on the discriminant. Falling through on `else` does not narrow here:
+      // the WET/DRY member's `state` is itself a union (`"WET" | "DRY"`), so excluding both literals
+      // leaves the member present with `state: never` rather than removing it, and `v.cause` stays
+      // unreachable. Name the member you want.
+      if (v.cause === "MISSING_INPUT") refusedMissing++;
+      else refusedQc++;
+    }
   }
   const total = verdicts.length;
   return {
