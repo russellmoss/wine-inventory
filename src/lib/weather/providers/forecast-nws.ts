@@ -15,12 +15,12 @@
 // A non-US point 404s (`InvalidPoint`, live-verified) → ProviderFetchError; the ingest falls
 // through to Open-Meteo.
 
-import { zonedDateKey } from "@/lib/work-orders/due-at";
+import { zonedClock, zonedDateKey } from "@/lib/work-orders/due-at";
 import { conditionFromNws, worseCondition } from "../condition-core";
 import { isUsForecastCoverage } from "../us-coverage";
 import { fetchJsonRetry, type JsonFetcher } from "./fetch-util";
 import { ProviderFetchError } from "./types";
-import type { ConditionCode, ForecastDailyRecord, ForecastProvider, ForecastSeries } from "./forecast-types";
+import type { ConditionCode, ForecastDailyRecord, ForecastHourlyRecord, ForecastProvider, ForecastSeries } from "./forecast-types";
 
 export const NWS_ATTRIBUTION = "US National Weather Service (weather.gov)";
 
@@ -142,6 +142,80 @@ export function sumQpfToLocalDays(
   return byDay;
 }
 
+// ── Plan 097 U2: the hourly arm ──
+// /forecast/hourly (156 strictly-one-hour periods, live-verified; ?units=si → °C) carries temp/
+// PoP/condition/wind but NO amounts. Amounts only exist as the raw-gridpoint QPF buckets
+// (PT3H/PT6H, UTC) — each bucket lands ONE record at its START hour with precipDurationH = the
+// bucket length, merged onto the matching temp slot when one exists. The chart draws that bar at
+// native width — splitting a bucket into hours would invent uniform rain (the S6 rule).
+
+export interface NwsHourlyPeriod {
+  startTime: string; // ISO with local offset — date/hour slices ARE the local keys
+  isDaytime?: boolean;
+  temperature: number | null;
+  temperatureUnit: string;
+  probabilityOfPrecipitation?: { value: number | null } | null;
+  windSpeed?: string | null;
+  icon?: string | null;
+  shortForecast?: string | null;
+}
+
+/** Pure: hourly periods → records (no amounts yet — QPF merges in below). */
+export function parseNwsHourly(periods: NwsHourlyPeriod[]): ForecastHourlyRecord[] {
+  return periods
+    .filter((p) => typeof p.startTime === "string" && p.startTime.length >= 13)
+    .map((p) => ({
+      hourStartUtc: new Date(p.startTime).toISOString(),
+      localDate: p.startTime.slice(0, 10),
+      localHour: Number(p.startTime.slice(11, 13)),
+      tempC: periodTempC({ ...p, endTime: "", isDaytime: p.isDaytime ?? true } as NwsPeriod),
+      popPct: p.probabilityOfPrecipitation?.value ?? null,
+      precipMm: null,
+      precipDurationH: 1,
+      conditionCode: conditionFromNws(p.icon, p.shortForecast),
+      windKph: parseWindMaxKph(p.windSpeed),
+    }));
+}
+
+/**
+ * Pure: merge QPF buckets onto the hourly records — a bucket's WHOLE amount lands at its start
+ * hour with its native duration; a bucket with no matching temp slot creates a precip-only record.
+ */
+export function mergeQpfIntoHourly(
+  hourly: ForecastHourlyRecord[],
+  values: Array<{ validTime: string; value: number | null }>,
+  timeZone: string,
+): ForecastHourlyRecord[] {
+  const byInstant = new Map(hourly.map((h) => [h.hourStartUtc, { ...h }]));
+  for (const v of values) {
+    if (v.value === null || !Number.isFinite(v.value) || v.value <= 0) continue;
+    const [startIso, duration] = v.validTime.split("/");
+    const start = new Date(startIso);
+    if (Number.isNaN(start.getTime())) continue;
+    const key = start.toISOString();
+    const durationH = Math.max(1, Math.round(parseIsoDurationHours(duration ?? "PT1H")));
+    const existing = byInstant.get(key);
+    if (existing) {
+      existing.precipMm = Math.round(v.value * 100) / 100;
+      existing.precipDurationH = durationH;
+      byInstant.set(key, existing);
+    } else {
+      byInstant.set(key, {
+        hourStartUtc: key,
+        localDate: zonedDateKey(start, timeZone),
+        localHour: Number(zonedClock(start, timeZone).slice(0, 2)),
+        tempC: null,
+        popPct: null,
+        precipMm: Math.round(v.value * 100) / 100,
+        precipDurationH: durationH,
+        conditionCode: "UNKNOWN",
+        windKph: null,
+      });
+    }
+  }
+  return [...byInstant.values()].sort((a, b) => (a.hourStartUtc < b.hourStartUtc ? -1 : 1));
+}
+
 // ── The adapter ──
 
 export async function fetchNwsForecast(
@@ -158,14 +232,28 @@ export async function fetchNwsForecast(
 
   // QPF from the raw gridpoint (amounts are NOT on /forecast — it only carries probability).
   let qpfByDay = new Map<string, number>();
+  let qpfValues: Array<{ validTime: string; value: number | null }> = [];
   try {
     const rawJson = (await f("nws", base)) as {
       properties?: { quantitativePrecipitation?: { values?: Array<{ validTime: string; value: number | null }> } };
     };
-    const values = rawJson?.properties?.quantitativePrecipitation?.values ?? [];
-    qpfByDay = sumQpfToLocalDays(values, grid.timeZone ?? "UTC");
+    qpfValues = rawJson?.properties?.quantitativePrecipitation?.values ?? [];
+    qpfByDay = sumQpfToLocalDays(qpfValues, grid.timeZone ?? "UTC");
   } catch {
     // QPF is enrich-only: probability + temps still render honestly without amounts.
+  }
+
+  // Plan 097 U2: the hourly series (enrich-only — a failure leaves hourly undefined and the daily
+  // strip untouched; the modal shows its honest empty state).
+  let hourly: ForecastHourlyRecord[] | undefined;
+  try {
+    const hourlyJson = (await f("nws", `${base}/forecast/hourly?units=si`)) as { properties?: { periods?: NwsHourlyPeriod[] } };
+    const hourlyPeriods = hourlyJson?.properties?.periods ?? [];
+    if (hourlyPeriods.length > 0) {
+      hourly = mergeQpfIntoHourly(parseNwsHourly(hourlyPeriods), qpfValues, grid.timeZone ?? "UTC");
+    }
+  } catch {
+    hourly = undefined;
   }
 
   const paired = pairNwsPeriods(periods);
@@ -180,6 +268,7 @@ export async function fetchNwsForecast(
     issuedAt: opts.now ?? new Date(),
     timeZone: grid.timeZone,
     records,
+    hourly,
     attribution: NWS_ATTRIBUTION,
     sourceUrl: `${base}/forecast`,
     grid,
