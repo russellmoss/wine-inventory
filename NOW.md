@@ -996,17 +996,21 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   **60**-day one), also fixed. Gates: tsc 0, eslint 0 errors, **vitest 4482/0**,
   `verify:tenant-isolation` / `raw-sql` / `invariants` (45/45) / `tripwires` / `parity` / `ai-native` /
   `work-orders` / `feedback` / `naming` all green.
-  ⚠️ **Two premises in the request did not hold and are worth knowing:** there is no
-  `src/lib/users/vineyard-memberships.ts` on **any** branch, and the security register has no
-  "GLOBAL model may never select a relation to a tenant-scoped table" section — that work was never
-  committed. The real in-repo reference for the correct shape is
-  [`src/lib/knowledge/subscriptions.ts:23`](src/lib/knowledge/subscriptions.ts). The **separate**
-  global-relation observation it described is real but **re-graded LOW-MED**: `getCurrentUser` does
-  select `vineyardMemberships` (RLS-forced `user_vineyard`) through the GLOBAL `User` model, which the
-  extension passes through with no `app.tenant_id`. But S4's browser QA (merged to `main` same day)
-  proved this was **NOT** what blocked the manager view — that was a one-line `isTenantAdminLike` gate
-  on the field-notes page. So it is not the `app_rls` release blocker it was billed as. Keeps its task
-  chip; NOT fixed by this work.
+  🔻 **TWO CORRECTIONS to what #531 originally claimed — believe these, not the PR description.**
+  (1) #531 said `src/lib/users/vineyard-memberships.ts` and the security-register section
+  "GLOBAL model may never select a relation to a tenant-scoped table" existed on no branch. **Wrong.**
+  They are on **[#530](https://github.com/russellmoss/wine-inventory/pull/530)** (`claude/relaxed-bardeen-5cfae9`),
+  which was still OPEN — the sweep searched local refs before that branch carried the work. #530 is the
+  real fix for the sibling bug and is still unmerged.
+  (2) #531 then re-graded the GLOBAL-model/RLS-child seam to LOW-MED, following #529's note. **Also
+  wrong** — #530 browser-proved it side by side on `/users` (unfixed server: Aaron Werth `[]`; fixed:
+  `["WV Oregon"]`). #529's `isTenantAdminLike` gate is a real fix but only routes **admin-like** roles
+  away; a genuine `role:"user"` manager still gets `vineyardIds: []`, and #529 never touches `/users`,
+  where the checkboxes render from those ids and `setUserVineyards` REPLACES the set — **a silent
+  membership WIPE**. Invisible while the runtime connects as owner (BYPASSRLS); **total the moment
+  `DATABASE_URL` is `app_rls`.** So it IS an app_rls-activation blocker. See
+  [[global-model-rls-child-read-seam]]. ⚠️ **#530 now conflicts with #531 in `NOW.md` +
+  `docs/architecture/security-register.md` — merge `main` into it before landing.**
 - **Spray Intelligence S3a — record + planned harvest: SHIPPED (2026-07-26). PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED → WAVE 2 UNBLOCKED (S7a, S8, S6, S7b start against the merged cores); PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) browser-QA'd GREEN.**
   Seven append-only tables (DB triggers + at-most-once correction incl. VOID), facts-as-of
   snapshots (copied verbatim on correction — KD-14), knownness CHECKs (SPRAY-3), planned-harvest
@@ -1380,9 +1384,12 @@ record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 fin
 area provenance, correction UTC→datetime-local shift). S2 (registration + resistance) BUILT — schema slice
 merged (#522), Units 2-11 green (#525), 2,420 grape registrations + 361 AIs live with zero unclassified.
 S4 (phenology + growth) SHIPPED — #521 + #526 + #529 merged and live, 135 new tests, browser QA GREEN (the
-blocker was a one-line isTenantAdminLike gate on the field-notes page, NOT the RLS theory — the
-GLOBAL-model-selects-tenant-relation observation is re-graded LOW-MED and keeps its task chip); scouting
-coverage 0/0 = NOT YET MEASURABLE, recorded as-is.** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+S4 blocker was a one-line isTenantAdminLike gate on the field-notes page); scouting coverage 0/0 = NOT YET
+MEASURABLE, recorded as-is.** ⛔ **Do NOT read #529 as clearing the GLOBAL-model/RLS-child seam — that
+re-grade was WRONG. It only routes admin-like roles; a real `role:"user"` manager still gets
+`vineyardIds: []` and `/users` silently WIPES memberships the moment `DATABASE_URL` is `app_rls`.
+[#530](https://github.com/russellmoss/wine-inventory/pull/530) is the fix and is still OPEN (and now
+conflicts with #531 — merge `main` into it).** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.
