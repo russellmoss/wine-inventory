@@ -62,6 +62,59 @@ type Attempt = {
   note: string;
 };
 
+
+type NwsStationFeature = {
+  geometry?: { coordinates?: [number, number] };
+  properties?: { stationIdentifier?: string; name?: string; elevation?: { value?: number } };
+};
+type NwsObsQuantity = { value: number | null; qualityControl?: string };
+type NwsObsFeature = { properties?: Record<string, NwsObsQuantity | undefined> };
+
+type IsdProbeResult = {
+  station: IsdStation;
+  year: number;
+  rows: number;
+  tmp: number;
+  dew: number;
+  wnd: number;
+  precip: number;
+  qcCodes: string[];
+};
+type IemProbeResult = { station: string; year: number; rows: number; counts: Record<string, number> };
+
+type ArmBRow = {
+  site: string;
+  name: string;
+  station: string | null;
+  distanceKm: number | null;
+  source: string;
+  rhPublished: boolean;
+  measured: readonly string[];
+  note: string;
+};
+
+/** What `main()` serialises and `renderMarkdown()` reads back. */
+type BackfillResults = {
+  probedAt: string;
+  nwsStations?: Record<string, NwsStation | null>;
+  nwsWindow?: Record<string, Array<{ offsetDays: number; count: number }>>;
+  isdStations?: Record<string, IsdStation[]>;
+  isdProbes?: IsdProbeResult[];
+  iemProbes?: IemProbeResult[];
+  iemDepth?: Record<string, Array<{ year: number; rows: number }>>;
+  mesonets: typeof MESONETS;
+  attempts: Attempt[];
+  armB?: ArmBRow[];
+  verdict: {
+    backfillable: boolean;
+    isdWorks: boolean;
+    iemWorks: boolean;
+    iemDeep: boolean;
+    deepestWithData: number | null;
+    outcome: number;
+  };
+};
+
 const attempts: Attempt[] = [];
 const record = (a: Attempt) => {
   attempts.push(a);
@@ -77,7 +130,7 @@ type NwsStation = { id: string; name: string; lat: number; lon: number; elevM: n
 
 async function nearestNwsStations(site: S0Site, take = 4): Promise<NwsStation[]> {
   const url = `https://api.weather.gov/points/${site.lat.toFixed(4)},${site.lon.toFixed(4)}/stations`;
-  const res = await probeJson<{ features?: Array<Record<string, any>> }>(url);
+  const res = await probeJson<{ features?: NwsStationFeature[] }>(url);
   if (!res.ok) {
     record({
       source: "NWS",
@@ -127,7 +180,7 @@ async function nwsObsAt(stationId: string, siteKey: string, offsetDays: number) 
   const url =
     `https://api.weather.gov/stations/${stationId}/observations` +
     `?start=${encodeURIComponent(iso(start))}&end=${encodeURIComponent(iso(end))}`;
-  const res = await probeJson<{ features?: Array<Record<string, any>> }>(url);
+  const res = await probeJson<{ features?: NwsObsFeature[] }>(url);
   if (!res.ok) {
     record({
       source: "NWS obs",
@@ -483,7 +536,7 @@ async function main() {
   });
 
   const isdBySite: Record<string, IsdStation[]> = {};
-  const isdProbes: unknown[] = [];
+  const isdProbes: IsdProbeResult[] = [];
   if (hist.ok) {
     const all = parseIsdHistory(hist.body);
     for (const site of S0_SITES) {
@@ -517,7 +570,7 @@ async function main() {
 
   // ── 3. IEM ASOS keyless archive ────────────────────────────────────────────
   console.log("\n── Probe 3: Iowa Environmental Mesonet ASOS archive (keyless) ──");
-  const iemProbes: unknown[] = [];
+  const iemProbes: IemProbeResult[] = [];
   const iemDepth: Record<string, Array<{ year: number; rows: number }>> = {};
   for (const site of S0_SITES) {
     const st = nwsStationBySite[site.key];
@@ -566,9 +619,9 @@ async function main() {
   for (const site of S0_SITES) {
     const nws = nwsStationBySite[site.key];
     const isd = isdBySite[site.key]?.[0] ?? null;
-    const iem = (iemProbes as any[]).find((p) => p && nws && p.station === nws.id.replace(/^K/, ""));
+    const iem = iemProbes.find((p) => nws != null && p.station === nws.id.replace(/^K/, ""));
     const iemRh = (iem?.counts?.relh ?? 0) > 0;
-    const isdProbe = (isdProbes as any[]).find((p) => p?.station?.id === isd?.id);
+    const isdProbe = isdProbes.find((p) => p.station.id === isd?.id);
     const isdUsable = (isdProbe?.tmp ?? 0) > 0 && (isdProbe?.dew ?? 0) > 0;
     const row = {
       site: site.key,
@@ -608,8 +661,8 @@ async function main() {
   results.attempts = attempts;
 
   // ── Verdict ────────────────────────────────────────────────────────────────
-  const isdWorks = isdProbes.some((p: any) => p?.rows > 0 && p?.tmp > 0 && p?.dew > 0);
-  const iemWorks = iemProbes.some((p: any) => p?.rows > 0 && (p?.counts?.relh ?? 0) > 0);
+  const isdWorks = isdProbes.some((p) => p.rows > 0 && p.tmp > 0 && p.dew > 0);
+  const iemWorks = iemProbes.some((p) => p.rows > 0 && (p.counts.relh ?? 0) > 0);
   // Depth is judged against WHAT S0 NEEDS (the 2021–2025 fixture seasons), not against "every year we
   // happened to poke". A station commissioned after 1998 returning nothing for 1998 is a station fact,
   // not an archive limit, and conflating the two would understate the archive.
@@ -630,12 +683,12 @@ async function main() {
 
   mkdirSync(dirname(OUT_JSON), { recursive: true });
   writeFileSync(OUT_JSON, JSON.stringify(results, null, 2), "utf8");
-  writeFileSync(OUT_MD, renderMarkdown(results as any), "utf8");
+  writeFileSync(OUT_MD, renderMarkdown(results as unknown as BackfillResults), "utf8");
   console.log(`wrote ${OUT_MD}`);
   console.log(`wrote ${OUT_JSON}`);
 }
 
-function renderMarkdown(r: any): string {
+function renderMarkdown(r: BackfillResults): string {
   const L: string[] = [];
   const v = r.verdict;
   L.push("---");
@@ -685,7 +738,7 @@ function renderMarkdown(r: any): string {
       L.push(`| ${site.name} | _no NWS coverage (rule §3.9)_ | ` + "—|".repeat(12));
       continue;
     }
-    const series: Array<{ offsetDays: number; count: number }> = r.nwsWindow?.[site.key] ?? [];
+    const series = r.nwsWindow?.[site.key] ?? [];
     const byOff = new Map(series.map((s) => [s.offsetDays, s.count]));
     const cells = [1, 2, 3, 4, 5, 6, 7, 10, 14, 30, 90, 365].map((d) =>
       byOff.has(d) ? String(byOff.get(d)) : "·",
@@ -706,7 +759,7 @@ function renderMarkdown(r: any): string {
   L.push("| Site | Nearest ISD stations (id · call · distance) |");
   L.push("|---|---|");
   for (const site of S0_SITES) {
-    const near: IsdStation[] = r.isdStations?.[site.key] ?? [];
+    const near = r.isdStations?.[site.key] ?? [];
     L.push(
       `| ${site.name} | ${near.length ? near.map((s) => `\`${s.id}\` ${s.call || s.name} @ ${(s.distanceM / 1000).toFixed(1)} km`).join("<br>") : "_none in inventory within the coverage filter_"} |`,
     );
@@ -726,7 +779,7 @@ function renderMarkdown(r: any): string {
   L.push("");
   L.push("| Year probed (Jul 1–3) | Rows returned |");
   L.push("|---|---|");
-  for (const d of (Object.values(r.iemDepth ?? {}).flat() as Array<{ year: number; rows: number }>)) {
+  for (const d of Object.values(r.iemDepth ?? {}).flat()) {
     L.push(`| ${d.year} | ${d.rows > 0 ? `${d.rows} ✅` : "0 ❌"} |`);
   }
   L.push("");
@@ -743,7 +796,7 @@ function renderMarkdown(r: any): string {
   L.push("");
   L.push("| Site | Station | Distance | Archive | Independently measured | RH column |");
   L.push("|---|---|---|---|---|---|");
-  for (const a of (r.armB ?? []) as any[]) {
+  for (const a of r.armB ?? []) {
     L.push(
       `| ${a.name} | ${a.station ? `\`${a.station}\`` : "—"} | ${a.distanceKm != null ? a.distanceKm.toFixed(1) + " km" : "—"} | ${a.source} | ${(a.measured ?? []).join(", ") || "—"} | ${a.rhPublished ? "published (derived)" : "absent"} |`,
     );
@@ -773,7 +826,7 @@ function renderMarkdown(r: any): string {
   L.push("");
   L.push("| Network | Covers | Access | Keyless |");
   L.push("|---|---|---|---|");
-  for (const m of r.mesonets as typeof MESONETS) {
+  for (const m of r.mesonets) {
     L.push(`| ${m.name} | ${m.covers} | ${m.access} | ${m.keyless ? "✅" : "❌"} |`);
   }
   L.push("");
@@ -813,7 +866,7 @@ function renderMarkdown(r: any): string {
   L.push("");
   L.push("| Source | Site | What | HTTP | Records | Note |");
   L.push("|---|---|---|---|---|---|");
-  for (const a of r.attempts as Attempt[]) {
+  for (const a of r.attempts) {
     L.push(
       `| ${a.source} | ${a.site} | ${a.what} | ${a.status} | ${a.records ?? "—"} | ${String(a.note).replace(/\|/g, "\\|")} |`,
     );

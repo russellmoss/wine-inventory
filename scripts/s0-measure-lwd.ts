@@ -51,7 +51,6 @@ import {
   INTERRUPTION_THRESHOLDS_H,
   SENSITIVITY_CONSUMERS,
   evaluateConsumer,
-  type ConsumerModel,
 } from "./s0-pathogens";
 import { POLITE_MS, S0_SEASONS, S0_SITES, probeText, sleep, type S0Site } from "./s0-sites";
 import { fahrenheitToC, inchesToMm, knotsToMs } from "./s0-units";
@@ -262,9 +261,104 @@ function errorStats(pairs: Array<[model: number, station: number]>): VarError | 
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The shape `main()` assembles and `render()` consumes. Typed rather than `any`:
+// the scripts in this repo are `any`-free, and the renderers read a structure this
+// same file builds, so there is no excuse for it to be untyped.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type Tally = ReturnType<typeof tally>;
+
+type Layer1Row = {
+  site: string;
+  season: number;
+  model: ArchiveModel;
+  hours: number;
+  cart: Tally;
+  fallback: Tally;
+  hourDisagreement: number;
+};
+
+type PerCellRow = {
+  site: string;
+  season: number;
+  model: ArchiveModel;
+  consumer: string;
+  provenance: string;
+  interruptionH: number;
+  cartEvents: number;
+  fallbackEvents: number;
+  union: number;
+  agreed: number;
+  flips: number;
+  rate: number;
+};
+
+type ModelSplit = { n: number; worst: number; mean: number; degenerate: number };
+type PairSpread = { n: number; worst: number; mean: number };
+
+type ArmBCell = {
+  site: string;
+  season: number;
+  model: ArchiveModel;
+  station: string;
+  matchedHours: number;
+  stats: Record<string, VarError | null>;
+};
+
+type ArmBSiteVerdict = {
+  regime: string;
+  status: "PASS" | "PASS_ON_PRIMARY" | "FAIL" | "NOT_TESTED";
+  reason?: string;
+  seasons?: number;
+  perCriterion?: Record<string, { worst: number | null; ceiling: number | null; pass: boolean | null }>;
+  primaryPass?: boolean;
+  allPass?: boolean;
+};
+
+type LwdResults = {
+  measuredAt: string;
+  layer1: Layer1Row[];
+  layer2: {
+    perCell: PerCellRow[];
+    variance: Record<string, number>;
+    gate?: {
+      consumersUsed: string[];
+      consumersExcluded: Array<{ key: string; why: string | null }>;
+      fixedInterruptionH: number;
+      worstCell: PerCellRow | undefined;
+      worstCellUnion: number | null;
+      worstCellIsDegenerate: boolean;
+      powerFloor: number;
+      worstPoweredCell: PerCellRow | null;
+      degenerateCells: number;
+      totalCells: number;
+      byModel: Record<string, ModelSplit>;
+      meanRate: number;
+    };
+    providerSpread?: {
+      comparisons: number;
+      worst: number | null;
+      mean: number | null;
+      byPair: Record<string, PairSpread>;
+      worstAmongCompleteFieldModels: number | null;
+    };
+    windSensitivity?: {
+      rows: Array<{ site: string; season: number; native: number; absent: number; constant: number }>;
+      attribution: number;
+    };
+  };
+  layer3: Record<string, ArmBCell>;
+  interruptionSensitivity: Record<string, { meanRate: number; meanCartEvents: number }>;
+  armBPerSite?: Record<string, ArmBSiteVerdict>;
+  evaluations?: Evaluation[];
+  noGo?: { noGo: boolean; triggered: string[]; reasoning: string };
+};
+
 async function main() {
   console.log("\nS0 Unit 5 — the two-arm gate\n");
-  const results: any = {
+  const results: LwdResults = {
     measuredAt: new Date().toISOString(),
     layer1: [],
     layer2: { perCell: [], variance: {} },
@@ -312,10 +406,10 @@ async function main() {
         });
       }
     }
-    const mine = results.layer1.filter((r: any) => r.site === site.key);
-    const avgCartWet = mine.reduce((a: number, r: any) => a + r.cart.wet, 0) / Math.max(1, mine.length);
-    const avgFbWet = mine.reduce((a: number, r: any) => a + r.fallback.wet, 0) / Math.max(1, mine.length);
-    const avgRefusal = mine.reduce((a: number, r: any) => a + r.cart.refusalRate, 0) / Math.max(1, mine.length);
+    const mine = results.layer1.filter((r) => r.site === site.key);
+    const avgCartWet = mine.reduce((a, r) => a + r.cart.wet, 0) / Math.max(1, mine.length);
+    const avgFbWet = mine.reduce((a, r) => a + r.fallback.wet, 0) / Math.max(1, mine.length);
+    const avgRefusal = mine.reduce((a, r) => a + r.cart.refusalRate, 0) / Math.max(1, mine.length);
     console.log(
       `  ${site.key.padEnd(15)} mean wet hours/season — CART ${avgCartWet.toFixed(0).padStart(5)} · fallback ${avgFbWet.toFixed(0).padStart(5)} · CART refusal ${(avgRefusal * 100).toFixed(1)}%`,
     );
@@ -323,7 +417,7 @@ async function main() {
 
   // ═══ LAYER 2 — ARM A, factorial, with variance attribution ═══
   console.log("\n── Layer 2: Arm A — decision sensitivity, factorial (council C7) ──");
-  const perCell: any[] = [];
+  const perCell: PerCellRow[] = [];
   for (const c of cells) {
     for (const interruptionH of INTERRUPTION_THRESHOLDS_H) {
       const cartRuns = runsWithTemp(c.hours, c.cartV, interruptionH);
@@ -349,8 +443,8 @@ async function main() {
   results.layer2.perCell = perCell;
 
   // variance attribution across the four dimensions
-  const groupBy = <T,>(rows: any[], key: (r: any) => string) => {
-    const m = new Map<string, any[]>();
+  const groupBy = (rows: PerCellRow[], key: (r: PerCellRow) => string) => {
+    const m = new Map<string, PerCellRow[]>();
     for (const r of rows) {
       const k = key(r);
       if (!m.has(k)) m.set(k, []);
@@ -364,7 +458,7 @@ async function main() {
     return xs.reduce((a, b) => a + (b - mu) ** 2, 0) / (xs.length - 1);
   };
   /** Between-group variance of cell means — how much of the spread this dimension explains. */
-  const attributed = (key: (r: any) => string) => {
+  const attributed = (key: (r: PerCellRow) => string) => {
     const groups = groupBy(perCell, key);
     const means = [...groups.values()].map((g) => g.reduce((a, r) => a + r.rate, 0) / g.length);
     return Number(variance(means).toFixed(5));
@@ -377,7 +471,7 @@ async function main() {
     bySeason: attributed((r) => String(r.season)),
     byInterruptionThreshold: attributed((r) => String(r.interruptionH)),
   };
-  for (const [k, v] of Object.entries<any>(results.layer2.variance)) {
+  for (const [k, v] of Object.entries(results.layer2.variance)) {
     console.log(`  variance ${k.padEnd(26)} ${v}`);
   }
 
@@ -491,7 +585,7 @@ async function main() {
     `  PROVIDER SPREAD (estimator + consumer fixed, model varied): worst ${worstSpread != null ? (worstSpread * 100).toFixed(1) + "%" : "—"} over ${spreadRows.length} comparisons`,
   );
   for (const [pair, v] of Object.entries(results.layer2.providerSpread.byPair)) {
-    const vv = v as any;
+    const vv = v as PairSpread;
     console.log(
       `    ${pair.padEnd(24)} worst ${(vv.worst * 100).toFixed(1).padStart(5)}% · mean ${(vv.mean * 100).toFixed(1).padStart(5)}% (n=${vv.n})`,
     );
@@ -549,7 +643,7 @@ async function main() {
     };
   }
   console.log(
-    `  INTERRUPTION SWEEP (4/8/12 h): mean flip ${Object.values<any>(results.interruptionSensitivity).map((v) => (v.meanRate * 100).toFixed(1) + "%").join(" / ")}`,
+    `  INTERRUPTION SWEEP (4/8/12 h): mean flip ${Object.values(results.interruptionSensitivity).map((v) => (v.meanRate * 100).toFixed(1) + "%").join(" / ")}`,
   );
 
   // ═══ LAYER 3 — ARM B ═══
@@ -638,16 +732,16 @@ async function main() {
   evals.push(evaluate(C4_WIND_SENSITIVITY, windAttribution, "share of the estimator effect that moves under wind perturbation"));
 
   // refusal band, per cell — never pooled
-  const refusalRates = results.layer1.map((r: any) => r.cart.refusalRate);
+  const refusalRates = results.layer1.map((r) => r.cart.refusalRate);
   const worstRefusal = Math.max(...refusalRates);
   const bestRefusal = Math.min(...refusalRates);
-  const refusalCeilingBreached = results.layer1.filter((r: any) => r.cart.refusalRate > (C5_REFUSAL_RATE.ceiling ?? 1)).length;
+  const refusalCeilingBreached = results.layer1.filter((r) => r.cart.refusalRate > (C5_REFUSAL_RATE.ceiling ?? 1)).length;
   evals.push(evaluate(C5_REFUSAL_RATE, worstRefusal, `worst cell of ${refusalRates.length}; best cell ${(bestRefusal * 100).toFixed(2)}%`));
 
   // Arm B, per variable, worst across cells (era5 only — the model with a complete field set)
-  const armBCells = Object.values<any>(results.layer3).filter((c) => c.model === "era5");
+  const armBCells = Object.values(results.layer3).filter((c) => c.model === "era5");
   const armBWorst = (v: string) => {
-    const vals = armBCells.map((c) => c.stats?.[v]?.mae).filter((x: any) => typeof x === "number");
+    const vals = armBCells.map((c) => c.stats?.[v]?.mae).filter((x): x is number => typeof x === "number");
     return vals.length ? Math.max(...vals) : null;
   };
   for (const [k, crit] of Object.entries(C2_ARM_B_TOLERANCE)) {
@@ -663,7 +757,7 @@ async function main() {
   // noisy, and it is what Unit 6 narrows the conclusion with.
   results.armBPerSite = {};
   for (const site of S0_SITES) {
-    const cellsFor = armBCells.filter((c: any) => c.site === site.key);
+    const cellsFor = armBCells.filter((c) => c.site === site.key);
     if (!cellsFor.length) {
       results.armBPerSite[site.key] = { regime: site.regime, status: "NOT_TESTED", reason: "no ASOS station" };
       continue;
@@ -672,7 +766,7 @@ async function main() {
     let allPass = true;
     for (const [k, crit] of Object.entries(C2_ARM_B_TOLERANCE)) {
       const v = k === "dewPointDepressionC" ? "dewPointDepressionC" : k === "tempC" ? "tempC" : k === "windMs" ? "windMs" : k === "precipMm" ? "precipMm" : "rhPct";
-      const vals = cellsFor.map((c: any) => c.stats?.[v]?.mae).filter((x: any) => typeof x === "number");
+      const vals = cellsFor.map((c) => c.stats?.[v]?.mae).filter((x): x is number => typeof x === "number");
       const worst = vals.length ? Math.max(...vals) : null;
       const pass = worst == null || crit.ceiling == null ? null : worst <= crit.ceiling;
       if (pass === false) allPass = false;
@@ -690,7 +784,7 @@ async function main() {
     };
   }
   console.log("\n── Arm B per site (the decomposition that makes the global failure usable) ──");
-  for (const [k, v] of Object.entries<any>(results.armBPerSite)) {
+  for (const [k, v] of Object.entries(results.armBPerSite ?? {})) {
     console.log(
       `  ${k.padEnd(15)} ${String(v.regime ?? "").padEnd(28)} ${String(v.status).padEnd(16)} DPD ${v.perCriterion?.["C2.dpd"]?.worst ?? "—"} °C (≤ ${v.perCriterion?.["C2.dpd"]?.ceiling ?? "—"})`,
     );
@@ -716,7 +810,7 @@ async function main() {
   console.log(`\nwrote ${OUT_MD}`);
 }
 
-function render(r: any): string {
+function render(r: LwdResults): string {
   const L: string[] = [];
   const pct = (x: number | null | undefined) => (x == null ? "—" : `${(x * 100).toFixed(1)}%`);
   L.push("---");
@@ -778,7 +872,7 @@ function render(r: any): string {
   L.push("");
   L.push("| Site | Season | Model | CART wet h | Fallback wet h | CART refusal | Hour-level disagreement |");
   L.push("|---|---|---|---|---|---|---|");
-  for (const row of (r.layer1 ?? []).filter((x: any) => x.model === "era5")) {
+  for (const row of (r.layer1 ?? []).filter((x) => x.model === "era5")) {
     L.push(
       `| ${row.site} | ${row.season} | ${row.model} | ${row.cart.wet} | ${row.fallback.wet} | ${pct(row.cart.refusalRate)} | ${pct(row.hourDisagreement)} |`,
     );
@@ -793,7 +887,7 @@ function render(r: any): string {
   L.push("");
   L.push("| Dimension | Between-group variance of the flip rate |");
   L.push("|---|---|");
-  for (const [k, v] of Object.entries<any>(r.layer2?.variance ?? {})) L.push(`| ${k} | ${v} |`);
+  for (const [k, v] of Object.entries(r.layer2?.variance ?? {})) L.push(`| ${k} | ${v} |`);
   L.push("");
   if (r.layer2?.gate) {
     const g = r.layer2.gate;
@@ -820,7 +914,7 @@ function render(r: any): string {
   L.push("");
   L.push("| Dry-gap threshold | Mean flip rate | Mean CART infection events |");
   L.push("|---|---|---|");
-  for (const [th, v] of Object.entries<any>(r.interruptionSensitivity ?? {})) {
+  for (const [th, v] of Object.entries(r.interruptionSensitivity ?? {})) {
     L.push(`| ${th} h | ${pct(v.meanRate)} | ${v.meanCartEvents} |`);
   }
   L.push("");
@@ -837,7 +931,7 @@ function render(r: any): string {
   L.push("");
   L.push("| Site | Season | Station | Matched h | DPD MAE | T MAE | Wind MAE | Precip MAE | RH MAE |");
   L.push("|---|---|---|---|---|---|---|---|---|");
-  for (const c of Object.values<any>(r.layer3 ?? {}).filter((c: any) => c.model === "era5")) {
+  for (const c of Object.values(r.layer3 ?? {}).filter((c) => c.model === "era5")) {
     L.push(
       `| ${c.site} | ${c.season} | \`${c.station}\` | ${c.matchedHours} | ${c.stats?.dewPointDepressionC?.mae ?? "—"} °C | ${c.stats?.tempC?.mae ?? "—"} °C | ${c.stats?.windMs?.mae ?? "—"} m/s | ${c.stats?.precipMm?.mae ?? "—"} mm | ${c.stats?.rhPct?.mae ?? "—"} pp |`,
     );
@@ -850,7 +944,7 @@ function render(r: any): string {
   L.push("");
   L.push("| Site | Regime | Dew-point depression MAE (PRIMARY) | Verdict |");
   L.push("|---|---|---|---|");
-  for (const [k, v] of Object.entries<any>(r.armBPerSite ?? {})) {
+  for (const [k, v] of Object.entries(r.armBPerSite ?? {})) {
     const dpd = v.perCriterion?.["C2.dpd"];
     L.push(
       `| ${k} | ${String(v.regime ?? "").replace(/_/g, " ")} | ${dpd?.worst ?? "—"} °C (ceiling ${dpd?.ceiling ?? "—"}) | ${v.status === "PASS" ? "✅ PASS" : v.status === "PASS_ON_PRIMARY" ? "🟡 passes the primary criterion, fails a secondary" : v.status === "NOT_TESTED" ? `— ${v.reason}` : "❌ FAIL"} |`,

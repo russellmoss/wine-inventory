@@ -296,8 +296,73 @@ function generateSql(
 
 type SizeRow = { total: number; heap: number; indexes: number; toast: number; rows: number; deadRows: number };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// The measurement's own result shape, typed rather than `any` (repo convention).
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ScaleRow = {
+  name: string;
+  vineyards: number;
+  hours: number;
+  vineyardYears: number;
+  insertMs: number;
+  rowsInserted: number;
+  size: SizeRow;
+  bytesPerRow: number;
+  bytesPerVineyardYear: number;
+};
+
+type LifecycleRow = {
+  pattern: string;
+  rows?: number;
+  loadMs?: number;
+  size?: SizeRow;
+  bytesPerRow?: number;
+  bloatBytes: number | null;
+  deadRows?: number;
+  cycles?: number;
+  cycleMsMedian?: number;
+  sizeAfterFirstCycle?: SizeRow | null;
+  sizeAfterChurn?: SizeRow;
+  sizeAfterVacuum?: SizeRow;
+  sizeAfterVacuumFull?: SizeRow;
+  steadyStateBytes?: number | null;
+  bloatRatio?: number | null;
+  recoverableByVacuumFullBytes?: number;
+  deadRowsAtPeak?: number;
+  liveRowsPerCycle?: number;
+  revisionMs?: number;
+  sizeBefore?: SizeRow;
+  sizeAfterRevision?: SizeRow;
+};
+
+type ReadResult = { label: string; p95Ms: number; medianMs: number; plan: string };
+type DesignResult = { label: string; size: SizeRow; reads: Record<string, ReadResult> };
+
+type RetentionResults = {
+  measuredAt: string;
+  branchId: string | null;
+  branchHost: string | null;
+  connectedAs: string | null;
+  scales: Record<string, ScaleRow>;
+  lifecycles: Record<string, LifecycleRow>;
+  physicalDesigns: Record<string, DesignResult>;
+  reads: Record<string, unknown>;
+  sideResult: {
+    note?: string;
+    withInvariants?: SizeRow;
+    withoutTextPkAndCompositeGuard?: SizeRow;
+    savedBytes?: number;
+    savedPct?: number;
+  };
+  writePath?: Record<string, number>;
+  upsertWasIdempotent?: boolean;
+  evaluations?: Evaluation[];
+};
+
+
 async function tableSize(db: PrismaClient, table: string): Promise<SizeRow> {
-  const r = await db.$queryRawUnsafe<any[]>(`
+  const r = await db.$queryRawUnsafe<Array<Record<string, unknown>>>(`
     SELECT
       pg_total_relation_size($1)                                   AS total,
       pg_table_size($1) - COALESCE(pg_relation_size($1,'fsm'),0)   AS heap,
@@ -308,7 +373,7 @@ async function tableSize(db: PrismaClient, table: string): Promise<SizeRow> {
     FROM pg_class c
     LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
     WHERE c.oid = format('%I', $1)::regclass`, table);
-  const x = r[0] ?? {};
+  const x: Record<string, unknown> = r[0] ?? {};
   return {
     total: Number(x.total ?? 0),
     heap: Number(x.heap ?? 0),
@@ -336,8 +401,10 @@ async function p95(db: PrismaClient, sql: string, runs = 12): Promise<{ p95: num
     if (i > 0) times.push(t.ms);
   }
   try {
-    const ex = await db.$queryRawUnsafe<any[]>(`EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) ${sql}`);
-    plan = ex.map((r: any) => Object.values(r)[0]).join("\n");
+    const ex = await db.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) ${sql}`,
+    );
+    plan = ex.map((row) => String(Object.values(row)[0])).join("\n");
   } catch (e) {
     plan = `EXPLAIN failed: ${e instanceof Error ? e.message : String(e)}`;
   }
@@ -433,7 +500,7 @@ async function main() {
   const owner = new PrismaClient({ datasourceUrl: ownerUrl, log: [] });
   /** app_rls: every timed read and write. This is the role production runs as. */
   const db = new PrismaClient({ datasourceUrl: appUrl, log: [] });
-  const results: any = {
+  const results: RetentionResults = {
     measuredAt: new Date().toISOString(),
     branchId: BRANCH_ID,
     branchHost: BRANCH_HOST,
@@ -446,7 +513,9 @@ async function main() {
   };
 
   try {
-    const who = await db.$queryRawUnsafe<any[]>(`SELECT current_user, current_database(), version()`);
+    const who = await db.$queryRawUnsafe<Array<{ current_user: string; current_database: string }>>(
+      `SELECT current_user, current_database(), version()`,
+    );
     results.connectedAs = who[0]?.current_user;
     console.log(`   connected as: ${who[0]?.current_user} @ ${who[0]?.current_database}\n`);
     if (String(who[0]?.current_user) !== "app_rls") {
@@ -606,7 +675,9 @@ async function main() {
       const ops: Record<string, number> = {};
       ops.bulkInsert8760 = (await timed(() => db.$executeRawUnsafe(generateSql(TABLE, "REANALYSIS", 1, 8760, 1)))).ms;
       // prove the identity constraint actually bites before timing the upsert against it
-      const before = await db.$queryRawUnsafe<any[]>(`SELECT count(*)::int n FROM "${TABLE}" WHERE "seriesKind"='OBSERVED'`);
+      const before = await db.$queryRawUnsafe<Array<{ n: number }>>(
+        `SELECT count(*)::int n FROM "${TABLE}" WHERE "seriesKind"='OBSERVED'`,
+      );
       // Re-ingesting the SAME identity tuple with a different surrogate id — the real backfill
       // shape. Every row must take the DO UPDATE branch; if any took DO NOTHING or inserted, the
       // identity index is not doing its job (which is how FIX 1 above was found).
@@ -621,7 +692,9 @@ async function main() {
             DO UPDATE SET "tempC" = EXCLUDED."tempC", "ingestedAt" = EXCLUDED."ingestedAt"`),
         )
       ).ms;
-      const after = await db.$queryRawUnsafe<any[]>(`SELECT count(*)::int n FROM "${TABLE}" WHERE "seriesKind"='OBSERVED'`);
+      const after = await db.$queryRawUnsafe<Array<{ n: number }>>(
+        `SELECT count(*)::int n FROM "${TABLE}" WHERE "seriesKind"='OBSERVED'`,
+      );
       results.upsertWasIdempotent = Number(before[0]?.n) === Number(after[0]?.n);
       console.log(
         `  upsert idempotency:    OBSERVED rows ${before[0]?.n} → ${after[0]?.n} ${Number(before[0]?.n) === Number(after[0]?.n) ? "✅ updated in place" : "❌ DUPLICATED — the identity constraint is not enforcing"}`,
@@ -654,7 +727,7 @@ async function main() {
         await owner.$executeRawUnsafe(`VACUUM ANALYZE "${t}"`);
         const size = await tableSize(owner, t);
         const shapes = readShapes(t);
-        const per: Record<string, unknown> = {};
+        const per: Record<string, ReadResult> = {};
         for (const s of shapes) {
           const r = await p95(db, s.sql);
           per[s.key] = { label: s.label, p95Ms: Number(r.p95.toFixed(1)), medianMs: Number(r.median.toFixed(1)), plan: r.plan };
@@ -723,7 +796,7 @@ async function main() {
     );
     const worstRead = Object.entries(results.physicalDesigns["a_single_table"]?.reads ?? {}).reduce<
       { key: string; p95: number } | null
-    >((acc, [k, v]: any) => (acc == null || v.p95Ms > acc.p95 ? { key: k, p95: v.p95Ms } : acc), null);
+    >((acc, [k, v]) => (acc == null || v.p95Ms > acc.p95 ? { key: k, p95: v.p95Ms } : acc), null);
     evals.push(evaluate(C7_READ_LATENCY, worstRead?.p95 ?? null, `worst shape: ${worstRead?.key ?? "—"} (Arm A)`));
     results.evaluations = evals;
 
@@ -759,7 +832,7 @@ async function main() {
 
 const mb = (b: number) => (b / 1024 / 1024).toFixed(2);
 
-function render(r: any): string {
+function render(r: RetentionResults): string {
   const L: string[] = [];
   L.push("---");
   L.push("title: S0 Unit 7 — retention economics, measured on an isolated Neon branch");
@@ -791,7 +864,7 @@ function render(r: any): string {
   L.push("");
   L.push("| Scale | Rows | Total | Heap | Indexes | Bytes/row | **MB per vineyard-year** |");
   L.push("|---|---|---|---|---|---|---|");
-  for (const [name, s] of Object.entries<any>(r.scales ?? {})) {
+  for (const [name, s] of Object.entries(r.scales ?? {})) {
     L.push(
       `| ${name} | ${Number(s.rowsInserted).toLocaleString()} | ${mb(s.size.total)} MB | ${mb(s.size.heap)} MB | ${mb(s.size.indexes)} MB | ${s.bytesPerRow.toFixed(0)} B | **${mb(s.bytesPerVineyardYear)} MB** |`,
     );
@@ -808,7 +881,7 @@ function render(r: any): string {
   L.push("\"replace in place\" creates dead tuples, VACUUM pressure and different index locality from a one-time");
   L.push("load. So each kind is exercised under **its own real lifecycle**.");
   L.push("");
-  for (const [kind, l] of Object.entries<any>(r.lifecycles ?? {})) {
+  for (const [kind, l] of Object.entries(r.lifecycles ?? {})) {
     L.push(`### ${kind}`);
     L.push("");
     L.push(`Pattern: ${l.pattern}`);
@@ -820,13 +893,13 @@ function render(r: any): string {
         `| after 1 cycle | ${mb(l.sizeAfterFirstCycle?.total ?? 0)} MB | ${mb(l.sizeAfterFirstCycle?.heap ?? 0)} MB | ${mb(l.sizeAfterFirstCycle?.indexes ?? 0)} MB | ${(l.sizeAfterFirstCycle?.deadRows ?? 0).toLocaleString()} |`,
       );
       L.push(
-        `| after ${l.cycles} cycles, pre-VACUUM | ${mb(l.sizeAfterChurn.total)} MB | ${mb(l.sizeAfterChurn.heap)} MB | ${mb(l.sizeAfterChurn.indexes)} MB | ${l.deadRowsAtPeak.toLocaleString()} |`,
+        `| after ${l.cycles} cycles, pre-VACUUM | ${mb(l.sizeAfterChurn?.total ?? 0)} MB | ${mb(l.sizeAfterChurn?.heap ?? 0)} MB | ${mb(l.sizeAfterChurn?.indexes ?? 0)} MB | ${(l.deadRowsAtPeak ?? 0).toLocaleString()} |`,
       );
       L.push(
-        `| after plain VACUUM | ${mb(l.sizeAfterVacuum.total)} MB | ${mb(l.sizeAfterVacuum.heap)} MB | ${mb(l.sizeAfterVacuum.indexes)} MB | — |`,
+        `| after plain VACUUM | ${mb(l.sizeAfterVacuum?.total ?? 0)} MB | ${mb(l.sizeAfterVacuum?.heap ?? 0)} MB | ${mb(l.sizeAfterVacuum?.indexes ?? 0)} MB | — |`,
       );
       L.push(
-        `| after VACUUM FULL | ${mb(l.sizeAfterVacuumFull.total)} MB | ${mb(l.sizeAfterVacuumFull.heap)} MB | ${mb(l.sizeAfterVacuumFull.indexes)} MB | — |`,
+        `| after VACUUM FULL | ${mb(l.sizeAfterVacuumFull?.total ?? 0)} MB | ${mb(l.sizeAfterVacuumFull?.heap ?? 0)} MB | ${mb(l.sizeAfterVacuumFull?.indexes ?? 0)} MB | — |`,
       );
       L.push("");
       L.push(
@@ -849,7 +922,7 @@ function render(r: any): string {
       if (kind === "REANALYSIS") {
         L.push("");
         L.push(
-          `One full revision pass took ${l.revisionMs} ms and grew the table from ${mb(l.sizeBefore.total)} MB to ${mb(l.sizeAfterRevision.total)} MB before VACUUM recovered it to ${mb(l.sizeAfterVacuum.total)} MB.`,
+          `One full revision pass took ${l.revisionMs} ms and grew the table from ${mb(l.sizeBefore?.total ?? 0)} MB to ${mb(l.sizeAfterRevision?.total ?? 0)} MB before VACUUM recovered it to ${mb(l.sizeAfterVacuum?.total ?? 0)} MB.`,
         );
         L.push("");
         L.push("⚠️ **This exercises the hazard Unit 2 named:** a reanalysis is *revisable*, so a stored ERA5 row");
@@ -866,20 +939,20 @@ function render(r: any): string {
   L.push("");
   L.push("| Operation | Time |");
   L.push("|---|---|");
-  for (const [k, v] of Object.entries<any>(r.writePath ?? {})) L.push(`| \`${k}\` | ${(v / 1000).toFixed(2)} s |`);
+  for (const [k, v] of Object.entries(r.writePath ?? {})) L.push(`| \`${k}\` | ${(v / 1000).toFixed(2)} s |`);
   L.push("");
   L.push("## 4. Read latency at the 5-year projection");
   L.push("");
   L.push("`EXPLAIN (ANALYZE, BUFFERS)` per shape, warm cache, 12 runs, as `app_rls` with the RLS policy active.");
   L.push("");
-  for (const [key, d] of Object.entries<any>(r.physicalDesigns ?? {})) {
+  for (const [, d] of Object.entries(r.physicalDesigns ?? {})) {
     L.push(`### ${d.label}`);
     L.push("");
     L.push(`Table size ${mb(d.size.total)} MB (heap ${mb(d.size.heap)} MB, indexes ${mb(d.size.indexes)} MB)`);
     L.push("");
     L.push("| Read shape | p95 | median |");
     L.push("|---|---|---|");
-    for (const [sk, s] of Object.entries<any>(d.reads ?? {})) {
+    for (const [, s] of Object.entries(d.reads ?? {})) {
       L.push(`| ${s.label} | ${s.p95Ms} ms | ${s.medianMs} ms |`);
     }
     L.push("");
@@ -918,11 +991,11 @@ function render(r: any): string {
       `| with the tenancy invariants (text cuid PK + \`(tenantId, id)\` guard) | ${mb(r.sideResult.withInvariants.total)} MB | ${mb(r.sideResult.withInvariants.heap)} MB | ${mb(r.sideResult.withInvariants.indexes)} MB |`,
     );
     L.push(
-      `| natural composite key, no cuid PK, no composite guard | ${mb(r.sideResult.withoutTextPkAndCompositeGuard.total)} MB | ${mb(r.sideResult.withoutTextPkAndCompositeGuard.heap)} MB | ${mb(r.sideResult.withoutTextPkAndCompositeGuard.indexes)} MB |`,
+      `| natural composite key, no cuid PK, no composite guard | ${mb(r.sideResult.withoutTextPkAndCompositeGuard?.total ?? 0)} MB | ${mb(r.sideResult.withoutTextPkAndCompositeGuard?.heap ?? 0)} MB | ${mb(r.sideResult.withoutTextPkAndCompositeGuard?.indexes ?? 0)} MB |`,
     );
     L.push("");
     L.push(
-      `Difference: **${mb(r.sideResult.savedBytes)} MB (${r.sideResult.savedPct.toFixed(0)}%)** at 10 vineyard-years.`,
+      `Difference: **${mb(r.sideResult.savedBytes ?? 0)} MB (${(r.sideResult.savedPct ?? 0).toFixed(0)}%)** at 10 vineyard-years.`,
     );
     L.push("");
     L.push("**This is not a recommendation and S0 does not act on it.** Plan §1.7 measured that 41% of the daily");

@@ -63,13 +63,34 @@ function intervalHours(validTime: string): number | null {
 
 type Sample = { at: string; site: string; updateTime: string | null; generatedAt: string | null };
 
+type PointsPayload = { properties?: { gridId?: string; gridX?: number; gridY?: number } };
+type GridpointPayload = { properties?: { updateTime?: string; generatedAt?: string } & Record<string, unknown> };
+type PropSeries = { values?: Array<{ validTime: string }> };
+
+type PerSiteCadence = { distinct: string[]; gapsMin: number[]; ages: number[] };
+type CadenceOut = {
+  measuredAt: string;
+  windowHours: number;
+  everyMin: number;
+  samples: Sample[];
+  perSite: Record<string, PerSiteCadence>;
+  widthCounts: Record<string, Record<string, number>>;
+  widthByLead: Record<string, Array<{ leadH: number; widthH: number }>>;
+};
+
+
 async function main() {
   // US sites only — the non-US site has no NWS grid, which is rule §3.9 working, not a gap.
   const sites = S0_SITES.filter((s) => s.nwsCovered);
   const grids: Record<string, { gridId: string; gridX: number; gridY: number }> = {};
   for (const s of sites) {
-    const r = await probeJson<any>(`https://api.weather.gov/points/${s.lat.toFixed(4)},${s.lon.toFixed(4)}`);
-    if (r.ok) grids[s.key] = { gridId: r.body.properties.gridId, gridX: r.body.properties.gridX, gridY: r.body.properties.gridY };
+    const r = await probeJson<PointsPayload>(`https://api.weather.gov/points/${s.lat.toFixed(4)},${s.lon.toFixed(4)}`);
+    if (r.ok && r.body.properties)
+      grids[s.key] = {
+        gridId: String(r.body.properties.gridId),
+        gridX: Number(r.body.properties.gridX),
+        gridY: Number(r.body.properties.gridY),
+      };
     await sleep(POLITE_MS);
   }
   console.log(`sampling ${Object.keys(grids).length} NWS gridpoints every ${EVERY_MIN} min for ${HOURS} h\n`);
@@ -84,7 +105,7 @@ async function main() {
   for (let i = 0; i < iterations; i++) {
     for (const [key, g] of Object.entries(grids)) {
       const url = `https://api.weather.gov/gridpoints/${g.gridId}/${g.gridX},${g.gridY}`;
-      const r = await probeJson<any>(url);
+      const r = await probeJson<GridpointPayload>(url);
       const at = new Date().toISOString();
       if (!r.ok) {
         samples.push({ at, site: key, updateTime: null, generatedAt: null });
@@ -101,7 +122,7 @@ async function main() {
       if (!widthsCaptured) {
         const now = Date.now();
         for (const prop of PROPS) {
-          const vals: Array<{ validTime: string }> = p[prop]?.values ?? [];
+          const vals = (p[prop] as PropSeries | undefined)?.values ?? [];
           widthCounts[prop] ??= {};
           widthByLead[prop] ??= [];
           for (const v of vals) {
@@ -133,7 +154,7 @@ async function main() {
     }
   }
 
-  const out = {
+  const out: CadenceOut = {
     measuredAt: new Date().toISOString(),
     windowHours: HOURS,
     everyMin: EVERY_MIN,
@@ -148,7 +169,7 @@ async function main() {
   console.log(`\nwrote ${OUT_MD}`);
 }
 
-function render(o: any): string {
+function render(o: CadenceOut): string {
   const L: string[] = [];
   L.push("---");
   L.push("title: S0 Unit 2 addendum — NWS re-issuance cadence and per-property interval widths");
@@ -169,15 +190,15 @@ function render(o: any): string {
   L.push("");
   L.push("| Site | Distinct issuances seen | Gaps between them | Product age at sampling (min / median / max) |");
   L.push("|---|---|---|---|");
-  for (const [site, v] of Object.entries<any>(o.perSite ?? {})) {
-    const ages: number[] = [...v.ages].sort((a: number, b: number) => a - b);
+  for (const [site, v] of Object.entries(o.perSite ?? {})) {
+    const ages: number[] = [...v.ages].sort((a, b) => a - b);
     const med = ages.length ? ages[Math.floor(ages.length / 2)] : null;
     L.push(
       `| ${site} | ${v.distinct.length} | ${v.gapsMin.length ? v.gapsMin.map((g: number) => `${g.toFixed(0)} min`).join(", ") : "_none observed_"} | ${ages.length ? `${ages[0].toFixed(1)} h / ${med!.toFixed(1)} h / ${ages[ages.length - 1].toFixed(1)} h` : "—"} |`,
     );
   }
   L.push("");
-  const allGaps = Object.values<any>(o.perSite ?? {}).flatMap((v) => v.gapsMin as number[]);
+  const allGaps = Object.values(o.perSite ?? {}).flatMap((v) => v.gapsMin);
   if (allGaps.length) {
     const medianGap = [...allGaps].sort((a, b) => a - b)[Math.floor(allGaps.length / 2)];
     L.push(`**Median observed re-issuance interval: ${(medianGap / 60).toFixed(1)} h.**`);
@@ -223,14 +244,14 @@ function render(o: any): string {
   L.push("*and* grow with lead time. Measured distribution, one full response:");
   L.push("");
   const widths = new Set<string>();
-  for (const counts of Object.values<any>(o.widthCounts ?? {})) for (const w of Object.keys(counts)) widths.add(w);
+  for (const counts of Object.values(o.widthCounts ?? {})) for (const w of Object.keys(counts)) widths.add(w);
   const sortedWidths = [...widths].sort((a, b) => Number(a) - Number(b));
   L.push(`| Property | ${sortedWidths.map((w) => `${w} h`).join(" | ")} | slots | hours covered |`);
   L.push(`|---|${sortedWidths.map(() => "---|").join("")}---|---|`);
   for (const prop of PROPS) {
-    const counts = (o.widthCounts ?? {})[prop] ?? {};
-    const slots = Object.values<number>(counts).reduce((a, b) => a + b, 0);
-    const hours = Object.entries<number>(counts).reduce((a, [w, n]) => a + Number(w) * n, 0);
+    const counts: Record<string, number> = (o.widthCounts ?? {})[prop] ?? {};
+    const slots = Object.values(counts).reduce((a, b) => a + b, 0);
+    const hours = Object.entries(counts).reduce((a, [w, n]) => a + Number(w) * n, 0);
     L.push(
       `| \`${prop}\` | ${sortedWidths.map((w) => (counts[w] ? String(counts[w]) : "·")).join(" | ")} | ${slots} | ${hours} |`,
     );

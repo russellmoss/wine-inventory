@@ -139,6 +139,14 @@ explicitly secondary check.
 
 | Site | Season | Station | Matched h | DPD MAE | T MAE | Wind MAE | Precip MAE | RH MAE |
 |---|---|---|---|---|---|---|---|---|
+| stoney_hill | 2021 | `DYL` | 5131 | 1.219 °C | 0.865 °C | 1.258 m/s | 1.081 mm | 4.854 pp |
+| stoney_hill | 2024 | `DYL` | 5118 | 1.133 °C | 0.753 °C | 1.362 m/s | 0.752 mm | 4.485 pp |
+| russian_river | 2021 | `STS` | 5130 | 2.873 °C | 3.578 °C | 1.347 m/s | 0.92 mm | 11.17 pp |
+| russian_river | 2024 | `STS` | 5134 | 3.184 °C | 3.239 °C | 1.326 m/s | 0.44 mm | 12.431 pp |
+| madera | 2021 | `MAE` | 5125 | 5.071 °C | 2.895 °C | 1.145 m/s | 0.815 mm | 13.562 pp |
+| madera | 2024 | `MAE` | 5132 | 3.34 °C | 1.841 °C | 1.2 m/s | 0.534 mm | 9.304 pp |
+| monticello_va | 2021 | `CHO` | 5110 | 1.717 °C | 1.121 °C | 1.17 m/s | 1.182 mm | 6.457 pp |
+| monticello_va | 2024 | `CHO` | 5103 | 1.622 °C | 1.049 °C | 1.187 m/s | 0.921 mm | 6.654 pp |
 
 ### ⚠️ Arm B does not pass or fail globally. It splits by REGIME, and cleanly.
 
@@ -147,11 +155,11 @@ it behind one number.
 
 | Site | Regime | Dew-point depression MAE (PRIMARY) | Verdict |
 |---|---|---|---|
-| stoney_hill | humid continental east | — °C (ceiling —) | — no ASOS station |
-| russian_river | coastal fog | — °C (ceiling —) | — no ASOS station |
-| madera | hot arid interior | — °C (ceiling —) | — no ASOS station |
+| stoney_hill | humid continental east | 1.219 °C (ceiling 1.85) | 🟡 passes the primary criterion, fails a secondary |
+| russian_river | coastal fog | 3.184 °C (ceiling 1.85) | ❌ FAIL |
+| madera | hot arid interior | 5.071 °C (ceiling 1.85) | ❌ FAIL |
 | paro | monsoon high altitude | — °C (ceiling —) | — no ASOS station |
-| monticello_va | humid subtropical southeast | — °C (ceiling —) | — no ASOS station |
+| monticello_va | humid subtropical southeast | 1.717 °C (ceiling 1.85) | 🟡 passes the primary criterion, fails a secondary |
 
 **The pattern is physical, not noise.** The reanalysis tracks the stations closely in the humid
 continental East and the humid subtropical Southeast, and misses badly in coastal fog and in the hot
@@ -188,11 +196,11 @@ with no admissible observation is MISSING rather than interpolated or zeroed. Pr
 | C3 | 1 | ≤ 0.15 | ❌ FAIL (above_ceiling) | worst of 150 model-swap comparisons |
 | C4 | 0.16412643834223944 | ≤ 0.5 | ✅ PASS | share of the estimator effect that moves under wind perturbation |
 | C5 | 0.18719806763285024 | 0.005 … 0.33 | ✅ PASS | worst cell of 100; best cell 0.00% |
-| C2.dpd | — | ≤ 1.85 | ⏳ PENDING | worst of 0 Arm B cells (era5) |
-| C2.temp | — | ≤ 1.11 | ⏳ PENDING | worst of 0 Arm B cells (era5) |
-| C2.wind | — | ≤ 1.25 | ⏳ PENDING | worst of 0 Arm B cells (era5) |
-| C2.precip | — | ≤ 0.2 | ⏳ PENDING | worst of 0 Arm B cells (era5) |
-| C2.rh | — | ≤ 5 | ⏳ PENDING | worst of 0 Arm B cells (era5) |
+| C2.dpd | 5.071 | ≤ 1.85 | ❌ FAIL (above_ceiling) | worst of 8 Arm B cells (era5) |
+| C2.temp | 3.578 | ≤ 1.11 | ❌ FAIL (above_ceiling) | worst of 8 Arm B cells (era5) |
+| C2.wind | 1.362 | ≤ 1.25 | ❌ FAIL (above_ceiling) | worst of 8 Arm B cells (era5) |
+| C2.precip | 1.182 | ≤ 0.2 | ❌ FAIL (above_ceiling) | worst of 8 Arm B cells (era5) |
+| C2.rh | 13.562 | ≤ 5 | ❌ FAIL (above_ceiling) | worst of 8 Arm B cells (era5) |
 
 ## 7. The no-go condition
 
@@ -200,6 +208,7 @@ with no admissible observation is MISSING rather than interpolated or zeroed. Pr
 
 S1 should NOT be built as scoped. See each trigger's breachMeaning for the narrower alternatives.
 
+- NG-1: Arm B failed on dew-point depression — inputs are not plausible
 - NG-3: estimator choice AND provider choice both move the advice — the band is a coin flip
 
 ## 8. What S0 is not entitled to conclude

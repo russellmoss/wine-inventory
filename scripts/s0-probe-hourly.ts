@@ -105,15 +105,82 @@ const DESIGN_CLAIMS: Record<string, string[]> = {
 //    `quantitativePrecipitation`, discarding everything else in the response.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Minimal named shapes for the provider payloads. Typed rather than `any`: every other
+// script in `scripts/` is `any`-free and these are stable, documented response shapes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type NwsIntervalValue = { validTime: string; value: number | null };
+type NwsSeries = { uom?: string | null; values?: NwsIntervalValue[] };
+/** The raw gridpoint's `properties`: two scalars plus one series per weather variable. */
+type NwsGridpointProps = { updateTime?: string; generatedAt?: string } & Record<string, unknown>;
+const seriesOf = (p: NwsGridpointProps, key: string): NwsSeries | undefined =>
+  p[key] as NwsSeries | undefined;
+
+type NwsQuantity = { value: number | null; unitCode?: string; qualityControl?: string };
+type NwsHourlyPeriodRaw = Record<string, number | string | NwsQuantity | null | undefined>;
+type NwsFeature = {
+  geometry?: { coordinates?: [number, number] };
+  properties?: Record<string, unknown>;
+};
+
+type OpenMeteoPayload = {
+  hourly?: Record<string, Array<number | null> | string[]>;
+  hourly_units?: Record<string, string>;
+  elevation?: number;
+  generationtime_ms?: number;
+};
+
+type NasaPowerPayload = {
+  properties?: { parameter?: Record<string, Record<string, number>> };
+  parameters?: Record<string, { units?: string }>;
+};
+
+type StationSummary = {
+  stationId: string;
+  distanceM: number;
+  stationElevM: number | null;
+  qcVocab: string[];
+  obsPer24h: number;
+};
+
+type HourlyInventoryOut = {
+  probedAt: string;
+  attribution: string;
+  grids: Record<string, NwsGrid | null>;
+  stations: Record<string, StationSummary | null>;
+  reports: ProviderReport[];
+  cadence: CadenceSample | null;
+  updateTimeEvidence: UpdateTimeEvidence | null;
+  era5LandWindAllNull: boolean;
+  designClaimFailures: string[];
+  rollupRule: typeof ROLLUP_RULE;
+};
+
+type CadenceSample = {
+  site: string;
+  samples: Array<{ at: string; updateTime: string | null }>;
+  distinctIssuances: string[];
+  gapsMin: number[];
+  windowMin: number;
+};
+
+type UpdateTimeEvidence = { site: string; startSpreadMin: number; updateTime?: string; generatedAt?: string };
+
 type NwsGrid = { gridId: string; gridX: number; gridY: number; stationsUrl: string };
 
 async function nwsGrid(site: S0Site): Promise<NwsGrid | null> {
-  const res = await probeJson<{ properties?: any }>(
+  const res = await probeJson<{ properties?: Record<string, unknown> }>(
     `https://api.weather.gov/points/${site.lat.toFixed(4)},${site.lon.toFixed(4)}`,
   );
   if (!res.ok) return null;
-  const p = res.body.properties ?? {};
-  return { gridId: p.gridId, gridX: p.gridX, gridY: p.gridY, stationsUrl: p.observationStations };
+  const p = (res.body.properties ?? {}) as Record<string, unknown>;
+  return {
+    gridId: String(p.gridId),
+    gridX: Number(p.gridX),
+    gridY: Number(p.gridY),
+    stationsUrl: String(p.observationStations),
+  };
 }
 
 /** ISO8601 interval "2026-07-26T18:00:00+00:00/PT6H" → hours. Widths DIFFER PER PROPERTY — the
@@ -142,7 +209,7 @@ const NWS_GRID_FIELDS = [
 
 async function probeNwsGridpoint(site: S0Site, grid: NwsGrid) {
   const url = `https://api.weather.gov/gridpoints/${grid.gridId}/${grid.gridX},${grid.gridY}`;
-  const res = await probeJson<{ properties?: any }>(url);
+  const res = await probeJson<{ properties?: NwsGridpointProps }>(url);
   if (!res.ok) {
     push({
       providerKey: "nws:gridpoints-raw",
@@ -159,15 +226,15 @@ async function probeNwsGridpoint(site: S0Site, grid: NwsGrid) {
     });
     return null;
   }
-  const p = res.body.properties ?? {};
+  const p: NwsGridpointProps = res.body.properties ?? {};
   const fields: FieldRecord[] = [];
   const widths: Record<string, number[]> = {};
   let maxEndMs = 0;
   const nowMs = Date.now();
 
   for (const f of NWS_GRID_FIELDS) {
-    const node = p[f];
-    const values: Array<{ validTime: string; value: number | null }> = node?.values ?? [];
+    const node = seriesOf(p, f);
+    const values: NwsIntervalValue[] = node?.values ?? [];
     const present = values.length > 0;
     if (present) {
       const w = values.map((v) => intervalHours(v.validTime)).filter((x): x is number => x != null);
@@ -199,7 +266,7 @@ async function probeNwsGridpoint(site: S0Site, grid: NwsGrid) {
   // stitched product? Evidence: do different properties' series START at different times? If the
   // product were issued as one unit, every property would begin at the same instant.
   const starts = NWS_GRID_FIELDS.map((f) => {
-    const v = p[f]?.values?.[0]?.validTime;
+    const v = seriesOf(p, f)?.values?.[0]?.validTime;
     return v ? Date.parse(v.split("/")[0]) : null;
   }).filter((x): x is number => x != null);
   const startSpreadMin = starts.length ? (Math.max(...starts) - Math.min(...starts)) / 60_000 : 0;
@@ -217,14 +284,14 @@ async function probeNwsGridpoint(site: S0Site, grid: NwsGrid) {
     providerIssuedAt: p.updateTime ?? null,
     note: `updateTime=${p.updateTime ?? "—"} · property start spread ${startSpreadMin.toFixed(0)} min`,
   });
-  return { startSpreadMin, updateTime: p.updateTime as string | undefined, generatedAt: res.body.properties?.generatedAt };
+  return { site: site.key, startSpreadMin, updateTime: p.updateTime, generatedAt: p.generatedAt };
 }
 
 /** The `/forecast/hourly` endpoint production already parses — 156 strictly-one-hour periods,
  *  and NO humidity, NO dew point. Included so the inventory shows why the RAW endpoint is the one. */
 async function probeNwsHourly(site: S0Site, grid: NwsGrid) {
   const url = `https://api.weather.gov/gridpoints/${grid.gridId}/${grid.gridX},${grid.gridY}/forecast/hourly?units=si`;
-  const res = await probeJson<{ properties?: any }>(url);
+  const res = await probeJson<{ properties?: { periods?: NwsHourlyPeriodRaw[]; updateTime?: string } }>(url);
   if (!res.ok) {
     push({
       providerKey: "nws:forecast-hourly",
@@ -241,15 +308,21 @@ async function probeNwsHourly(site: S0Site, grid: NwsGrid) {
     });
     return;
   }
-  const periods: any[] = res.body.properties?.periods ?? [];
+  const periods: NwsHourlyPeriodRaw[] = res.body.properties?.periods ?? [];
   const keys = ["temperature", "dewpoint", "relativeHumidity", "windSpeed", "probabilityOfPrecipitation"];
   const fields: FieldRecord[] = keys.map((k) => {
-    const vals = periods.map((pd) => (typeof pd[k] === "object" ? pd[k]?.value : pd[k]));
+    const vals = periods.map((pd) => {
+      const cell = pd[k];
+      return cell !== null && typeof cell === "object" ? (cell as NwsQuantity).value : cell;
+    });
     const nonNull = vals.filter((v) => v != null).length;
     return {
       field: k,
       present: nonNull > 0,
-      units: typeof periods[0]?.[k] === "object" ? (periods[0]?.[k]?.unitCode ?? null) : null,
+      units:
+        periods[0]?.[k] !== null && typeof periods[0]?.[k] === "object"
+          ? ((periods[0][k] as NwsQuantity).unitCode ?? null)
+          : null,
       nullDensity: periods.length ? 1 - nonNull / periods.length : null,
       nativeIntervalH: 1,
       kind: "FORECAST",
@@ -281,36 +354,36 @@ async function probeNwsHourly(site: S0Site, grid: NwsGrid) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function probeNwsObservations(site: S0Site, stationsUrl: string) {
-  const stRes = await probeJson<{ features?: any[] }>(stationsUrl);
+  const stRes = await probeJson<{ features?: NwsFeature[] }>(stationsUrl);
   if (!stRes.ok || !(stRes.body.features ?? []).length) return null;
   const f0 = (stRes.body.features ?? [])
     .map((f) => {
-      const [lon, lat] = f.geometry?.coordinates ?? [null, null];
-      return { f, d: lat == null ? Infinity : haversineM(site.lat, site.lon, lat, lon), lat, lon };
+      const [lon, lat] = f.geometry?.coordinates ?? [NaN, NaN];
+      return { f, d: Number.isFinite(lat) ? haversineM(site.lat, site.lon, lat, lon) : Infinity, lat, lon };
     })
     .sort((a, b) => a.d - b.d)[0];
-  const stationId = f0.f.properties?.stationIdentifier;
-  const stationElevM = f0.f.properties?.elevation?.value ?? null;
+  const stationId = String(f0.f.properties?.stationIdentifier ?? "");
+  const stationElevM = (f0.f.properties?.elevation as { value?: number } | undefined)?.value ?? null;
 
   const end = new Date();
   const start = new Date(end.getTime() - 24 * 3_600_000);
   const url = `https://api.weather.gov/stations/${stationId}/observations?start=${encodeURIComponent(start.toISOString().slice(0, 19) + "Z")}&end=${encodeURIComponent(end.toISOString().slice(0, 19) + "Z")}`;
-  const res = await probeJson<{ features?: any[] }>(url);
+  const res = await probeJson<{ features?: NwsFeature[] }>(url);
   if (!res.ok) return null;
-  const obs: any[] = res.body.features ?? [];
+  const obs: NwsFeature[] = res.body.features ?? [];
   const keys = ["temperature", "dewpoint", "relativeHumidity", "windSpeed", "windDirection", "precipitationLastHour", "barometricPressure"];
   const qcVocab = new Set<string>();
   const fields: FieldRecord[] = keys.map((k) => {
     let nonNull = 0;
     for (const o of obs) {
-      const node = o.properties?.[k];
+      const node = o.properties?.[k] as NwsQuantity | undefined;
       if (node?.value != null) nonNull++;
       if (node?.qualityControl) qcVocab.add(node.qualityControl);
     }
     return {
       field: k,
       present: nonNull > 0,
-      units: obs[0]?.properties?.[k]?.unitCode ?? null,
+      units: (obs[0]?.properties?.[k] as NwsQuantity | undefined)?.unitCode ?? null,
       nullDensity: obs.length ? 1 - nonNull / obs.length : null,
       nativeIntervalH: obs.length > 1 ? 24 / obs.length : null,
       kind: "OBSERVED",
@@ -375,7 +448,7 @@ async function probeOpenMeteo(
   if (model) params.set("models", model);
   const url = `${host}?${params}`;
   const key = `open_meteo:${which}${model ? `-${model}` : "-default"}`;
-  const res = await probeJson<any>(url, { timeoutMs: 90_000 });
+  const res = await probeJson<OpenMeteoPayload>(url, { timeoutMs: 90_000 });
   if (!res.ok) {
     push({
       providerKey: key,
@@ -394,9 +467,9 @@ async function probeOpenMeteo(
   }
   const h = res.body.hourly ?? {};
   const units = res.body.hourly_units ?? {};
-  const n = (h.time ?? []).length;
+  const n = ((h.time as string[] | undefined) ?? []).length;
   const fields: FieldRecord[] = OM_HOURLY.map((v) => {
-    const arr: Array<number | null> = h[v] ?? [];
+    const arr = (h[v] as Array<number | null> | undefined) ?? [];
     const nonNull = arr.filter((x) => x != null).length;
     return {
       field: v,
@@ -445,7 +518,7 @@ async function probeNasaPower(site: S0Site) {
     "time-standard": "UTC",
   });
   const url = `https://power.larc.nasa.gov/api/temporal/hourly/point?${params}`;
-  const res = await probeJson<any>(url, { timeoutMs: 120_000 });
+  const res = await probeJson<NasaPowerPayload>(url, { timeoutMs: 120_000 });
   if (!res.ok) {
     push({
       providerKey: "nasa_power:hourly",
@@ -465,6 +538,7 @@ async function probeNasaPower(site: S0Site) {
   const params_ = res.body?.properties?.parameter ?? {};
   const fields: FieldRecord[] = ["T2M", "RH2M", "T2MDEW", "WS2M", "PRECTOTCORR", "ALLSKY_SFC_SW_DWN"].map((p) => {
     const obj: Record<string, number> = params_[p] ?? {};
+    void obj;
     const vals = Object.values(obj);
     // NASA POWER's fill value is -999
     const good = vals.filter((v) => v > -900).length;
@@ -506,7 +580,7 @@ async function sampleIssuanceCadence(site: S0Site, grid: NwsGrid, samples: numbe
   const url = `https://api.weather.gov/gridpoints/${grid.gridId}/${grid.gridX},${grid.gridY}`;
   const seen: Array<{ at: string; updateTime: string | null }> = [];
   for (let i = 0; i < samples; i++) {
-    const res = await probeJson<{ properties?: any }>(url);
+    const res = await probeJson<{ properties?: NwsGridpointProps }>(url);
     const ut = res.ok ? (res.body.properties?.updateTime ?? null) : null;
     seen.push({ at: new Date().toISOString(), updateTime: ut });
     console.log(`    cadence sample ${i + 1}/${samples}: updateTime=${ut}`);
@@ -528,8 +602,8 @@ async function main() {
   console.log(`\nS0 Unit 2 — live hourly field inventory${QUICK ? " (quick)" : ""}\n`);
   const probedAt = new Date().toISOString();
   const grids: Record<string, NwsGrid | null> = {};
-  const stations: Record<string, unknown> = {};
-  let updateTimeEvidence: any = null;
+  const stations: Record<string, StationSummary | null> = {};
+  let updateTimeEvidence: UpdateTimeEvidence | null = null;
 
   console.log("── NWS raw gridpoint (FORECAST) + /forecast/hourly + station observations (OBSERVED) ──");
   for (const site of S0_SITES) {
@@ -543,7 +617,7 @@ async function main() {
     if (!g) continue;
     await sleep(POLITE_MS);
     const ev = await probeNwsGridpoint(site, g);
-    if (ev && !updateTimeEvidence) updateTimeEvidence = { site: site.key, ...ev };
+    if (ev && !updateTimeEvidence) updateTimeEvidence = ev;
     await sleep(POLITE_MS);
     await probeNwsHourly(site, g);
     await sleep(POLITE_MS);
@@ -571,7 +645,7 @@ async function main() {
     await sleep(POLITE_MS);
   }
 
-  let cadence: unknown = null;
+  let cadence: CadenceSample | null = null;
   if (!QUICK) {
     console.log("\n── NWS issuance cadence (measured, not assumed — council C5) ──");
     const site = S0_SITES.find((s) => s.key === "stoney_hill")!;
@@ -598,7 +672,7 @@ async function main() {
   const landWindAllNull = landReports.length > 0 && landReports.every((r) => !r.fields.find((f) => f.field === "wind_speed_10m")?.present);
   console.log(`  ${landWindAllNull ? "✅" : "⚠️ "} era5_land wind is ${landWindAllNull ? "null at every site (finding CONFIRMED across all 5 sites and a full week)" : "PRESENT — plan §1.2's finding no longer holds, re-decide the archive"}`);
 
-  const out = {
+  const out: HourlyInventoryOut = {
     probedAt,
     attribution: OPEN_METEO_ATTRIBUTION,
     grids,
@@ -678,7 +752,7 @@ export const ROLLUP_RULE = {
   dstHandling: "align in UTC; convert to site-local via the IANA zone only at the estimator's night-window boundary",
 } as const;
 
-function render(o: any): string {
+function render(o: HourlyInventoryOut): string {
   const L: string[] = [];
   const sitesWithGrid = S0_SITES.filter((s) => o.grids[s.key]);
   L.push("---");
@@ -762,7 +836,7 @@ function render(o: any): string {
     L.push("");
   }
   if (o.cadence) {
-    const c = o.cadence as any;
+    const c = o.cadence;
     L.push("### Measured re-issuance cadence — §1.4's ceiling input");
     L.push("");
     L.push("Council C5 withdrew the plan's \"~170×\" forecast-row multiplier as false precision computed before");
@@ -889,7 +963,7 @@ function render(o: any): string {
   L.push("| Site | Station | Distance | Δ elevation (station − site) | Observation cadence | QC vocabulary |");
   L.push("|---|---|---|---|---|---|");
   for (const s of S0_SITES) {
-    const st = (o.stations ?? {})[s.key] as any;
+    const st = (o.stations ?? {})[s.key];
     if (!st) {
       L.push(`| ${s.name} | — | — | — | — | _no NWS station (rule §3.9)_ |`);
       continue;

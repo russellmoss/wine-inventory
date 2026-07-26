@@ -83,6 +83,14 @@ const ROUND: Record<Var, number> = {
   shortwave_radiation: 0,
 };
 
+type OpenMeteoArchive = {
+  hourly?: Record<string, Array<number | null> | string[]>;
+  hourly_units?: Record<string, string>;
+};
+type OpenMeteoDaily = {
+  daily?: { time?: string[]; temperature_2m_mean?: Array<number | null>; precipitation_sum?: Array<number | null> };
+};
+
 export type Fixture = {
   schema: 1;
   siteKey: string;
@@ -166,14 +174,14 @@ async function fetchOne(site: S0Site, season: number, model: ArchiveModel): Prom
   if (model !== "default") params.set("models", model);
   const url = `https://archive-api.open-meteo.com/v1/archive?${params}`;
 
-  const res = await probeJson<any>(url, { timeoutMs: 180_000 });
+  const res = await probeJson<OpenMeteoArchive>(url, { timeoutMs: 180_000 });
   if (!res.ok) {
     console.log(`    [FAIL] ${site.key} ${season} ${model} → HTTP ${res.status} ${res.error.slice(0, 60)}`);
     return null;
   }
   const h = res.body.hourly ?? {};
   const u = res.body.hourly_units ?? {};
-  const times: string[] = h.time ?? [];
+  const times = (h.time as string[] | undefined) ?? [];
   if (!times.length) {
     console.log(`    [FAIL] ${site.key} ${season} ${model} → empty payload`);
     return null;
@@ -181,13 +189,13 @@ async function fetchOne(site: S0Site, season: number, model: ArchiveModel): Prom
 
   // ── unit assertions, per variable, every time ──
   for (const v of VARS) {
-    if ((h[v] ?? []).length === 0) continue; // absent variable (era5_land wind) — not a unit problem
+    if (((h[v] as unknown[] | undefined) ?? []).length === 0) continue; // absent variable (era5_land wind)
     assertUnit(`${model}.${v}`, EXPECTED_UNITS[v], u[v]);
   }
 
   const data: Record<string, Array<number | null>> = {};
   for (const v of VARS) {
-    const arr: Array<number | null> = h[v] ?? [];
+    const arr = (h[v] as Array<number | null> | undefined) ?? [];
     data[v] = arr.length ? arr.map((x) => round(x, ROUND[v])) : [];
   }
 
@@ -369,10 +377,10 @@ async function fetchBaseline(site: S0Site) {
     precipitation_unit: "mm",
   });
   const url = `https://archive-api.open-meteo.com/v1/archive?${params}`;
-  const res = await probeJson<any>(url, { timeoutMs: 180_000 });
+  const res = await probeJson<OpenMeteoDaily>(url, { timeoutMs: 180_000 });
   if (!res.ok) return null;
-  const d = res.body.daily ?? {};
-  const times: string[] = d.time ?? [];
+  const d = res.body.daily ?? { time: [] };
+  const times = d.time ?? [];
   const perSeason = new Map<number, { precip: number; tSum: number; n: number }>();
   for (let i = 0; i < times.length; i++) {
     const date = times[i];
@@ -381,8 +389,9 @@ async function fetchBaseline(site: S0Site) {
     if (date < start || date > end) continue;
     const cur = perSeason.get(year) ?? { precip: 0, tSum: 0, n: 0 };
     cur.precip += d.precipitation_sum?.[i] ?? 0;
-    if (d.temperature_2m_mean?.[i] != null) {
-      cur.tSum += d.temperature_2m_mean[i];
+    const meanT = d.temperature_2m_mean?.[i];
+    if (meanT != null) {
+      cur.tSum += meanT;
       cur.n++;
     }
     perSeason.set(year, cur);
