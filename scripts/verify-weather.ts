@@ -10,7 +10,12 @@ import { runAsTenant } from "../src/lib/tenant/context";
 import { prisma } from "../src/lib/prisma";
 import { ingestVineyardWeatherCore } from "../src/lib/weather/ingest-core";
 import { composeClimateSummaryCore, type DailyRow } from "../src/lib/weather/read-core";
+import { ingestVineyardForecastCore } from "../src/lib/weather/forecast-ingest-core";
+import { composeForecastViewCore, type ForecastRow } from "../src/lib/weather/forecast-read-core";
 import type { ClimateProvider, DailyRecord, ProviderSeries } from "../src/lib/weather/providers/types";
+import type { ForecastDailyRecord, ForecastProviderKey, ForecastSeries } from "../src/lib/weather/providers/forecast-types";
+import type { NwsGrid } from "../src/lib/weather/providers/forecast-nws";
+import { addDaysIso } from "../src/lib/weather/obs-time-core";
 
 const DEMO = "org_demo_winery";
 const LAT = 38.5;
@@ -114,8 +119,88 @@ async function main() {
         await prisma.vineyardWeatherConfig.deleteMany({ where: { vineyardId: vy2.id } });
         await prisma.vineyard.delete({ where: { id: vy2.id } });
       }
+      // ── 5) FORECAST loop (plan 096 U17): fixture providers → replace semantics + view compose ──
+      console.log("\nForecast (plan 096):");
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const fDay = (offset: number, over: Partial<ForecastDailyRecord> = {}): ForecastDailyRecord => ({
+        targetDate: addDaysIso(todayIso, offset),
+        tmaxC: 30,
+        tminC: 12,
+        precipMm: offset === 2 ? 6.5 : 0,
+        precipProbabilityPct: offset === 2 ? 70 : 10,
+        conditionCode: offset === 2 ? "RAIN" : "PARTLY_CLOUDY",
+        windMaxKph: 14,
+        ...over,
+      });
+      const nwsSeries = (days: number[], issued: Date): ForecastSeries & { grid: NwsGrid } => ({
+        providerKey: "nws",
+        issuedAt: issued,
+        timeZone: "America/Los_Angeles",
+        records: days.map((o) => fDay(o, o === 0 ? { tmaxC: null } : {})), // day-1 afternoon edge: low only
+        attribution: "nws fixture",
+        sourceUrl: "fixture://nws",
+        grid: { gridId: "QAX", gridX: 1, gridY: 2, timeZone: "America/Los_Angeles" },
+      });
+      const omSeries = (days: number[], issued: Date): ForecastSeries => ({
+        providerKey: "open_meteo",
+        issuedAt: issued,
+        timeZone: "America/Los_Angeles",
+        records: days.map((o) => fDay(o, { tmaxC: 33 })), // disagrees by +3 → spread
+        attribution: "om fixture",
+        sourceUrl: "fixture://om",
+      });
+      const fetchFx = (days: number[], issued: Date) => async (key: ForecastProviderKey) =>
+        key === "nws" ? nwsSeries(days, issued) : omSeries(days, issued);
+
+      const issue1 = new Date();
+      const fres = await ingestVineyardForecastCore(
+        { vineyardId: vy.id, lat: LAT, lon: LON, elevationM: 100 },
+        { fetchSeries: fetchFx([0, 1, 2, 3, 4, 5, 6], issue1) },
+      );
+      check("forecast ingest wrote both providers (7 days each)", fres.rowsWritten === 14, fres.rowsWritten);
+      const cfgAfter = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId: vy.id }, select: { timeZone: true, nwsGridId: true, nwsGridX: true, nwsGridY: true } });
+      check("config cache persisted IN the ingest tx (tz + NWS grid — council S4)", cfgAfter?.timeZone === "America/Los_Angeles" && cfgAfter?.nwsGridId === "QAX" && cfgAfter?.nwsGridX === 1 && cfgAfter?.nwsGridY === 2, cfgAfter);
+
+      // Replace semantics (council C1): a SHORTENED horizon deletes the orphaned future day.
+      const issue2 = new Date(Date.now() + 1000);
+      await ingestVineyardForecastCore(
+        { vineyardId: vy.id, lat: LAT, lon: LON, elevationM: 100 },
+        { fetchSeries: fetchFx([0, 1, 2, 3, 4, 5], issue2) }, // day-7 gone
+      );
+      const nwsCount = await prisma.vineyardForecastDaily.count({ where: { vineyardId: vy.id, providerKey: "nws" } });
+      const day7 = await prisma.vineyardForecastDaily.count({ where: { vineyardId: vy.id, targetDate: new Date(`${addDaysIso(todayIso, 6)}T00:00:00.000Z`) } });
+      check("re-ingest REPLACED the horizon (6 nws rows, not 7)", nwsCount === 6, nwsCount);
+      check("the dropped day-7 row is GONE, not stale (council C1)", day7 === 0, day7);
+
+      // Compose the view from stored rows: primary NWS, day-1 null high, spread present.
+      const frows = await prisma.vineyardForecastDaily.findMany({ where: { vineyardId: vy.id }, orderBy: { targetDate: "asc" } });
+      const fr: ForecastRow[] = frows.map((r) => ({
+        providerKey: r.providerKey,
+        targetDate: r.targetDate.toISOString().slice(0, 10),
+        issuedAt: r.issuedAt.toISOString(),
+        tmaxC: r.tmaxC == null ? null : Number(r.tmaxC),
+        tminC: r.tminC == null ? null : Number(r.tminC),
+        precipMm: r.precipMm == null ? null : Number(r.precipMm),
+        precipProbabilityPct: r.precipProbabilityPct == null ? null : Number(r.precipProbabilityPct),
+        conditionCode: r.conditionCode,
+        windMaxKph: r.windMaxKph == null ? null : Number(r.windMaxKph),
+      }));
+      const view = composeForecastViewCore(fr, todayIso);
+      check("view speaks in the PRIMARY (nws) series (council C3)", view?.providerKey === "nws", view?.providerKey);
+      check("day-1 afternoon edge: null high survives to the view (never 0)", view?.days[0]?.tmaxC === null, view?.days[0]);
+      check("cross-provider disagreement is a spread (3°C max delta), never a mean", view?.spread?.maxTmaxDeltaC === 3, view?.spread);
+      check("every stored forecast row carries provenance", frows.every((r) => r.provenance && typeof r.provenance === "object"), frows[0]?.provenance);
+
+      // Retention shape: a past target-date row is prunable by the sweep predicate.
+      await prisma.vineyardForecastDaily.create({
+        data: { vineyardId: vy.id, providerKey: "nws", targetDate: new Date(`${addDaysIso(todayIso, -3)}T00:00:00.000Z`), issuedAt: issue1, conditionCode: "CLEAR", provenance: { qa: true } },
+      });
+      await prisma.vineyardForecastDaily.deleteMany({ where: { vineyardId: vy.id, targetDate: { lt: new Date(`${addDaysIso(todayIso, -1)}T00:00:00.000Z`) } } });
+      const stale = await prisma.vineyardForecastDaily.count({ where: { vineyardId: vy.id, targetDate: { lt: new Date(`${addDaysIso(todayIso, -1)}T00:00:00.000Z`) } } });
+      check("retention prune removes past target-dates", stale === 0, stale);
     } finally {
       // Cleanup the QA fixtures.
+      await prisma.vineyardForecastDaily.deleteMany({ where: { vineyardId: vy.id } });
       await prisma.vineyardClimateDaily.deleteMany({ where: { vineyardId: vy.id } });
       await prisma.vineyardWeatherConfig.deleteMany({ where: { vineyardId: vy.id } });
       await prisma.weatherProviderUsage.deleteMany({ where: {} }).catch(() => {});
