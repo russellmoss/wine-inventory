@@ -18,7 +18,7 @@
 import { zonedDateKey } from "@/lib/work-orders/due-at";
 import { conditionFromNws, worseCondition } from "../condition-core";
 import { isUsForecastCoverage } from "../us-coverage";
-import { fetchJson, fetchJsonRetry } from "./fetch-util";
+import { fetchJsonRetry, type JsonFetcher } from "./fetch-util";
 import { ProviderFetchError } from "./types";
 import type { ConditionCode, ForecastDailyRecord, ForecastProvider, ForecastSeries } from "./forecast-types";
 
@@ -32,7 +32,7 @@ export interface NwsGrid {
 }
 
 /** Resolve the /points grid mapping (caller caches it on the config row — U15). */
-export async function resolveNwsGrid(lat: number, lon: number, deps: { fetch?: typeof fetchJson } = {}): Promise<NwsGrid> {
+export async function resolveNwsGrid(lat: number, lon: number, deps: { fetch?: JsonFetcher } = {}): Promise<NwsGrid> {
   const f = deps.fetch ?? fetchJsonRetry; // U24: forecast path retries transient faults (a 404 still falls through instantly)
   const json = (await f("nws", `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`)) as {
     properties?: { gridId?: string; gridX?: number; gridY?: number; timeZone?: string };
@@ -146,7 +146,7 @@ export function sumQpfToLocalDays(
 
 export async function fetchNwsForecast(
   args: { lat: number; lon: number },
-  opts: { grid?: NwsGrid | null; fetch?: typeof fetchJson; now?: Date } = {},
+  opts: { grid?: NwsGrid | null; fetch?: JsonFetcher; now?: Date } = {},
 ): Promise<ForecastSeries & { grid: NwsGrid }> {
   const f = opts.fetch ?? fetchJsonRetry; // U24 retry on transient faults
   const grid = opts.grid ?? (await resolveNwsGrid(args.lat, args.lon, { fetch: f }));

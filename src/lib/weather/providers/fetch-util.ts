@@ -58,6 +58,9 @@ export function isoToCompact(iso: string): string {
   return iso.replace(/-/g, "");
 }
 
+/** The minimal fetch shape adapters inject (fixtures, retry, or the bare fetchJson all fit). */
+export type JsonFetcher = (providerKey: WeatherSourceKey, url: string) => Promise<unknown>;
+
 // ────────────────────────── Plan 096 U24 — retry with backoff (FORECAST path only) ──────────────────────────
 // The observation ingest keeps its no-retry behavior (daily cadence absorbs a transient miss); a
 // forecast miss is a user-visible blank strip until the next 6-hour run, so its fetches retry.
