@@ -7,6 +7,7 @@
  * Run: npm run verify:weather   (from a checkout with .env)
  */
 import { runAsTenant } from "../src/lib/tenant/context";
+import { runAsSystem } from "../src/lib/tenant/system";
 import { prisma } from "../src/lib/prisma";
 import { ingestVineyardWeatherCore } from "../src/lib/weather/ingest-core";
 import { composeClimateSummaryCore, type DailyRow } from "../src/lib/weather/read-core";
@@ -55,10 +56,14 @@ const provider = (key: string, kind: "grid" | "station"): ClimateProvider => ({
   fetchDailySeries: async () => { throw new Error("unused — fetch is injected"); },
 });
 
+const runStartedAt = new Date();
+
 async function main() {
   await runAsTenant(DEMO, async () => {
     // 1) Seed a QA vineyard.
     const vy = await prisma.vineyard.create({ data: { name: `QA-Weather-${Date.now()}` }, select: { id: true, name: true } });
+    // GPS pin so resolveVineyardCentroid works (the alert-emit leg resolves latitude itself).
+    await prisma.vineyardDetail.create({ data: { vineyardId: vy.id, gpsLat: LAT, gpsLng: LON } });
     console.log(`Seeded ${vy.name} (${vy.id})`);
     try {
       const seriesByKey: Record<string, ProviderSeries> = {
@@ -191,6 +196,47 @@ async function main() {
       check("cross-provider disagreement is a spread (3°C max delta), never a mean", view?.spread?.maxTmaxDeltaC === 3, view?.spread);
       check("every stored forecast row carries provenance", frows.every((r) => r.provenance && typeof r.provenance === "object"), frows[0]?.provenance);
 
+      // ── 6) ALERT EMIT loop (plan 096 U21): claim-first → digest → silent repeat → escalate → all-clear ──
+      console.log("\nAlert emit (plan 096 U21):");
+      const { emitForecastAlertsForTenant } = await import("../src/lib/weather/alert-emit");
+      const scriptStart = new Date();
+      const heatDate = addDaysIso(todayIso, 1);
+      const setHeat = async (tmaxC: number) => {
+        await prisma.vineyardForecastDaily.updateMany({
+          where: { vineyardId: vy.id, providerKey: "nws", targetDate: new Date(`${heatDate}T00:00:00.000Z`) },
+          data: { tmaxC, tminC: 18 },
+        });
+      };
+      const scope = { onlyVineyardIds: [vy.id] };
+
+      await setHeat(36); // HEAT_WATCH (rank 1)
+      const run1 = await emitForecastAlertsForTenant(scope);
+      check("first crossing → exactly ONE digest (heat watch)", run1.digestsSent === 1 && run1.allClearsSent === 0, run1);
+      check("digest reached every active member", run1.recipients > 0, run1.recipients);
+
+      const run2 = await emitForecastAlertsForTenant(scope);
+      check("repetition is SILENT (claim lost — the 6-hourly cron can't spam)", run2.digestsSent === 0 && run2.allClearsSent === 0, run2);
+
+      await setHeat(39); // EXTREME_HEAT (rank 2)
+      const run3 = await emitForecastAlertsForTenant(scope);
+      check("escalation (watch→extreme) emits exactly ONCE", run3.digestsSent === 1, run3);
+
+      await setHeat(20); // below watch — previously notified at rank 2 → all-clear
+      const run4 = await emitForecastAlertsForTenant(scope);
+      check("de-escalation emits ONE all-clear (council C6)", run4.allClearsSent === 1 && run4.digestsSent === 0, run4);
+
+      const run5 = await emitForecastAlertsForTenant(scope);
+      check("cleared state does not flap (second run silent)", run5.allClearsSent === 0 && run5.digestsSent === 0, run5);
+
+      // INBOX-1: notification READS are owner-only (app.user_id) — verify through ONE member's eyes.
+      const member = await prisma.member.findFirst({ where: { organizationId: DEMO }, select: { userId: true } });
+      const perUserRows = await runAsTenant(
+        DEMO,
+        async () => prisma.inboxNotification.count({ where: { kind: "WEATHER_ALERT", createdAt: { gte: scriptStart } } }),
+        { userId: member!.userId },
+      );
+      check("one member's inbox holds exactly the 3 sends (digest, escalation, all-clear)", perUserRows === 3, perUserRows);
+
       // Retention shape: a past target-date row is prunable by the sweep predicate.
       await prisma.vineyardForecastDaily.create({
         data: { vineyardId: vy.id, providerKey: "nws", targetDate: new Date(`${addDaysIso(todayIso, -3)}T00:00:00.000Z`), issuedAt: issue1, conditionCode: "CLEAR", provenance: { qa: true } },
@@ -199,12 +245,18 @@ async function main() {
       const stale = await prisma.vineyardForecastDaily.count({ where: { vineyardId: vy.id, targetDate: { lt: new Date(`${addDaysIso(todayIso, -1)}T00:00:00.000Z`) } } });
       check("retention prune removes past target-dates", stale === 0, stale);
     } finally {
-      // Cleanup the QA fixtures.
+      // Cleanup the QA fixtures. Inbox rows are owner-only under RLS (INBOX-1), so the QA weather
+      // digests are removed via runAsSystem (owner) — scoped to Demo + WEATHER_ALERT + this run.
+      await prisma.vineyardWeatherAlertState.deleteMany({ where: { vineyardId: vy.id } }).catch(() => {});
       await prisma.vineyardForecastDaily.deleteMany({ where: { vineyardId: vy.id } });
       await prisma.vineyardClimateDaily.deleteMany({ where: { vineyardId: vy.id } });
       await prisma.vineyardWeatherConfig.deleteMany({ where: { vineyardId: vy.id } });
       await prisma.weatherProviderUsage.deleteMany({ where: {} }).catch(() => {});
+      await prisma.vineyardDetail.deleteMany({ where: { vineyardId: vy.id } }).catch(() => {});
       await prisma.vineyard.delete({ where: { id: vy.id } });
+      await runAsSystem(async (db) => {
+        await db.inboxNotification.deleteMany({ where: { tenantId: DEMO, kind: "WEATHER_ALERT", createdAt: { gte: runStartedAt } } });
+      }).catch(() => {});
       console.log("Cleaned up QA fixtures.");
     }
   });
