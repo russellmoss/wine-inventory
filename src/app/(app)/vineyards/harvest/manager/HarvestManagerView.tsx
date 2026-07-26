@@ -7,6 +7,7 @@ import type { HarvestBlockDTO } from "@/lib/harvest/actions";
 import { effectiveColor, withAlpha } from "@/lib/vineyard/colors";
 import { BrixQuickLog } from "./BrixQuickLog";
 import { HarvestRecordForm } from "./HarvestRecordForm";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 export type ManagerBlock = {
   id: string;
@@ -84,7 +85,9 @@ export function HarvestManagerView({
 
   // Harvest always opens in metric (kg) — weights are stored canonically in kg
   // and this is independent of the vineyard's map unit (feet/acres). Toggle live.
-  const [unit, setUnit] = React.useState<Unit>("metric");
+  // Plan 098: seeded from the winery display prefs; the in-page toggle stays (a scale reads what it reads).
+  const prefs = useUnitPrefs();
+  const [unit, setUnit] = React.useState<Unit>(prefs.weight === "LB" ? "imperial" : "metric");
 
   // Index records by blockId for the current vintage year (managers log the current season).
   const recordByBlock = React.useMemo(() => {

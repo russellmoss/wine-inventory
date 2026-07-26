@@ -3,6 +3,8 @@
 import React from "react";
 import { scaleLinear, niceAxisBounds, nearestByX } from "@/lib/harvest/chart";
 import type { FermentPoint } from "@/lib/ferment/monitor-data";
+import { cToF } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Phase 6 fermentation-monitoring chart. Brix on the LEFT y-axis, temperature on the RIGHT
 // y-axis (the dual-Y the winemaker reads to watch sugar fall as the ferment heats), with pH on a
@@ -40,6 +42,9 @@ function linePath(rows: Row[], xOf: (t: number) => number, yOf: (v: number) => n
 }
 
 export function FermentChart({ points, height = 240 }: { points: FermentPoint[]; height?: number }) {
+  // Plan 098: display-only — the axis GEOMETRY stays °C (same physical positions); only the
+  // labels and tooltip convert, so the plotted line never moves when the pref changes.
+  const tempF = useUnitPrefs().temperature === "F";
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   // Active hover point: the snapped reading index + the container-relative tooltip X, both computed
@@ -166,7 +171,7 @@ export function FermentChart({ points, height = 240 }: { points: FermentPoint[];
           <div style={{ color: BRIX_COLOR }}>Brix {bVal.toFixed(1)}°Bx</div>
         ) : null}
         {tVal != null ? (
-          <div style={{ color: TEMP_COLOR }}>Temp {tVal.toFixed(1)}°C</div>
+          <div style={{ color: TEMP_COLOR }}>Temp {(tempF ? cToF(tVal) : tVal).toFixed(1)}°{tempF ? "F" : "C"}</div>
         ) : null}
         {pVal != null ? (
           <div style={{ color: PH_COLOR }}>pH {pVal.toFixed(2)}</div>
@@ -194,7 +199,7 @@ export function FermentChart({ points, height = 240 }: { points: FermentPoint[];
             Brix (°Bx)
           </text>
           <text transform={`rotate(90 ${VB_W - 14} ${(bMain - PAD.bottom + PAD.top) / 2})`} x={VB_W - 14} y={(bMain - PAD.bottom + PAD.top) / 2} textAnchor="middle" fontSize={12} fontWeight={600} fill={TEMP_COLOR}>
-            Temp (°C)
+            Temp (°{tempF ? "F" : "C"})
           </text>
           {/* left (Brix) gridlines + labels */}
           {[bBounds.yMin, (bBounds.yMin + bBounds.yMax) / 2, bBounds.yMax].map((v, i) => (
@@ -205,7 +210,7 @@ export function FermentChart({ points, height = 240 }: { points: FermentPoint[];
           ))}
           {/* right (temp) labels */}
           {[tBounds.yMin, (tBounds.yMin + tBounds.yMax) / 2, tBounds.yMax].map((v, i) => (
-            <text key={`t${i}`} x={VB_W - PAD.right + 6} y={yTemp(v) + 3} textAnchor="start" fontSize={11} fill={TEMP_COLOR}>{v.toFixed(0)}°</text>
+            <text key={`t${i}`} x={VB_W - PAD.right + 6} y={yTemp(v) + 3} textAnchor="start" fontSize={11} fill={TEMP_COLOR}>{(tempF ? cToF(v) : v).toFixed(0)}°</text>
           ))}
           {/* crosshair (drawn under the dots so emphasized dots stay on top) */}
           {crosshairX != null ? (

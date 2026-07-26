@@ -3,6 +3,8 @@
 import React from "react";
 import { Button } from "@/components/ui";
 import { MaterialPicker } from "@/components/cellar/MaterialPicker";
+import { formatWeightToAdd } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import {
   computeAdditionTotal,
   RATE_BASES,
@@ -38,6 +40,7 @@ export function DoseForm({
     if (dto?.defaultBasis) setBasis(dto.defaultBasis);
   }
 
+  const weightPref = useUnitPrefs().weight;
   const rateNum = Number(rate);
   const valid = material.trim().length > 0 && Number.isFinite(rateNum) && rateNum > 0 && vessel.totalL > 0;
   const computed = valid ? computeAdditionTotal(rateNum, basis, vessel.totalL) : null;
@@ -87,7 +90,7 @@ export function DoseForm({
       </FormShell>
       <div aria-live="polite" style={{ fontSize: 13, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
         {computed
-          ? `${rate} ${RATE_BASIS_LABELS[basis]} × ${vessel.totalL} L = ${computed.total} ${computed.unit}`
+          ? `${rate} ${RATE_BASIS_LABELS[basis]} × ${vessel.totalL} L = ${computed.total} ${computed.unit}${weightPref === "LB" && computed.unit === "g" ? ` (${formatWeightToAdd(computed.total, "LB")})` : ""}`
           : vessel.totalL <= 0
             ? "This vessel is empty — nothing to dose."
             : "Enter a material and a rate to see the computed total."}

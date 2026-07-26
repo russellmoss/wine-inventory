@@ -23,6 +23,7 @@ import { MaterialFilterPicker } from "@/components/work-orders/MaterialFilterPic
 import { materialScopeForTask } from "@/lib/cellar/material-taxonomy";
 import { CAP_LABELS } from "@/lib/cellar/cap-vocab";
 import { buildTaskSummary } from "@/lib/work-orders/task-summary";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Floor-first execution (Phase 9 Unit 12, D2): one task in focus, big prefilled actuals (≥44px targets,
 // inputMode decimal), commandId minted once per task (offline-drain-safe idempotency — same contract the
@@ -52,14 +53,16 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
 
   function set(key: string, v: unknown) { setFields((p) => ({ ...p, [key]: v })); }
 
+  const prefs = useUnitPrefs();
   // The read-only "do X to Y with Z" story, computed from the LIVE edit state so it stays truthful
   // while editing. SO₂ additions get a computed solution volume (see task-summary.ts).
   const summary = React.useMemo(
     () => buildTaskSummary(
       { kind: task.kind, opType: task.opType, activityType: task.activityType, observationType: task.observationType, title: task.title, plannedPayload: fields, sourceVesselId: task.sourceVesselId, destVesselId: task.destVesselId, lotId: task.lotId, materialId: task.materialId },
       pickers,
+      { weight: prefs.weight },
     ),
-    [task, fields, pickers],
+    [task, fields, pickers, prefs.weight],
   );
   const isSo2Addition =
     task.kind === "OPERATION" && (task.opType === "ADDITION" || task.opType === "FINING") &&
