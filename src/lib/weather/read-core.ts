@@ -5,7 +5,7 @@
 // separately-labelled continuous series composed HERE on read (never a stored row).
 
 import type { LocalDailyRecord } from "./obs-time-core";
-import { accumulateGdd } from "./gdd-core";
+import { accumulateGdd, dailyGdd } from "./gdd-core";
 import { winklerRegion, type WinklerResult } from "./winkler-core";
 import { growingSeasonTemp, type GstResult } from "./gst-core";
 import { frostEvents, type FrostResult } from "./frost-core";
@@ -66,6 +66,8 @@ export interface ClimateSummary {
     priorYear: { seasonYear: number; seasonGddC: number; deltaC: number; completenessPct: number } | null;
     /** A separately-labelled continuous series total (primary gap-filled from the best grid), NOT the headline. */
     gridFilledGddC: number | null;
+    /** Cumulative GDD by local date (primary season), for the card sparkline. */
+    gddCumulative: Array<{ date: string; cumC: number }>;
   };
   // Compare-sources view (R3/R14): the spread across sources, never an average.
   spread: Spread | null;
@@ -122,6 +124,16 @@ export function composeClimateSummaryCore(input: {
   // Headline aggregates from the PRIMARY series.
   const headlineGdd = accumulateGdd(primarySeason);
   const headlineComp = seasonCompleteness(primarySeason, latitude, seasonYear, today);
+  // Cumulative GDD by day (primary season) for the card sparkline.
+  const gddCumulative: Array<{ date: string; cumC: number }> = [];
+  let running = 0;
+  for (const r of primarySeason) {
+    const g = dailyGdd(r.tmaxC, r.tminC);
+    if (g !== null) {
+      running += g;
+      gddCumulative.push({ date: r.localDate, cumC: Math.round(running * 10) / 10 });
+    }
+  }
   const winkler = winklerRegion(headlineGdd.gddTotal);
   const gst = growingSeasonTemp(primarySeason);
   const frost = frostEvents(primaryLocalAll, latitude, seasonYear);
@@ -170,6 +182,7 @@ export function composeClimateSummaryCore(input: {
       rainfall: rain,
       priorYear,
       gridFilledGddC,
+      gddCumulative,
     },
     spread,
     perSource,
