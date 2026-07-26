@@ -1029,18 +1029,21 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   **60**-day one), also fixed. Gates: tsc 0, eslint 0 errors, **vitest 4482/0**,
   `verify:tenant-isolation` / `raw-sql` / `invariants` (45/45) / `tripwires` / `parity` / `ai-native` /
   `work-orders` / `feedback` / `naming` all green.
-  ⚠️ **This entry's original "two premises did not hold" note is now SUPERSEDED — it was accurate
-  only against an uncommitted working tree.** `src/lib/users/vineyard-memberships.ts` and the security
-  register's "GLOBAL model may never select a relation to a tenant-scoped table" section both EXIST, on
-  branch `claude/relaxed-bardeen-5cfae9` → **[PR #530](https://github.com/russellmoss/wine-inventory/pull/530)**
-  (CI green: `check` + `tenant-isolation` + `review`), merged into this branch alongside TENANT-3.
-  ⛔ **And the LOW-MED re-grade (inherited from #529) is WRONG.** #529's `isTenantAdminLike` gate is a
-  correct, separate fix and IS what unblocked S4's QA — but it only routes **admin-like** roles away
-  from the manager branch. A genuine `role: "user"` manager still reads `vineyardIds: []`, and #529
-  does not touch `/users`, where the silent membership WIPE lives (the checkboxes render from those ids
-  and `setUserVineyards` REPLACES the set). Browser-proved side by side on `/users`, same DB + session:
-  unfixed server showed Aaron Werth `[]`, #530 showed `["WV Oregon"]` — the row that is actually in the
-  database. The two fixes are complementary; neither supersedes the other.
+  🔻 **TWO CORRECTIONS to what #531 originally claimed — believe these, not the PR description.**
+  (1) #531 said `src/lib/users/vineyard-memberships.ts` and the security-register section
+  "GLOBAL model may never select a relation to a tenant-scoped table" existed on no branch. **Wrong.**
+  They are on **[#530](https://github.com/russellmoss/wine-inventory/pull/530)** (`claude/relaxed-bardeen-5cfae9`),
+  which was still OPEN — the sweep searched local refs before that branch carried the work. #530 is the
+  real fix for the sibling bug (CI green: `check` + `tenant-isolation` + `review`).
+  (2) #531 then re-graded the GLOBAL-model/RLS-child seam to LOW-MED, following #529's note. **Also
+  wrong** — #530 browser-proved it side by side on `/users` (unfixed server: Aaron Werth `[]`; fixed:
+  `["WV Oregon"]`). #529's `isTenantAdminLike` gate is a real fix but only routes **admin-like** roles
+  away; a genuine `role:"user"` manager still gets `vineyardIds: []`, and #529 never touches `/users`,
+  where the checkboxes render from those ids and `setUserVineyards` REPLACES the set — **a silent
+  membership WIPE**. Invisible while the runtime connects as owner (BYPASSRLS); **total the moment
+  `DATABASE_URL` is `app_rls`.** So it IS an app_rls-activation blocker. See
+  [[global-model-rls-child-read-seam]]. ✅ `main` has since been merged INTO #530 (TENANT-3 + both
+  corrections included), so the `NOW.md` / `security-register.md` overlap is resolved.
 - **Spray Intelligence S3a — record + planned harvest: SHIPPED (2026-07-26). PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED → WAVE 2 UNBLOCKED (S7a, S8, S6, S7b start against the merged cores); PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) browser-QA'd GREEN.**
   Seven append-only tables (DB triggers + at-most-once correction incl. VOID), facts-as-of
   snapshots (copied verbatim on correction — KD-14), knownness CHECKs (SPRAY-3), planned-harvest
@@ -1414,28 +1417,20 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
 
 _Last updated: 2026-07-26 — **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
-added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also: **detour (from S4 browser QA): `AppUser.vineyardIds` was always `[]` under
-the `app_rls` role — FIXED, [PR #530](https://github.com/russellmoss/wine-inventory/pull/530).**
-`userSelect` selected `vineyardMemberships`, but `User` is a GLOBAL model so the tenant extension never
-sets `app.tenant_id` — the RLS-forced `user_vineyard` join fail-closed to zero rows, silently, locking
-every manager out of field notes / the vineyard-scoped assistant / the `/lots` lens, and making the
-`/users` vineyard checkboxes a silent membership wipe. Fixed via a separate tenant-scoped read
-(`src/lib/users/vineyard-memberships.ts`); static + runtime guards added, `verify:tenant-isolation`
-all-green, browser-proved side by side on `/users` (unfixed `[]` vs fixed `["WV Oregon"]`, same DB +
-session). ⚠️ **S4's re-grade of this to LOW-MED / "not the RLS theory" (#529) was WRONG** — #529's
-`isTenantAdminLike` gate is a correct and separate fix that only covers admin-like roles. ⚠️ **Russell:
-confirm whether Vercel's `DATABASE_URL` is `app_rls` or still `neondb_owner`** — that decides whether
-this was live in prod or latent (the Vercel env page is blocked to me, prod needs a login, and Neon
-telemetry is unavailable in this region). The `runAsTenant` lazy-thenable trap this uncovered is now
-closed repo-wide by TENANT-3 (#531), on both a structural and a shape fence.
-Also this date: **S3a spray record SHIPPED (PR1+PR2 merged → Wave 2 unblocked; PR3 browser-QA'd GREEN —
-prefill area provenance + correction UTC→datetime-local shift). Spray Wave 1: S2 (registration +
-resistance) BUILT — #522 schema slice, #525 Units 2-11, 2,420 grape registrations + 361 AIs live with
-zero unclassified. S4 (phenology + growth) SHIPPED — #521 + #526 + #529 merged and live, 135 new tests,
-browser QA GREEN; scouting coverage 0/0 = NOT YET MEASURABLE, recorded as-is** — but note that S4's
-"NOT the RLS theory / re-graded LOW-MED" conclusion is **superseded**: #529 fixes admin-like roles only,
-#530 fixes the underlying seam, and both are needed.
-Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
+record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
+area provenance, correction UTC→datetime-local shift). S2 (registration + resistance) BUILT — schema slice
+merged (#522), Units 2-11 green (#525), 2,420 grape registrations + 361 AIs live with zero unclassified.
+S4 (phenology + growth) SHIPPED — #521 + #526 + #529 merged and live, 135 new tests, browser QA GREEN (the
+S4 blocker was a one-line isTenantAdminLike gate on the field-notes page); scouting coverage 0/0 = NOT YET
+MEASURABLE, recorded as-is.** ⛔ **Do NOT read #529 as clearing the GLOBAL-model/RLS-child seam — that
+re-grade was WRONG. It only routes admin-like roles; a real `role:"user"` manager still gets
+`vineyardIds: []` and `/users` silently WIPES memberships the moment `DATABASE_URL` is `app_rls`.
+[#530](https://github.com/russellmoss/wine-inventory/pull/530) is the fix — CI green (`check` +
+`tenant-isolation` + `review`), `main` merged in, browser-QA'd on Demo, ready to land. ⚠️ Still open for
+Russell: is Vercel's production `DATABASE_URL` `app_rls` or still `neondb_owner`? That decides whether
+this was already live in prod or latent (the Vercel env page is blocked to the agent, prod needs a
+login, and Neon telemetry is unavailable in this region).** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.
