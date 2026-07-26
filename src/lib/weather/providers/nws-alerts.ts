@@ -7,7 +7,7 @@
 // Live-verified: `ends` can be null → fall back to `expires`; multiple simultaneous alerts are
 // real → keep ALL, severity-desc (Codex DQ2).
 
-import { fetchJson } from "./fetch-util";
+import { fetchJsonRetry, type JsonFetcher } from "./fetch-util";
 import { ProviderFetchError } from "./types";
 
 /** The persisted banner shape (bounded; stored as config.activeAlertsJson). */
@@ -49,8 +49,8 @@ export function parseNwsActiveAlerts(json: unknown): NwsActiveAlert[] {
 }
 
 /** Fetch active official alerts for a point. US only; non-fatal (a banner is enrich, not data). */
-export async function fetchNwsActiveAlerts(lat: number, lon: number, deps: { fetch?: typeof fetchJson } = {}): Promise<NwsActiveAlert[]> {
-  const f = deps.fetch ?? fetchJson;
+export async function fetchNwsActiveAlerts(lat: number, lon: number, deps: { fetch?: JsonFetcher } = {}): Promise<NwsActiveAlert[]> {
+  const f = deps.fetch ?? fetchJsonRetry; // U24 retry on transient faults
   try {
     const json = await f("nws", `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`);
     return parseNwsActiveAlerts(json);

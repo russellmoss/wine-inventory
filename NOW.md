@@ -7,10 +7,26 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**Vineyard Intelligence P3 — NDVI DISPLAY: SHIPPED + LIVE (PR #498 squash-merged to main `bcc73b94`, 2026-07-26).**
+**PLAN 096 — Weather forecast + rainfall time-series: ALL 5 PHASES SHIPPED (2026-07-26).**
+PRs [#514](https://github.com/russellmoss/wine-inventory/pull/514) (P0 foundations) ·
+[#515](https://github.com/russellmoss/wine-inventory/pull/515) (P1 rainfall) ·
+[#516](https://github.com/russellmoss/wine-inventory/pull/516) (P2 forecast) ·
+[#517](https://github.com/russellmoss/wine-inventory/pull/517) (P3 warnings+notifications) ·
+P4 (observability+goldens) in flight to merge. Plan `docs/plans/2026-07-26-096-…` (completed) ·
+council `council-feedback-096-…` (Codex+Gemini, 13 folded, 1 refuted). **The forecast strip sits at
+the TOP of /vineyards/weather** (Russell: most actionable info first). 7-day NWS (US) / Open-Meteo
+(Bhutan, elevation-downscaled to the true site), tiered frost/heat badges + claim-first digest
+notifications to all members + all-clears, official NWS banner verbatim, rainfall bars+cumulative
+with a 30d/7d/custom range that works in January (year-round ingest, 13,152 rows seeded).
+⚠️ Standing gotchas: ONE site-local "today" (site-time-core — never re-add a UTC today);
+delete-horizon-then-insert is what "replace" means for forecasts; ai-native's coverage doc goes
+stale on ANY core-export change (`verify:ai-native -- --write` before push — it failed #517's CI once).
+
+<details><summary>✅ Vineyard Intelligence P3 — NDVI DISPLAY (SHIPPED + LIVE #498, 2026-07-26)</summary>
+
 All 11 units, reviewed (4 specialists) + fixed. Plan `docs/GIS/phases/phase-3-ndvi-display-plan.md` (completed) · report
 `phase-3-report.md`. ⚠️ **The P3 plan + council files were LOST (never saved) — reconstructed from memory at build time.**
-**NEXT candidates:** VI-P4 soil (worktree `cranky-ritchie`, branch `feat/vi-p4-soil`) or Release-4 weather (P8 plan ready).
+</details>
 
 <details><summary>✅ Vineyard Intelligence P3 — NDVI display (viz half) — SHIPPED + LIVE 2026-07-26 (#498)</summary>
 

@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import * as Sentry from "@sentry/nextjs";
 import { runForecastSweep } from "@/lib/weather/forecast-sweep";
 
 // Plan 096 Phase 2 Unit 15 — the 6-hourly forecast cron. Vercel Cron hits this with
@@ -20,8 +21,15 @@ async function handle(req: Request) {
   if (!authorized(req)) return Response.json({ error: "Unauthorized." }, { status: 401 });
   try {
     const summary = await runForecastSweep();
+    // U24: per-vineyard errors are SWALLOWED into the summary by design (one bad vineyard never
+    // blocks the sweep) — surface them here so they reach the logs + Sentry, not just this body.
+    if (summary.errors.length > 0) {
+      console.error(JSON.stringify({ evt: "weather.forecast.sweep.errors", count: summary.errors.length, sample: summary.errors.slice(0, 3) }));
+      Sentry.captureMessage(`forecast sweep: ${summary.errors.length} vineyard(s) failed`, { level: "warning", extra: { sample: summary.errors.slice(0, 5) } });
+    }
     return Response.json({ ok: true, ...summary });
   } catch (e) {
+    Sentry.captureException(e); // belt — onRequestError auto-captures thrown route errors, but be explicit at the cron edge
     return Response.json({ ok: false, error: e instanceof Error ? e.message : "Forecast sweep failed." }, { status: 500 });
   }
 }

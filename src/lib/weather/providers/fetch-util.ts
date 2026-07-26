@@ -32,7 +32,7 @@ export async function fetchText(providerKey: WeatherSourceKey, url: string, init
     throw new ProviderFetchError(providerKey, "redirect", `refused redirect (${res.status}) from ${url}`);
   }
   if (!res.ok) {
-    throw new ProviderFetchError(providerKey, "http", `HTTP ${res.status} from ${url}`);
+    throw new ProviderFetchError(providerKey, "http", `HTTP ${res.status} from ${url}`, res.status);
   }
   const body = await res.text();
   if (body.length > MAX_RESPONSE_BYTES) {
@@ -56,4 +56,53 @@ export async function postJson(providerKey: WeatherSourceKey, url: string, param
 /** ISO YYYY-MM-DD → compact YYYYMMDD (NASA POWER). */
 export function isoToCompact(iso: string): string {
   return iso.replace(/-/g, "");
+}
+
+/** The minimal fetch shape adapters inject (fixtures, retry, or the bare fetchJson all fit). */
+export type JsonFetcher = (providerKey: WeatherSourceKey, url: string) => Promise<unknown>;
+
+// ────────────────────────── Plan 096 U24 — retry with backoff (FORECAST path only) ──────────────────────────
+// The observation ingest keeps its no-retry behavior (daily cadence absorbs a transient miss); a
+// forecast miss is a user-visible blank strip until the next 6-hour run, so its fetches retry.
+// Policy: retry TRANSIENT faults only — network/timeout, 429, 5xx. Never other 4xx (a 404 is the
+// NWS coverage signal and must fall through to Open-Meteo immediately) and never parse/oversized
+// (deterministic). NWS documents "retry after ~5 s" on rate-limit → 429/503 get a 5 s floor.
+
+/** PURE: delay before retry `attempt` (1-based). Deterministic pseudo-jitter (tests need no clock). */
+export function retryDelayMs(attempt: number, status?: number, baseMs = 1000): number {
+  const floor = status === 429 || status === 503 ? 5000 : baseMs;
+  return floor * 2 ** (attempt - 1) + ((attempt * 137) % 250);
+}
+
+/** PURE: is this fault worth retrying? */
+export function isRetryableFetchError(e: unknown): boolean {
+  if (!(e instanceof ProviderFetchError)) return false;
+  if (e.reason === "timeout") return true;
+  if (e.reason === "http") return e.status === 429 || (e.status !== undefined && e.status >= 500);
+  return false;
+}
+
+/**
+ * fetchJson with up to `retries` re-attempts on transient faults. The forecast adapters default to
+ * this; everything else stays on the bare fetchJson.
+ */
+export async function fetchJsonRetry(
+  providerKey: WeatherSourceKey,
+  url: string,
+  opts: { retries?: number; baseMs?: number; init?: RequestInit; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<unknown> {
+  const retries = opts.retries ?? 2;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetchJson(providerKey, url, opts.init);
+    } catch (e) {
+      lastError = e;
+      if (attempt === retries || !isRetryableFetchError(e)) throw e;
+      const status = e instanceof ProviderFetchError ? e.status : undefined;
+      await sleep(retryDelayMs(attempt + 1, status, opts.baseMs));
+    }
+  }
+  throw lastError; // unreachable — the loop throws on its last attempt
 }

@@ -1,7 +1,7 @@
 ---
 title: Weather & Climate — 7-day forecast + rainfall time-series
 type: feat
-status: draft (rev 2 — council findings folded; see docs/plans/council-feedback-096-weather-forecast-rainfall.md)
+status: completed (all 5 phases built + merged 2026-07-26; council rev 2 — see docs/plans/council-feedback-096-weather-forecast-rainfall.md)
 date: 2026-07-26
 branch: feat/weather-p0-foundations (one branch/PR per phase; see Phase map)
 depth: deep
@@ -209,7 +209,9 @@ anyway, and the fixture-first test culture makes that provable without a live US
 | 1 Rainfall | `feat/weather-p1-rainfall` | U6–U9 ✅ **MERGED (#515, 2026-07-26)** (gates green; labeled history fallback added by measurement; live: RRR Jan-2025 30/30 readings; browser-QA'd incl. °F↔°C + January window) | independent of Phase 2 after 0 |
 | 2 Forecast | `feat/weather-p2-forecast` | U10–U17 ✅ **BUILT 2026-07-26** (gates: vitest 4190/0, tsc 0, verify:weather forecast leg 9/9, verify:tenant-isolation 146 tables, verify:ai-native; live: Paro monsoon 7-day via Open-Meteo @2,302 m tz Asia/Thimphu; Madera NWS strip in-browser, grid HNX 46,106 cached) | independent of Phase 1 after 0 |
 | 3 Warnings | `feat/weather-p3-alerts` | U18–U23 ✅ **BUILT 2026-07-26** (gates: vitest 4204/0, tsc 0, lint 0 err, verify:weather alert leg — 1 digest→silent→1 escalation→1 all-clear→no flap, 3 rows/member; isolation 147 tables; inbox-isolation green; live: Madera badges HEAT WATCH/EXTREME HEAT on the real 99–104 °F week, alerts fetch stamped) | needs Phase 2 |
-| 4 Observability + assistant | `feat/weather-p4-observability` | U24–U25 | needs Phase 2 (U25 also 3) |
+| 4 Observability + assistant | `feat/weather-p4-observability` | U24–U25 ✅ **BUILT 2026-07-26** (retry/backoff transient-only w/ 404 instant-fallthrough + 5s 429/503 floor; evt: weather.forecast.success\|failure lines; sweep-errors surfaced to Sentry; 4 forecast/rainfall golden selection cases; 145 weather tests) | needs Phase 2 (U25 also 3) |
+
+**Deferred (recorded, not built):** forecast-vs-actual accuracy scoring (append-only issuance table — "our 3-day low has been within 2 °F 85% of the time"); threshold editing UI (columns + defaults shipped; UI when a grower asks); hourly forecasts / radar / spray windows / ET0 (spec out-of-scope); non-US official alert sources (MeteoAlarm); Open-Meteo paid tier (env-swap ready: OPEN_METEO_BASE_URL + OPEN_METEO_API_KEY); audit follow-ups deliberately untouched (stationElevationDeltaM never populated, CDO cap unenforced, dormant daymet/noaa_cdo).
 
 ## Implementation Units
 

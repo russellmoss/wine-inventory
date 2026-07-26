@@ -68,6 +68,8 @@ export class ProviderFetchError extends Error {
     public providerKey: WeatherSourceKey,
     public reason: "http" | "parse" | "empty" | "oversized" | "redirect" | "timeout" | "not_configured",
     message: string,
+    /** HTTP status when reason is "http" — the retry policy keys on it (plan 096 U24). */
+    public status?: number,
   ) {
     super(`[${providerKey}] ${reason}: ${message}`);
     this.name = "ProviderFetchError";
