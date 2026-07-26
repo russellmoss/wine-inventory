@@ -17,7 +17,7 @@ import { selectPrimaryCore, type PrimaryCandidate } from "./source-selection-cor
 import { recordWeatherUsage } from "./usage-core";
 import { coverageStateFor, providersForLocation } from "./providers/registry";
 import { defaultUnitSystemFor } from "./us-coverage";
-import { fetchElevationM } from "./providers/usgs-epqs";
+import { fetchSiteElevationM } from "./providers/open-meteo-elevation";
 import { fetchAcisStationSeries, type AcisStation } from "./providers/rcc-acis";
 import { ProviderFetchError, type ClimateProvider, type ProviderKey, type ProviderSeries } from "./providers/types";
 
@@ -74,7 +74,8 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
   const now = deps.now ?? new Date();
   const providers = deps.providers ?? providersForLocation(lat, lon);
   const fetchSeries = deps.fetchSeries ?? ((p, la, lo, s, e) => p.fetchDailySeries(la, lo, s, e));
-  const elevFn = deps.fetchElevationM ?? fetchElevationM;
+  // Elevation chain (plan 096 U5): EPQS (US) → Open-Meteo (global) — Bhutan finally gets a real siteElevationM.
+  const elevFn = deps.fetchElevationM ?? fetchSiteElevationM;
 
   // ── OUTSIDE any tx (R8): elevation + all provider fetches ──
   const siteElevationM = await elevFn(lat, lon).catch(() => null);

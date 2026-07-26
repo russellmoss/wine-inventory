@@ -133,6 +133,44 @@ describe("SSRF host guard", () => {
   });
 });
 
+describe("site elevation chain (plan 096 U5 — EPQS US, Open-Meteo global)", () => {
+  it("parses the Open-Meteo elevation shape", async () => {
+    const { parseOpenMeteoElevationM } = await import("@/lib/weather/providers/open-meteo-elevation");
+    expect(parseOpenMeteoElevationM({ elevation: [2324] })).toBe(2324);
+    expect(parseOpenMeteoElevationM({ elevation: [] })).toBeNull();
+    expect(parseOpenMeteoElevationM({})).toBeNull();
+    expect(parseOpenMeteoElevationM({ elevation: ["nope"] })).toBeNull();
+  });
+
+  it("US point: EPQS first, Open-Meteo only on miss; non-US skips EPQS entirely", async () => {
+    const { fetchSiteElevationM } = await import("@/lib/weather/providers/open-meteo-elevation");
+    const calls: string[] = [];
+    const epqs = async () => {
+      calls.push("epqs");
+      return 132;
+    };
+    const epqsMiss = async () => {
+      calls.push("epqs");
+      return null;
+    };
+    const openMeteo = async () => {
+      calls.push("om");
+      return 2324;
+    };
+    // US hit: EPQS answers, OM never called.
+    expect(await fetchSiteElevationM(38.5, -122.4, { epqs, openMeteo })).toBe(132);
+    expect(calls).toEqual(["epqs"]);
+    // US miss: falls to OM.
+    calls.length = 0;
+    expect(await fetchSiteElevationM(38.5, -122.4, { epqs: epqsMiss, openMeteo })).toBe(2324);
+    expect(calls).toEqual(["epqs", "om"]);
+    // Bhutan: EPQS never called.
+    calls.length = 0;
+    expect(await fetchSiteElevationM(27.47, 89.64, { epqs, openMeteo })).toBe(2324);
+    expect(calls).toEqual(["om"]);
+  });
+});
+
 describe("User-Agent on every outbound request (plan 096 U4 — NWS 403s without one)", () => {
   it("fetchText sends WEATHER_USER_AGENT, and caller headers extend rather than replace it", async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
