@@ -97,10 +97,15 @@ export function parseCommonNameCell(cell: string): { aiNames: string[]; cleaned:
 }
 
 /** Extract AI-keyed rows from a UC IPM table's HTML. Row shape: common-name | class | activity | MoA | … */
+// [\s\S] rather than the `s` (dotAll) flag — the repo's tsconfig target predates it, and table
+// cells legitimately span newlines ("single-site/<br>\nsingle-site (7/11)").
+const TR = /<tr>([\s\S]*?)<\/tr>/gi;
+const TD = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+
 export function extractUcIpmRows(html: string): ExtensionRow[] {
   const rows: ExtensionRow[] = [];
-  for (const m of html.matchAll(/<tr>(.*?)<\/tr>/gis)) {
-    const cells = [...m[1].matchAll(/<td[^>]*>(.*?)<\/td>/gis)].map((c) => c[1]);
+  for (const m of html.matchAll(TR)) {
+    const cells = [...m[1].matchAll(TD)].map((c) => c[1]);
     if (cells.length < 4) continue;
     const { aiNames } = parseCommonNameCell(cells[0]);
     if (aiNames.length === 0) continue;
@@ -128,8 +133,8 @@ export interface TradeNameProposal {
 
 export function extractUcIpmBiologicalProposals(html: string): TradeNameProposal[] {
   const out: TradeNameProposal[] = [];
-  for (const m of html.matchAll(/<tr>(.*?)<\/tr>/gis)) {
-    const cells = [...m[1].matchAll(/<td[^>]*>(.*?)<\/td>/gis)].map((c) => c[1]);
+  for (const m of html.matchAll(TR)) {
+    const cells = [...m[1].matchAll(TD)].map((c) => c[1]);
     if (cells.length < 2) continue;
     const nameCell = cells[0].replace(/<[^>]*>/g, "").replace(/\s*\d\s*$/, "").trim();
     if (nameCell.length === 0) continue;
