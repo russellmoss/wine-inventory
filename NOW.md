@@ -7,8 +7,45 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**SPRAY INTELLIGENCE — Wave 1 lanes LANDING in parallel (S2 built · S3a SHIPPED · S4 built).
-S3a's record cores are MERGED (2026-07-26) → Wave 2 (S7a · S8 · S6 · S7b) can start.**
+**SPRAY INTELLIGENCE — Wave 1 LANDING: S0 complete · S2 built · S3a SHIPPED · S4 built.
+S3a's record cores are MERGED (2026-07-26) -> Wave 2 (S7a · S8 · S6 · S7b) can start.**
+
+🟩 **S0 (lane A — the weather-lane spike): COMPLETE. Gate answered, and S1 is NARROWED.**
+[report](docs/spray_assistant/phases/S0-report.md) · [QA](docs/spray_assistant/qa/S0-qa-report.md) ·
+ADR [0011](docs/architecture/decisions/0011-hourly-weather-retention-and-replay.md) (retention/replay) +
+[0012](docs/architecture/decisions/0012-leaf-wetness-estimator-bands-and-refusal.md) (LWD bands/refusal).
+No production code, as scoped. 11 units, 100 committed fixtures (566,400 site-hours), 28 goldens,
+800 fixture assertions, 7 defects found and fixed.
+
+⛔ **The two-arm gate DID NOT PASS and the pre-committed no-go TRIGGERED — the deliverable is the
+narrowing.** Arm B (input validation, the arm council C1 added because Arm A can pass on correlated
+error) splits **by regime, cleanly and physically**: dew-point-depression MAE vs station is
+**1.22 °C Stoney Hill / 1.72 °C Monticello VA** but **3.18 °C Russian River / 5.07 °C Madera**, against
+a 1.85 °C tolerance = half CART's own 3.7 °C node. Both failures are regimes that are **sub-grid at
+25 km** (marine-layer boundary, irrigated valley floor). **Two live Demo sites are in the failing set.**
+→ **Build S1 for eastern sites on fixed-model reanalysis; California needs station-blending first.**
+
+⚠️ **Five findings that change other lanes — do NOT re-derive:**
+1. **The irreversibility is in FORECAST, not OBSERVED** — the reverse of the plan's premise. Observed
+   hourly IS backfillable (NCEI ISD + keyless IEM ASOS, past 2005) and the NWS live window is **7 days**,
+   not 1–2. What's unrecoverable is *what the forecast said when a grower acted on it*. Also: **REANALYSIS
+   is revisable**, so a stored copy can drift from the live archive — a replay hazard nobody had named.
+2. **Archive model choice moves 50.6% of infection-event classifications** (`era5` vs Open-Meteo
+   `default`). "Best match" is unusable for anything replayed. **ERA5-Land carries NO wind at any site** —
+   and wind is a **hard input to the S7b legality gate**, not just a CART input.
+3. **Brief §7's pathogen table is materially wrong → S5b's scope GROWS.** Botrytis (Broome 1995) and
+   phomopsis (Erincik 2003) ARE LWD × temperature models. ⚠️ Both papers are **paywalled**, so S0 could
+   only run coarsened renderings that carried **no gate weight** — S5b must obtain them.
+4. **Madera inverted its own purpose**: lowest refusal rate in the set (0.6%) and the worst inputs
+   (5.07 °C). Confidence keyed on input **availability** reports its highest value exactly where the
+   answer is least trustworthy → the band must carry **provider-vs-station agreement**.
+5. **S4 must collect a per-block `canopyManagement` OBSERVATION with a timestamp** (not a static
+   attribute — an August decision must ask what the canopy was in July). Liftable paragraph in
+   [s0-lwd-estimator-decision.md](docs/spray_assistant/phases/s0-lwd-estimator-decision.md) §4.
+
+⚠️ **Two things still Russell's**: (a) accept the two-zone canopy model (S0 recommends yes — cheap now,
+expensive to retrofit, and the one-zone version is anatomically wrong); (b) **how long must a lot's
+residue flag stay explicable?** — the one input to ADR 0011 that is inferred rather than stated.
 
 🟩 **S3a (lane C — spray record + planned harvest): SHIPPED.** PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) merged; PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) **browser-QA'd GREEN** same day (2 findings — area provenance + correction datetime shift — found, fixed `d11c38d8`, re-proven). QA report: `docs/spray_assistant/qa/S3a-qa-report.md`.
 
@@ -1415,7 +1452,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 — **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
+_Last updated: 2026-07-26 — **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill

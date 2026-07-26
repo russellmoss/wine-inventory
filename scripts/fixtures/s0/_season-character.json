@@ -1,0 +1,252 @@
+[
+  {
+    "siteKey": "stoney_hill",
+    "season": 2021,
+    "precipMm": 850.3,
+    "meanTempC": 19.15,
+    "precipPercentile": 0.79,
+    "tempPercentile": 0.75,
+    "wetness": "WET",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "stoney_hill",
+    "season": 2022,
+    "precipMm": 776.2,
+    "meanTempC": 18.6,
+    "precipPercentile": 0.5,
+    "tempPercentile": 0.42,
+    "wetness": "NORMAL",
+    "warmth": "NORMAL"
+  },
+  {
+    "siteKey": "stoney_hill",
+    "season": 2023,
+    "precipMm": 781.3,
+    "meanTempC": 18.54,
+    "precipPercentile": 0.54,
+    "tempPercentile": 0.33,
+    "wetness": "NORMAL",
+    "warmth": "NORMAL"
+  },
+  {
+    "siteKey": "stoney_hill",
+    "season": 2024,
+    "precipMm": 564.8,
+    "meanTempC": 19.09,
+    "precipPercentile": 0.04,
+    "tempPercentile": 0.67,
+    "wetness": "DRY",
+    "warmth": "NORMAL"
+  },
+  {
+    "siteKey": "stoney_hill",
+    "season": 2025,
+    "precipMm": 699.8,
+    "meanTempC": 18.87,
+    "precipPercentile": 0.42,
+    "tempPercentile": 0.5,
+    "wetness": "NORMAL",
+    "warmth": "NORMAL"
+  },
+  {
+    "siteKey": "russian_river",
+    "season": 2021,
+    "precipMm": 247.7,
+    "meanTempC": 17.94,
+    "precipPercentile": 0.92,
+    "tempPercentile": 0.42,
+    "wetness": "WET",
+    "warmth": "NORMAL"
+  },
+  {
+    "siteKey": "russian_river",
+    "season": 2022,
+    "precipMm": 143.3,
+    "meanTempC": 18.17,
+    "precipPercentile": 0.63,
+    "tempPercentile": 0.71,
+    "wetness": "NORMAL",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "russian_river",
+    "season": 2023,
+    "precipMm": 77.4,
+    "meanTempC": 17.15,
+    "precipPercentile": 0.29,
+    "tempPercentile": 0.08,
+    "wetness": "DRY",
+    "warmth": "COOL"
+  },
+  {
+    "siteKey": "russian_river",
+    "season": 2024,
+    "precipMm": 74.4,
+    "meanTempC": 18.87,
+    "precipPercentile": 0.25,
+    "tempPercentile": 0.88,
+    "wetness": "DRY",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "russian_river",
+    "season": 2025,
+    "precipMm": 79.2,
+    "meanTempC": 17.77,
+    "precipPercentile": 0.33,
+    "tempPercentile": 0.33,
+    "wetness": "NORMAL",
+    "warmth": "NORMAL"
+  },
+  {
+    "siteKey": "madera",
+    "season": 2021,
+    "precipMm": 41.8,
+    "meanTempC": 24.68,
+    "precipPercentile": 0.25,
+    "tempPercentile": 0.75,
+    "wetness": "DRY",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "madera",
+    "season": 2022,
+    "precipMm": 58,
+    "meanTempC": 24.81,
+    "precipPercentile": 0.46,
+    "tempPercentile": 0.83,
+    "wetness": "NORMAL",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "madera",
+    "season": 2023,
+    "precipMm": 48.1,
+    "meanTempC": 22.88,
+    "precipPercentile": 0.29,
+    "tempPercentile": 0.08,
+    "wetness": "DRY",
+    "warmth": "COOL"
+  },
+  {
+    "siteKey": "madera",
+    "season": 2024,
+    "precipMm": 50.3,
+    "meanTempC": 24.67,
+    "precipPercentile": 0.42,
+    "tempPercentile": 0.71,
+    "wetness": "NORMAL",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "madera",
+    "season": 2025,
+    "precipMm": 49.1,
+    "meanTempC": 23.95,
+    "precipPercentile": 0.33,
+    "tempPercentile": 0.46,
+    "wetness": "NORMAL",
+    "warmth": "NORMAL"
+  },
+  {
+    "siteKey": "paro",
+    "season": 2021,
+    "precipMm": 2112.7,
+    "meanTempC": 15.29,
+    "precipPercentile": 0.17,
+    "tempPercentile": 0.79,
+    "wetness": "DRY",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "paro",
+    "season": 2022,
+    "precipMm": 1461,
+    "meanTempC": 15.53,
+    "precipPercentile": 0,
+    "tempPercentile": 0.88,
+    "wetness": "DRY",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "paro",
+    "season": 2023,
+    "precipMm": 1662.9,
+    "meanTempC": 15.23,
+    "precipPercentile": 0.04,
+    "tempPercentile": 0.63,
+    "wetness": "DRY",
+    "warmth": "NORMAL"
+  },
+  {
+    "siteKey": "paro",
+    "season": 2024,
+    "precipMm": 2115.3,
+    "meanTempC": 16,
+    "precipPercentile": 0.21,
+    "tempPercentile": 0.96,
+    "wetness": "DRY",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "paro",
+    "season": 2025,
+    "precipMm": 2090.6,
+    "meanTempC": 15.72,
+    "precipPercentile": 0.13,
+    "tempPercentile": 0.92,
+    "wetness": "DRY",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "monticello_va",
+    "season": 2021,
+    "precipMm": 554.9,
+    "meanTempC": 21.07,
+    "precipPercentile": 0.17,
+    "tempPercentile": 0.83,
+    "wetness": "DRY",
+    "warmth": "WARM"
+  },
+  {
+    "siteKey": "monticello_va",
+    "season": 2022,
+    "precipMm": 574.6,
+    "meanTempC": 20.04,
+    "precipPercentile": 0.38,
+    "tempPercentile": 0.29,
+    "wetness": "NORMAL",
+    "warmth": "COOL"
+  },
+  {
+    "siteKey": "monticello_va",
+    "season": 2023,
+    "precipMm": 461.3,
+    "meanTempC": 20.42,
+    "precipPercentile": 0.04,
+    "tempPercentile": 0.46,
+    "wetness": "DRY",
+    "warmth": "NORMAL"
+  },
+  {
+    "siteKey": "monticello_va",
+    "season": 2024,
+    "precipMm": 589.6,
+    "meanTempC": 20.49,
+    "precipPercentile": 0.46,
+    "tempPercentile": 0.58,
+    "wetness": "NORMAL",
+    "warmth": "NORMAL"
+  },
+  {
+    "siteKey": "monticello_va",
+    "season": 2025,
+    "precipMm": 624.4,
+    "meanTempC": 20.45,
+    "precipPercentile": 0.54,
+    "tempPercentile": 0.5,
+    "wetness": "NORMAL",
+    "warmth": "NORMAL"
+  }
+]

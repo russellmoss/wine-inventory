@@ -337,10 +337,36 @@ Two things to encode that growers get wrong:
 
 The sensor-grade models (DMCast) need measured leaf wetness we do not have. **Say so.**
 
+> ## ⚠️ §7 CORRECTED BY S0 (2026-07-26) — this table was materially incomplete
+>
+> Council G1 flagged it and S0 went to the sources. **Three of the six pathogen entries below
+> understate what the literature specifies, and the errors all run the same way: they hide LWD
+> consumers.** That matters because the whole weather lane is sized by how many things consume leaf
+> wetness.
+>
+> | Model | What §7 said | What the literature says |
+> |---|---|---|
+> | **Botrytis** (§7.5) | *"cool, damp conditions"* — no LWD | **Broome et al. 1995 (Phytopathology 85:97-102) is explicitly an LWD × temperature infection model.** Botrytis is an LWD consumer |
+> | **Phomopsis** (§7.4) | no numbers | **Erincik et al. 2003 (Plant Disease 87:832-840)** gives exact temperature × wetness-duration requirements, with **separate thresholds for cane and leaf infection** — optimum 16–20 °C, range ~5–35.5 °C |
+> | **Powdery mildew** (§7.1) | temperature-only | Secondary spread is temperature-driven, but **primary ascospore release requires wetness**, and **liquid water suppresses secondary PM** (conidia burst). A wetness-blind PM model recommends sprays into conditions already suppressing the pathogen |
+> | **Black rot** (§7.3) | three points | Spotts is a **continuous curve in 5 °F steps, 50–90 °F**, U-shaped with a minimum of **6 h at 80 °F** — and the requirement **rises again above 80 °F** (9 h at 85, 12 h at 90). The three-point reading loses both the upper limb and the resolution |
+> | Anthracnose (§7.4) | 3–4 h, mid-70s–mid-80s °F | ✅ consistent — the one entry the literature agrees with |
+> | Downy (§7.2) | driver named, no threshold; DMCast excluded | ✅ consistent |
+>
+> **Consequence: S5b's scope grows.** Botrytis and phomopsis are LWD models, not the qualitative
+> gates this section implied.
+>
+> ⚠️ **And S5b cannot start from S0's renderings of the two.** Broome's and Erincik's published
+> coefficients are **paywalled** — only their experimental designs are public — so S0 could only build
+> coarsened threshold surfaces through the public anchors, which carried **no gate weight**. S5b must
+> obtain both papers. Evidence: [phases/s0-lwd-disagreement.md](phases/s0-lwd-disagreement.md) §1,
+> `scripts/s0-pathogens.ts`.
+
 ### 7.3 Black rot
 
 Temperature × leaf-wetness duration (Spotts): ~24 h wetness at 50 °F, ~9 h at 60 °F, ~6 h at
-70–80 °F. Inputs also: rain event timing, mummified berries and infected cane material,
+70–80 °F. **⚠️ See the §7 correction above — the real curve is continuous in 5 °F steps across
+50–90 °F and rises again above 80 °F.** Inputs also: rain event timing, mummified berries and infected cane material,
 previous-year history, cultivar susceptibility, fruit growth stage.
 
 **The trap is the long incubation — 8 to 21+ days.** What is visible today came from a rain event
@@ -351,6 +377,8 @@ DMIs' ~72-hour post-infection activity is the bailout.
 ### 7.4 Phomopsis and anthracnose
 
 Early-season; rain splash onto young susceptible tissue; overwinters in old canes and rachises.
+**⚠️ Phomopsis has EXACT published thresholds — see the §7 correction above (Erincik et al. 2003),
+with separate requirements for cane and leaf infection. It is an LWD consumer, not a qualitative gate.**
 Anthracnose can infect on only 3–4 hours of leaf wetness in the mid-70s to mid-80s °F, with longer
 wetness widening the temperature range. Elevate risk when infected canes are present, the cultivar
 is susceptible, shoots are young, rain is **repeated rather than isolated**, or sanitation was
@@ -359,7 +387,8 @@ incomplete. **Sanitation and pruning-out do more than fungicide** — say so in 
 ### 7.5 Botrytis bunch rot
 
 Less a foliar calendar, more a set of gates: susceptible cultivar and **cluster compactness**;
-cool, damp conditions; bloom-time infection potential; bunch closure; veraison and pre-harvest
+~~cool, damp conditions~~ **⚠️ an LWD × temperature infection model — Broome et al. 1995, see the §7
+correction above**; bloom-time infection potential; bunch closure; veraison and pre-harvest
 weather; dead floral debris retained inside clusters; berry injury from powdery, insects, birds,
 cracking, hail, or machinery; fruit-zone airflow and spray penetration.
 
