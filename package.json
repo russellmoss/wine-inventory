@@ -180,13 +180,16 @@
     "@types/proj4": "^2.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/unzipper": "^0.10.11",
     "@vitejs/plugin-react": "^6.0.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "prisma": "^6.3.1",
+    "saxes": "^6.0.0",
     "tailwindcss": "^4",
     "tsx": "^4.19.2",
     "typescript": "^5",
+    "unzipper": "^0.12.5",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^4.1.8"
   }
