@@ -82,6 +82,11 @@ nominated it.
 - Read latency breached its ceiling on one shape (**266 ms p95** for the S5b black-rot wet-run scan
   against 250 ms). Partial indexes per series kind fix it (152 ms) but degrade the cross-kind replay
   read 4.4× (42 → 184 ms), so S1 needs both partial indexes and a dedicated replay index.
+- **NWS re-issuance cadence varies by ~9× BETWEEN GRIDPOINTS** — measured at exactly 60 min at
+  Madera, 54–86 min at Russian River, 151 min at Monticello and 550 min at Stoney Hill. Against the
+  measured 179 h retained horizon that is a **20×–179×** multiplier for a retain-every-issuance
+  posture. A retention job sized on one gridpoint's cadence is wrong by an order of magnitude at
+  another, so **S1 must size per gridpoint or measure cadence at ingest and adapt.**
 - Two schema requirements, both found by the measurement failing rather than by reading it:
   `NULLS NOT DISTINCT` on the replace-identity index (a nullable `providerIssuedAt` otherwise makes
   the unique constraint enforce nothing for the rows where it is null, and an `ON CONFLICT` upsert

@@ -107,6 +107,7 @@ has been folded into the runbook or the relevant source document.
 | 12 | **Confidence must carry provider-vs-station AGREEMENT, not just completeness** — the Madera inversion | S9, S1 | ADR 0012, Unit 9's shape |
 | 13 | **Missing shared-file entries** — `package.json` scripts, runbook §8 ledger, `NOW.md`, ADR numbering, root `council-feedback.md` | every lane | runbook §4 |
 | 14 | **The program's parent documents were uncommitted**, so no lane's plan resolved its own links | every lane | ✅ fixed — committed at `b63ec3f1` |
+| 15 | **NWS re-issuance cadence varies ~9× between gridpoints** (60 min at Madera, 550 min at Stoney Hill) → a 20×–179× forecast-row multiplier. A retention job sized on one gridpoint is wrong by an order of magnitude at another | S1 | ADR 0011, Unit 8 §4 |
 
 ---
 

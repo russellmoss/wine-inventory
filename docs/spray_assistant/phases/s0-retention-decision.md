@@ -199,17 +199,39 @@ Measured costs:
 
 ### Why not blanket "retain every forecast issuance"
 
-The plan's §1.4 argued this was two orders of magnitude more rows and council C5 withdrew the
-specific multiplier as unmeasured. Measured (Unit 2 addendum), the multiplier is **far smaller than
-feared**: the retained horizon is 179 h, and NWS gridpoint re-issuance is measured in **hours, not
-minutes** — one gridpoint went 9.4 h without re-issuing while others sat at 1.3–2.0 h of age. So the
-multiplier is bounded well below the withdrawn "~170×".
+The plan's §1.4 argued this was two orders of magnitude more rows, and council C5 withdrew the
+specific "~170×" multiplier as unmeasured and internally inconsistent. It is now measured.
 
-**That cuts against the plan's own argument, and it is recorded as such**: the strongest case for the
-snapshot branch was the row-count ceiling, and the ceiling is smaller than the plan assumed. The
-decision above still lands on cited-issuance retention, but on a *different* basis — the churn cost
-(4.63× steady state, scaling with issuance cadence rather than data volume, the one dimension a
-row-count projection cannot see) and the horizon separation in §1, not the row count.
+⚠️ **This paragraph was written twice.** The first version — from a 30-minute sampling window that
+caught **zero** re-issuances — concluded the multiplier was "far smaller than feared" and that this
+"cuts against the plan's own argument." **A longer window disproved that, and the correction is
+recorded rather than quietly swapped**, because the first version was wrong in the direction that
+flattered the decision already taken.
+
+Measured re-issuance gaps (Unit 2 addendum), against the measured 179 h retained horizon:
+
+| Gridpoint | Observed gaps | Implied multiplier (179 h ÷ cadence) |
+|---|---|---|
+| Madera | **60 min, 60 min** — an exact hourly cadence | **~179×** |
+| Russian River | 86 min, 54 min | ~125–199× |
+| Monticello AVA | 151 min | ~71× |
+| Stoney Hill | 550 min (9.2 h) | ~20× |
+
+So the honest answer is not "smaller than feared" but **"it depends on the gridpoint, by an order of
+magnitude"** — roughly **20× to 179×** — and the withdrawn "~170×" turns out to be a reasonable
+*upper* estimate rather than an overestimate. Council C5 was still right to withdraw it: it was
+asserted before measurement and happened to land near the top of a range nobody had established.
+
+**The decision is unchanged, and now rests on firmer ground.** Retaining every issuance at an
+hourly-updating gridpoint means ~1.6 M forecast rows per vineyard-year against 8,760 observed ones.
+Cited-issuance retention is chosen on three converging grounds: that row count, the churn cost
+(4.63× steady state, scaling with **issuance cadence** rather than data volume — the dimension a
+row-count projection cannot see, and the dimension this table shows varies 9× between sites), and
+the horizon separation in §1.
+
+⚠️ **And the variance is itself an S1 requirement.** A retention job sized on one gridpoint's cadence
+will be wrong by an order of magnitude at another. S1 must size per gridpoint, or measure cadence
+per gridpoint at ingest and adapt.
 
 ### And it is a SNAPSHOT answer for replay
 
