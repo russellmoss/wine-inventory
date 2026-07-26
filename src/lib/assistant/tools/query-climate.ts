@@ -6,6 +6,7 @@ import { getWineryTimeZone } from "@/lib/settings/data";
 import { resolveSiteTimeZone, siteTodayIso } from "@/lib/weather/site-time-core";
 import { composeRainfallRangeCore } from "@/lib/weather/rainfall-range-core";
 import { composeForecastViewCore, isForecastStale, type ForecastRow } from "@/lib/weather/forecast-read-core";
+import { composeForecastHoursCore, type ForecastHourRow } from "@/lib/weather/forecast-hourly-read-core";
 import { gddCToF } from "@/lib/weather/units-core";
 import { composeClimateSummaryCore, type DailyRow, type ClimateConfig } from "@/lib/weather/read-core";
 import { resolveVineyardCentroid } from "@/lib/weather/location";
@@ -152,6 +153,38 @@ export const queryClimateTool: AssistantTool = {
           }));
           const view = composeForecastViewCore(fr, todayLocal);
           if (!view) return { note: "No forecast stored for this vineyard yet — it loads on the Weather & climate page and refreshes every 6 hours." };
+
+          // Plan 097 U6 — hourly CROSSING TIMES for today + tomorrow ("when will it freeze
+          // tonight?"). Same core as the modal's chart/copy; R11: no hourly rows → an honest note.
+          const tomorrow = addDaysIso(todayLocal, 1);
+          const hourlyRaw = await prisma.vineyardForecastHourly.findMany({
+            where: { vineyardId: v.id, localDate: { in: [new Date(`${todayLocal}T00:00:00.000Z`), new Date(`${tomorrow}T00:00:00.000Z`)] } },
+            orderBy: { hourStartUtc: "asc" },
+          });
+          const hourlyRows: ForecastHourRow[] = hourlyRaw.map((r) => ({
+            providerKey: r.providerKey,
+            hourStartUtc: r.hourStartUtc.toISOString(),
+            localDate: r.localDate.toISOString().slice(0, 10),
+            localHour: r.localHour,
+            tempC: dec(r.tempC),
+            popPct: dec(r.popPct),
+            precipMm: dec(r.precipMm),
+            precipDurationH: r.precipDurationH,
+            conditionCode: r.conditionCode,
+            windKph: dec(r.windKph),
+          }));
+          const crossingTimes = [todayLocal, tomorrow].map((date) => {
+            const dayHours = composeForecastHoursCore(hourlyRows, { targetDate: date });
+            if (!dayHours) return { date, note: "no hourly detail stored for this day yet" };
+            return {
+              date,
+              firstFrostHourLocal: dayHours.summary.firstFrostHour,
+              firstHeatHourLocal: dayHours.summary.firstHeatHour,
+              minTempC: dayHours.summary.minTempC,
+              maxTempC: dayHours.summary.maxTempC,
+            };
+          });
+
           return {
             source: view.providerKey,
             issuedAt: view.issuedAt,
@@ -165,7 +198,8 @@ export const queryClimateTool: AssistantTool = {
               rainProbabilityPct: d.precipProbabilityPct,
               lowerConfidence: d.reducedConfidence || undefined,
             })),
-            note: "Days 6–7 are lower confidence. One source shown, never an average of providers.",
+            crossingTimes,
+            note: "Days 6–7 are lower confidence. One source shown, never an average of providers. crossingTimes hours are vineyard-local (0–23).",
           };
         })(),
       });
