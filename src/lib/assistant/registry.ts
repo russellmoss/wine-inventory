@@ -49,6 +49,7 @@ import { queryOperationsTool } from "./tools/query-operations";
 import { estimatePackagingNeedsTool } from "./tools/estimate-packaging-needs";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryNdviStatsTool } from "./tools/query-ndvi-stats";
+import { compareNdviDatesTool } from "./tools/compare-ndvi-dates";
 import { processNdviTool } from "./tools/process-ndvi";
 import { soilSummaryTool } from "./tools/soil-summary";
 import { describePlantingStructureTool } from "./tools/describe-planting-structure";
@@ -132,6 +133,7 @@ import { reverseIntakeTool } from "./tools/reverse-intake";
 const ALL_TOOLS: AssistantTool[] = [
   searchKnowledgeBaseTool,
   queryBrixTool,
+  compareNdviDatesTool,
   queryYieldTool,
   queryRecentHarvestsTool,
   queryTransfersTool,

@@ -42,6 +42,7 @@ import { loadWaybackReleases, type WaybackRelease } from "@/lib/map/wayback";
 import { wireAttributionRefresh } from "@/lib/map/attribution-refresh";
 import { isVineyardPolygon, type PolygonGeometry as GisPolygonGeometry } from "@/lib/gis/geometry";
 import type { MapOverlay } from "@/lib/gis/overlay";
+import { leafletBounds } from "@/lib/gis/render";
 
 const ESRI_IMAGERY_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -529,9 +530,10 @@ export function SatelliteMap({
     map.invalidateSize();
   }, [blocks, unit, lat, lng, editable]);
 
-  // VI-P1: governed layer-stack overlays (planting-area boundaries, later raster/soil). Rendered ABOVE
-  // the block layer, in array order, into a dedicated FeatureGroup. Additive — never touches the block
-  // or editable effects. Only `kind: "vector"` is painted in P1; raster arrives in P3.
+  // VI-P1/P3: governed layer-stack overlays (planting-area boundaries + the P3 NDVI raster). Rendered ABOVE
+  // the block layer, in array order, into a dedicated FeatureGroup. Additive — never touches the block or
+  // editable effects. `kind:"vector"` paints a GeoJSON layer; `kind:"raster"` paints an L.imageOverlay from
+  // the already-WARPED (north-up 3857) PNG, so its WGS84 bbox is exact and it registers on the basemap.
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -541,20 +543,35 @@ export function SatelliteMap({
     }
     if (!overlays || overlays.length === 0) return;
     const group = L.featureGroup();
+    const rasters: { layer: L.ImageOverlay; resampling: string }[] = [];
     for (const ov of overlays) {
-      if (ov.kind !== "vector") continue; // raster wired in P3
-      L.geoJSON(ov.data as unknown as GeoJSON.GeoJsonObject, {
-        style: {
-          color: ov.style.color,
-          weight: ov.style.weight ?? 2,
-          fillColor: ov.style.fillColor ?? ov.style.color,
-          fillOpacity: ov.style.fillOpacity ?? 0.1,
-          dashArray: ov.style.dashArray,
-        },
-      }).addTo(group);
+      if (ov.kind === "vector") {
+        L.geoJSON(ov.data as unknown as GeoJSON.GeoJsonObject, {
+          style: {
+            color: ov.style.color,
+            weight: ov.style.weight ?? 2,
+            fillColor: ov.style.fillColor ?? ov.style.color,
+            fillOpacity: ov.style.fillOpacity ?? 0.1,
+            dashArray: ov.style.dashArray,
+          },
+        }).addTo(group);
+      } else if (ov.kind === "raster" && ov.imageUrl) {
+        // The PNG is painted over its exact WGS84 bbox (warp already removed the UTM/3857 misregistration).
+        const img = L.imageOverlay(ov.imageUrl, leafletBounds(ov.bounds), {
+          opacity: ov.opacity,
+          interactive: false,
+        }).addTo(group);
+        rasters.push({ layer: img, resampling: ov.resampling });
+      }
     }
     group.addTo(map);
     group.bringToFront();
+    // Q1: bilinear (browser-smooth) is the default; the nearest toggle shows the honest source pixels. The
+    // image element only exists AFTER the layer is added to the map (onAdd), so set the rendering hint here.
+    for (const { layer, resampling } of rasters) {
+      const el = layer.getElement();
+      if (el) el.style.imageRendering = resampling === "nearest" ? "pixelated" : "auto";
+    }
     layerStackRef.current = group;
   }, [overlays]);
 

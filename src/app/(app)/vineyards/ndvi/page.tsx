@@ -2,7 +2,9 @@ import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
 import { isTenantAdminLike } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { Eyebrow } from "@/components/ui";
-import { NdviConsole, type NdviJobRow, type NdviBlockRow } from "./NdviConsole";
+import { loadVineyardDetail } from "@/lib/vineyard/actions";
+import type { SerializedBlock } from "@/lib/vineyard/data";
+import { NdviConsole, type NdviJobRow, type NdviBlockRow, type NdviDatasetRow } from "./NdviConsole";
 
 // VI-P2 Unit 10 — the THIN data console. Not the map (that's P3): a manager picks a vineyard, queues an NDVI
 // look "around a date", watches the job status, and sees per-block NDVI means land in a table. Proof the data
@@ -23,6 +25,9 @@ export default async function NdviConsolePage({ searchParams }: { searchParams: 
 
   let jobs: NdviJobRow[] = [];
   let blocks: NdviBlockRow[] = [];
+  let mapBlocks: SerializedBlock[] = [];
+  let center: { lat: number; lng: number } | null = null;
+  let datasets: NdviDatasetRow[] = [];
   if (selected) {
     const [jobRows, metricRows, blockRows] = await Promise.all([
       prisma.spatialAnalysisJob.findMany({ where: { vineyardId: selected.id }, orderBy: { createdAt: "desc" }, take: 15, select: { id: true, status: true, withheldReason: true, faultClass: true, createdAt: true } }),
@@ -44,13 +49,30 @@ export default async function NdviConsolePage({ searchParams }: { searchParams: 
         geometryVersion: m ? m.geometryVersion : null,
       };
     });
+
+    // P3: the map needs block polygons + a centre + the vineyard's READY NDVI datasets (newest first).
+    const [detailPayload, dsRows] = await Promise.all([
+      loadVineyardDetail(selected.id),
+      prisma.spatialDataset.findMany({ where: { vineyardId: selected.id, status: "READY", metric: "NDVI" }, select: { id: true, sceneId: true } }),
+    ]);
+    mapBlocks = detailPayload.blocks.filter((b) => b.polygon != null);
+    if (detailPayload.detail?.gpsLat != null && detailPayload.detail?.gpsLng != null) {
+      center = { lat: detailPayload.detail.gpsLat, lng: detailPayload.detail.gpsLng };
+    }
+    if (dsRows.length > 0) {
+      const scenes = await prisma.spatialScene.findMany({ where: { id: { in: dsRows.map((d) => d.sceneId) } }, select: { id: true, acquiredAt: true } });
+      const acqOf = new Map(scenes.map((s) => [s.id, s.acquiredAt] as const));
+      datasets = dsRows
+        .map((d) => ({ id: d.id, acquiredAt: acqOf.get(d.sceneId)?.toISOString() ?? null }))
+        .sort((a, b) => (b.acquiredAt ?? "").localeCompare(a.acquiredAt ?? ""));
+    }
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+    <div style={{ maxWidth: 1040, margin: "0 auto" }}>
       <Eyebrow rule>Vineyard Intelligence</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: "10px 0 16px" }}>Satellite NDVI</h1>
-      <NdviConsole vineyards={vineyards} selectedId={selected?.id ?? null} selectedName={selected?.name ?? null} jobs={jobs} blocks={blocks} />
+      <NdviConsole vineyards={vineyards} selectedId={selected?.id ?? null} selectedName={selected?.name ?? null} jobs={jobs} blocks={blocks} mapBlocks={mapBlocks} center={center} datasets={datasets} />
     </div>
   );
 }

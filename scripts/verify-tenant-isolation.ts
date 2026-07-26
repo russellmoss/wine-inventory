@@ -228,6 +228,11 @@ async function main() {
   const isoSoilComponents = [{ mukey: "1407835", muname: "Mardin channery silt loam", class: "soil", areaPct: 1, areaSqM: 100, comppct: 85, drainageClass: "Moderately well drained", drainageBasis: "map-unit dominant condition", awc: null, awcUnit: null, ph: 6.6, phBasis: "topmost mineral horizon", restrictiveDepthCm: null }];
   await owner.blockSoilSnapshot.upsert({ where: { id: "iso_soil_a" }, update: {}, create: { id: "iso_soil_a", tenantId: A, blockId: "iso_blk_a", vineyardId: "iso_vy_a", polygonFingerprint: "iso-a", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "100.00", components: isoSoilComponents, processingVersion: "soil-1", attribution: "NRCS SSURGO" } });
   await owner.blockSoilSnapshot.upsert({ where: { id: "iso_soil_b" }, update: {}, create: { id: "iso_soil_b", tenantId: B, blockId: "iso_blk_b", vineyardId: "iso_vy_b", polygonFingerprint: "iso-b", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "100.00", components: isoSoilComponents, processingVersion: "soil-1", attribution: "NRCS SSURGO" } });
+  // VI-P3: a display derivative + a saved style per tenant (both tenant-scoped, RLS-isolated).
+  await owner.spatialDatasetDerivative.upsert({ where: { id: "iso_sdd_a" }, update: {}, create: { id: "iso_sdd_a", tenantId: A, datasetId: "iso_ds_a", vineyardId: "iso_vy_a", kind: "DISPLAY_NDVI", recipeVersion: 1, status: "READY", updatedAt: now } });
+  await owner.spatialDatasetDerivative.upsert({ where: { id: "iso_sdd_b" }, update: {}, create: { id: "iso_sdd_b", tenantId: B, datasetId: "iso_ds_b", vineyardId: "iso_vy_b", kind: "DISPLAY_NDVI", recipeVersion: 1, status: "READY", updatedAt: now } });
+  await owner.spatialStyle.upsert({ where: { id: "iso_style_a" }, update: {}, create: { id: "iso_style_a", tenantId: A, scope: "SYSTEM", name: "iso-a", mode: "VINEYARD_SCENE", paletteId: "vigor-classic", updatedAt: now } });
+  await owner.spatialStyle.upsert({ where: { id: "iso_style_b" }, update: {}, create: { id: "iso_style_b", tenantId: B, scope: "SYSTEM", name: "iso-b", mode: "VINEYARD_SCENE", paletteId: "vigor-classic", updatedAt: now } });
   // Phase 15: an accounting_connection (the token table) per tenant, plus a cost_export_event in A
   // (composite-FK target for the delivery-uniqueness check). DISCONNECTED + null tokens satisfies the
   // SEC-S5 CHECK; null realmId keeps the one-realm partial-unique out of the way.
@@ -646,6 +651,8 @@ async function main() {
     check("tenant A CANNOT see tenant B's spatial_analysis_job (RLS)", (await asTenant(A, (db) => db.spatialAnalysisJob.findFirst({ where: { id: "iso_job_b" } }))) === null);
     check("tenant A CANNOT see tenant B's block_spatial_metric (RLS)", (await asTenant(A, (db) => db.blockSpatialMetric.findFirst({ where: { id: "iso_bsm_b" } }))) === null);
     check("tenant A CANNOT see tenant B's cdse_usage_counter (RLS)", (await asTenant(A, (db) => db.cdseUsageCounter.findFirst({ where: { tenantId: B, yearMonth: "2026-07" } }))) === null);
+    check("tenant A CANNOT see tenant B's spatial_dataset_derivative (RLS)", (await asTenant(A, (db) => db.spatialDatasetDerivative.findFirst({ where: { id: "iso_sdd_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's spatial_style (RLS)", (await asTenant(A, (db) => db.spatialStyle.findFirst({ where: { id: "iso_style_b" } }))) === null);
     let sceneInsertRaised = false;
     try {
       await asTenant(A, (db) => db.spatialScene.create({ data: { id: "iso_scene_x", tenantId: B, vineyardId: "iso_vy_a", provider: "CDSE", collection: "sentinel-2-l2a", providerSceneId: "ISO-SCENE-X", requestedDateTarget: new Date(), acquiredAt: new Date(), bounds: {}, sceneCloudCover: "1.000", processingBaseline: "05.11", processingLevel: "L2A", selectionReason: "x", attribution: "Copernicus" } }));
@@ -1048,6 +1055,8 @@ async function main() {
     // VI-P2: metrics → jobs → datasets → scenes → counters (counters FK org RESTRICT; the rest also cascade
     // off the vineyard delete below, but delete explicitly, child→parent, before blocks/vineyards drop).
     await owner.blockSpatialMetric.deleteMany({ where: { id: { in: ["iso_bsm_a", "iso_bsm_b", "iso_bsm_x"] } } });
+    await owner.spatialStyle.deleteMany({ where: { id: { in: ["iso_style_a", "iso_style_b"] } } });
+    await owner.spatialDatasetDerivative.deleteMany({ where: { id: { in: ["iso_sdd_a", "iso_sdd_b"] } } });
     await owner.spatialAnalysisJob.deleteMany({ where: { id: { in: ["iso_job_a", "iso_job_b"] } } });
     await owner.spatialDataset.deleteMany({ where: { id: { in: ["iso_ds_a", "iso_ds_b"] } } });
     await owner.spatialScene.deleteMany({ where: { id: { in: ["iso_scene_a", "iso_scene_b", "iso_scene_x"] } } });

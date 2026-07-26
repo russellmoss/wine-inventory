@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma migrate deploy && next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
@@ -50,6 +50,7 @@
     "verify:ttb": "tsx --conditions=react-server --env-file=.env scripts/verify-ttb.ts",
     "verify:planting-geometry": "tsx --conditions=react-server --env-file=.env scripts/verify-planting-geometry.ts",
     "verify:ndvi": "tsx --conditions=react-server --env-file=.env scripts/verify-ndvi.ts",
+    "verify:ndvi-display": "tsx --conditions=react-server --env-file=.env scripts/verify-ndvi-display.ts",
     "verify:soil": "tsx --conditions=react-server --env-file=.env scripts/verify-soil.ts",
     "verify:bond": "tsx --conditions=react-server --env-file=.env scripts/verify-bond.ts",
     "verify:taxclass": "tsx --conditions=react-server --env-file=.env scripts/verify-taxclass.ts",
