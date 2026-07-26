@@ -54,6 +54,27 @@ export function buildTicketNotificationPayload(input: {
   };
 }
 
+/**
+ * Plan 096 Phase 3 — a weather-alert DIGEST (one per (targetDate, tier) across the tenant's
+ * vineyards, Gemini S2) or its all-clear. Title/snippet come from alert-core's tested copy
+ * builders (risk-framed, S5 night phrasing); this just shapes the envelope.
+ */
+export function buildWeatherAlertNotificationPayload(input: {
+  title: string;
+  snippet: string;
+  targetDate: string;
+  tier: string;
+}): BuiltPayload {
+  return {
+    category: "SYSTEM",
+    kind: "WEATHER_ALERT",
+    title: input.title,
+    snippet: toSnippet(input.snippet),
+    sourceType: "weather_alert",
+    sourceId: `${input.targetDate}:${input.tier}`,
+  };
+}
+
 /** WO assignment/status → payload. */
 export function buildWorkOrderNotificationPayload(input: {
   workOrderId: string;

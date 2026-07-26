@@ -13,6 +13,8 @@
 import React from "react";
 import { loadVineyardForecast, refreshVineyardForecast } from "@/lib/weather/actions";
 import type { ForecastView } from "@/lib/weather/forecast-read-core";
+import type { NwsActiveAlert } from "@/lib/weather/providers/nws-alerts";
+import { tierLabel } from "@/lib/weather/alert-core";
 import { formatPrecip, formatTemp, gddCToF, normalizeUnitSystem } from "@/lib/weather/units-core";
 import { ConditionIcon, conditionLabel } from "./ConditionIcon";
 import type { ConditionCode } from "@/lib/weather/providers/forecast-types";
@@ -27,9 +29,17 @@ function shortDate(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+/** Badge chip styling by tier family (tokens; dormant frost renders muted — info, not emergency). */
+function badgeStyle(tier: string, dormant: boolean): React.CSSProperties {
+  const danger = tier === "FROST_WARNING" || tier === "HARD_FREEZE" || tier === "EXTREME_HEAT";
+  const color = dormant ? "var(--text-muted)" : danger ? "var(--danger)" : "var(--warning)";
+  return { fontSize: 9.5, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 5, padding: "1px 5px", textTransform: "uppercase", letterSpacing: 0.4 };
+}
+
 export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
   const [view, setView] = React.useState<ForecastView | null>(null);
   const [unitRaw, setUnitRaw] = React.useState<string>("METRIC");
+  const [alerts, setAlerts] = React.useState<NwsActiveAlert[]>([]);
   const [err, setErr] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const tried = React.useRef<Set<string>>(new Set());
@@ -48,6 +58,7 @@ export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
       }
       setView(res.view);
       setUnitRaw(res.unitSystem);
+      setAlerts(res.activeAlerts);
       setLoading(false);
       // Forecast should "just be there" and stay fresh: fetch when empty or older than the 6-hour
       // cadence — ONCE per vineyard per mount (a failure renders the stored copy, not an error).
@@ -59,6 +70,7 @@ export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
         if (!cancelled && again.ok) {
           setView(again.view);
           setUnitRaw(again.unitSystem);
+          setAlerts(again.activeAlerts);
         }
       }
     })();
@@ -78,6 +90,24 @@ export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
+      {/* Official NWS active alerts (U22) — VERBATIM, authoritative-voice, above everything. */}
+      {alerts.length > 0 && (
+        <div style={{ display: "grid", gap: 6 }}>
+          {alerts.map((a, i) => (
+            <div key={`${a.event}-${i}`} style={{ border: "1px solid var(--danger)", borderLeftWidth: 4, borderRadius: 8, padding: "8px 12px", background: "var(--surface-raised)" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Official NWS alert{a.severity ? ` · ${a.severity}` : ""}
+              </div>
+              <div style={{ fontSize: 13.5, marginTop: 2 }}>{a.headline ?? a.event}</div>
+              {a.url && (
+                <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)" }}>
+                  Full advisory
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
         <div style={label}>7-day forecast · {view.providerKey === "nws" ? "US National Weather Service" : "Open-Meteo"}</div>
         <div style={{ ...label, textTransform: "none" }}>Issued {issuedLabel}</div>
@@ -121,6 +151,11 @@ export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
                 <span style={{ color: "var(--text-muted)" }}> · {Math.round(d.precipProbabilityPct)}%</span>
               )}
             </div>
+            {d.badge && (
+              <div style={badgeStyle(d.badge.tier, d.badge.dormant)} title={d.badge.dormant ? "Outside the frost-vulnerable window — information, not an emergency" : undefined}>
+                {tierLabel(d.badge.tier)}
+              </div>
+            )}
             {d.reducedConfidence && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>lower confidence</div>}
           </div>
         ))}
@@ -131,6 +166,9 @@ export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
             {/* A DELTA scales by 1.8 (like GDD), never the +32 affine map — 3 °C apart is 5.4 °F apart. */}
             Sources differ by up to {unit === "IMPERIAL" ? `${(gddCToF(view.spread.maxTmaxDeltaC)).toFixed(1)} °F` : `${view.spread.maxTmaxDeltaC.toFixed(1)} °C`} on highs across {view.spread.days} overlapping days — we show one source, never an average.
           </span>
+        )}
+        {view.days.some((d) => d.badge) && (
+          <span>Badges are Cellarhand computed thresholds — official advisories show above when issued.</span>
         )}
         {view.providerKey === "open_meteo" && (
           <a href="https://open-meteo.com/" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>

@@ -7,6 +7,8 @@
 // past a week — the section's voice never overstates).
 
 import type { ConditionCode, ForecastProviderKey } from "./providers/forecast-types";
+import { addDaysIso } from "./obs-time-core";
+import type { ForecastAlertCandidate, ForecastAlertTier } from "./alert-core";
 
 /** A stored forecast row, Decimals already coerced (the actions layer owns that). */
 export interface ForecastRow {
@@ -31,6 +33,29 @@ export interface ForecastDay {
   windMaxKph: number | null;
   /** Days 6–7 of the horizon — render de-emphasized with an explicit label. */
   reducedConfidence: boolean;
+  /** Plan 096 U23 — the worst computed tier for this day (SAME classification core as the
+   *  notifications — one truth). `dormant` = an out-of-vulnerable-window frost (badge, never notify). */
+  badge?: { tier: ForecastAlertTier; dormant: boolean };
+}
+
+/** Attach warning badges from U20 candidates (worst tier per day; a sustained run badges its whole span). */
+export function attachForecastBadges(days: ForecastDay[], candidates: ForecastAlertCandidate[]): ForecastDay[] {
+  const best = new Map<string, { tier: ForecastAlertTier; rank: number; dormant: boolean }>();
+  const consider = (date: string, tier: ForecastAlertTier, rank: number, dormant: boolean) => {
+    const prev = best.get(date);
+    if (!prev || rank > prev.rank) best.set(date, { tier, rank, dormant });
+  };
+  for (const c of candidates) {
+    if (c.alertType === "SUSTAINED_HEAT" && c.runEndDate) {
+      for (let d = c.targetDate; d <= c.runEndDate; d = addDaysIso(d, 1)) consider(d, c.tier, c.rank, false);
+    } else {
+      consider(c.targetDate, c.tier, c.rank, c.alertType === "FROST" && !c.withinVulnerableWindow);
+    }
+  }
+  return days.map((d) => {
+    const b = best.get(d.targetDate);
+    return b ? { ...d, badge: { tier: b.tier, dormant: b.dormant } } : d;
+  });
 }
 
 export interface ForecastView {

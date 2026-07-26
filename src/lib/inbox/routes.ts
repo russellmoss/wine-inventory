@@ -13,6 +13,10 @@ export function deriveNotificationHref(sourceType: string, sourceId: string): st
       return `/inbox?bucket=tickets&ticket=${encodeURIComponent(sourceId)}`;
     case "dm_thread":
       return `/inbox?bucket=dm&thread=${encodeURIComponent(sourceId)}`;
+    case "weather_alert":
+      // Plan 096 Phase 3 — a forecast frost/heat digest lands on the weather page (the strip +
+      // badges are at the top; sourceId is the `${targetDate}:${tier}` digest key, no per-row page).
+      return "/vineyards/weather";
     default:
       return null;
   }

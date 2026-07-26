@@ -13,6 +13,8 @@ import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { forecastProvidersForLocation } from "./providers/forecast-registry";
 import { fetchNwsForecast, type NwsGrid } from "./providers/forecast-nws";
+import { fetchNwsActiveAlerts, type NwsActiveAlert } from "./providers/nws-alerts";
+import { isUsForecastCoverage } from "./us-coverage";
 import { ProviderFetchError } from "./providers/types";
 import type { ForecastProviderKey, ForecastSeries } from "./providers/forecast-types";
 import { recordWeatherUsage } from "./usage-core";
@@ -73,6 +75,13 @@ export async function ingestVineyardForecastCore(input: ForecastIngestInput, dep
   const timeZone = succeeded.find((s) => s.timeZone)?.timeZone ?? null;
   const nwsGrid = succeeded.find((s) => s.providerKey === "nws")?.grid ?? null;
 
+  // Official NWS active alerts (U22, US only) — enrich-only, fetched OUTSIDE the tx like everything
+  // else; a failure stores nothing new and the banner keeps rendering the previous copy.
+  let activeAlerts: NwsActiveAlert[] | null = null;
+  if (isUsForecastCoverage(input.lat, input.lon)) {
+    activeAlerts = await fetchNwsActiveAlerts(input.lat, input.lon).catch(() => null);
+  }
+
   // ── ONE tx: per-provider replace (delete forward horizon, insert fresh) + config cache (S4) ──
   let rowsWritten = 0;
   await runInTenantTx(
@@ -107,6 +116,8 @@ export async function ingestVineyardForecastCore(input: ForecastIngestInput, dep
         data: {
           ...(timeZone ? { timeZone } : {}),
           ...(nwsGrid ? { nwsGridId: nwsGrid.gridId, nwsGridX: nwsGrid.gridX, nwsGridY: nwsGrid.gridY } : {}),
+          // C4: the banner's persisted copy — verbatim official alerts (empty array = "none active").
+          ...(activeAlerts !== null ? { activeAlertsJson: activeAlerts as object[], activeAlertsFetchedAt: now } : {}),
         },
       });
     },

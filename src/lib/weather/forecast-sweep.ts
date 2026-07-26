@@ -12,18 +12,22 @@ import { runAsTenant } from "@/lib/tenant/context";
 import { listAllOrgIds } from "@/lib/accounting/enumerator";
 import { resolveVineyardCentroid } from "./location";
 import { ingestVineyardForecastCore } from "./forecast-ingest-core";
+import { emitForecastAlertsForTenant } from "./alert-emit";
 import type { NwsGrid } from "./providers/forecast-nws";
 
 export interface ForecastSweepSummary {
   tenants: number;
   vineyardsForecasted: number;
   rowsWritten: number;
+  /** Plan 096 U21 — digest + all-clear notifications sent this run (claim-first, so re-runs stay 0). */
+  digestsSent: number;
+  allClearsSent: number;
   errors: Array<{ tenantId: string; vineyardId: string; error: string }>;
 }
 
 export async function runForecastSweep(): Promise<ForecastSweepSummary> {
   const orgIds = await listAllOrgIds();
-  const summary: ForecastSweepSummary = { tenants: 0, vineyardsForecasted: 0, rowsWritten: 0, errors: [] };
+  const summary: ForecastSweepSummary = { tenants: 0, vineyardsForecasted: 0, rowsWritten: 0, digestsSent: 0, allClearsSent: 0, errors: [] };
 
   for (const tenantId of orgIds) {
     summary.tenants += 1;
@@ -58,6 +62,16 @@ export async function runForecastSweep(): Promise<ForecastSweepSummary> {
         } catch (e) {
           summary.errors.push({ tenantId, vineyardId: v.id, error: (e as Error).message });
         }
+      }
+
+      // Alerts AFTER the tenant's forecasts are fresh (plan 096 U21): classify the primary series,
+      // claim-first, digest per (night, tier), all-clears. A failure here never blocks other tenants.
+      try {
+        const alerts = await emitForecastAlertsForTenant();
+        summary.digestsSent += alerts.digestsSent;
+        summary.allClearsSent += alerts.allClearsSent;
+      } catch (e) {
+        summary.errors.push({ tenantId, vineyardId: "(alert-emit)", error: (e as Error).message });
       }
     });
   }
