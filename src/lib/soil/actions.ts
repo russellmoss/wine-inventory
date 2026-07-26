@@ -6,6 +6,10 @@
 import { revalidatePath } from "next/cache";
 import { safeAction } from "@/lib/actions";
 import { pullBlockSoil } from "./pull-core";
+import { getBlockSoilContext } from "./read";
+
+/** Read the current snapshot + pull eligibility for the block panel (the UI's initial load). */
+export const getBlockSoilAction = safeAction(async (_ctx, blockId: string) => getBlockSoilContext(blockId));
 
 /** One-click NRCS soil pull for a block. Read-user gated via `action`; tenant-scoped + audited. */
 export const pullBlockSoilAction = safeAction(async (ctx, blockId: string, forceRefresh?: boolean) => {

@@ -8,6 +8,8 @@ import "server-only";
  * edit is surfaced as a badge, never a deletion (supersede-not-delete).
  */
 import { prisma } from "@/lib/prisma";
+import { validateVineyardPolygon } from "@/lib/gis/geometry";
+import { isLikelyUsLocation, polygonCentroid } from "./us-region";
 import { parseStoredComponents, type CoverageState, type SoilComponent } from "./schema";
 
 export type SoilSnapshotView = {
@@ -48,6 +50,40 @@ export async function getCurrentSoilSnapshot(blockId: string): Promise<SoilSnaps
     components: parseStoredComponents(snap.components),
     stale,
   };
+}
+
+/** Whether a block can be pulled at all, so the UI gates the button before any network call. */
+export type SoilEligibility = "ok" | "no-polygon" | "invalid-polygon" | "out-of-region";
+
+export type BlockSoilContext = { view: SoilSnapshotView | null; eligibility: SoilEligibility };
+
+/** Everything the block-panel soil section needs in one round trip: the current snapshot + whether a
+ *  pull is even possible (has a valid boundary, in SSURGO territory). */
+export async function getBlockSoilContext(blockId: string): Promise<BlockSoilContext> {
+  const [view, block] = await Promise.all([
+    getCurrentSoilSnapshot(blockId),
+    prisma.vineyardBlock.findFirst({
+      where: { id: blockId },
+      select: { polygon: true, vineyard: { select: { detail: { select: { gpsLat: true, gpsLng: true } } } } },
+    }),
+  ]);
+
+  let eligibility: SoilEligibility = "ok";
+  if (!block || block.polygon == null) {
+    eligibility = "no-polygon";
+  } else {
+    const validated = validateVineyardPolygon(block.polygon);
+    if (!validated.ok) {
+      eligibility = "invalid-polygon";
+    } else {
+      const detail = block.vineyard?.detail;
+      const gpsLat = detail?.gpsLat == null ? null : Number(detail.gpsLat);
+      const gpsLng = detail?.gpsLng == null ? null : Number(detail.gpsLng);
+      const [lng, lat] = gpsLat != null && gpsLng != null ? [gpsLng, gpsLat] : polygonCentroid(validated.value);
+      if (!isLikelyUsLocation(lat, lng)) eligibility = "out-of-region";
+    }
+  }
+  return { view, eligibility };
 }
 
 /** A compact, spoken-friendly soil summary for the assistant read tool. */
