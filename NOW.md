@@ -48,6 +48,10 @@ Water in a distinct blue, legend "39% Mardin / 26% Volusia / …". `verify:soil`
 dropped); 30 overlay unit tests. ⚠️ QA fixture "QA-Soil Overlay Vineyard" left in Demo for viewing — clean up after.
 
 ▶️ **PR OPEN → [#502](https://github.com/russellmoss/wine-inventory/pull/502)** (soil docs + map overlay + click-panel + labels). Merged `main` (P3 #498) in. Post-merge + follow-on gates green (vitest **4060/0**, verify:soil 25/25, invariants/ai-native/tenant-isolation).
+✅ **SOIL AUTO-PULLED FOR EVERY US VINEYARD BLOCK (2026-07-26).** Soil was on-demand only → most US vineyards
+were empty. Now a `runSoilSweep` (idempotent `pullBlockSoil` per block: cached no-op/non-US skip/missing pull,
+capped per run) + daily cron `/api/cron/soil-sweep` (CRON_SECRET, mirrors ndvi-poll) + `npm run backfill:soil`.
+Backfill ran: **all 13 Demo US blocks now have soil** (WV Oregon, Oakville, RRR…); Bhutan's 5 skipped (non-US).
 ✅ **TWO MAP PAGES FOLDED INTO ONE "Map Explorer" at `/vineyards/maps` (2026-07-26).** The old NDVI console
 (`/vineyards/ndvi`) + block-summary map merged into a single layer-stack explorer: blocks + NDVI + soil,
 toggle + reorder + click-inspect. **The map now renders even with no NDVI scene** (NDVI is one optional layer)
