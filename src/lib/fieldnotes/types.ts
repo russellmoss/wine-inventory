@@ -221,35 +221,6 @@ export function parseBlockStatus(raw: unknown): BlockStatus {
   };
 }
 
-/**
- * Key-wise "did the manager leave this block alone?" — replaces the JSON.stringify comparison
- * that `markRemainingHealthy` used to do. That comparison broke the moment BlockStatus gained a
- * key: the serialized string no longer matched EMPTY_BLOCK_STATUS, so every untouched block
- * silently missed the healthy stamp. Comparing the keys we care about, and ignoring any others,
- * means the next field added here does not re-break it.
- */
-export function isUntouchedBlockStatus(s: BlockStatus | undefined | null): boolean {
-  if (!s) return true;
-  const e = EMPTY_BLOCK_STATUS;
-  return (
-    s.phenoStage === e.phenoStage &&
-    s.phenoStagePct === e.phenoStagePct &&
-    s.shootTip === e.shootTip &&
-    s.canopyDensity === e.canopyDensity &&
-    s.waterStress === e.waterStress &&
-    s.weedPressure === e.weedPressure &&
-    s.leafConditions.length === 0 &&
-    s.diseasePestSpotted === e.diseasePestSpotted &&
-    s.diseaseDescription === e.diseaseDescription &&
-    s.photoUrls.length === 0 &&
-    s.shootLengthCm === e.shootLengthCm &&
-    s.shootLengthBand === e.shootLengthBand &&
-    s.hedgedThisWeek === e.hedgedThisWeek &&
-    s.fruitZoneLeafRemoval === e.fruitZoneLeafRemoval &&
-    s.clusterDamage === e.clusterDamage &&
-    s.vinegarFlyPressure === e.vinegarFlyPressure
-  );
-}
 
 export function parseBlockStatuses(raw: unknown): Record<string, BlockStatus> {
   if (!isObject(raw)) throw new FieldNoteParseError("blockLevelStatuses must be an object.");

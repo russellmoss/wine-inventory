@@ -20,8 +20,18 @@ import type { PhenologySource } from "@/lib/phenology/stage-core";
 import { formatShootLength, formatShootLengthRange } from "@/lib/phenology/units";
 import type { ClusterDamage, VinegarFlyPressure } from "@/lib/phenology/observation-types";
 
+/**
+ * Domain tones, deliberately independent of the Badge component's palette so this module stays
+ * pure and testable. `amber` means "attention, not an error" — a gap, or an estimate near a
+ * boundary. Renderers map it with `chipToneToBadgeTone`.
+ */
 export type ChipTone = "neutral" | "green" | "red" | "amber";
 export type PhenologyChip = { text: string; tone: ChipTone };
+
+/** DESIGN.md has no amber token; `gold` is the design system's attention tone. */
+export function chipToneToBadgeTone(tone: ChipTone): "neutral" | "green" | "red" | "gold" {
+  return tone === "amber" ? "gold" : tone;
+}
 
 function pretty(v: string): string {
   return v

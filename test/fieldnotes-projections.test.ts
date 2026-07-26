@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_BLOCK_STATUS,
   DEFAULT_HEALTHY_BLOCK_STATUS,
-  isUntouchedBlockStatus,
   parseBlockStatus,
   type BlockStatus,
 } from "@/lib/fieldnotes/types";
+import { isUntouchedBlockStatus } from "@/lib/fieldnotes/block-status-compare";
 import { buildBriefingInput } from "@/lib/fieldnotes/prompt";
 import { summarizeBlock } from "@/lib/assistant/tools/query-field-reports";
 import { summarizeBlockEdits } from "@/lib/assistant/tools/save-field-report";

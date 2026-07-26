@@ -5,12 +5,12 @@ import { Card, Button, Input, Checkbox, Badge } from "@/components/ui";
 import {
   DEFAULT_HEALTHY_BLOCK_STATUS,
   EMPTY_BLOCK_STATUS,
-  isUntouchedBlockStatus,
   type BlockStatus,
   type InputApplication,
   type CreateFieldNoteInput,
   type ParsedFieldNote,
 } from "@/lib/fieldnotes/types";
+import { isUntouchedBlockStatus } from "@/lib/fieldnotes/block-status-compare";
 import { buildPrepopulationDefaults } from "@/lib/fieldnotes/prepopulate";
 import { todayISODateUTC } from "@/lib/fieldnotes/week";
 import { createFieldNote } from "@/lib/fieldnotes/actions";
@@ -305,6 +305,46 @@ export function FieldNoteForm({
     });
   }
 
+  /**
+   * Stamp the LOW-VARIANCE fields from the first block the manager filled onto every untouched
+   * block (council S7). This is the concession to form growth, and it is why six new fields do not
+   * cost six × N more taps: phenology stage, shoot-length band, and fly pressure rarely differ
+   * between adjacent blocks scouted the same morning.
+   *
+   * ⚠️ CLUSTER DAMAGE IS DELIBERATELY EXCLUDED. Damage is exactly the thing that varies block to
+   * block — hail hits one row, birds work one edge — so copying it across would manufacture
+   * observations nobody made. Measured shoot length is excluded for the same reason: it is a
+   * measurement, and a measurement is of one block.
+   */
+  function copyToUntouchedBlocks() {
+    const sourceId = blockIds.find((id) => touchedRef.current.has(id));
+    if (!sourceId) {
+      setError("Fill in one block first, then this copies its stage, shoot band, and fly pressure to the rest.");
+      return;
+    }
+    const src = statuses[sourceId];
+    const untouched = blockIds.filter((id) => !touchedRef.current.has(id));
+    if (untouched.length === 0) return;
+    if (!window.confirm(`Copy stage, shoot band, and fly pressure from ${blocks.find((b) => b.id === sourceId)?.blockLabel} to ${untouched.length} untouched block(s)?`)) {
+      return;
+    }
+    setError(null);
+    setStatuses((prev) => {
+      const next = { ...prev };
+      for (const id of untouched) {
+        next[id] = {
+          ...(prev[id] ?? EMPTY_BLOCK_STATUS),
+          phenoStage: src.phenoStage,
+          phenoStagePct: src.phenoStagePct,
+          shootTip: src.shootTip,
+          shootLengthBand: src.shootLengthBand,
+          vinegarFlyPressure: src.vinegarFlyPressure,
+        };
+      }
+      return next;
+    });
+  }
+
   function toggleInput(
     kind: "spray" | "fert",
     name: string,
@@ -456,11 +496,24 @@ export function FieldNoteForm({
         onAdd={(name) => addInput("fert", name)}
       />
 
-      {/* (d) MARK REMAINING HEALTHY */}
+      {/* (d) BULK APPLY */}
       <div style={sectionStyle}>
         <Button type="button" variant="secondary" fullWidth onClick={markRemainingHealthy} style={{ height: 48 }}>
           Mark remaining blocks healthy
         </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          fullWidth
+          onClick={copyToUntouchedBlocks}
+          style={{ height: 48, marginTop: 8 }}
+        >
+          Copy stage &amp; shoot band to remaining blocks
+        </Button>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0 0" }}>
+          Copies only what rarely differs between neighbouring blocks. Cluster damage and measured
+          lengths are never copied — those are observations of one block.
+        </p>
       </div>
 
       {/* (e) BLOCK CARDS */}
