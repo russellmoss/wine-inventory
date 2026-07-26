@@ -53,7 +53,7 @@
     },
     {
       "path": "/api/cron/forecast-poll",
-      "schedule": "10 */6 * * *"
+      "schedule": "10 15 * * *"
     }
   ]
 }
