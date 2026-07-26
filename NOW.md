@@ -7,6 +7,92 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**SPRAY INTELLIGENCE — program spine WRITTEN + COUNCIL-RECONCILED (2026-07-26). Nothing built yet.
+Wave-1 lanes are being `/plan`ned in PARALLEL worktrees (S0 · S2 · S3a · S4).**
+
+🟦 **S4 (lane D — phenology + growth): PLAN v2 COUNCIL-RECONCILED, ready for `/work`.**
+[plan](docs/spray_assistant/phases/S4-phenology-growth-model-plan.md) ·
+[council](docs/spray_assistant/phases/S4-council-feedback.md) (23 findings, 20 folded, 0 rejected).
+**Sour rot DECIDED — YES**, S4 adds `clusterDamage` (gated `FRUIT_SET`) + `vinegarFlyPressure`
+(gated `VERAISON`), `NOT_ASSESSED` ≠ `NONE` ≠ `null`; sour rot returns to **S5b** behind a
+rolling-4-week 60% coverage gate (runbook §12 q3 answered, §9 S5b + Later bucket updated).
+Two council catches that changed the model: **(1)** `shootTip: STAGNANT` does **NOT** mean zero
+growth dilution — leaf expansion continues ~14–21 d after internode elongation stops, so v1 would
+have reported "protected" on a diluted canopy (**written back into runbook §9 S6**); **(2)** the
+hard-coded NH Apr 1–Oct 31 season window would silently truncate **Bhutan** → GDD now anchors to the
+`BUD_BREAK` biofix, not the calendar. Schema slice = `VineyardBlock.{trellisSystem,clusterCompactness}`
++ `Variety.clusterCompactness`; everything else is additive JSON on `BlockStatus`, **no migration of
+historical rows**. ⚠️ Lane-shares `src/lib/fieldnotes/types.ts` with **S3a** — S4's diff there is ~7
+additive lines by design (new vocabulary lives in `src/lib/phenology/observation-types.ts`).
+
+🏛️ **COUNCIL RE-SHAPED THE PROGRAM** — [RUNBOOK-council-feedback.md](docs/spray_assistant/RUNBOOK-council-feedback.md)
+(Codex structure/data-layer + Gemini domain/liability; 10 CRITICAL, 11 SHOULD-FIX, 1 pushed back).
+Three genuine defects in the first draft: **(1)** no phase produced the rainfast/mobility/PHI/REI
+facts that S6+S7 gates REQUIRE → **new S2b product-facts master** (curated top-60 AIs = 86.5% of
+occurrences, free sources; Russell chose curated over buying CDMS/Agrian); **(2)** the dependency
+graph was WRONG — S7 secretly needed hourly weather (sulfur×temp, copper×slow-dry) and phenology
+(fruit-present), S5 needed S4 (3-10 rule wants shoots ≥10cm) → **split S7→S7a/S7b and S5→S5a/S5b**;
+**(3)** one hourly table conflated OBSERVED/FORECAST/REANALYSIS → `seriesKind` + a contract test that
+a forecast row can never satisfy a historical read. ⚡ **Russell's call: front-load the deterministic
+engine** — Wave 2 now ships legality+rotation (S7a) + the lot-residue moat (S8) + daily powdery
+(S5a) with **ZERO dependency on hourly weather**; speculative modeling moves to Wave 3.
+⛔ **Best catch (Gemini C8), previously missed entirely: PHI is not a one-time gate.** Plan Oct-10
+pick → spray 14-day-PHI Sept 20 (legal) → pull pick to Sept 30 = **retroactive violation, fruit
+unsellable, system silent**. Any harvest-date mutation must re-evaluate the trailing PHI window.
+⛔ **C6, promoted to CRITICAL: rule "gap→unknown→refuse" + a US-only registry BRICKS the live Bhutan
+tenant.** Non-US manual product-facts path is now standing rule §3.9 (same mechanism serves the US
+tenant-override case). Other folded: adjuvants invisible to interlocks (captan+organosilicone);
+`driedBeforeRain` must be DERIVED not self-reported; protection output is CATEGORICAL not a % (false
+precision); wind speed+**direction** distinct columns (CA PUR); facts-as-of snapshot on every spray
+(else a monthly refresh silently rewrites past decisions); entitlement moves tool→service layer
+(S9/S10 are server components, they'd bypass it); LWD blind to canopy architecture + needs a grower
+"calibrate wetness" override; **sour rot CUT** (needs berry-wound + vinegar-fly telemetry we don't
+collect → new rule §3.7 "a model may not depend on data the system does not collect"). Export MRLs →
+Later, documented. QA safety cases 17→**23**.
+New program folder `docs/spray_assistant/` (mirrors `docs/GIS/`):
+[SPRAY_ASSISTANT_RUNBOOK.md](docs/spray_assistant/SPRAY_ASSISTANT_RUNBOOK.md) (phases, waves, gates,
+ledger) · [discovery brief](docs/spray_assistant/spray-decision-discovery-brief.md) (domain +
+honesty + math contracts) · [data-sources design](docs/spray_assistant/spray-data-sources-design.md) ·
+[qa/QA-PROTOCOL.md](docs/spray_assistant/qa/QA-PROTOCOL.md) (**standing in-browser gate after EVERY
+phase, 15 program-wide safety cases**) · `phases/README.md` (artifact naming + lifecycle).
+
+Goal: a grower talks to the assistant about a spray decision and gets an **inspectable decision
+record** — risk, current protection, hard stops, legal windows, application window, and what we
+don't know. S0–S11 + SKB in 5 waves, **4 file-disjoint parallel lanes in Wave 1 and 4 in Wave 2**.
+
+📋 **Spray RECORD + PLAN are in scope and are the spine — S3a/S3b, Wave 1 lane C** (Russell asked
+2026-07-26). S6/S7/S8 and half of S9 all read the record, so **S3a lands as its own PR and opens
+Wave 2; S3b (season program) follows and blocks nothing.** Field inventory transcribed from the real
+`docs/spray orders/Spray work order template.xlsx` into brief §17.3 — it is **header + 3 line
+tables** (header / materials+REI+PHI / mixing order / per-block acres+times+tanks), and the
+**header-line split is load-bearing**: Phase 20 needs "enter once, attribute to N blocks", the
+residual model needs per-block facts, compliance keys off the pass. ⚠️ **A plan is intent, NEVER
+evidence** — a planned application must never deplete a residual, satisfy a rotation, start a PHI
+clock, or enter a compliance record; enforce by TYPE separation, not a boolean (a flag gets read
+wrong silently). ⚠️ **ROADMAP Phase 20's note that the template "omits REI + applicator license" is
+half wrong** — REI (F7) and PHI (G7) ARE there; only applicator license (+ target pest, weather at
+application) is missing. Phase 20 keeps cost/equipment (tractor, rig, gear, tanks/gal, labor, PUR)
+and becomes an authoring surface over S3a's row, never a second table.
+
+⛔ **Three findings that shape everything — do NOT re-derive:**
+1. **We have NO humidity, NO dew point, NO hourly data, NO leaf wetness.** `VineyardClimateDaily`'s
+   `rhMaxPct`/`rhMinPct` are plumbed end-to-end and **every provider writes null** (all 5 declare
+   `capabilities:["tmax","tmin","precip"]`; gridMET-via-ACIS grid 21 has no `rmax`/`rmin`). Every
+   pathogen model except temperature-only Gubler-Thomas is currently unbuildable. **S0/S1 is the unlock.**
+2. **The cheap win:** `forecast-nws.ts` ALREADY calls `/gridpoints/{o}/{x},{y}` for QPF — that same
+   response carries **hourly `relativeHumidity`, `dewpoint`, `temperature`** (verified live). One
+   parse away from the CART leaf-wetness inputs. Open-Meteo `hourly=` covers non-US + ERA5-Land history.
+3. **Structured label values (rates/PHI/REI) are NOT freely machine-readable** — PPLS gives metadata
+   + a PDF link; CDMS/Agrian sell the structured layer. Registration + resistance ARE free (EPA
+   APPRIL + CA DPR + UC IPM derivation). This is why plan 086 deferred label extraction, correctly.
+
+🔗 **Absorbs [plan 086](docs/plans/2026-07-20-086-feat-us-pesticide-registration-plan.md)** (→ S2 + seeds S3)
+and **supersedes VI runbook P9** (weather disease → S5); S0 resolves P9's own "spike an hourly source"
+decision gate. Adjacent-not-absorbed: ROADMAP Phase 20 owns the spray *work order*; S3 owns the *record*
+it will write — draw that line in S3's plan so we don't build two tables.
+
+<details><summary>✅ PLAN 097 — HOURLY forecast modal (SHIPPED + LIVE #520, 2026-07-26)</summary>
+
 **PLAN 097 — HOURLY forecast modal: SHIPPED + LIVE ([#520](https://github.com/russellmoss/wine-inventory/pull/520) → `4bae9ab6`, deploy success, 2026-07-26).**
 Tap a day card → modal graphing that day's hourly temp line + rain bars (NATIVE interval width —
 OM per-hour, NWS 3/6h QPF buckets), frost/heat threshold reference lines (crossing hour visible +
@@ -17,6 +103,9 @@ hourly rows** (refresh-once-on-open — Russell's live find on Stoney Hill; a fr
 never trips the on-view refresh). Plan `docs/plans/2026-07-26-097-…` (completed). Live proofs:
 Madera "reaches 95 °F ~4 PM"; Stoney Hill 1.66 in incl. a real past-midnight bucket; Paro monsoon
 rain 13:00–20:00.
+</details>
+
+<details><summary>✅ PLAN 096 — Weather forecast + rainfall: ALL 5 PHASES SHIPPED + LIVE IN PROD (2026-07-26)</summary>
 
 **PLAN 096 — Weather forecast + rainfall time-series: ALL 5 PHASES SHIPPED + LIVE IN PROD (2026-07-26, deploy `bcd70e29` success).**
 PRs [#514](https://github.com/russellmoss/wine-inventory/pull/514) (P0 foundations) ·
@@ -36,6 +125,7 @@ with a 30d/7d/custom range that works in January (year-round ingest, 13,152 rows
 ⚠️ Standing gotchas: ONE site-local "today" (site-time-core — never re-add a UTC today);
 delete-horizon-then-insert is what "replace" means for forecasts; ai-native's coverage doc goes
 stale on ANY core-export change (`verify:ai-native -- --write` before push — it failed #517's CI once).
+</details>
 
 <details><summary>✅ Vineyard Intelligence P3 — NDVI DISPLAY (SHIPPED + LIVE #498, 2026-07-26)</summary>
 
@@ -321,6 +411,20 @@ per-tenant rules mean moving lexicon application into the speak route only.
 
 ## 🔭 Also in flight
 
+**SPRAY INTELLIGENCE S3a (lane C) — plan written + council-reconciled, READY FOR `/work`
+(2026-07-26).** Branch `claude/s3a-spray-application-record-2572f2`. The spray application record
+(header + material / mixing-order / block lines) + planned harvest date as an audited event stream.
+**Blocks Wave 2** (S7a, S8, S6, S7b, S9). Plan:
+[phases/S3a-spray-record-plan.md](docs/spray_assistant/phases/S3a-spray-record-plan.md) · council:
+[phases/S3a-council-feedback.md](docs/spray_assistant/phases/S3a-council-feedback.md).
+3 PRs: schema slice first → domain cores (**this is what unblocks Wave 2**; the UI is NOT on the
+critical path) → minimal surface + QA. Council reversed one decision: **a correction COPIES the
+facts snapshot, never re-resolves it** (re-resolving would repaint a July spray with November's
+registration data — rule §3.8). Open for Russell: D1 canonical-metric storage for a US regulatory
+record · D2 assistant allowlist tier · D3 the 24 h segment-gap threshold.
+⚠️ Three sibling lanes are planning concurrently — `prisma/schema.prisma` and the runbook ledger are
+shared; schema slices serialize.
+
 **PLAN 090 — UNITS 1-10 DONE (18 commits, NOT pushed). RE-INDEX COMPLETE (606 docs), DIFF JUDGED.**
 Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md).
 Verdict: [docs/kb-eval/DIFF-090.md](docs/kb-eval/DIFF-090.md). `verify:knowledge-base` **21/0**.
@@ -439,7 +543,11 @@ both flags + re-seed.
 
 ## 🔭 Also in flight
 
-**PLAN 086 — US pesticide registration + resistance-group coverage. PLANNED, not started.**
+**PLAN 086 — US pesticide registration + resistance-group coverage. ABSORBED INTO SPRAY INTELLIGENCE
+(2026-07-26) — do not work it standalone.** Units 1–3, 5–7, 9, 11 → **S2**; Unit 10 (spray record) seeds
+**S3**; Unit 8 (assistant tool) → **S11** so the program ships ONE composite tool, not two. Its Key
+Decisions, measured Unit-4 de-risk, and Risks tables carry over verbatim — read it before planning S2/S3.
+See [SPRAY_ASSISTANT_RUNBOOK.md](docs/spray_assistant/SPRAY_ASSISTANT_RUNBOOK.md) §2.
 Plan: [2026-07-20-086-…](docs/plans/2026-07-20-086-feat-us-pesticide-registration-plan.md) (Deep, 11 units).
 Numbered 086 because this session's 085 collided with the MSU plan above — `ls docs/plans/` was
 checked and came back clean, but their file was still branch-only. **The check is only sound against
