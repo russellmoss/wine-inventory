@@ -326,6 +326,30 @@ enum VineSpecies {
   OTHER
 }
 
+// Spray Intelligence S4 — DURABLE canopy architecture. The trellis system is a standing
+// property of the block, not a weekly observation (a grower must never re-state it 52×/year).
+// S1's leaf-wetness modifier needs it: wetness in a leaf-pulled VSP canopy behaves nothing
+// like an unmanaged sprawl. OTHER is the escape hatch so a closed set never blocks recording.
+enum TrellisSystem {
+  VSP
+  HIGH_WIRE_CORDON
+  SPRAWL
+  GDC
+  SCOTT_HENRY
+  LYRE
+  OTHER
+}
+
+// Spray Intelligence S4/D12 — cluster architecture, the botrytis/sour-rot microclimate driver.
+// Variety carries the DEFAULT (Pinot Noir tight, Cabernet Sauvignon loose — a static viticultural
+// fact we already know); VineyardBlock carries an OVERRIDE for clone/site differences.
+// Resolution order lives in src/lib/phenology/canopy-profile.ts: block → variety → unknown.
+enum ClusterCompactness {
+  LOOSE
+  MODERATE
+  TIGHT
+}
+
 model Variety {
   tenantId        String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String            @id @default(cuid())
@@ -342,6 +366,9 @@ model Variety {
   nursery         String? // source nursery the vine material came from
   berryColor      BerryColor? // black or white — see BerryColor, distinct from `color`
   species         VineSpecies?
+  // S4/D12: the DEFAULT cluster compactness for this variety. A per-block override lives on
+  // VineyardBlock. NULL = not recorded → resolves to `unknown`, never to a default (rule §3.6).
+  clusterCompactness ClusterCompactness?
   createdAt       DateTime          @default(now())
   components      VesselComponent[]
   bottlingSources BottlingSource[]
@@ -562,6 +589,12 @@ model VineyardBlock {
   geometryVersion     Int                @default(1) // VI-P1: mirrors the open VineyardGeometryVersion row for this block
   geometryFingerprint String? // VI-P1: canonical-form hash of the current polygon (null until first versioned write)
   color               String? // optional per-block polygon color override (hex)
+  // S4: durable canopy architecture — the trellis half of "a leaf-pulled VSP canopy" (council S6).
+  // The leaf-pulled half is a weekly FieldNote observation; this half never changes week to week.
+  trellisSystem       TrellisSystem?
+  // S4/D12: per-block OVERRIDE of Variety.clusterCompactness (clone/site differences are real).
+  // NULL = fall back to the variety default; both NULL = `unknown`, never a default (rule §3.6).
+  clusterCompactness  ClusterCompactness?
   sortOrder           Int                @default(0)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
