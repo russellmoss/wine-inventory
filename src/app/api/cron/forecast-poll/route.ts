@@ -2,7 +2,10 @@ import { timingSafeEqual } from "node:crypto";
 import * as Sentry from "@sentry/nextjs";
 import { runForecastSweep } from "@/lib/weather/forecast-sweep";
 
-// Plan 096 Phase 2 Unit 15 — the 6-hourly forecast cron. Vercel Cron hits this with
+// Plan 096 Phase 2 Unit 15 — the forecast cron (DAILY on Vercel: a sub-daily schedule fails
+// deployment on the Hobby cron allowance — the #516/#517 deploy breaker; intra-day freshness comes
+// from the strip's on-view refresh at issuedAt > 6 h. Restore `10 */6 * * *` on a Pro plan).
+// Vercel Cron hits this with
 // `Authorization: Bearer $CRON_SECRET` (same constant-time gate as weather-poll). Ingest is a
 // per-provider delete-then-insert replace, so a re-run is safe.
 export const runtime = "nodejs";

@@ -1,7 +1,9 @@
 import "server-only";
 
-// Plan 096 Phase 2 Unit 15 — the 6-hourly forecast sweep (cron `/api/cron/forecast-poll`,
-// `10 */6 * * *`). Daily is right for observations and far too slow for a forecast. Enumerates
+// Plan 096 Phase 2 Unit 15 — the forecast sweep (cron `/api/cron/forecast-poll`, DAILY on the
+// Vercel Hobby cron allowance — sub-daily schedules fail DEPLOYMENT there; the strip's on-view
+// refresh at issuedAt > 6 h carries intra-day freshness, and `10 */6 * * *` can be restored on a
+// Pro plan). Enumerates
 // tenants → every active vineyard with a resolvable location gets its 7-day forecast replaced
 // (idempotent delete-then-insert per provider — a double run is safe). Per-vineyard failures land
 // in the summary, never abort the sweep. Volume: ~13 vineyards × ≤3 requests × 4 runs/day ≈
