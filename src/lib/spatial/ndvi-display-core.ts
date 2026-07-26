@@ -17,6 +17,7 @@ import { ndviHistogram, type NdviHistogram } from "@/lib/gis/histogram";
 import { rasterToRgba } from "@/lib/gis/render";
 import { PALETTES, VIGOR_CLASSIC, reversePalette, buildPaletteLut, type ColorScaleMode, type Palette, type ColorStop } from "@/lib/gis/color";
 import { encodePng } from "@/lib/gis/png";
+import { blockCoverageMask, toWgsPolygons } from "@/lib/gis/clip";
 
 export type DisplayStyle = {
   readonly mode: ColorScaleMode;
@@ -74,12 +75,14 @@ function etagFor(datasetId: string, style: DisplayStyle): string {
   return `"${createHash("sha256").update(key).digest("hex").slice(0, 24)}"`;
 }
 
-/** Load the derivative + dequantized values + resolved domain + histogram + meta ONCE (one blob read). */
+/** Load the derivative + dequantized values + resolved domain + histogram + block mask + meta ONCE. */
 async function loadDisplay(datasetId: string, style: DisplayStyle): Promise<{
   values: Float64Array;
   width: number;
   height: number;
   domain: ResolvedDomain;
+  /** Per-pixel block coverage (1 inside a block, 0 outside) — the display alpha AND the domain filter. */
+  mask: Float64Array;
   meta: DisplayMeta;
 }> {
   const derivative = await ensureDisplayDerivative(datasetId);
@@ -89,7 +92,25 @@ async function loadDisplay(datasetId: string, style: DisplayStyle): Promise<{
   const width = derivative.gridWidth ?? 0;
   const height = derivative.gridHeight ?? 0;
 
-  const samples = toWeightedSamples(values);
+  const dataset = await prisma.spatialDataset.findUnique({ where: { id: datasetId }, select: { sceneId: true, vineyardId: true } });
+
+  // Clip to the vineyard's block polygons: the mask feeds the colour domain (vineyard-relative is calibrated
+  // to the vines, not the surrounding AOI) AND the display alpha (only blocks are painted). No blocks → all-1.
+  let mask = new Float64Array(width * height).fill(1);
+  if (dataset && derivative.originX != null && derivative.originY != null && derivative.pixelSizeM != null) {
+    const blocks = await prisma.vineyardBlock.findMany({ where: { vineyardId: dataset.vineyardId }, select: { polygon: true } });
+    const polys = blocks.flatMap((b) => toWgsPolygons(b.polygon));
+    if (polys.length > 0) {
+      const candidate = blockCoverageMask(Number(derivative.originX), Number(derivative.originY), Number(derivative.pixelSizeM), width, height, polys);
+      // Defensive: if the mask ends up with no in-block valid pixels (bad/mismatched geometry), fall back to
+      // the unclipped AOI raster rather than a blank map.
+      let inBlockValid = 0;
+      for (let i = 0; i < values.length; i++) if (candidate[i] > 0 && !Number.isNaN(values[i])) inBlockValid++;
+      if (inBlockValid > 0) mask = candidate;
+    }
+  }
+
+  const samples = toWeightedSamples(values, mask);
   const domain = resolveDomain({
     mode: style.mode,
     pixels: samples,
@@ -99,7 +120,6 @@ async function loadDisplay(datasetId: string, style: DisplayStyle): Promise<{
   });
   const histogram = ndviHistogram(samples, domain);
 
-  const dataset = await prisma.spatialDataset.findUnique({ where: { id: datasetId }, select: { sceneId: true } });
   let acquiredAt: string | null = null;
   if (dataset) {
     const scene = await prisma.spatialScene.findUnique({ where: { id: dataset.sceneId }, select: { acquiredAt: true } });
@@ -119,7 +139,7 @@ async function loadDisplay(datasetId: string, style: DisplayStyle): Promise<{
     histogram,
     validPixelCount: samples.length,
   };
-  return { values, width, height, domain, meta };
+  return { values, width, height, domain, mask, meta };
 }
 
 /** Build the metadata (domain + histogram + bbox + badges) for a dataset under a style — no PNG. */
@@ -129,12 +149,13 @@ export async function buildDisplayMeta(datasetId: string, style: DisplayStyle): 
 
 /** Build the overlay PNG + metadata + ETag for a dataset under a style. */
 export async function buildDisplayRender(datasetId: string, style: DisplayStyle): Promise<DisplayRender> {
-  const { values, width, height, domain, meta } = await loadDisplay(datasetId, style);
+  const { values, width, height, domain, mask, meta } = await loadDisplay(datasetId, style);
   const palette = resolvePalette(style);
   const lut = buildPaletteLut(palette);
   // Render at FULL alpha (no-data still transparent). Layer opacity is owned client-side by Leaflet's
-  // imageOverlay — baking it in here too would double-apply it (on-screen alpha = opacity²).
-  const rgba = rasterToRgba(values, width, height, domain, palette, { lut });
+  // imageOverlay — baking it in here too would double-apply it (on-screen alpha = opacity²). The block
+  // mask is the coverage alpha, so only pixels inside a block are painted (cut to the block shapes).
+  const rgba = rasterToRgba(values, width, height, domain, palette, { lut, coverage: mask });
   const png = encodePng(rgba.data, width, height);
   return { png, meta, etag: etagFor(datasetId, style) };
 }
