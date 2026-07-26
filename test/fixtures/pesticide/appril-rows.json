@@ -1,0 +1,82 @@
+{
+  "_comment": "Real-shaped rows captured from the live APPRIL dump (modified 2026-07-21, measured 2026-07-26). SITES cells are subset to the relevant entries; other columns verbatim. switch_premix and surflan_nonbearing are real products (100-953, 70506-40).",
+  "switch_premix": {
+    "REG_NUM": "100-953",
+    "REG_TYPE": "Sec3",
+    "PRODUCT_NAME": "Switch 62.5wg",
+    "COMPANY_NAME": "Syngenta Crop Protection, Llc",
+    "STATUS": "Active",
+    "STATUS_DESC": "Active",
+    "STATUS_GROUP": "Active",
+    "PEST_CAT": "Fungicide",
+    "AIS": "Cyprodinil (288202/121552-61-2) - (37.5%), Fludioxonil (071503/131341-86-1) - (25%), ",
+    "SITES": "Grapes (Foliar Treatment), Strawberries (Foliar Treatment), ",
+    "MAX_LABEL_DT": "45768.0",
+    "ABNS": "Switch 62.5wg (Primary Name), Postdoc",
+    "LABEL_NAMES": "000100-00953-20250421.pdf, 000100-00953-20220419.pdf"
+  },
+  "surflan_nonbearing": {
+    "REG_NUM": "70506-40",
+    "PRODUCT_NAME": "Surflan® 75wsp",
+    "COMPANY_NAME": "United Phosphorus, Inc.",
+    "STATUS_DESC": "Active",
+    "STATUS_GROUP": "Active",
+    "PEST_CAT": "Herbicide Terrestrial",
+    "AIS": "Oryzalin (104201/19044-88-3) - (75%), ",
+    "SITES": "Grapes (Nonbearing), Almonds (Nonbearing), Apples (Soil Treatment), ",
+    "MAX_LABEL_DT": "43000.0",
+    "LABEL_NAMES": "070506-00040-20170101.pdf"
+  },
+  "maneb_single_ai": {
+    "REG_NUM": "70-291",
+    "PRODUCT_NAME": "Rigo Maneb Special Fungicide",
+    "COMPANY_NAME": "Value Gardens Supply, Llc",
+    "STATUS_DESC": "Inactive - Cancelled",
+    "STATUS_GROUP": "Inactive",
+    "PEST_CAT": "Fungicide",
+    "AIS": "Maneb (014505/12427-38-2) - (80%), ",
+    "SITES": "Grapes (Delayed Dormant Application), Grapes (Foliar Treatment), Apples (Foliar Treatment), ",
+    "MAX_LABEL_DT": "34222.0",
+    "LABEL_NAMES": "000070-00291-19930910.pdf"
+  },
+  "ornamental_traps_only": {
+    "REG_NUM": "999-111",
+    "PRODUCT_NAME": "Synthetic Ornamental Mix",
+    "STATUS_GROUP": "Active",
+    "PEST_CAT": "Insecticide",
+    "AIS": "Diazinon (057801/333-41-5) - (25%), ",
+    "SITES": "Grape-Ivy (Interior Plantscapes), Grapefruit (Foliar Treatment), Oregongrape (Foliar Treatment), Grapevines (Ornamental) (Foliar Treatment), ",
+    "MAX_LABEL_DT": "",
+    "LABEL_NAMES": ""
+  },
+  "blank_pest_cat": {
+    "REG_NUM": "999-222",
+    "PRODUCT_NAME": "Synthetic Blank-Category Product",
+    "STATUS_GROUP": "Active",
+    "PEST_CAT": "",
+    "AIS": "Sulfur (077501/7704-34-9) - (90%), ",
+    "SITES": "Grapes (Foliar Treatment), ",
+    "MAX_LABEL_DT": "",
+    "LABEL_NAMES": ""
+  },
+  "comma_in_ai_name": {
+    "REG_NUM": "999-333",
+    "PRODUCT_NAME": "Synthetic Fumigant",
+    "STATUS_GROUP": "Active",
+    "PEST_CAT": "Fumigant",
+    "AIS": "1,3-Dichloropropene (029001/542-75-6) - (97.5%), Chloropicrin (081501/76-06-2) - (2.5%), ",
+    "SITES": "Grapes (Soil Fumigation), ",
+    "MAX_LABEL_DT": "",
+    "LABEL_NAMES": ""
+  },
+  "malformed_ais_tail": {
+    "REG_NUM": "999-444",
+    "PRODUCT_NAME": "Synthetic Malformed-AIS Product",
+    "STATUS_GROUP": "Active",
+    "PEST_CAT": "Fungicide",
+    "AIS": "Captan (081301/133-06-2) - (50%), Mystery Compound With No Signature",
+    "SITES": "Grapes (Foliar Treatment), ",
+    "MAX_LABEL_DT": "",
+    "LABEL_NAMES": ""
+  }
+}
