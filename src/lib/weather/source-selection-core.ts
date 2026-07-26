@@ -35,11 +35,15 @@ export function effectivePrimary(config: WeatherConfigLike): string {
  */
 export function selectPrimaryCore(candidates: PrimaryCandidate[]): ProviderKey | null {
   if (candidates.length === 0) return null;
-  const stations = candidates.filter(
+  // A source with NO usable data (completeness 0 — e.g. a nearby station that reports only precip, or no
+  // recent daily temps) must never be primary; the headline would read 0. Prefer sources with data.
+  const withData = candidates.filter((c) => c.completeness > 0);
+  const eligible = withData.length > 0 ? withData : candidates;
+  const stations = eligible.filter(
     (c) => c.kind === "station" && c.stationDistanceM !== null && c.stationDistanceM <= STATION_MAX_DISTANCE_M,
   );
-  const pool = stations.length > 0 ? stations : candidates.filter((c) => c.kind === "grid");
-  const ranked = (pool.length > 0 ? pool : candidates).slice().sort((a, b) => {
+  const pool = stations.length > 0 ? stations : eligible.filter((c) => c.kind === "grid");
+  const ranked = (pool.length > 0 ? pool : eligible).slice().sort((a, b) => {
     const da = a.stationDistanceM ?? Number.POSITIVE_INFINITY;
     const db = b.stationDistanceM ?? Number.POSITIVE_INFINITY;
     if (da !== db) return da - db;

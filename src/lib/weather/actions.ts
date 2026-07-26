@@ -5,12 +5,27 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireReadyUser } from "@/lib/dal";
+import { runAsTenant } from "@/lib/tenant/context";
+import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { composeClimateSummaryCore, type ClimateSummary, type DailyRow, type ClimateConfig } from "./read-core";
 import { ingestVineyardWeatherCore, type IngestResult } from "./ingest-core";
 import { resolveVineyardCentroid } from "./location";
 import { fetchAcisStationSeries, listAcisStations, type AcisStation } from "./providers/rcc-acis";
 import { seasonWindowFor, seasonYearFor } from "./season-core";
 import { revalidatePath } from "next/cache";
+
+/**
+ * Auth + resolve the session's active tenant. The weather WRITE path (ingest → requireTenantId() +
+ * runInTenantTx) needs an ALS tenant context; plain "use server" actions don't set one, which is the
+ * "No tenant context — wrap this call in runAsTenant()" bug. Callers wrap their body in
+ * `runAsTenant(tenantId, …)`. Throws (caught by each action's try/catch) when there's no active org.
+ */
+async function requireTenant(): Promise<string> {
+  await requireReadyUser();
+  const tenantId = await resolveActiveTenantId();
+  if (!tenantId) throw new Error("No active organization on your session — sign in to a winery first.");
+  return tenantId;
+}
 
 /** A nearby station option for the map picker. */
 export interface StationOption {
@@ -50,7 +65,8 @@ export async function listNearbyStations(vineyardId: string): Promise<{ ok: true
 /** Pick a specific station (map click): store the choice, make it primary, and re-ingest from it. */
 export async function setVineyardStation(vineyardId: string, station: StationOption): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
   try {
-    await requireReadyUser();
+    const tenantId = await requireTenant();
+    return await runAsTenant(tenantId, async () => {
     const centroid = await resolveVineyardCentroid(vineyardId);
     if (!centroid) return { ok: false, error: "This vineyard has no planting-area geometry yet." };
     const cfg = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { id: true } });
@@ -82,6 +98,7 @@ export async function setVineyardStation(vineyardId: string, station: StationOpt
     await prisma.vineyardWeatherConfig.update({ where: { id: cfg.id }, data: { stationOverrideId: station.sid, primaryProviderOverride: "rcc_acis" } });
     revalidatePath("/vineyards/weather");
     return { ok: true, rows: res.rowsWritten };
+    });
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -162,10 +179,12 @@ export async function setVineyardPrimarySource(
 
 /** Refresh a vineyard's weather from live providers (resolves the centroid, runs ingest). */
 export async function refreshVineyardWeather(vineyardId: string, startIso: string, endIso: string): Promise<IngestResult> {
-  await requireReadyUser();
-  const centroid = await resolveVineyardCentroid(vineyardId);
-  if (!centroid) throw new Error("Vineyard has no planting-area geometry yet — draw its boundary first.");
-  return ingestVineyardWeatherCore({ vineyardId, lat: centroid.lat, lon: centroid.lon, startIso, endIso });
+  const tenantId = await requireTenant();
+  return runAsTenant(tenantId, async () => {
+    const centroid = await resolveVineyardCentroid(vineyardId);
+    if (!centroid) throw new Error("Vineyard has no planting-area geometry yet — draw its boundary first.");
+    return ingestVineyardWeatherCore({ vineyardId, lat: centroid.lat, lon: centroid.lon, startIso, endIso });
+  });
 }
 
 /** Backfill N years of historical gridMET so the card can show the Winkler normal + 10/20-yr GDD curves. */
@@ -174,17 +193,19 @@ export async function backfillVineyardWeatherHistory(
   years = 20,
 ): Promise<{ ok: true; rows: number; fromYear: number; toYear: number } | { ok: false; error: string }> {
   try {
-    await requireReadyUser();
-    const centroid = await resolveVineyardCentroid(vineyardId);
-    if (!centroid) return { ok: false, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
-    const currentYear = seasonYearFor(centroid.lat, new Date().toISOString().slice(0, 10));
-    const { backfillVineyardGridmetHistory } = await import("./backfill-core");
-    const res = await backfillVineyardGridmetHistory(vineyardId, centroid.lat, centroid.lon, years, currentYear);
-    if (res.rowsWritten === 0) {
-      return { ok: false, error: "No historical gridMET available here (gridMET is CONUS-only). The long-term Winkler needs a US site." };
-    }
-    revalidatePath("/vineyards/weather");
-    return { ok: true, rows: res.rowsWritten, fromYear: res.fromYear, toYear: res.toYear };
+    const tenantId = await requireTenant();
+    return await runAsTenant(tenantId, async () => {
+      const centroid = await resolveVineyardCentroid(vineyardId);
+      if (!centroid) return { ok: false as const, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
+      const currentYear = seasonYearFor(centroid.lat, new Date().toISOString().slice(0, 10));
+      const { backfillVineyardGridmetHistory } = await import("./backfill-core");
+      const res = await backfillVineyardGridmetHistory(vineyardId, centroid.lat, centroid.lon, years, currentYear);
+      if (res.rowsWritten === 0) {
+        return { ok: false as const, error: "No historical gridMET available here (gridMET is CONUS-only). The long-term Winkler needs a US site." };
+      }
+      revalidatePath("/vineyards/weather");
+      return { ok: true as const, rows: res.rowsWritten, fromYear: res.fromYear, toYear: res.toYear };
+    });
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -193,17 +214,22 @@ export async function backfillVineyardWeatherHistory(
 /** Refresh the CURRENT growing season (season start → today) — the button on the climate card. */
 export async function refreshVineyardWeatherCurrentSeason(vineyardId: string): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
   try {
-    await requireReadyUser();
-    const centroid = await resolveVineyardCentroid(vineyardId);
-    if (!centroid) return { ok: false, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
-    const today = new Date().toISOString().slice(0, 10);
-    const seasonYear = seasonYearFor(centroid.lat, today);
-    const { startIso } = seasonWindowFor(centroid.lat, seasonYear);
-    // Preserve a grower's map-picked station across refreshes (else it'd revert to auto-nearest).
-    const stationOverride = await resolveChosenStation(vineyardId, centroid.lat, centroid.lon);
-    const res = await ingestVineyardWeatherCore({ vineyardId, lat: centroid.lat, lon: centroid.lon, startIso, endIso: today, stationOverride });
-    revalidatePath("/vineyards/weather");
-    return { ok: true, rows: res.rowsWritten };
+    const tenantId = await requireTenant();
+    return await runAsTenant(tenantId, async () => {
+      const centroid = await resolveVineyardCentroid(vineyardId);
+      if (!centroid) return { ok: false as const, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
+      const today = new Date().toISOString().slice(0, 10);
+      const seasonYear = seasonYearFor(centroid.lat, today);
+      const { startIso } = seasonWindowFor(centroid.lat, seasonYear);
+      // Preserve a grower's map-picked station across refreshes (else it'd revert to auto-nearest).
+      const stationOverride = await resolveChosenStation(vineyardId, centroid.lat, centroid.lon);
+      const res = await ingestVineyardWeatherCore({ vineyardId, lat: centroid.lat, lon: centroid.lon, startIso, endIso: today, stationOverride });
+      // Once a vineyard's weather has been fetched, keep it fresh automatically via the daily sweep (DARK
+      // flag flips on here) — so growers never have to click Refresh again.
+      await prisma.vineyard.update({ where: { id: vineyardId }, data: { weatherAutoRefresh: true } }).catch(() => {});
+      revalidatePath("/vineyards/weather");
+      return { ok: true as const, rows: res.rowsWritten };
+    });
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

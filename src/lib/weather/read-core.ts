@@ -122,7 +122,21 @@ export function composeClimateSummaryCore(input: {
     byProvider.set(r.providerKey, list);
   }
 
-  const primary = effectivePrimary(config);
+  // The configured/effective primary — but if it has NO usable temp data (e.g. a nearby station that only
+  // reports precip), the headline would read 0. Fall back to the source with the most paired-temp days so the
+  // grower always sees real numbers. (Ingest's selectPrimaryCore now avoids this at write time; this covers
+  // configs written before that fix, until the next auto-refresh corrects them.)
+  const hasTemps = (rows2: LocalDailyRecord[]) => rows2.some((r) => r.tmaxC !== null && r.tminC !== null);
+  let primary = effectivePrimary(config);
+  if (!hasTemps(toLocal(byProvider.get(primary) ?? []))) {
+    let best = primary;
+    let bestCount = 0;
+    for (const [prov, provRows] of byProvider) {
+      const n = toLocal(provRows).filter((r) => r.tmaxC !== null && r.tminC !== null).length;
+      if (n > bestCount) { bestCount = n; best = prov; }
+    }
+    primary = best;
+  }
   const primaryLocalAll = toLocal(byProvider.get(primary) ?? []);
   const primarySeason = filterToSeason(primaryLocalAll, latitude, seasonYear);
 
