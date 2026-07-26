@@ -71,7 +71,7 @@ export default async function NdviConsolePage({ searchParams }: { searchParams: 
   return (
     <div style={{ maxWidth: 1040, margin: "0 auto" }}>
       <Eyebrow rule>Vineyard Intelligence</Eyebrow>
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: "10px 0 16px" }}>Satellite NDVI</h1>
+      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: "10px 0 16px" }}>Map Explorer</h1>
       <NdviConsole vineyards={vineyards} selectedId={selected?.id ?? null} selectedName={selected?.name ?? null} jobs={jobs} blocks={blocks} mapBlocks={mapBlocks} center={center} datasets={datasets} />
     </div>
   );

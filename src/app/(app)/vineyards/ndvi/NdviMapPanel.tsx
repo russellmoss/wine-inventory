@@ -195,7 +195,7 @@ export function NdviMapPanel({
   if (datasets.length === 0) {
     return (
       <Card>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, margin: "0 0 6px" }}>NDVI map</h2>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, margin: "0 0 6px" }}>Map</h2>
         <p style={{ color: "var(--text-secondary)", margin: 0, fontSize: 14 }}>
           No processed NDVI scene yet. Queue a look above; once it processes, the map appears here.
         </p>
@@ -206,7 +206,7 @@ export function NdviMapPanel({
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, margin: 0 }}>NDVI map</h2>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, margin: 0 }}>Map</h2>
         <label style={{ ...label, display: "flex", alignItems: "center", gap: 6 }}>
           Scene
           <select value={datasetId ?? ""} onChange={(e) => setDatasetId(e.target.value)} style={control}>
