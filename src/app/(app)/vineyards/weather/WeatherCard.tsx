@@ -4,10 +4,10 @@
 // numbers), robust underneath (a "Compare sources" disclosure reveals the spread + per-source completeness +
 // honesty lines). Renders offline from the stored summary. DESIGN.md tokens only.
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ClimateSummary } from "@/lib/weather/read-core";
-import { coverageLabel, gddComparisonLabel, providerLabel, trustLabel } from "@/lib/weather/card-core";
+import { coverageLabel, providerLabel, trustLabel } from "@/lib/weather/card-core";
 import { backfillVineyardWeatherHistory, listNearbyStations, refreshVineyardWeatherCurrentSeason, setVineyardPrimarySource, setVineyardStation, type StationOption } from "@/lib/weather/actions";
 import { C_TO_F_GDD } from "@/lib/weather/normals-core";
 import { StationMapClient } from "./StationMap.client";
@@ -54,6 +54,38 @@ export function WeatherCard({
   const [mapLoading, setMapLoading] = useState(false);
   const [winklerWindow, setWinklerWindow] = useState<10 | 20>(20);
   const [backfilling, setBackfilling] = useState(false);
+  const autoTried = useRef<Set<string>>(new Set());
+
+  // Weather should "just be there": on first view auto-fetch the current season (by the nearest station), then
+  // auto-load the 20-yr history so the graph + Winkler populate — no clicking Refresh. Guarded per vineyard.
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    void (async () => {
+      if (!summary && !busy) {
+        const k = `r:${selectedId}`;
+        if (autoTried.current.has(k)) return;
+        autoTried.current.add(k);
+        setBusy(true);
+        setErr(null);
+        const res = await refreshVineyardWeatherCurrentSeason(selectedId);
+        if (cancelled) return;
+        setBusy(false);
+        if (!res.ok) setErr(res.error);
+        else router.refresh();
+      } else if (summary && !summary.normals.hasHistory && !backfilling && summary.coverageState === "US_HIGH_RES") {
+        const k = `h:${selectedId}`;
+        if (autoTried.current.has(k)) return;
+        autoTried.current.add(k);
+        setBackfilling(true);
+        const res = await backfillVineyardWeatherHistory(selectedId, 20);
+        if (cancelled) return;
+        setBackfilling(false);
+        if (res.ok) router.refresh();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedId, summary, busy, backfilling, router]);
 
   async function loadHistory() {
     if (!selectedId) return;
@@ -145,8 +177,14 @@ export function WeatherCard({
 
       {!summary || !h ? (
         <div style={card}>
-          <p style={{ margin: 0 }}>No weather has been pulled for this vineyard yet.</p>
-          <p style={{ ...label, textTransform: "none", marginTop: 6 }}>Click <strong>Refresh weather</strong> to fetch this season from the terrain-aware gridded products + your nearest station.</p>
+          {busy ? (
+            <p style={{ margin: 0 }}>Fetching this season&apos;s weather from the nearest station + gridded products…</p>
+          ) : (
+            <>
+              <p style={{ margin: 0 }}>No weather for this vineyard yet.</p>
+              <p style={{ ...label, textTransform: "none", marginTop: 6 }}>It loads automatically — or click <strong>Refresh weather</strong> to fetch it now.</p>
+            </>
+          )}
         </div>
       ) : (
         <>
