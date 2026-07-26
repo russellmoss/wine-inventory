@@ -137,7 +137,8 @@
     "verify:gis-stats": "tsx scripts/gis-p0-validate-stats.ts",
     "verify:gis-live": "tsx --conditions=react-server --env-file=.env scripts/gis-p0-live-scene.ts",
     "verify:gis-measure": "tsx --conditions=react-server --env-file=.env scripts/gis-p0-measure.ts",
-    "verify:weather": "tsx --conditions=react-server --env-file=.env scripts/verify-weather.ts"
+    "verify:weather": "tsx --conditions=react-server --env-file=.env scripts/verify-weather.ts",
+    "backfill:weather-offseason": "tsx --conditions=react-server --env-file=.env scripts/backfill-weather-offseason.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
