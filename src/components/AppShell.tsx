@@ -41,9 +41,8 @@ const VINEYARDS: NavItem[] = [
   { href: "/vineyards/field-notes", label: "Field notes" },
   { href: "/vineyards/harvest", label: "Harvest" },
   { href: "/vineyards/harvest/weigh-tags", label: "Weigh-tags", customCrush: true }, // Plan 093 (gated on the custom-crush program)
-  { href: "/vineyards/maps", label: "Maps" },
+  { href: "/vineyards/maps", label: "Map Explorer" }, // VI — unified map surface: blocks + NDVI + soil layers (the old /vineyards/ndvi redirects here)
   { href: "/vineyards/planting-setup", label: "Planting setup" }, // VI-P1
-  { href: "/vineyards/ndvi", label: "Satellite NDVI" }, // VI-P2/P3
   { href: "/vineyards/weather", label: "Weather & climate" }, // VI-P8
 ];
 

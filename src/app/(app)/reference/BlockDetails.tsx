@@ -11,6 +11,7 @@ import {
   type Unit,
 } from "@/lib/vineyard/units";
 import type { SerializedBlock } from "@/lib/vineyard/data";
+import { BlockSoilCards } from "./BlockSoilCards";
 
 function ReadField({ label, value }: { label: string; value: React.ReactNode }) {
   const empty = value == null || value === "";
@@ -60,6 +61,7 @@ export function BlockDetails({ block, unit }: { block: SerializedBlock; unit: Un
           </Badge>
         ) : null}
       </div>
+      <BlockSoilCards blockId={block.id} unit={unit} />
     </div>
   );
 }

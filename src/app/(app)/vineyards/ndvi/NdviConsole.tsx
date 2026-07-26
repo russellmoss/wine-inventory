@@ -73,7 +73,7 @@ export function NdviConsole({ vineyards, selectedId, selectedName, jobs, blocks,
         {vineyards.map((v) => (
           <a
             key={v.id}
-            href={`/vineyards/ndvi?vineyard=${v.id}`}
+            href={`/vineyards/maps?vineyard=${v.id}`}
             style={{
               padding: "6px 12px", borderRadius: 8, textDecoration: "none", fontSize: 14,
               border: "1px solid var(--border)", background: v.id === selectedId ? "var(--surface-raised, #f0efe9)" : "transparent",

@@ -30,7 +30,45 @@ palette, legend+badges) · locked-domain side-by-side comparison + saved styles 
   smoothing; polygon-exact display clip (v1 = estate AOI masked to valid pixels); TENANT-scope styles.
 </details>
 
-<details><summary>✅ VI P8 — Weather & Climate spine — BUILT (Units 1–11) + browser-verified 2026-07-25, UNMERGED</summary>
+**⚡ P4 soil (Wave 1 lane B) — ✅ BUILT + LIVE-QA'd on `feat/vi-p4-soil`, PR #502 MERGING (2026-07-26).**
+All 9 units committed (8 feat commits + planning). Migration `20260725140000_soil_snapshot` **applied to prod**
+(additive, Bhutan untouched). Gates: tsc 0, **vitest 4024/0**, **`verify:soil` 23/23** (e2e DB, injected SDA),
+`verify:tenant-isolation` (+soil RLS), `verify:invariants` 39/39 (SOIL-1), `verify:ai-native`, `verify:naming` 25/25.
+**Live browser QA PASSED** (in-app pane, Demo): pulled a real Finger Lakes block through the UI → live NRCS →
+6 soil cards (Mardin 39% pH 6.6, Volusia 26%, Valois 18%…) + "Other (4 slivers <1%)" with Water folded+retained,
+100% covered, survey NY123; DB read-back matched (9 comps, geodesic areaSqM 912,832). Plan:
+[phase-4-soil-documentation-plan.md](docs/GIS/phases/phase-4-soil-documentation-plan.md) · council (11 findings folded):
+[phase-4-council-feedback.md](docs/GIS/phases/phase-4-council-feedback.md).
+✅ **SOIL MAP OVERLAY ADDED (2026-07-26)** — the deferred Wave-4 item, de-risked by a live geom spike (clipped
+`STIntersection.Reduce.STAsText` = ~10 KB/block). Best-effort 3rd SDA call stores block-clipped display
+geometry (`displayGeometry` column, migration `20260726120000`); pure WKT→GeoJSON + per-map-unit **colored
+vector overlays via P1's `overlays` prop (ZERO SatelliteMap-internals change)**; **"Soil layer" toggle + color
+legend on `/vineyards/maps`**. Live browser QA: toggling painted **18 soil polygons inside the block** (paths 1→19),
+Water in a distinct blue, legend "39% Mardin / 26% Volusia / …". `verify:soil` 24/24 (+geometry stored, EMPTY
+dropped); 30 overlay unit tests. ⚠️ QA fixture "QA-Soil Overlay Vineyard" left in Demo for viewing — clean up after.
+
+▶️ **PR OPEN → [#502](https://github.com/russellmoss/wine-inventory/pull/502)** (soil docs + map overlay + click-panel + labels). Merged `main` (P3 #498) in. Post-merge + follow-on gates green (vitest **4060/0**, verify:soil 25/25, invariants/ai-native/tenant-isolation).
+✅ **SOIL AUTO-PULLED FOR EVERY US VINEYARD BLOCK (2026-07-26).** Soil was on-demand only → most US vineyards
+were empty. Now a `runSoilSweep` (idempotent `pullBlockSoil` per block: cached no-op/non-US skip/missing pull,
+capped per run) + daily cron `/api/cron/soil-sweep` (CRON_SECRET, mirrors ndvi-poll) + `npm run backfill:soil`.
+Backfill ran: **all 13 Demo US blocks now have soil** (WV Oregon, Oakville, RRR…); Bhutan's 5 skipped (non-US).
+✅ **TWO MAP PAGES FOLDED INTO ONE "Map Explorer" at `/vineyards/maps` (2026-07-26).** The old NDVI console
+(`/vineyards/ndvi`) + block-summary map merged into a single layer-stack explorer: blocks + NDVI + soil,
+toggle + reorder + click-inspect. **The map now renders even with no NDVI scene** (NDVI is one optional layer)
+so a soil-only vineyard still gets a map. `/vineyards/ndvi` → permanent redirect (links/bookmarks/assistant
+navigate keep working); single nav entry; old `MapsClient` modal retired (block details + soil cards still on
+`/reference`). Live QA: /maps=explorer, /ndvi redirects, RRR shows NDVI+soil, no-scene vineyard shows map+soil.
+✅ **SOIL LAYER ON THE NDVI MAP (2026-07-26)** — `NdviMapPanel` now stacks NDVI + soil via a `MapLayerControl`
+(per-layer visibility toggle + up/down reorder, top-of-map-first) → ordered `overlays` painted bottom→top.
+**Live QA on Russian River Ranch: NDVI raster + soil polygons render together** (labels FaD/HtC/GdE), toggle
+each on/off, reorder flips the stack (verified NDVI↔Soil top swap), click a polygon → tabbed panel. The user's
+"don't see it" was because soil was only on `/vineyards/maps`, not the `/vineyards/ndvi` page — now fixed there.
+✅ **CLICK-TO-INSPECT + LABELS ADDED** — click a soil polygon → tabbed detail panel (Overview/Chemistry/Physical/Source via `Tabs`); map-unit symbol (`musym`, e.g. "MdB") fetched+stored per unit and painted centered in each polygon (permanent center tooltip). `SatelliteMap` extended additively (`onOverlayFeatureClick` + overlay `label`) — no fork. **Live QA: labels render (62B/68B/152B/77B… centered in polygons); click-panel is code+unit-test verified** but the flaky in-app pane unmounts the modal between JS calls so the live click screenshot couldn't be captured (user can click it). ⚠️ QA fixture "QA-Soil Overlay Vineyard" + dev server left up for viewing — clean up after.
+⚠️ Shares `prisma/schema.prisma` + the shared prisma CLIENT
+with the parallel P3/P8 lanes — **`prisma generate` gets clobbered by their generates; regenerate right before any
+tsc/verify/dev-server run.** P3 display migrations (`..._ndvi_display_*`) are already in prod but not on this branch (fine).
+
+<details><summary>✅ VI P8 — Weather & Climate spine — SHIPPED to main (#500–#508, 2026-07-26)</summary>
 
 `docs/GIS/phases/phase-8-weather-climate-spine-plan.md` (BUILT) · report `phase-8-report.md`. Branch
 `claude/distracted-edison-bcf259` (11 commits). **Migration `20260725150000_weather_schema` is APPLIED to prod**

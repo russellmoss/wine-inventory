@@ -23,15 +23,22 @@ export type StaleDependent = { kind: string; subjectId: string };
 /** The NDVI (spatial-metric) dependent kind — VI-P2 is the first real consumer of this seam. */
 export const NDVI_DEPENDENT_KIND = "NDVI" as const;
 
+/** The soil-snapshot dependent kind — VI-P4. A boundary change flags the block's soil snapshot stale. */
+export const SOIL_DEPENDENT_KIND = "SOIL" as const;
+
 /**
- * PURE: the set of dependent product kinds to invalidate for a subject. VI-P2 wired the first real
- * consumer: a boundary change on a PLANTING_AREA or BLOCK marks that subject's NDVI stale. This is an
- * ANNOTATION, not a deletion (council Q1): `BlockSpatialMetric` carries `geometryVersion` IN its unique
- * key, so a recompute against the new version COEXISTS with the old rows — old NDVI stays readable and is
- * served, never hidden (runbook §6 "never rewrite"). P4 (soil) plugs in here the same way.
+ * PURE: the set of dependent product kinds to invalidate for a subject. VI-P2 wired NDVI and VI-P4 wired
+ * SOIL: a boundary change on a PLANTING_AREA or BLOCK marks that subject's NDVI and soil snapshot stale.
+ * This is an ANNOTATION, not a deletion (council Q1): both `BlockSpatialMetric` (geometryVersion in its
+ * unique key) and `BlockSoilSnapshot` (supersede-not-delete) keep the old rows readable — a recompute
+ * COEXISTS, never hidden (runbook §6 "never rewrite"). Soil staleness is also detected at read-time by
+ * comparing the block's current geometryVersion to the snapshot's; this seam is the write-path annotation.
  */
 export function markStaleFor(subjectId: string): StaleDependent[] {
-  return [{ kind: NDVI_DEPENDENT_KIND, subjectId }];
+  return [
+    { kind: NDVI_DEPENDENT_KIND, subjectId },
+    { kind: SOIL_DEPENDENT_KIND, subjectId },
+  ];
 }
 
 export type GeometryVersionState = {

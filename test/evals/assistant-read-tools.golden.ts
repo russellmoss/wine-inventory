@@ -203,4 +203,16 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     tool: "compare_ndvi_dates",
     args: { vineyard: "Russian River Ranch" },
   },
+  // VI-P4 — NRCS soil composition READS. Distinct from NDVI (vigour) — this is the ground, not the canopy.
+  {
+    utterance: "What soil is the Home Block on?",
+    tool: "query_block_soil",
+    args: { block: "Home Block" },
+    note: "soil series / composition read, not NDVI vigour",
+  },
+  {
+    utterance: "What's the drainage and pH for the blocks in Estate Vineyard?",
+    tool: "query_block_soil",
+    args: { vineyard: "Estate Vineyard" },
+  },
 ];

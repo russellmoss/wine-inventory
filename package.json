@@ -51,6 +51,8 @@
     "verify:planting-geometry": "tsx --conditions=react-server --env-file=.env scripts/verify-planting-geometry.ts",
     "verify:ndvi": "tsx --conditions=react-server --env-file=.env scripts/verify-ndvi.ts",
     "verify:ndvi-display": "tsx --conditions=react-server --env-file=.env scripts/verify-ndvi-display.ts",
+    "verify:soil": "tsx --conditions=react-server --env-file=.env scripts/verify-soil.ts",
+    "backfill:soil": "tsx --conditions=react-server --env-file=.env scripts/backfill-soil.ts",
     "verify:bond": "tsx --conditions=react-server --env-file=.env scripts/verify-bond.ts",
     "verify:taxclass": "tsx --conditions=react-server --env-file=.env scripts/verify-taxclass.ts",
     "verify:taxpaid": "tsx --conditions=react-server --env-file=.env scripts/verify-taxpaid.ts",

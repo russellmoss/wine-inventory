@@ -52,6 +52,25 @@
   background: var(--surface-sunken);
 }
 
+/* VI-P4: soil map-unit symbol label centered in each soil polygon (a permanent center tooltip, no box). */
+.leaflet-tooltip.soil-unit-label {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  color: #fff;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 0 3px rgba(0, 0, 0, 0.75);
+}
+.leaflet-tooltip.soil-unit-label::before {
+  display: none; /* no tooltip arrow for a centered label */
+}
+
 /* Zoom controls */
 .leaflet-bar a,
 .leaflet-bar a:hover {

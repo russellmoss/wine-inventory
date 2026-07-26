@@ -694,36 +694,36 @@ model SpatialScene {
 // maskPolicy + resampling + algorithmVersion (council C1). The INFLIGHT placeholder lands on this unique BEFORE
 // the fetch; the blob key is derived from the identity (NOT the sha256) so materialization is idempotent.
 model SpatialDataset {
-  tenantId         String               @default("") // Phase 12 tenant scope; FK+RLS at DB level
-  id               String               @id @default(cuid())
-  vineyardId       String // composite FK → vineyard(tenantId, id)
-  sceneId          String // composite FK → spatial_scene(tenantId, id)
-  datasetIdentity  String // hash(vineyardId, providerSceneId, recipeHash) — the up-front idempotency key (C1)
-  kind             SpatialDatasetKind   @default(RASTER)
-  metric           SpatialMetric        @default(NDVI)
-  status           SpatialDatasetStatus @default(INFLIGHT) // INFLIGHT placeholder → READY on store → FAILED terminal
-  algorithmVersion String // the NDVI algorithm version baked into recipeHash (provenance + identity)
-  blobUrl          String? // private Vercel Blob URL (null until READY)
-  blobKey          String? // deterministic key derived from datasetIdentity (null until READY)
-  blobSha256       String? // content hash of the stored raster (audit; null until READY)
-  byteSize         Int? // stored raster size in bytes (null until READY)
-  crsEpsg          Int? // raster CRS (metric UTM zone)
+  tenantId           String               @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                 String               @id @default(cuid())
+  vineyardId         String // composite FK → vineyard(tenantId, id)
+  sceneId            String // composite FK → spatial_scene(tenantId, id)
+  datasetIdentity    String // hash(vineyardId, providerSceneId, recipeHash) — the up-front idempotency key (C1)
+  kind               SpatialDatasetKind   @default(RASTER)
+  metric             SpatialMetric        @default(NDVI)
+  status             SpatialDatasetStatus @default(INFLIGHT) // INFLIGHT placeholder → READY on store → FAILED terminal
+  algorithmVersion   String // the NDVI algorithm version baked into recipeHash (provenance + identity)
+  blobUrl            String? // private Vercel Blob URL (null until READY)
+  blobKey            String? // deterministic key derived from datasetIdentity (null until READY)
+  blobSha256         String? // content hash of the stored raster (audit; null until READY)
+  byteSize           Int? // stored raster size in bytes (null until READY)
+  crsEpsg            Int? // raster CRS (metric UTM zone)
   // Typed geotransform (NOT loose Json — the clipper depends on it, council S-decision).
-  originX          Decimal?             @db.Decimal(14, 4) // grid origin easting (m)
-  originY          Decimal?             @db.Decimal(14, 4) // grid origin northing (m)
-  pixelSizeM       Decimal?             @db.Decimal(10, 4) // pixel size (m); 10 m native
-  gridWidth        Int? // raster width (px)
-  gridHeight       Int? // raster height (px)
-  axisYSign        Int? // +1 (y-up, lower-left origin) or -1 (y-down); PixelGrid rebuild depends on it
+  originX            Decimal?             @db.Decimal(14, 4) // grid origin easting (m)
+  originY            Decimal?             @db.Decimal(14, 4) // grid origin northing (m)
+  pixelSizeM         Decimal?             @db.Decimal(10, 4) // pixel size (m); 10 m native
+  gridWidth          Int? // raster width (px)
+  gridHeight         Int? // raster height (px)
+  axisYSign          Int? // +1 (y-up, lower-left origin) or -1 (y-down); PixelGrid rebuild depends on it
   // Radiometric provenance (runbook §2.13 — the pinned contract, recorded, never re-derived).
-  harmonizeValues  Boolean              @default(false) // MUST be false (harmonize fabricates NDVI=1.0)
-  sclResampling    String? // "NEAREST" (20 m SCL → 10 m grid)
-  maskDilation     Int                  @default(0) // S3: SCL halo honesty — 0 = no dilation
-  processingUnits  Decimal?             @db.Decimal(12, 4) // CDSE PU billed for the fetch
+  harmonizeValues    Boolean              @default(false) // MUST be false (harmonize fabricates NDVI=1.0)
+  sclResampling      String? // "NEAREST" (20 m SCL → 10 m grid)
+  maskDilation       Int                  @default(0) // S3: SCL halo honesty — 0 = no dilation
+  processingUnits    Decimal?             @db.Decimal(12, 4) // CDSE PU billed for the fetch
   processingBaseline String? // ESA baseline snapshot (also on the scene; carried for a self-contained provenance)
-  attribution      String? // Copernicus attribution
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  attribution        String? // Copernicus attribution
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@unique([tenantId, datasetIdentity]) // C1: up-front idempotency — the INFLIGHT placeholder claims this
   @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — block_spatial_metric.datasetId references this
@@ -821,6 +821,47 @@ model CdseUsageCounter {
   @@id([tenantId, yearMonth]) // one row per tenant per month
   @@index([tenantId])
   @@map("cdse_usage_counter")
+}
+
+// ───────────────────────── Vineyard Intelligence P4: soil documentation (NRCS SSURGO) ─────────────────────────
+// Brief Release 1C. One server-side SDA clip pull per reviewed US block polygon → a dated, sourced,
+// per-map-unit soil snapshot. Cards-first (NO map components). SDA is public/keyless — no env secret; the
+// only wiring is the outbound host allowlist. Follows the AGENTS.md Phase-12 checklist like the P2 tables:
+// tenantId + RLS + composite (tenantId, blockId)→vineyard_block(tenantId, id) FK (K11 raw-SQL, no @relation).
+//
+// SUPERSEDE-NOT-DELETE: exactly one CURRENT row per block (partial unique on supersededAt IS NULL, declared
+// in the migration — Prisma can't express a partial index), superseded rows retained (correction-as-event;
+// a sourced soil claim can end up on a label). A boundary edit does NOT delete — the UI compares the block's
+// current fingerprint to `polygonFingerprint` and shows a stale badge; a re-pull supersedes.
+//
+// NO BLENDED PROPERTIES (the whole point): `components` is one entry per map unit with each property cited to
+// its mukey at NRCS's published level; area % is the only value we aggregate. `coverageState`/`class` are
+// String unions, not enums (Windows enum-ordering trap; dodges an ALTER TYPE serialization vs the P8 lane).
+model BlockSoilSnapshot {
+  tenantId           String    @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                 String    @id @default(cuid())
+  blockId            String // composite FK → vineyard_block(tenantId, id) (raw-SQL K11)
+  vineyardId         String // denormalized for per-vineyard reads (plain indexed column, no FK — mirrors block_spatial_metric)
+  pulledAt           DateTime  @default(now())
+  supersededAt       DateTime? // null = the one CURRENT snapshot; set = retained history
+  surveyAreaSymbol   String? // NRCS sacatalog areasymbol(s) covering the block (may be null pre-resolve)
+  surveyAreaVersion  String? // sacatalog.saverest — SSURGO is revised annually; a filed claim must be reproducible
+  polygonFingerprint String // frame-stable canonical fingerprint (geometry-meta) — staleness signal + cache key
+  geometryVersion    Int // the block geometryVersion this snapshot was computed against
+  coveredPct         Decimal   @db.Decimal(9, 6) // Σ(clipped area)/block area; may exceed 1 (over-coverage anomaly)
+  coverageState      String // "covered" | "partial" | "over" | "none" (String union, not an enum)
+  blockAreaSqM       Decimal   @db.Decimal(16, 2) // geodesic block area (local), the display denominator [council C3]
+  components         Json // validated-on-read array; one entry per map unit (mukey + class + share + cited properties)
+  displayGeometry    Json? // OPTIONAL block-clipped display geometry (FeatureCollection, per-mukey) for the map overlay — NOT authoritative (design §13.6); null until a pull returns renderable geometry
+  processingVersion  String // query/algorithm version for provenance
+  attribution        String? // NRCS attribution string
+  createdBy          String?
+  createdAt          DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, blockId]) // read the current + history for a block
+  @@index([tenantId, vineyardId]) // per-vineyard soil overview (sums block areas; never blends properties)
+  @@map("block_soil_snapshot")
 }
 
 // ───────────────────────── VI-P8: Weather & Climate spine (Release 4A) ─────────────────────────
