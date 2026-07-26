@@ -37,6 +37,8 @@
     "kb:snapshot": "tsx --env-file=.env scripts/kb-snapshot.ts",
     "ingest:appril": "tsx --env-file=.env scripts/ingest-appril.ts",
     "ingest:cdpr": "tsx --env-file=.env scripts/ingest-cdpr.ts",
+    "derive:resistance": "tsx --env-file=.env scripts/derive-resistance-codes.ts",
+    "verify:pesticide": "tsx --conditions=react-server --env-file=.env scripts/verify-pesticide.ts",
     "verify:knowledge-base": "tsx --env-file=.env scripts/verify-knowledge-base.ts",
     "verify:vt-enology": "tsx scripts/verify-vt-enology.ts",
     "verify:msu": "tsx scripts/verify-msu.ts",

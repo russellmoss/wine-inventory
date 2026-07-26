@@ -21,7 +21,7 @@
  *    unique; the audit spine is the product table + revision summary.
  */
 import { createInterface } from "node:readline";
-import { createReadStream } from "node:fs";
+import { createReadStream, statSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -69,6 +69,8 @@ async function main() {
     if (dirArg > -1) {
       dir = process.argv[dirArg + 1];
       if (!dir) throw new Error("--dir requires a path");
+      // Locally-cached .dat files still carry a real source date — their mtime (see ingest-appril).
+      cdprAsOf = statSync(join(dir, "product.dat")).mtime;
     } else {
       dir = tmpdir();
       for (const f of ["product.dat", "prod_site.dat", "site.dat"]) {

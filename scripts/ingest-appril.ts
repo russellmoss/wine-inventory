@@ -16,7 +16,7 @@
  */
 import { unlink } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { createReadStream } from "node:fs";
+import { createReadStream, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
@@ -261,6 +261,9 @@ async function main() {
     } else if (fileArg > -1) {
       xlsxPath = process.argv[fileArg + 1];
       if (!xlsxPath) throw new Error("--file requires a path");
+      // A locally-cached dump still has a real source date — its mtime. Leaving apprilAsOf null
+      // would publish a revision whose composite factsAsOf silently under-reports what we know.
+      apprilAsOf = statSync(xlsxPath).mtime;
     } else {
       downloadedTmp = join(tmpdir(), `appril-${Date.now()}.xlsx`);
       const fetched = await fetchBulkFile(APPRIL_URL, { destPath: downloadedTmp });
