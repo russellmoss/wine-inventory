@@ -7,8 +7,11 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**SPRAY INTELLIGENCE — program spine WRITTEN + COUNCIL-RECONCILED (2026-07-26). Nothing built yet.
-Wave-1 lanes are being `/plan`ned in PARALLEL worktrees (S0 · S2 · S3a · S4).**
+**SPRAY INTELLIGENCE — Wave 1 BUILDING in parallel worktrees (S0 · S2 · S3a · S4).
+S3a's record cores are MERGED (2026-07-26) → Wave 2 (S7a · S8 · S6 · S7b) can start.**
+
+🟪 **S3a (lane C — spray record + planned harvest): PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED; PR3 (surface + docs) OPEN; browser QA pending (needs Russell's Demo login).**
+See ✅ Done recently for the full ledger; the S3a runbook row is 🟪 until the QA report is green.
 
 🟦 **S4 (lane D — phenology + growth): PLAN v2 COUNCIL-RECONCILED, ready for `/work`.**
 [plan](docs/spray_assistant/phases/S4-phenology-growth-model-plan.md) ·
@@ -944,6 +947,15 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Spray Intelligence S3a — record + planned harvest: PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED (2026-07-26) → WAVE 2 UNBLOCKED (S7a, S8, S6, S7b start against the merged cores).**
+  Seven append-only tables (DB triggers + at-most-once correction incl. VOID), facts-as-of
+  snapshots (copied verbatim on correction — KD-14), knownness CHECKs (SPRAY-3), planned-harvest
+  event stream with the `plannedHarvestChangesSince` watermark, legacy field-note seam.
+  `verify:spray-record` = 14/14 on Demo. PR3 (minimal surface + doc reconciliation) OPEN;
+  **⚠️ ledger stays 🟪 — the in-browser QA pass still needs Russell's Demo-Winery login**
+  (SAFE-2/SAFE-10 + persistence proofs, per `docs/spray_assistant/qa/QA-PROTOCOL.md`).
+  ADR 0010 (facts-as-of replay); S7a/S2b/S6 constraints written into runbook §9.
+
 - **CI flake killed: `test/compliance-fill-pdf.test.ts` vs. the 5s vitest default** — **MERGED to
   `main`** ([PR #492](https://github.com/russellmoss/wine-inventory/pull/492), squash `896fec40`;
   branch + worktree deleted). The TTB round-trip parses the 3.1 MB
@@ -1279,7 +1291,8 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-24 — **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+_Last updated: 2026-07-26 — S3a spray record PR1+PR2 merged (Wave 2 unblocked), PR3 open, browser QA
+handed back to Russell. Previous entry (2026-07-24): **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.
