@@ -43,6 +43,25 @@ export function buildCompositionQuery(wkt: string): string {
   ].join("\n");
 }
 
+/** Simplification tolerance (degrees) for the display-overlay geometry — spike: 0.0001 → ~10 KB/block,
+ *  263 vertices, 263 ms (vs 30 KB/839 vtx unsimplified). Display only; composition areas are exact. */
+export const OVERLAY_REDUCE_TOLERANCE = 0.0001;
+
+/**
+ * Clipped DISPLAY geometry per map unit — one row per intersecting mupolygon feature, the block-clipped
+ * geometry as WKT (`.Reduce()` simplified for size). For the optional soil map overlay ONLY; the
+ * composition snapshot stays authoritative and is never derived from this (design §13.6). Same injection
+ * posture as the composition query: `wkt` comes from `toWkt` (validated finite numbers).
+ */
+export function buildGeometryQuery(wkt: string): string {
+  const G = `geometry::STGeomFromText('${wkt}', 4326).MakeValid()`;
+  return [
+    `SELECT p.mukey, p.mupolygongeo.MakeValid().STIntersection(${G}).Reduce(${OVERLAY_REDUCE_TOLERANCE}).STAsText() AS wkt`,
+    "FROM mupolygon p",
+    `WHERE p.mupolygongeo.STIntersects(${G}) = 1`,
+  ].join("\n");
+}
+
 /** True only for a bare non-negative integer — the shape every real SSURGO mukey has. */
 export function isValidMukey(mukey: string): boolean {
   return /^\d+$/.test(mukey);

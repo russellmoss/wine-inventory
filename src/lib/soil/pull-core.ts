@@ -21,8 +21,9 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { validateVineyardPolygon } from "@/lib/gis/geometry";
 import { toWkt, blockAreaSqM, computeFingerprint } from "./wkt-core";
-import { buildCompositionQuery, buildPropertyQuery, isValidMukey, SOIL_QUERY_VERSION } from "./sda-query";
-import { parseCompositionRows, parsePropertyRows } from "./parse-sda-core";
+import { buildCompositionQuery, buildGeometryQuery, buildPropertyQuery, isValidMukey, SOIL_QUERY_VERSION } from "./sda-query";
+import { parseCompositionRows, parseGeometryRows, parsePropertyRows } from "./parse-sda-core";
+import { soilDisplayFromRows, type SoilDisplayGeometry } from "./wkt-parse";
 import { computeSoilComposition } from "./composition-core";
 import { createSdaClient, type SdaClient, type SdaFault } from "./sda-client";
 import { isLikelyUsLocation, polygonCentroid } from "./us-region";
@@ -110,6 +111,14 @@ export async function pullBlockSoil(
 
   const result = computeSoilComposition({ composition, properties, blockAreaSqM: areaSqM });
 
+  // SDA call 3 (best-effort): block-clipped display geometry for the optional map overlay (design §13.6).
+  // A fault here NEVER blocks the pull — the composition snapshot is authoritative and stands on its own.
+  let displayGeometry: SoilDisplayGeometry | null = null;
+  if (mukeys.length > 0 && result.coverageState !== "none") {
+    const geomRes = await client.post(buildGeometryQuery(wkt));
+    if (geomRes.ok) displayGeometry = soilDisplayFromRows(parseGeometryRows(geomRes.table));
+  }
+
   // Persist under a geometry-version CAS (council C1) inside a tenant-scoped Serializable tx (council C10).
   let staleDuringFetch = false;
   try {
@@ -136,6 +145,7 @@ export async function pullBlockSoil(
             coverageState: result.coverageState,
             blockAreaSqM: areaSqM.toFixed(2),
             components: result.components as unknown as Prisma.InputJsonValue,
+            displayGeometry: displayGeometry ? (displayGeometry as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
             processingVersion: SOIL_QUERY_VERSION,
             surveyAreaSymbol: result.surveyAreaSymbol,
             surveyAreaVersion: result.surveyAreaVersion,

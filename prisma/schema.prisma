@@ -833,6 +833,7 @@ model BlockSoilSnapshot {
   coverageState      String // "covered" | "partial" | "over" | "none" (String union, not an enum)
   blockAreaSqM       Decimal   @db.Decimal(16, 2) // geodesic block area (local), the display denominator [council C3]
   components         Json // validated-on-read array; one entry per map unit (mukey + class + share + cited properties)
+  displayGeometry    Json? // OPTIONAL block-clipped display geometry (FeatureCollection, per-mukey) for the map overlay — NOT authoritative (design §13.6); null until a pull returns renderable geometry
   processingVersion  String // query/algorithm version for provenance
   attribution        String? // NRCS attribution string
   createdBy          String?

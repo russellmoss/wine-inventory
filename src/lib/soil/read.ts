@@ -9,7 +9,10 @@ import "server-only";
  */
 import { prisma } from "@/lib/prisma";
 import { validateVineyardPolygon } from "@/lib/gis/geometry";
+import type { LegendEntry, MapOverlay } from "@/lib/gis/overlay";
 import { isLikelyUsLocation, polygonCentroid } from "./us-region";
+import { buildSoilOverlays } from "./overlay-core";
+import type { SoilDisplayGeometry } from "./wkt-parse";
 import { parseStoredComponents, type CoverageState, type SoilComponent } from "./schema";
 
 export type SoilSnapshotView = {
@@ -84,6 +87,32 @@ export async function getBlockSoilContext(blockId: string): Promise<BlockSoilCon
     }
   }
   return { view, eligibility };
+}
+
+export type VineyardSoilOverlays = { overlays: MapOverlay[]; legend: { title: string; entries: LegendEntry[] } };
+
+/** Assemble the soil MAP overlays for every block in a vineyard that has a current snapshot with display
+ *  geometry. Returns null when nothing has renderable soil geometry yet (nothing to paint). */
+export async function getVineyardSoilOverlays(vineyardId: string): Promise<VineyardSoilOverlays | null> {
+  const snaps = await prisma.blockSoilSnapshot.findMany({ where: { vineyardId, supersededAt: null } });
+  const overlays: MapOverlay[] = [];
+  const entries: LegendEntry[] = [];
+  const seen = new Set<string>();
+  for (const snap of snaps) {
+    const components = parseStoredComponents(snap.components);
+    const displayGeometry = (snap.displayGeometry ?? null) as SoilDisplayGeometry | null;
+    if (!components || !displayGeometry) continue;
+    const built = buildSoilOverlays({ blockId: snap.blockId, components, displayGeometry });
+    if (!built) continue;
+    overlays.push(...built.overlays);
+    for (const e of built.legend.entries) {
+      if (seen.has(e.label)) continue; // dedupe repeated soils across blocks
+      seen.add(e.label);
+      entries.push(e);
+    }
+  }
+  if (overlays.length === 0) return null;
+  return { overlays, legend: { title: "Soil (NRCS SSURGO)", entries } };
 }
 
 /** A compact, spoken-friendly soil summary for the assistant read tool. */

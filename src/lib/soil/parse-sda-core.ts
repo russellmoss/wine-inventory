@@ -83,6 +83,15 @@ export function parseCompositionRows(table: SdaTable): SdaCompositionRow[] {
     .filter((r) => r.mukey !== "");
 }
 
+/** One clipped display-geometry row: a map unit's block-clipped geometry as WKT (overlay only). */
+export type SdaGeometryRow = { mukey: string; wkt: string | null };
+
+export function parseGeometryRows(table: SdaTable): SdaGeometryRow[] {
+  const mukey = pick(table, "mukey");
+  const wkt = pick(table, "wkt");
+  return table.rows.map((r) => ({ mukey: mukey(r) ?? "", wkt: wkt(r) })).filter((r) => r.mukey !== "");
+}
+
 export function parsePropertyRows(table: SdaTable): SdaPropertyRow[] {
   const mukey = pick(table, "mukey");
   const cokey = pick(table, "cokey");

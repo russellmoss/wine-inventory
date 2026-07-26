@@ -52,6 +52,14 @@ const PROP: SdaTable = {
   ],
 };
 const EMPTY: SdaTable = { cols: COMP.cols, rows: [] };
+const GEOM: SdaTable = {
+  cols: ["mukey", "wkt"],
+  rows: [
+    ["1407835", "POLYGON ((-77.05 42.55, -77.045 42.55, -77.045 42.56, -77.05 42.56, -77.05 42.55))"],
+    ["1407898", "POLYGON ((-77.045 42.55, -77.04 42.55, -77.04 42.56, -77.045 42.56, -77.045 42.55))"],
+    ["3250410", "POLYGON EMPTY"],
+  ],
+};
 
 let failures = 0;
 const check = (label: string, ok: boolean, extra = "") => {
@@ -64,6 +72,7 @@ function recordedClient(opts?: { fault?: SdaFault; comp?: SdaTable; onCompositio
   return {
     async post(query: string) {
       if (opts?.fault) return { ok: false, fault: opts.fault };
+      if (query.includes("STAsText")) return { ok: true, table: GEOM }; // the display-geometry query
       if (query.includes("mupolygon")) {
         if (opts?.onCompositionPost) await opts.onCompositionPost();
         return { ok: true, table: opts?.comp ?? COMP };
@@ -102,6 +111,10 @@ async function main() {
       check("blockAreaSqM is a local geodesic area > 0 (C3)", v1.blockAreaSqM > 5e5 && v1.blockAreaSqM < 1.1e6, `${Math.round(v1.blockAreaSqM)}`);
       check("no blended block property exists (each soil keeps its own pH)", v1.components.filter((c) => c.class === "soil").every((c) => c.ph !== null));
     }
+    // Display geometry stored for the overlay (EMPTY clip dropped; Water sliver had POLYGON EMPTY → 2 feats).
+    const geomRow = await prisma.blockSoilSnapshot.findFirst({ where: { blockId: BLK, supersededAt: null }, select: { displayGeometry: true } });
+    const fc = geomRow?.displayGeometry as { features?: Array<{ properties: { mukey: string } }> } | null;
+    check("display geometry stored for the map overlay (unparseable EMPTY dropped)", !!fc && Array.isArray(fc.features) && fc.features.length === 2, `feats=${fc?.features?.length}`);
 
     // ── B) cache: unchanged polygon does not hit SDA ─────────────────────────────────────────────
     const b = await pullBlockSoil(actor, BLK, { sdaClient: recordedClient({ fault: "unreachable" }) });

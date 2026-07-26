@@ -6,6 +6,8 @@ import { SatelliteMap } from "@/components/ui/SatelliteMap.client";
 import { effectiveColor } from "@/lib/vineyard/colors";
 import { blockArea, formatArea, mToFt, type Unit } from "@/lib/vineyard/units";
 import { loadVineyardDetail } from "@/lib/vineyard/actions";
+import { getVineyardSoilOverlaysAction } from "@/lib/soil/actions";
+import type { VineyardSoilOverlays } from "@/lib/soil/read";
 import type { VineyardDetailPayload } from "@/lib/vineyard/data";
 import { BlockDetails } from "../../reference/BlockDetails";
 
@@ -67,6 +69,32 @@ function MapModal({
   const [payload, setPayload] = React.useState<VineyardDetailPayload | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [soilOn, setSoilOn] = React.useState(false);
+  const [soilData, setSoilData] = React.useState<VineyardSoilOverlays | null>(null);
+  const [soilLoading, setSoilLoading] = React.useState(false);
+
+  // Fetch the soil overlays lazily, only when the layer is switched on. Reset when the vineyard changes.
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the previous vineyard's soil layer
+    setSoilData(null);
+    setSoilOn(false);
+  }, [vineyardId]);
+  React.useEffect(() => {
+    if (!soilOn || soilData) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lazy fetch when the layer is switched on
+    setSoilLoading(true);
+    getVineyardSoilOverlaysAction(vineyardId)
+      .then((res) => {
+        if (!cancelled && res.ok) setSoilData(res.data);
+      })
+      .finally(() => {
+        if (!cancelled) setSoilLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [soilOn, soilData, vineyardId]);
   // Seed the unit from the persisted default only on the first successful load.
   const seededUnit = React.useRef(false);
 
@@ -182,6 +210,17 @@ function MapModal({
 
             {/* Satellite map + variety key */}
             <section>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                <Button
+                  variant={soilOn ? "primary" : "ghost"}
+                  size="sm"
+                  onClick={() => setSoilOn((v) => !v)}
+                  aria-pressed={soilOn}
+                  title="Show NRCS soil map units clipped to the blocks"
+                >
+                  {soilLoading ? "Loading soil…" : soilOn ? "Soil layer: on" : "Soil layer"}
+                </Button>
+              </div>
               <SatelliteMap
                 lat={detail?.gpsLat ?? null}
                 lng={detail?.gpsLng ?? null}
@@ -189,8 +228,23 @@ function MapModal({
                 unit={unit}
                 onBlockClick={setInfoBlockId}
                 exportName={vineyardName}
+                overlays={soilOn && soilData ? soilData.overlays : undefined}
                 vineyardMeta={{ soilType: detail?.soilType, manager: detail?.manager, elevationM: detail?.elevationM }}
               />
+              {soilOn && soilData ? (
+                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
+                  {soilData.legend.entries.map((e) => (
+                    <span key={e.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-secondary)" }}>
+                      <span aria-hidden style={{ width: 12, height: 12, borderRadius: 3, background: e.color, border: "1px solid var(--border-subtle)" }} />
+                      {e.label}
+                    </span>
+                  ))}
+                </div>
+              ) : soilOn && !soilLoading ? (
+                <p style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-muted)" }}>
+                  No soil geometry stored yet — pull soil on a block (in Reference) to paint it here.
+                </p>
+              ) : null}
               <div style={{ marginTop: 12 }}>
                 <MapLegend blocks={blocks} unit={unit} />
               </div>
