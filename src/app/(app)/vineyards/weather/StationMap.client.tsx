@@ -7,5 +7,5 @@ import dynamic from "next/dynamic";
 
 export const StationMapClient = dynamic(() => import("./StationMap"), {
   ssr: false,
-  loading: () => <div style={{ height: 320, display: "grid", placeItems: "center", color: "var(--color-text-muted)" }}>Loading map…</div>,
+  loading: () => <div style={{ height: 320, display: "grid", placeItems: "center", color: "var(--text-muted)" }}>Loading map…</div>,
 });
