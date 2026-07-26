@@ -10,20 +10,38 @@
 **SPRAY INTELLIGENCE — program spine WRITTEN + COUNCIL-RECONCILED (2026-07-26). Nothing built yet.
 Wave-1 lanes are being `/plan`ned in PARALLEL worktrees (S0 · S2 · S3a · S4).**
 
-🟦 **S4 (lane D — phenology + growth): PLAN v2 COUNCIL-RECONCILED, ready for `/work`.**
-[plan](docs/spray_assistant/phases/S4-phenology-growth-model-plan.md) ·
-[council](docs/spray_assistant/phases/S4-council-feedback.md) (23 findings, 20 folded, 0 rejected).
-**Sour rot DECIDED — YES**, S4 adds `clusterDamage` (gated `FRUIT_SET`) + `vinegarFlyPressure`
-(gated `VERAISON`), `NOT_ASSESSED` ≠ `NONE` ≠ `null`; sour rot returns to **S5b** behind a
-rolling-4-week 60% coverage gate (runbook §12 q3 answered, §9 S5b + Later bucket updated).
-Two council catches that changed the model: **(1)** `shootTip: STAGNANT` does **NOT** mean zero
-growth dilution — leaf expansion continues ~14–21 d after internode elongation stops, so v1 would
-have reported "protected" on a diluted canopy (**written back into runbook §9 S6**); **(2)** the
-hard-coded NH Apr 1–Oct 31 season window would silently truncate **Bhutan** → GDD now anchors to the
-`BUD_BREAK` biofix, not the calendar. Schema slice = `VineyardBlock.{trellisSystem,clusterCompactness}`
-+ `Variety.clusterCompactness`; everything else is additive JSON on `BlockStatus`, **no migration of
-historical rows**. ⚠️ Lane-shares `src/lib/fieldnotes/types.ts` with **S3a** — S4's diff there is ~7
-additive lines by design (new vocabulary lives in `src/lib/phenology/observation-types.ts`).
+🟪 **S4 (lane D — phenology + growth): BUILT. Both PRs out; PR 1 MERGED. One QA line open.**
+[plan v2](docs/spray_assistant/phases/S4-phenology-growth-model-plan.md) ·
+[council](docs/spray_assistant/phases/S4-council-feedback.md) ·
+[QA report](docs/spray_assistant/qa/S4-qa-report.md) ·
+[phase report](docs/spray_assistant/phases/S4-report.md).
+**PR 1 (schema slice) = [#521](https://github.com/russellmoss/wine-inventory/pull/521), MERGED**,
+migrations live in the DB. **PR 2 (Units 3–10, the feature)** on
+`claude/s4-phenology-feature-e9b928`. 135 new tests; full suite 4386 pass / 0 fail; `verify:phenology`
+24/24; `verify:tenant-isolation`, `verify:naming` (before AND after), `verify:ai-native` (no new tool,
+no allowlist entry) all green. Lane boundary held **mechanically** — zero files touched under
+`src/lib/{weather,spray,pesticide}`, and the two weather regression tests pass byte-unmodified.
+The five council findings that had to survive the build all did: the **STAGNANT leaf-expansion tail**
+(a stagnant tip still dilutes at day 7 — v1 would have reported a diluted canopy as fully protected),
+**biofix-anchored GDD** (two Bhutan goldens: a February bud break, and accumulation past Oct 31),
+**bands never yield a point rate** (range or unknown; the ≥10 cm answer stays exact),
+**`undefined` ≠ `false` ≠ `0`** through all five projections (which also fixed a *pre-existing*
+`diseasePestSpotted: false` bug), and **`NOT_ASSESSED` ≠ `NONE` ≠ `null`** as a contract test.
+
+⛔ **The one open gate line — and it is NOT S4's bug.** The manager form could not be driven in the
+browser: `getCurrentUser` (`src/lib/dal.ts:78`) reads `vineyardMemberships` with no tenant context,
+and `user_vineyard` RLS fails closed, so an assigned manager still sees *"You haven't been assigned a
+vineyard yet."* Proven three ways (owner read sees the row, `prismaBase` sees `[]`, page unchanged
+after cache-busted reload). ⚠️ **Possibly a release blocker for the `app_rls` activation** — latent
+if prod still connects as owner, breaks every manager the moment `DATABASE_URL` switches. Task chip
+raised. The production build passes and the route serves 200 with a clean console, so what is
+unverified is **placement**, not correctness — which is exactly why the honesty copy was forced into
+pure CI-tested functions (council S3).
+
+📉 **Recorded because it is unflattering, not despite it:** the rolling-4-week scouting coverage —
+S5b's sour-rot gate input — is **0/0**. No live block reached `FRUIT_SET` in the window, so the
+denominator is EMPTY. **That is "not yet measurable", NOT 0 % and NOT a failed gate**; runbook §9 S5b
+now says so explicitly. Re-run `npm run verify:phenology` when S5b is planned.
 
 🏛️ **COUNCIL RE-SHAPED THE PROGRAM** — [RUNBOOK-council-feedback.md](docs/spray_assistant/RUNBOOK-council-feedback.md)
 (Codex structure/data-layer + Gemini domain/liability; 10 CRITICAL, 11 SHOULD-FIX, 1 pushed back).
@@ -944,6 +962,17 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **S4 (Spray Intelligence lane D) — phenology precision + the growth-dilution model: BUILT.**
+  PR 1 (schema slice) **MERGED** as [#521](https://github.com/russellmoss/wine-inventory/pull/521);
+  PR 2 (the feature, Units 3–10) opened on `claude/s4-phenology-feature-e9b928`. Six new weekly
+  block observations through all five projections, a biofix-anchored GDD phenology interpolator, a
+  growth-dilution model with a post-stagnation leaf-expansion tail, a provenance-carrying read DTO,
+  pure honesty labels, the authoring UI, the assistant payload, and `verify:phenology`. 135 new
+  tests. Two *pre-existing* bugs fixed in passing: falsy values (`false`/`0`) silently dropped from
+  the write-confirmation card, and `markRemainingHealthy`'s `JSON.stringify` comparison that adding
+  any `BlockStatus` key would have broken. Open: interactive UI-placement QA, blocked by a non-S4
+  RLS bug in `getCurrentUser` (task chip raised, possible `app_rls` activation blocker).
+
 - **CI flake killed: `test/compliance-fill-pdf.test.ts` vs. the 5s vitest default** — **MERGED to
   `main`** ([PR #492](https://github.com/russellmoss/wine-inventory/pull/492), squash `896fec40`;
   branch + worktree deleted). The TTB round-trip parses the 3.1 MB
@@ -1279,7 +1308,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-24 — **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+_Last updated: 2026-07-26 — **S4 (spray phenology + growth) BUILT: PR 1 #521 MERGED, PR 2 open; 135 new tests, all gates green except interactive UI QA, which is blocked by a non-S4 RLS bug in getCurrentUser. Scouting coverage measured at 0/0 = NOT YET MEASURABLE, recorded as-is.** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.

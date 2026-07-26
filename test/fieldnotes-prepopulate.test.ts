@@ -13,6 +13,13 @@ const prev: BlockStatus = {
   diseasePestSpotted: true,
   diseaseDescription: "powdery mildew on Block 1",
   photoUrls: ["https://blob/old.jpg"],
+  // S4
+  shootLengthCm: 42,
+  shootLengthBand: "GT_60",
+  hedgedThisWeek: true,
+  fruitZoneLeafRemoval: "PARTIAL",
+  clusterDamage: "TRACE",
+  vinegarFlyPressure: "LOW",
 };
 
 describe("buildPrepopulationDefaults", () => {
@@ -54,6 +61,30 @@ describe("buildPrepopulationDefaults", () => {
     const out = buildPrepopulationDefaults(null, ["b1", "b2"]);
     expect(out.blockLevelStatuses.b1).toEqual(EMPTY_BLOCK_STATUS);
     expect(out.blockLevelStatuses.b2).toEqual(EMPTY_BLOCK_STATUS);
+  });
+
+  // S4 carry-forward policy. Each "no" below is a safety choice, not an omission.
+  it("never carries shoot length forward — a stale length fabricates ZERO growth", () => {
+    const out = buildPrepopulationDefaults({ b1: prev }, ["b1"]);
+    expect(out.blockLevelStatuses.b1.shootLengthCm).toBeNull();
+    expect(out.blockLevelStatuses.b1.shootLengthBand).toBeNull();
+  });
+
+  it("never carries hedgedThisWeek — it is an EVENT, and carrying it pins the model at unknown", () => {
+    expect(prev.hedgedThisWeek).toBe(true); // last week really was a hedge
+    const out = buildPrepopulationDefaults({ b1: prev }, ["b1"]);
+    expect(out.blockLevelStatuses.b1.hedgedThisWeek).toBeNull();
+  });
+
+  it("carries fruit-zone leaf removal — a genuine standing condition until reversed", () => {
+    const out = buildPrepopulationDefaults({ b1: prev }, ["b1"]);
+    expect(out.blockLevelStatuses.b1.fruitZoneLeafRemoval).toBe("PARTIAL");
+  });
+
+  it("never carries the scouting pair — carrying it asserts somebody looked when nobody did", () => {
+    const out = buildPrepopulationDefaults({ b1: prev }, ["b1"]);
+    expect(out.blockLevelStatuses.b1.clusterDamage).toBeNull();
+    expect(out.blockLevelStatuses.b1.vinegarFlyPressure).toBeNull();
   });
 
   it("does not mutate the previous status object", () => {
