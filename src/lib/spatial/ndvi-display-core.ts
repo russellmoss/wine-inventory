@@ -96,7 +96,9 @@ async function loadDisplay(datasetId: string, style: DisplayStyle): Promise<{
 
   // Clip to the vineyard's block polygons: the mask feeds the colour domain (vineyard-relative is calibrated
   // to the vines, not the surrounding AOI) AND the display alpha (only blocks are painted). No blocks → all-1.
-  let mask = new Float64Array(width * height).fill(1);
+  // Annotate as bare Float64Array (TS 5.7 makes typed arrays generic over the buffer type; the `new …().fill()`
+  // narrows to `<ArrayBuffer>` while blockCoverageMask returns the default `<ArrayBufferLike>` — annotate to unify).
+  let mask: Float64Array = new Float64Array(width * height).fill(1);
   if (dataset && derivative.originX != null && derivative.originY != null && derivative.pixelSizeM != null) {
     const blocks = await prisma.vineyardBlock.findMany({ where: { vineyardId: dataset.vineyardId }, select: { polygon: true } });
     const polys = blocks.flatMap((b) => toWgsPolygons(b.polygon));
