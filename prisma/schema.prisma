@@ -924,6 +924,17 @@ model VineyardWeatherConfig {
   nwsGridId               String? // NWS /points grid cache (plan 096 U11) — the mapping never changes for a fixed coordinate
   nwsGridX                Int?
   nwsGridY                Int?
+  // Plan 096 U19 — per-vineyard alert thresholds (metric-stored; 36/32/28/95/100 °F equivalents).
+  // Defaults ONLY — no editing UI (user decision 2026-07-26); display converts via units-core.
+  frostWatchC             Decimal   @default(2) @db.Decimal(6, 3) // radiational cooling routinely undershoots the forecast min
+  frostWarnC              Decimal   @default(0) @db.Decimal(6, 3) // damage to green tissue begins
+  hardFreezeC             Decimal   @default(-2) @db.Decimal(6, 3) // severe shoot loss
+  heatWatchC              Decimal   @default(35) @db.Decimal(6, 3) // photosynthesis shutdown (the 95 °F ask)
+  extremeHeatC            Decimal   @default(38) @db.Decimal(6, 3) // sunburn / raisining on exposed fruit
+  // Plan 096 U22 (council C4) — the persisted NWS active-alerts banner: bounded array of
+  // {event, headline, severity, endsAt, url}, rendered verbatim between 6-hourly refreshes.
+  activeAlertsJson        Json?
+  activeAlertsFetchedAt   DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -980,6 +991,34 @@ model VineyardForecastDaily {
   @@index([tenantId])
   @@index([tenantId, vineyardId, targetDate]) // the read path (strip + alerts + assistant)
   @@map("vineyard_forecast_daily")
+}
+
+// Plan 096 Phase 3 (U19) — the escalation-dedup state that makes "notify once, escalate once,
+// never repeat on the 6-hourly cron" survive restarts AND concurrency. The claim is a single
+// conditional upsert (INSERT … ON CONFLICT DO UPDATE … WHERE "notifiedRank" < EXCLUDED."notifiedRank"
+// RETURNING) — only the tx that WON the rank advance emits notifications (council C2; cron × on-view
+// refresh race → one send). `notifiedRank` is the INTEGER tier order the SQL claim compares;
+// `notifiedTier` is the display name. De-escalation (council C6): a WARNING+ key dropping below
+// watch claims `clearedAt` the same way and emits ONE all-clear; a later re-crossing escalates
+// fresh from rank 0 (no flapping). alertType families: FROST | HEAT | SUSTAINED_HEAT (identity =
+// first day of the run, Codex DQ1).
+model VineyardWeatherAlertState {
+  tenantId       String    @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id             String    @id @default(cuid())
+  vineyardId     String // composite FK → vineyard(tenantId, id)
+  targetDate     DateTime  @db.Date // the forecast night/day this alert is about (card date)
+  alertType      String // "FROST" | "HEAT" | "SUSTAINED_HEAT" (String union)
+  notifiedTier   String? // display tier last notified ("FROST_WATCH" … "HARD_FREEZE"); null = none/cleared
+  notifiedRank   Int       @default(0) // the claim comparator (0 none; family-relative order)
+  lastNotifiedAt DateTime?
+  clearedAt      DateTime? // set by the all-clear claim; reset on re-escalation
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([tenantId, vineyardId, targetDate, alertType]) // the dedup identity
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11)
+  @@index([tenantId])
+  @@map("vineyard_weather_alert_state")
 }
 
 // ───────────────────────── Vineyard Intelligence P3: NDVI display (viz half of Release 1B) ─────────────────────────
@@ -5232,6 +5271,7 @@ enum InboxKind {
   WO_ASSIGNED
   WO_STATUS
   DIRECT_MESSAGE
+  WEATHER_ALERT // plan 096 Phase 3 — forecast frost/heat digests + all-clears (isolated ALTER TYPE migration, the Windows enum rule)
 }
 
 // One discrete, read/unread-tracked event per row. `readAt IS NULL AND archivedAt IS NULL` = unread
