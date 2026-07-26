@@ -47,11 +47,17 @@ describe("planNextVersion", () => {
       expect(t.iouFromPrev).toBeLessThanOrEqual(IOU_CORRECTION_THRESHOLD);
       expect(t.areaGeodesicM2).toBeGreaterThan(0);
       expect(Array.isArray(t.stale)).toBe(true);
-      expect(t.stale).toEqual([{ kind: "NDVI", subjectId: "pa1" }]); // VI-P2: NDVI is now the wired consumer
+      expect(t.stale).toEqual([
+        { kind: "NDVI", subjectId: "pa1" },
+        { kind: "SOIL", subjectId: "pa1" },
+      ]); // VI-P2 wired NDVI; VI-P4 wired SOIL
     }
   });
 
-  it("markStaleFor returns the NDVI dependent for a subject (VI-P2 — the first real consumer)", () => {
-    expect(markStaleFor("blk1")).toEqual([{ kind: "NDVI", subjectId: "blk1" }]);
+  it("markStaleFor returns the NDVI + SOIL dependents for a subject (VI-P2 + VI-P4 consumers)", () => {
+    expect(markStaleFor("blk1")).toEqual([
+      { kind: "NDVI", subjectId: "blk1" },
+      { kind: "SOIL", subjectId: "blk1" },
+    ]);
   });
 });

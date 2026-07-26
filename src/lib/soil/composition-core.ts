@@ -26,7 +26,6 @@ export const SHARE_FLOOR = 0.01; // ~1% — below this a unit is a boundary sliv
 export const AWC_UNIT_MM_0_25 = "mm (0–25 cm storage)";
 const DRAINAGE_BASIS = "map-unit dominant condition";
 const PH_BASIS = "topmost mineral horizon";
-const RESTRICTIVE_BASIS = "shallowest restriction";
 
 function coverageStateFor(rowCount: number, covered: number): CoverageState {
   if (rowCount === 0) return "none";
