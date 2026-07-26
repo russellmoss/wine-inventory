@@ -47,7 +47,8 @@ legend on `/vineyards/maps`**. Live browser QA: toggling painted **18 soil polyg
 Water in a distinct blue, legend "39% Mardin / 26% Volusia / …". `verify:soil` 24/24 (+geometry stored, EMPTY
 dropped); 30 overlay unit tests. ⚠️ QA fixture "QA-Soil Overlay Vineyard" left in Demo for viewing — clean up after.
 
-▶️ **PR OPEN → [#502](https://github.com/russellmoss/wine-inventory/pull/502)** (soil docs + map overlay). Merged `main` (P3 #498) in — additive conflicts (schema/goldens/isolation fixtures) kept both sides. Post-merge gates all green (vitest **4059/0**, verify:soil/tenant-isolation/invariants/ai-native). Awaiting CI + review.
+▶️ **PR OPEN → [#502](https://github.com/russellmoss/wine-inventory/pull/502)** (soil docs + map overlay + click-panel + labels). Merged `main` (P3 #498) in. Post-merge + follow-on gates green (vitest **4060/0**, verify:soil 25/25, invariants/ai-native/tenant-isolation).
+✅ **CLICK-TO-INSPECT + LABELS ADDED** — click a soil polygon → tabbed detail panel (Overview/Chemistry/Physical/Source via `Tabs`); map-unit symbol (`musym`, e.g. "MdB") fetched+stored per unit and painted centered in each polygon (permanent center tooltip). `SatelliteMap` extended additively (`onOverlayFeatureClick` + overlay `label`) — no fork. **Live QA: labels render (62B/68B/152B/77B… centered in polygons); click-panel is code+unit-test verified** but the flaky in-app pane unmounts the modal between JS calls so the live click screenshot couldn't be captured (user can click it). ⚠️ QA fixture "QA-Soil Overlay Vineyard" + dev server left up for viewing — clean up after.
 ⚠️ Shares `prisma/schema.prisma` + the shared prisma CLIENT
 with the parallel P3/P8 lanes — **`prisma generate` gets clobbered by their generates; regenerate right before any
 tsc/verify/dev-server run.** P3 display migrations (`..._ndvi_display_*`) are already in prod but not on this branch (fine).
