@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { SCHEMA_VERSION } from "@/lib/fieldnotes/types";
+import { SCHEMA_VERSION, parseBlockStatuses } from "@/lib/fieldnotes/types";
 import type {
   WeatherData,
   InputApplication,
@@ -49,7 +49,17 @@ export function serializeDraft(form: DraftFormState, now: Date = new Date()): st
   return JSON.stringify(stored);
 }
 
-/** Parse a stored draft string. Returns null on missing/corrupt/wrong-version. */
+/**
+ * Parse a stored draft string. Returns null on missing/corrupt/wrong-version.
+ *
+ * ⚠️ The block statuses are run through `parseBlockStatuses()` rather than cast (council C1).
+ * S4 added six optional fields to BlockStatus and deliberately kept SCHEMA_VERSION at 1, because
+ * bumping it would DISCARD a manager's in-progress report — visible data loss for a purely
+ * additive change. The cost of not bumping is that a draft saved before the deploy comes back
+ * with the new keys `undefined` instead of `null`, and every tri-state control then reads an
+ * impossible third value. Normalizing on restore is strictly better than throwing the work away.
+ * A malformed draft falls back to `null` (start fresh) rather than crashing the form.
+ */
 export function parseDraft(raw: string | null): StoredDraft | null {
   if (!raw) return null;
   let parsed: unknown;
@@ -64,10 +74,16 @@ export function parseDraft(raw: string | null): StoredDraft | null {
   if (typeof obj.form !== "object" || obj.form === null) return null;
   const form = obj.form as Record<string, unknown>;
   if (typeof form.weekOf !== "string") return null;
+  let blockLevelStatuses: Record<string, BlockStatus>;
+  try {
+    blockLevelStatuses = parseBlockStatuses(form.blockLevelStatuses ?? {});
+  } catch {
+    return null; // a draft we cannot normalize is worse than no draft
+  }
   return {
     schemaVersion: SCHEMA_VERSION,
     savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",
-    form: form as unknown as DraftFormState,
+    form: { ...(form as unknown as DraftFormState), blockLevelStatuses },
   };
 }
 

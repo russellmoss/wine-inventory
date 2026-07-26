@@ -119,6 +119,17 @@ describe("parseBlockStatus", () => {
     expect(s.leafConditions).toEqual(["YELLOWING", "EDGE_BURN"]);
     expect(s.diseasePestSpotted).toBe(true);
   });
+  it("validates the S4 observations through the same entry point", () => {
+    const s = parseBlockStatus({ shootLengthCm: 0, hedgedThisWeek: false, clusterDamage: "NOT_ASSESSED" });
+    expect(s.shootLengthCm).toBe(0);
+    expect(s.hedgedThisWeek).toBe(false);
+    expect(s.clusterDamage).toBe("NOT_ASSESSED");
+    expect(s.vinegarFlyPressure).toBeNull();
+  });
+  it("rejects a malformed S4 observation with FieldNoteParseError", () => {
+    expect(() => parseBlockStatus({ clusterDamage: "MAYBE" })).toThrow(FieldNoteParseError);
+    expect(() => parseBlockStatus({ shootLengthCm: -3 })).toThrow(FieldNoteParseError);
+  });
   it("throws on an invalid enum value", () => {
     expect(() => parseBlockStatus({ ...DEFAULT_HEALTHY_BLOCK_STATUS, phenoStage: "WINTER" })).toThrow(
       FieldNoteParseError,

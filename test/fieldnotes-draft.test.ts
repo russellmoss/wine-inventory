@@ -39,6 +39,13 @@ function sampleForm(weekOf = "2026-06-19"): DraftFormState {
         diseasePestSpotted: false,
         diseaseDescription: null,
         photoUrls: [],
+        // S4
+        shootLengthCm: 0,
+        shootLengthBand: "LT_10",
+        hedgedThisWeek: false,
+        fruitZoneLeafRemoval: "NONE",
+        clusterDamage: "NOT_ASSESSED",
+        vinegarFlyPressure: null,
       },
     },
     generalNotes: "All good.",

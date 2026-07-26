@@ -195,7 +195,9 @@ the same lane and blocks nothing.
   | `docs/architecture/assistant-coverage.md` | any lane changing a core export | **generated** — run `verify:ai-native -- --write` before push, or CI reds |
   | `test/evals/assistant-*.golden.ts` + `assistant-tools.eval.test.ts` | S5a, S11 | serialize |
   | `src/lib/assistant/registry.ts`, `prompt.ts` | S5a (thin tool), S11 | serialize |
-  | `src/lib/weather/*` | S1, S4 (GDD interpolator), S7b | S1 lands first within its wave |
+  | `src/lib/weather/*` | S1, S4 (GDD interpolator), S7b | S1 lands first within its wave. **S4 shipped without touching it** — it reuses `gdd-core`/`season-core`/`obs-time-core` read-only and anchors on a biofix instead. |
+  | `src/lib/phenology/units.ts` | S4 (shipped), S1 | ⚠️ **S4 deviation, agreed at plan time.** `units-core.ts` owns all unit conversion but has no LENGTH formatter, and S4 may not modify `src/lib/weather/`. `formatShootLength` / `formatShootLengthRange` / `cmToInches` therefore live in `src/lib/phenology/units.ts`. **S1 folds them into `units-core.ts`** when that lane owns the file, and deletes them here. |
+  | `docs/spray_assistant/SPRAY_ASSISTANT_RUNBOOK.md` | every lane | ⚠️ **Now tracked in git, and it HAS already been clobbered once** — S3a PR3 (`11bcbf20`) reverted S4's ledger + §4 + §9 edits by committing an older copy. Re-read the file immediately before editing, edit only your own rows, and never commit a wholesale copy from a stale worktree. |
   | `src/lib/fieldnotes/*`, `src/lib/harvest/*` | S3a (back-compat + planned harvest), S4 | serialize |
   | cron / config | S1, S2 refresh | additive |
 
@@ -203,13 +205,23 @@ the same lane and blocks nothing.
   durable natural key plan 086 already upserts on — **plus the facts snapshot required by rule §3.8**.
   That is what makes lanes B and C genuinely parallel, and it is also correct on the merits: a spray
   record must survive a product being de-registered.
+  ✅ **The snapshot shape is now FROZEN and shipped**:
+  [S2-S3a-factsAsOf-contract.md](phases/S2-S3a-factsAsOf-contract.md) — the composite
+  `{ publishedRevisionId, apprilAsOf, cdprAsOf, resistanceArtifactSha256 }` returned by every
+  `lookupRegistration` read. **S3a consumes it; it does not re-derive it.** Adding a field is safe;
+  removing or renaming one is a two-lane breaking change.
 - **Two gate tiers** *(council S10)* — branch acceptance cannot be parallel even when branch work is.
   **Branch-local** (parallelizable): `tsc`, pure unit tests, goldens. **Serialized from the MAIN
   checkout**: DB-backed `verify:*`, browser QA, anything needing the generated Prisma client.
 - Worktrees share ONE `.git` index — stage with `git commit --only <paths>`; run `gh pr list`
   before starting.
 - **`prisma generate` immediately before `tsc`/`verify`/`dev`** in any worktree — parallel lanes
-  clobber the shared generated client (learned in VI P4/P8).
+  clobber the shared generated client (learned in VI P4/P8). ⚠️ **Sharpened by S4:** the client lives
+  in the **shared** `node_modules`, so a sibling lane clobbers it *mid-session*, not only at start —
+  it happened **four times** during S4's build, each time surfacing as phantom "column does not
+  exist" type errors in already-correct code. Chain the generate into the **SAME command** as the
+  run (`npx prisma generate && npx tsc --noEmit`); running it as an earlier separate step is not
+  enough.
 - A lane is not shipped until its gate **and its QA report** are green. Parallelism never waives a
   gate.
 
@@ -277,11 +289,11 @@ cellar as a residue flag — a thing no incumbent can do, because no incumbent o
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Runbook** | — | 🟩 council-reconciled | — | [RUNBOOK-council-feedback](RUNBOOK-council-feedback.md) | — | — | — |
 | S0 spike (hourly / LWD / retention) | 1A | ⬜ not started | — | — | — | — | — |
-| S2 registration & resistance | 1B | 🟦 planning (council-reconciled) | [S2 plan](phases/S2-registration-resistance-master-plan.md) | [S2 council](phases/S2-council-feedback.md) | — | — | — |
+| S2 registration & resistance | 1B | 🟩 shipped (MERGED + **live in prod** 2026-07-26, deploy `147b75c3`; 2,420 grape registrations · 361 AIs **zero unclassified** · `verify:pesticide` 31/31. Ships **DARK** — `epa-pesticide` defaultEnabled:false. **S7a unblocked.** One QA row deferred: settings-card click-through) | [S2 plan](phases/S2-registration-resistance-master-plan.md) | [S2 council](phases/S2-council-feedback.md) | [#522](https://github.com/russellmoss/wine-inventory/pull/522) · [#525](https://github.com/russellmoss/wine-inventory/pull/525) | [S2-qa-report](qa/S2-qa-report.md) | [S2-report](phases/S2-report.md) |
 | S2b product facts master | 1B | ⬜ not started | — | — | — | — | — |
-| S3a spray record + planned harvest | 1C | 🟦 planning (plan council-reconciled, ready for `/work`) | [S3a-spray-record-plan](phases/S3a-spray-record-plan.md) | [S3a-council-feedback](phases/S3a-council-feedback.md) | — | — | — |
+| S3a spray record + planned harvest | 1C | 🟩 shipped (PR1+PR2 MERGED 2026-07-26 — **Wave 2 unblocked**; PR3 QA'd in-browser same day, 2 findings found+fixed) | [S3a-spray-record-plan](phases/S3a-spray-record-plan.md) | [S3a-council-feedback](phases/S3a-council-feedback.md) | [#523](https://github.com/russellmoss/wine-inventory/pull/523) · [#524](https://github.com/russellmoss/wine-inventory/pull/524) · [#527](https://github.com/russellmoss/wine-inventory/pull/527) | [S3a-qa-report](qa/S3a-qa-report.md) | [S3a-report](phases/S3a-report.md) |
 | S3b spray program / season plan | 1C | ⬜ not started | — | — | — | — | — |
-| S4 phenology + growth | 1D | 🟦 planning (council-reconciled) | [S4 plan v2](phases/S4-phenology-growth-model-plan.md) | [S4 council](phases/S4-council-feedback.md) | — | — | — |
+| S4 phenology + growth | 1D | 🟩 shipped | [S4 plan v2](phases/S4-phenology-growth-model-plan.md) | [S4 council](phases/S4-council-feedback.md) | [#521](https://github.com/russellmoss/wine-inventory/pull/521) · [#526](https://github.com/russellmoss/wine-inventory/pull/526) · [#529](https://github.com/russellmoss/wine-inventory/pull/529) | [S4 QA](qa/S4-qa-report.md) ✅ | [S4 report](phases/S4-report.md) |
 | S7a legality + rotation | 2A | ⬜ not started | — | — | — | — | — |
 | S8 lot residue crossover | 2B | ⬜ not started | — | — | — | — | — |
 | S5a powdery index + latent ledger | 2C | ⬜ not started | — | — | — | — | — |
@@ -335,7 +347,18 @@ latency measurements; a written **retention decision sized by replay horizon** a
 estimator decision with confidence bands and refusal threshold**, both in the phase report and an
 ADR. No production code required.
 
-### S2 — Registration and resistance master (Wave 1, lane B — first PR)
+### S2 — Registration and resistance master (Wave 1, lane B — first PR) — 🟩 **SHIPPED 2026-07-26**
+
+> **Gate outcome — read before building on it.** Shipped in [#522](https://github.com/russellmoss/wine-inventory/pull/522)
+> + [#525](https://github.com/russellmoss/wine-inventory/pull/525) (`147b75c3`, live in prod, dark).
+> Every criterion below **met except one**, and the exception is deliberate:
+> **❌ `Zampro → 45, 40` was NOT met — it resolves `GAP`.** The free extension sources do not code
+> dimethomorph or ametoctradin; this is exactly the miss plan 086's own de-risk measured. It is
+> **visible in the coverage report, not silently wrong**, which is the behaviour the gate actually
+> protects. Closing it needs the Cornell guide (a purchase) — decide against
+> `biologicalsShareOfGap: 59`. Also note the scale moved: **2,420** active grape registrations and
+> **361** AIs (not 2,509 / 338) between the 07-15 and 07-21 dumps — churn, not a shape change.
+> Full record: [S2-report](phases/S2-report.md) · [S2 QA](qa/S2-qa-report.md).
 
 **Read [plan 086](../plans/2026-07-20-086-feat-us-pesticide-registration-plan.md) before planning.**
 Scope: its Units 1–3 (APPRIL parse → schema → idempotent ingest), 5 (CA DPR state layer), 6
@@ -375,6 +398,13 @@ product-AI occurrences.** Curate that set first. Everything outside it resolves 
 **Also here:** the **non-US manual-entry path** (rule §3.9), because it is the same mechanism —
 a tenant-scoped, attributed, "grower-supplied, not registry-verified" facts row. Built once, it
 serves Bhutan **and** the US tenant-override case council P1 asked for.
+
+**Also owned here (recorded by S3a, council GQ1):** the **coded pest vocabulary** that populates
+`spray_application.targetPestCode` — S3a stores free-text `targetPest` plus the nullable code slot
+so no migration is needed later; an unmapped pest resolves to *cannot-determine* at PUR-export
+time (rule §3.6). **S2b must also implement the S3a `ProductFactsResolver` port**
+(`src/lib/spray/product-facts-port.ts`, `resolveMany`) — registering the real resolver replaces
+the null resolver and back-fills nothing (facts-as-of is per-entry, rule §3.8).
 
 **Gate:** every curated row carries source + as-of date + reviewer; a product with no facts row
 resolves to *cannot-determine*, never *permitted*; the non-US path proven end-to-end on a
@@ -500,6 +530,16 @@ the trailing PHI window and raises a hard warning at the moment of the change.**
 Output contract: an opaque `blockReasonCode` + a canonical human string (§5) so the assistant can
 never mis-attribute a block.
 
+**Constraints inherited from S3a's build (2026-07-26):**
+- **(a)** PHI evaluates against the **EARLIEST open planned harvest date** for a block-vintage —
+  split picks mean `currentPlannedHarvestDatesCore` returns SEVERAL open passes (council G4); the
+  early pick is the binding constraint.
+- **(b)** The harvest-date reverse-check consumes **`plannedHarvestChangesSinceCore(cursor)` as a
+  WATERMARK read** over the append-only event stream (council C4) — never an in-process callback.
+  The derived `direction` (`PULLED_FORWARD` is the dangerous one) is computed for you.
+- **(c)** A `spray_block_line` with a null `finishedAt` yields REI **UNKNOWN** (`reiWindow` in
+  `src/lib/spray/read-core.ts`) and must never borrow the header timestamp (council G2/C14).
+
 **Gate:** rotation goldens incl. the premix double-count; the seasonal-maximum budget **refuses
 rather than warns**; an unknown product produces *cannot-determine*, never *permitted*; **the
 harvest-date reverse-check fires** (pull a pick date forward into a PHI window → hard warning);
@@ -573,6 +613,15 @@ anthracnose; botrytis (bloom-latency and pre-harvest windows). Each a pure core,
 latent-infection ledger.
 
 **Plus sour rot** *(returned from Later on 2026-07-26 — S4 added the scouting observation; §12 q3)*.
+
+> **S4 SHIPPED THE FIELDS AND MEASURED THE GATE. The gate is not yet passable — and not because it
+> failed.** `verify:phenology` on 2026-07-26 reported **0/0 (0 %)** over the trailing 28 days: no
+> live block reached `FRUIT_SET` inside the window, so the controls never rendered and the
+> denominator is EMPTY. ⚠️ **An empty denominator is `unknown`, NOT a failed gate and NOT 0 %
+> coverage** — reading a zero denominator as zero coverage is the same gap-read-as-a-result failure
+> rule §3.6 exists to prevent, pointed at ourselves. **Re-run `npm run verify:phenology` when S5b is
+> planned and use that number.** The denominator counts only block-weeks where the control would
+> actually have rendered (a grower cannot be faulted for not scouting at bud break).
 Brief §7.6 is the contract: Brix ≳ 15 (`BrixLog`) × cluster compactness × berry wounds
 (`clusterDamage`) × vinegar-fly pressure × warm wet forecast. ⚠️ **Two conditions.** (1) **Coverage
 gate:** build it only if scouting coverage clears **60 % in a rolling 4-week window** before the
@@ -609,6 +658,11 @@ protectant"). A raw "42%" implies a mathematical certainty that does not exist. 
 internal for goldens; never surface it.
 
 Non-negotiable: **rain total alone never triggers a respray recommendation.**
+
+**Inherited from S3a (council G3):** `materialRatePerHa` (`src/lib/spray/read-core.ts`) returns
+**`null` for an unconvertible `quantityBasis`** (e.g. `PER_CARRIER_VOLUME` with no carrier volume
+recorded) — a legitimately-entered material line can have NO computable rate, and the residual
+model must handle that as *unknown*, never as zero dose.
 
 **Gate:** residual goldens across the documented cases (0.5″ on a 9-day-old protectant vs 1.2″ on a
 2-day-old systemic vs 0″ with 6″ of shoot growth); a spray that did not dry before rain is scored
@@ -676,8 +730,12 @@ alone, and must decline when the source toggle is off rather than answering from
 
 **Gate:** goldens + fleet cases green; **the `blockReason` verbatim golden** — a copper-slow-drying
 block is never explained as a PHI violation (council D2); `verify:ai-native` green with the earlier
-INTERNAL entries retired; the over-claim guard exercised; tool-count and fleet accuracy recorded in
-`assistant-coverage.md`; **QA report**.
+INTERNAL entries retired — **including the FIVE S3a entries** (`spray/record-core`,
+`spray/correction-core`, `spray/drying-override-core`, `harvest/planned-harvest-core`,
+`spray/legacy-mapping-core` in `scripts/ai-native-allowlist.mjs` + the mirrored test-local map in
+`test/verify-ai-native.test.ts`), whose reason strings name this phase as their retirement
+condition (S3a open decision D2); the over-claim guard exercised; tool-count and fleet accuracy
+recorded in `assistant-coverage.md`; **QA report**.
 
 ### SKB — Knowledge-base IPM source expansion (background lane, any wave)
 

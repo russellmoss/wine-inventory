@@ -4,6 +4,12 @@
 // the shape can evolve. No server-only imports (kept unit-testable).
 
 import { toISODateUTC } from "@/lib/fieldnotes/week";
+import { FieldNoteParseError } from "@/lib/fieldnotes/parse-error";
+import {
+  EMPTY_PHENOLOGY_OBSERVATIONS,
+  parsePhenologyObservations,
+  type PhenologyObservations,
+} from "@/lib/phenology/observation-types";
 
 /** Bump when the stored JSON shape changes; persisted on FieldNote.schemaVersion. */
 export const SCHEMA_VERSION = 1;
@@ -83,7 +89,7 @@ export type BlockStatus = {
   diseasePestSpotted: boolean;
   diseaseDescription: string | null;
   photoUrls: string[];
-};
+} & PhenologyObservations; // S4: six growth/canopy/scouting fields — vocabulary in phenology/observation-types.ts
 
 /** A fully blank status — used to initialize a newly-added block (manager must fill). */
 export const EMPTY_BLOCK_STATUS: BlockStatus = {
@@ -97,6 +103,7 @@ export const EMPTY_BLOCK_STATUS: BlockStatus = {
   diseasePestSpotted: false,
   diseaseDescription: null,
   photoUrls: [],
+  ...EMPTY_PHENOLOGY_OBSERVATIONS,
 };
 
 /** Baseline a manager can stamp onto untouched blocks via "mark remaining healthy". */
@@ -111,6 +118,11 @@ export const DEFAULT_HEALTHY_BLOCK_STATUS: BlockStatus = {
   diseasePestSpotted: false,
   diseaseDescription: null,
   photoUrls: [],
+  // S4: the healthy baseline stamps NOTHING for the new fields. Shoot length and hedging are
+  // measurements, not a health judgement — a stamped 0 would fabricate zero growth. The scouting
+  // pair stays null rather than "NONE": "mark remaining healthy" is a canopy claim, and it must
+  // never be allowed to assert that somebody walked the fruit zone and found no damage.
+  ...EMPTY_PHENOLOGY_OBSERVATIONS,
 };
 
 // ───────────────────────── Runtime validators ─────────────────────────
@@ -118,12 +130,9 @@ export const DEFAULT_HEALTHY_BLOCK_STATUS: BlockStatus = {
 // into the typed shape and THROWS loudly on a malformed payload. Used by actions
 // on write (reject bad client input) and on read (fail loud, never silent).
 
-export class FieldNoteParseError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "FieldNoteParseError";
-  }
-}
+// Lives in ./parse-error so phenology/observation-types.ts can throw it without an import cycle.
+// Re-exported here so every existing import site is unchanged.
+export { FieldNoteParseError };
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -208,8 +217,10 @@ export function parseBlockStatus(raw: unknown): BlockStatus {
     diseaseDescription:
       raw.diseaseDescription == null ? null : String(raw.diseaseDescription),
     photoUrls: raw.photoUrls === undefined ? [] : parseStringArray(raw.photoUrls, "photoUrls"),
+    ...parsePhenologyObservations(raw), // S4: absent keys -> null, so legacy rows parse unchanged
   };
 }
+
 
 export function parseBlockStatuses(raw: unknown): Record<string, BlockStatus> {
   if (!isObject(raw)) throw new FieldNoteParseError("blockLevelStatuses must be an object.");
