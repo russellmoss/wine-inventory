@@ -204,6 +204,12 @@ async function main() {
   await owner.vineyard.upsert({ where: { id: "iso_vy_b" }, update: {}, create: { id: "iso_vy_b", name: "ISO VY B", tenantId: B } });
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_a" }, update: {}, create: { id: "iso_blk_a", vineyardId: "iso_vy_a", tenantId: A, updatedAt: now } });
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_b" }, update: {}, create: { id: "iso_blk_b", vineyardId: "iso_vy_b", tenantId: B, updatedAt: now } });
+  // S4: a variety per tenant carrying the DURABLE cluster-compactness default (D12). The block
+  // columns (trellisSystem / clusterCompactness) ride the existing vineyard_block fixtures.
+  await owner.variety.upsert({ where: { id: "iso_var_a" }, update: { clusterCompactness: "TIGHT" }, create: { id: "iso_var_a", name: "ISO VAR A", clusterCompactness: "TIGHT", tenantId: A } });
+  await owner.variety.upsert({ where: { id: "iso_var_b" }, update: { clusterCompactness: "LOOSE" }, create: { id: "iso_var_b", name: "ISO VAR B", clusterCompactness: "LOOSE", tenantId: B } });
+  await owner.vineyardBlock.update({ where: { id: "iso_blk_a" }, data: { varietyId: "iso_var_a", trellisSystem: "VSP", clusterCompactness: "MODERATE" } });
+  await owner.vineyardBlock.update({ where: { id: "iso_blk_b" }, data: { varietyId: "iso_var_b", trellisSystem: "SPRAWL", clusterCompactness: "LOOSE" } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_a" }, update: {}, create: { id: "iso_brix_a", blockId: "iso_blk_a", vineyardId: "iso_vy_a", brixValue: "22.5", createdByEmail: "iso@test", tenantId: A } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_b" }, update: {}, create: { id: "iso_brix_b", blockId: "iso_blk_b", vineyardId: "iso_vy_b", brixValue: "23.5", createdByEmail: "iso@test", tenantId: B } });
   // VI-P1: a planting area per tenant (analysis mask parent). geometry/fingerprint/anchor are opaque here.
@@ -638,6 +644,21 @@ async function main() {
       await asTenant(A, (db) => db.vineyardBlock.update({ where: { id: "iso_blk_a" }, data: { plantingAreaId: "iso_pa_b" } }));
     } catch { paFkRaised = true; }
     check("block cross-tenant plantingArea reference rejected (composite FK, K11)", paFkRaised);
+
+    // 5c-S4. Spray Intelligence S4: the durable canopy-profile columns are additive on two tables
+    // that were ALREADY tenant-scoped and RLS-forced, so the AGENTS.md U7 checklist entry for
+    // vineyard_block and variety is "covered by the existing policies". These cases prove that —
+    // a new column on an RLS-forced table inherits the policy and does not open a read path.
+    const s4BlockA = await asTenant(A, (db) => db.vineyardBlock.findFirst({ where: { id: "iso_blk_a" }, select: { trellisSystem: true, clusterCompactness: true } }));
+    check("tenant A reads its own block trellis/compactness (S4)", s4BlockA?.trellisSystem === "VSP" && s4BlockA?.clusterCompactness === "MODERATE", `saw ${JSON.stringify(s4BlockA)}`);
+    check("tenant A CANNOT read tenant B's block canopy profile (RLS, S4)", (await asTenant(A, (db) => db.vineyardBlock.findFirst({ where: { id: "iso_blk_b" }, select: { trellisSystem: true } }))) === null);
+    check("tenant A sees its own variety clusterCompactness (S4/D12)", (await asTenant(A, (db) => db.variety.findFirst({ where: { id: "iso_var_a" }, select: { clusterCompactness: true } })))?.clusterCompactness === "TIGHT");
+    check("tenant A CANNOT see tenant B's variety default (RLS, S4/D12)", (await asTenant(A, (db) => db.variety.findFirst({ where: { id: "iso_var_b" } }))) === null);
+    let s4VarietyInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.variety.create({ data: { id: "iso_var_x", name: "ISO VAR X", clusterCompactness: "TIGHT", tenantId: B } }));
+    } catch { s4VarietyInsertRaised = true; }
+    check("foreign-tenant variety INSERT raises (WITH CHECK, S4)", s4VarietyInsertRaised);
     // Exactly one OPEN geometry version per subject (partial unique, council C3/S2).
     let openVersionRaised = false;
     try {
@@ -1064,6 +1085,8 @@ async function main() {
     await owner.spatialScene.deleteMany({ where: { id: { in: ["iso_scene_a", "iso_scene_b", "iso_scene_x"] } } });
     await owner.cdseUsageCounter.deleteMany({ where: { yearMonth: "2026-07", tenantId: { in: [A, B] } } });
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["iso_blk_a", "iso_blk_b"] } } });
+    // S4: varieties are referenced by the blocks above (SetNull) — drop after them.
+    await owner.variety.deleteMany({ where: { id: { in: ["iso_var_a", "iso_var_b", "iso_var_x"] } } });
     // VI-P1: geometry_version FK's organization (RESTRICT), so delete before the org drop; planting areas
     // after their blocks (block→planting is RESTRICT) and before the vineyard (which would cascade them).
     await owner.vineyardGeometryVersion.deleteMany({ where: { id: { in: ["iso_gv_a", "iso_gv_b", "iso_gv_dup"] } } });
