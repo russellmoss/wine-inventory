@@ -108,6 +108,7 @@ has been folded into the runbook or the relevant source document.
 | 13 | **Missing shared-file entries** — `package.json` scripts, runbook §8 ledger, `NOW.md`, ADR numbering, root `council-feedback.md` | every lane | runbook §4 |
 | 14 | **The program's parent documents were uncommitted**, so no lane's plan resolved its own links | every lane | ✅ fixed — committed at `b63ec3f1` |
 | 15 | **NWS re-issuance cadence varies ~9× between gridpoints** (60 min at Madera, 550 min at Stoney Hill) → a 20×–179× forecast-row multiplier. A retention job sized on one gridpoint is wrong by an order of magnitude at another | S1 | ADR 0011, Unit 8 §4 |
+| 16 | **The CART inputs are the COARSEST properties NWS returns** — over the same 189 h horizon, temperature and RH arrive in ~148 slots but dew point in 95 and wind in only 68. A parser that expands intervals to hourly rows makes temperature vary hour-to-hour while wind sits flat for three, manufacturing a correlation between two of the estimator's three inputs. And `quantitativePrecipitation` covers only **80 of 189 h** — a coverage gap that must never render as "no rain" | S1 parser, S7b | Unit 2 addendum §2 |
 
 ---
 

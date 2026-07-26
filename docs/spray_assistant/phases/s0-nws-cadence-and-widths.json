@@ -1,0 +1,2861 @@
+{
+  "measuredAt": "2026-07-26T22:55:56.947Z",
+  "windowHours": 3,
+  "everyMin": 10,
+  "samples": [
+    {
+      "at": "2026-07-26T20:04:21.182Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T10:58:48+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:04:22.429Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T18:26:38+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:04:23.665Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T18:56:29+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:04:24.900Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T18:23:20+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:14:26.222Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T10:58:48+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:14:27.467Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T18:26:38+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:14:28.700Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T18:56:29+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:14:29.931Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T18:23:20+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:24:31.283Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T10:58:48+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:24:32.524Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T18:26:38+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:24:33.781Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T18:56:29+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:24:35.019Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T18:23:20+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:34:36.330Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:34:37.559Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T19:52:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:34:39.062Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T19:56:31+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:34:40.299Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T18:23:20+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:44:41.641Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:44:42.884Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T19:52:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:44:44.127Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T19:56:31+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:44:45.392Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T18:23:20+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:54:46.790Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:54:48.045Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T19:52:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:54:49.291Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T19:56:31+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T20:54:50.561Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T18:23:20+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:04:52.475Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:04:53.902Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T19:52:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:04:55.204Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T19:56:31+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:04:56.482Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T18:23:20+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:14:57.855Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:14:59.105Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T19:52:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:15:00.347Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T19:56:31+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:15:01.609Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T18:23:20+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:25:03.259Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:25:04.799Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T20:46:37+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:25:06.245Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T20:56:39+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:25:07.629Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T20:54:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:35:09.254Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:35:10.581Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T20:46:37+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:35:11.864Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T20:56:39+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:35:13.155Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T20:54:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:45:14.914Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:45:16.167Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T20:46:37+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:45:17.428Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T20:56:39+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:45:18.683Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T20:54:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:55:19.994Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:55:21.272Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T20:46:37+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:55:22.508Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T20:56:39+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T21:55:23.760Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T20:54:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:05:25.110Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:05:26.399Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T20:46:37+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:05:27.669Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T20:56:39+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:05:28.905Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T20:54:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:15:30.259Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:15:31.500Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T20:46:37+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:15:32.735Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T20:56:39+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:15:33.995Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T20:54:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:25:36.128Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:25:37.542Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T20:46:37+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:25:39.153Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T21:56:34+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:25:40.593Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T20:54:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:35:41.909Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:35:43.148Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T20:46:37+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:35:44.395Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T21:56:34+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:35:45.636Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T20:54:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:45:46.945Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:45:48.217Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T20:46:37+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:45:49.452Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T21:56:34+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:45:50.695Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T20:54:05+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:55:51.987Z",
+      "site": "stoney_hill",
+      "updateTime": "2026-07-26T20:08:40+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:55:53.236Z",
+      "site": "russian_river",
+      "updateTime": "2026-07-26T20:46:37+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:55:54.480Z",
+      "site": "madera",
+      "updateTime": "2026-07-26T21:56:34+00:00",
+      "generatedAt": null
+    },
+    {
+      "at": "2026-07-26T22:55:55.727Z",
+      "site": "monticello_va",
+      "updateTime": "2026-07-26T20:54:05+00:00",
+      "generatedAt": null
+    }
+  ],
+  "perSite": {
+    "stoney_hill": {
+      "distinct": [
+        "2026-07-26T10:58:48+00:00",
+        "2026-07-26T20:08:40+00:00"
+      ],
+      "gapsMin": [
+        549.8666666666667
+      ],
+      "ages": [
+        9.092550555555556,
+        9.260617222222223,
+        9.428689722222222,
+        0.4323138888888889,
+        0.6004558333333333,
+        0.7685527777777778,
+        0.9367986111111111,
+        1.1049597222222223,
+        1.2731275,
+        1.4414594444444444,
+        1.6096983333333332,
+        1.777776111111111,
+        1.9458638888888888,
+        2.1139608333333335,
+        2.2822577777777777,
+        2.4505302777777778,
+        2.6185958333333335,
+        2.7866630555555556
+      ]
+    },
+    "russian_river": {
+      "distinct": [
+        "2026-07-26T18:26:38+00:00",
+        "2026-07-26T19:52:05+00:00",
+        "2026-07-26T20:46:37+00:00"
+      ],
+      "gapsMin": [
+        85.45,
+        54.53333333333333
+      ],
+      "ages": [
+        1.6290080555555555,
+        1.7970741666666668,
+        1.9651455555555555,
+        0.7090441666666667,
+        0.87719,
+        1.0452902777777777,
+        1.2135838888888888,
+        1.3816958333333333,
+        0.6410552777777778,
+        0.8093280555555555,
+        0.9775463888888889,
+        1.145631111111111,
+        1.3137219444444443,
+        1.4818055555555556,
+        1.6501505555555556,
+        1.8183744444444445,
+        1.9864491666666666,
+        2.15451
+      ]
+    },
+    "madera": {
+      "distinct": [
+        "2026-07-26T18:56:29+00:00",
+        "2026-07-26T19:56:31+00:00",
+        "2026-07-26T20:56:39+00:00",
+        "2026-07-26T21:56:34+00:00"
+      ],
+      "gapsMin": [
+        60.03333333333333,
+        60.13333333333333,
+        59.916666666666664
+      ],
+      "ages": [
+        1.1318513888888888,
+        1.2999166666666666,
+        1.4679947222222223,
+        0.6355727777777778,
+        0.8036463888888888,
+        0.9717475,
+        1.1400566666666667,
+        1.3081519444444445,
+        0.47423472222222224,
+        0.6424622222222223,
+        0.8106744444444445,
+        0.9787522222222222,
+        1.1468525,
+        1.314926388888889,
+        0.4847647222222222,
+        0.6528875,
+        0.8209588888888889,
+        0.9890222222222222
+      ]
+    },
+    "monticello_va": {
+      "distinct": [
+        "2026-07-26T18:23:20+00:00",
+        "2026-07-26T20:54:05+00:00"
+      ],
+      "gapsMin": [
+        150.75
+      ],
+      "ages": [
+        1.6846944444444445,
+        1.8527586111111112,
+        2.020838611111111,
+        2.1889719444444444,
+        2.3570533333333334,
+        2.5251558333333333,
+        2.693467222222222,
+        2.8615580555555558,
+        0.5173969444444444,
+        0.6855986111111111,
+        0.8538008333333333,
+        1.0218777777777779,
+        1.1899736111111112,
+        1.3580541666666666,
+        1.526553611111111,
+        1.6946211111111111,
+        1.8626930555555556,
+        2.0307575
+      ]
+    }
+  },
+  "widthCounts": {
+    "temperature": {
+      "1": 121,
+      "2": 16,
+      "3": 8,
+      "4": 3
+    },
+    "dewpoint": {
+      "1": 52,
+      "2": 24,
+      "3": 8,
+      "4": 2,
+      "5": 5,
+      "7": 1,
+      "8": 2,
+      "9": 1
+    },
+    "relativeHumidity": {
+      "1": 125,
+      "2": 17,
+      "3": 5,
+      "5": 1,
+      "10": 1
+    },
+    "windSpeed": {
+      "1": 21,
+      "2": 22,
+      "3": 9,
+      "4": 5,
+      "5": 4,
+      "6": 3,
+      "7": 1,
+      "8": 1,
+      "11": 1,
+      "13": 1
+    },
+    "skyCover": {
+      "1": 60,
+      "2": 5,
+      "4": 1,
+      "6": 18,
+      "12": 1
+    },
+    "quantitativePrecipitation": {
+      "2": 1,
+      "6": 13
+    }
+  },
+  "widthByLead": {
+    "temperature": [
+      {
+        "leadH": -16.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -15.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -14.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -13.1,
+        "widthH": 4
+      },
+      {
+        "leadH": -9.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -8.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -7.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -6.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -5.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -4.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -3.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -2.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -0.1,
+        "widthH": 1
+      },
+      {
+        "leadH": 0.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 1.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 2.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 3.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 4.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 5.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 6.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 7.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 9.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 10.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 12.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 13.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 14.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 15.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 16.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 17.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 18.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 19.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 20.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 22.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 23.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 24.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 25.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 26.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 27.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 28.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 29.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 30.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 31.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 33.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 35.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 36.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 38.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 39.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 40.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 41.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 42.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 43.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 45.9,
+        "widthH": 4
+      },
+      {
+        "leadH": 49.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 50.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 51.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 52.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 53.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 54.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 55.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 57.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 58.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 59.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 62.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 63.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 64.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 65.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 66.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 67.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 68.9,
+        "widthH": 4
+      },
+      {
+        "leadH": 72.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 73.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 74.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 75.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 76.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 77.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 78.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 79.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 81.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 82.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 83.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 84.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 85.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 86.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 87.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 88.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 89.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 90.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 91.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 93.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 94.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 97.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 98.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 99.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 100.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 101.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 102.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 103.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 104.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 106.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 107.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 108.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 110.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 111.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 112.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 113.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 114.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 115.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 116.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 117.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 118.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 121.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 122.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 123.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 124.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 125.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 126.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 127.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 130.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 131.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 132.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 134.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 135.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 136.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 137.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 138.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 139.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 140.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 142.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 145.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 146.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 147.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 148.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 149.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 150.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 151.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 154.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 155.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 158.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 159.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 160.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 161.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 162.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 163.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 165.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 166.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 169.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 170.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 171.9,
+        "widthH": 1
+      }
+    ],
+    "dewpoint": [
+      {
+        "leadH": -16.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -15.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -13.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -12.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -10.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -8.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -7.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -6.1,
+        "widthH": 3
+      },
+      {
+        "leadH": -3.1,
+        "widthH": 5
+      },
+      {
+        "leadH": 1.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 2.9,
+        "widthH": 7
+      },
+      {
+        "leadH": 9.9,
+        "widthH": 4
+      },
+      {
+        "leadH": 13.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 14.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 15.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 16.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 17.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 18.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 19.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 21.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 23.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 26.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 28.9,
+        "widthH": 9
+      },
+      {
+        "leadH": 37.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 38.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 39.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 40.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 42.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 43.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 44.9,
+        "widthH": 4
+      },
+      {
+        "leadH": 48.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 49.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 50.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 51.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 53.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 55.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 57.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 58.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 59.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 62.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 63.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 64.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 66.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 67.9,
+        "widthH": 5
+      },
+      {
+        "leadH": 72.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 73.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 74.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 75.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 76.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 78.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 80.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 82.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 83.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 85.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 86.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 87.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 88.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 90.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 91.9,
+        "widthH": 5
+      },
+      {
+        "leadH": 96.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 97.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 99.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 100.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 102.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 104.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 106.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 107.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 109.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 110.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 111.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 112.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 113.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 114.9,
+        "widthH": 8
+      },
+      {
+        "leadH": 122.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 125.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 128.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 130.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 133.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 134.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 135.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 136.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 137.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 138.9,
+        "widthH": 8
+      },
+      {
+        "leadH": 146.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 149.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 152.9,
+        "widthH": 5
+      },
+      {
+        "leadH": 157.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 158.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 159.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 160.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 162.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 163.9,
+        "widthH": 5
+      },
+      {
+        "leadH": 168.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 169.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 171.9,
+        "widthH": 1
+      }
+    ],
+    "relativeHumidity": [
+      {
+        "leadH": -16.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -14.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -12.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -10.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -9.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -8.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -7.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -6.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -5.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -4.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -2.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -0.1,
+        "widthH": 1
+      },
+      {
+        "leadH": 0.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 1.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 2.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 3.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 4.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 5.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 6.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 7.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 9.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 10.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 12.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 13.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 15.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 16.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 17.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 18.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 19.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 20.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 21.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 22.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 23.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 24.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 25.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 26.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 27.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 28.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 29.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 30.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 31.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 33.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 35.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 36.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 37.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 39.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 40.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 41.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 44.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 45.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 48.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 49.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 51.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 52.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 54.9,
+        "widthH": 10
+      },
+      {
+        "leadH": 64.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 65.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 66.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 67.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 68.9,
+        "widthH": 5
+      },
+      {
+        "leadH": 73.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 76.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 77.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 78.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 79.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 80.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 81.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 82.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 83.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 84.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 87.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 88.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 89.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 90.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 91.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 92.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 94.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 95.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 96.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 97.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 98.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 99.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 100.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 101.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 102.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 103.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 104.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 106.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 107.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 108.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 109.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 111.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 112.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 113.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 114.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 115.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 116.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 117.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 118.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 119.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 120.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 121.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 122.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 123.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 124.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 125.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 126.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 127.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 129.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 130.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 131.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 132.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 133.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 134.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 135.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 136.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 137.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 138.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 139.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 140.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 141.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 142.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 145.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 146.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 147.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 148.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 149.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 150.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 151.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 152.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 153.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 154.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 155.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 156.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 157.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 158.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 159.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 160.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 161.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 162.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 163.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 164.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 165.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 166.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 167.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 168.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 169.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 170.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 171.9,
+        "widthH": 1
+      }
+    ],
+    "windSpeed": [
+      {
+        "leadH": -16.1,
+        "widthH": 3
+      },
+      {
+        "leadH": -13.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -11.1,
+        "widthH": 5
+      },
+      {
+        "leadH": -6.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -4.1,
+        "widthH": 5
+      },
+      {
+        "leadH": 0.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 3.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 4.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 10.9,
+        "widthH": 8
+      },
+      {
+        "leadH": 18.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 19.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 21.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 24.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 25.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 26.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 27.9,
+        "widthH": 13
+      },
+      {
+        "leadH": 40.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 41.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 42.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 43.9,
+        "widthH": 4
+      },
+      {
+        "leadH": 47.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 50.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 53.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 56.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 58.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 60.9,
+        "widthH": 4
+      },
+      {
+        "leadH": 64.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 65.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 66.9,
+        "widthH": 5
+      },
+      {
+        "leadH": 71.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 73.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 75.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 77.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 79.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 82.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 83.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 84.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 86.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 88.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 90.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 92.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 95.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 97.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 98.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 99.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 100.9,
+        "widthH": 7
+      },
+      {
+        "leadH": 107.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 113.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 119.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 121.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 123.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 124.9,
+        "widthH": 4
+      },
+      {
+        "leadH": 128.9,
+        "widthH": 3
+      },
+      {
+        "leadH": 131.9,
+        "widthH": 5
+      },
+      {
+        "leadH": 136.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 138.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 139.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 141.9,
+        "widthH": 4
+      },
+      {
+        "leadH": 145.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 147.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 149.9,
+        "widthH": 11
+      },
+      {
+        "leadH": 160.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 162.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 163.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 164.9,
+        "widthH": 4
+      },
+      {
+        "leadH": 168.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 169.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 171.9,
+        "widthH": 1
+      }
+    ],
+    "skyCover": [
+      {
+        "leadH": -16.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -14.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -13.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -11.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -10.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -9.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -8.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -7.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -6.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -5.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -4.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -3.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -2.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -1.1,
+        "widthH": 1
+      },
+      {
+        "leadH": -0.1,
+        "widthH": 1
+      },
+      {
+        "leadH": 0.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 1.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 2.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 3.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 5.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 6.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 7.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 8.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 10.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 11.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 12.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 13.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 14.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 15.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 16.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 17.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 18.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 19.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 20.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 21.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 22.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 23.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 24.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 25.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 26.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 27.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 28.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 29.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 30.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 31.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 32.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 33.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 34.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 35.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 36.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 37.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 38.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 39.9,
+        "widthH": 4
+      },
+      {
+        "leadH": 43.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 44.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 45.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 51.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 57.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 58.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 59.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 60.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 61.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 62.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 63.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 64.9,
+        "widthH": 2
+      },
+      {
+        "leadH": 66.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 67.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 68.9,
+        "widthH": 1
+      },
+      {
+        "leadH": 69.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 75.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 81.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 87.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 93.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 99.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 105.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 111.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 117.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 123.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 129.9,
+        "widthH": 12
+      },
+      {
+        "leadH": 141.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 147.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 153.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 159.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 165.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 171.9,
+        "widthH": 6
+      }
+    ],
+    "quantitativePrecipitation": [
+      {
+        "leadH": -16.1,
+        "widthH": 2
+      },
+      {
+        "leadH": -14.1,
+        "widthH": 6
+      },
+      {
+        "leadH": -8.1,
+        "widthH": 6
+      },
+      {
+        "leadH": -2.1,
+        "widthH": 6
+      },
+      {
+        "leadH": 3.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 9.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 15.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 21.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 27.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 33.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 39.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 45.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 51.9,
+        "widthH": 6
+      },
+      {
+        "leadH": 57.9,
+        "widthH": 6
+      }
+    ]
+  }
+}
