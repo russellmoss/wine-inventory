@@ -15,10 +15,12 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { listAllOrgIds } from "@/lib/accounting/enumerator";
+import { getWineryTimeZone } from "@/lib/settings/data";
 import { ingestVineyardWeatherCore } from "./ingest-core";
 import { backfillVineyardGridmetHistory } from "./backfill-core";
 import { resolveVineyardCentroid } from "./location";
 import { seasonWindowFor, seasonYearFor } from "./season-core";
+import { resolveSiteTimeZone, siteTodayIso } from "./site-time-core";
 import { mapRecordsToLocalDaily } from "./obs-time-core";
 import { detectWeatherAlertsCore } from "./alert-core";
 
@@ -43,10 +45,15 @@ export async function runWeatherSweep(): Promise<WeatherSweepSummary> {
     summary.tenants += 1;
     await runAsTenant(tenantId, async () => {
       const vineyards = await prisma.vineyard.findMany({ where: { isActive: true }, select: { id: true, weatherAutoRefresh: true } });
-      const today = new Date().toISOString().slice(0, 10);
+      // Site-local "today" per vineyard (plan 096 U2): config tz → tenant AppSettings tz → UTC.
+      const wineryTz = await getWineryTimeZone().catch(() => null);
+      const tzByVineyard = new Map(
+        (await prisma.vineyardWeatherConfig.findMany({ select: { vineyardId: true, timeZone: true } })).map((c) => [c.vineyardId, c.timeZone]),
+      );
 
       for (const v of vineyards) {
         try {
+          const today = siteTodayIso(resolveSiteTimeZone(tzByVineyard.get(v.id), wineryTz));
           const hasWeather = (await prisma.vineyardClimateDaily.findFirst({ where: { vineyardId: v.id }, select: { id: true } })) !== null;
 
           // ── PRIME: a located vineyard with no weather yet ──

@@ -12,6 +12,8 @@ import { ingestVineyardWeatherCore, type IngestResult } from "./ingest-core";
 import { resolveVineyardCentroid } from "./location";
 import { fetchAcisStationSeries, listAcisStations, type AcisStation } from "./providers/rcc-acis";
 import { seasonWindowFor, seasonYearFor } from "./season-core";
+import { resolveSiteTimeZone, siteTodayIso } from "./site-time-core";
+import { getWineryTimeZone } from "@/lib/settings/data";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -25,6 +27,16 @@ async function requireTenant(): Promise<string> {
   const tenantId = await resolveActiveTenantId();
   if (!tenantId) throw new Error("No active organization on your session — sign in to a winery first.");
   return tenantId;
+}
+
+/**
+ * Site-local "today" for a vineyard (plan 096 U2 — the ONE today, was UTC here vs winery-tz in the
+ * assistant). Chain: config.timeZone (provider-reported) → AppSettings.timeZone → UTC.
+ */
+async function siteTodayFor(vineyardId: string): Promise<string> {
+  const cfg = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { timeZone: true } });
+  const wineryTz = await getWineryTimeZone().catch(() => null);
+  return siteTodayIso(resolveSiteTimeZone(cfg?.timeZone, wineryTz));
 }
 
 /** A nearby station option for the map picker. */
@@ -71,7 +83,7 @@ export async function setVineyardStation(vineyardId: string, station: StationOpt
     if (!centroid) return { ok: false, error: "This vineyard has no planting-area geometry yet." };
     const cfg = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { id: true } });
     if (!cfg) return { ok: false, error: "Refresh this vineyard's weather first, then choose a station." };
-    const today = new Date().toISOString().slice(0, 10);
+    const today = await siteTodayFor(vineyardId);
     const { startIso } = seasonWindowFor(centroid.lat, seasonYearFor(centroid.lat, today));
     const full: AcisStation = { sid: station.sid, name: station.name, lat: station.lat, lon: station.lon, elevM: station.elevM, distanceM: station.distanceKm * 1000 };
 
@@ -139,7 +151,9 @@ export async function loadVineyardClimateSummary(vineyardId: string, today?: str
     attribution: configRow.attribution,
     lastRefreshAt: configRow.lastRefreshAt ? configRow.lastRefreshAt.toISOString() : null,
   };
-  const todayIso = today ?? new Date().toISOString().slice(0, 10);
+  // Site-local today (config row is already in hand — no second lookup).
+  const wineryTz = await getWineryTimeZone().catch(() => null);
+  const todayIso = today ?? siteTodayIso(resolveSiteTimeZone(configRow.timeZone, wineryTz));
   return composeClimateSummaryCore({ vineyardId, rows: dailyRows, config, latitude: centroid.lat, today: todayIso });
 }
 
@@ -197,7 +211,7 @@ export async function backfillVineyardWeatherHistory(
     return await runAsTenant(tenantId, async () => {
       const centroid = await resolveVineyardCentroid(vineyardId);
       if (!centroid) return { ok: false as const, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
-      const currentYear = seasonYearFor(centroid.lat, new Date().toISOString().slice(0, 10));
+      const currentYear = seasonYearFor(centroid.lat, await siteTodayFor(vineyardId));
       const { backfillVineyardGridmetHistory } = await import("./backfill-core");
       const res = await backfillVineyardGridmetHistory(vineyardId, centroid.lat, centroid.lon, years, currentYear);
       if (res.rowsWritten === 0) {
@@ -218,7 +232,7 @@ export async function refreshVineyardWeatherCurrentSeason(vineyardId: string): P
     return await runAsTenant(tenantId, async () => {
       const centroid = await resolveVineyardCentroid(vineyardId);
       if (!centroid) return { ok: false as const, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
-      const today = new Date().toISOString().slice(0, 10);
+      const today = await siteTodayFor(vineyardId);
       const seasonYear = seasonYearFor(centroid.lat, today);
       const { startIso } = seasonWindowFor(centroid.lat, seasonYear);
       // Preserve a grower's map-picked station across refreshes (else it'd revert to auto-nearest).

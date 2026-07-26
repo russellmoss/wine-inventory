@@ -2,8 +2,8 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import { resolveVineyards } from "../scope";
 import { prisma } from "@/lib/prisma";
-import { resolveOperatingTimeZone, zonedDateKey } from "@/lib/work-orders/due-at";
 import { getWineryTimeZone } from "@/lib/settings/data";
+import { resolveSiteTimeZone, siteTodayIso } from "@/lib/weather/site-time-core";
 import { composeClimateSummaryCore, type DailyRow, type ClimateConfig } from "@/lib/weather/read-core";
 import { resolveVineyardCentroid } from "@/lib/weather/location";
 import { addDaysIso } from "@/lib/weather/obs-time-core";
@@ -41,12 +41,12 @@ export const queryClimateTool: AssistantTool = {
     if (vineyards.length > 3)
       return { message: `That matches ${vineyards.length} vineyards: ${vineyards.map((v) => v.name).join(", ")}. Ask about one of them.` };
 
-    // Operating tz beats the viewer (tickets #472/#473); "frost last night" is tz-sensitive. Resolved
-    // route-side — read the winery tz here (a tool, not runAssistant) then resolve against ctx.timeZone.
+    // Site-local time (plan 096 U2 — ONE "today" definition, shared with the card/actions/sweep).
+    // Chain per vineyard: config.timeZone (provider-reported) → winery AppSettings tz → viewer tz →
+    // UTC. Preserves tickets #472/#473 (operating tz beats viewer) and adds the vineyard's own zone
+    // on top. "Frost last night" is tz-sensitive, so this resolves PER VINEYARD inside the loop.
     const wineryTz = await getWineryTimeZone().catch(() => undefined);
-    const tz = resolveOperatingTimeZone(wineryTz, ctx.timeZone);
-    const todayLocal = zonedDateKey(new Date(), tz);
-    const lastNight = addDaysIso(todayLocal, -1);
+    let tz = resolveSiteTimeZone(null, wineryTz, ctx.timeZone);
 
     const results = [];
     for (const v of vineyards) {
@@ -56,6 +56,9 @@ export const queryClimateTool: AssistantTool = {
         results.push({ vineyard: v.name, note: "No weather has been set up for this vineyard yet — refresh its weather first." });
         continue;
       }
+      tz = resolveSiteTimeZone(configRow.timeZone, wineryTz, ctx.timeZone);
+      const todayLocal = siteTodayIso(tz);
+      const lastNight = addDaysIso(todayLocal, -1);
       const rows = await prisma.vineyardClimateDaily.findMany({
         where: { vineyardId: v.id },
         select: { providerKey: true, localDate: true, tmaxC: true, tminC: true, precipMm: true, rhMaxPct: true, rhMinPct: true },
