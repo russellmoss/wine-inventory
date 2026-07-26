@@ -91,6 +91,51 @@ export const INTERNAL = {
       "CAPABILITY (ask for the week's outlook) is query_climate → composeForecastViewCore.",
     coveredBy: "query_climate → composeForecastViewCore (read); forecast-poll cron + refreshVineyardForecast (write)",
   },
+  // ── Spray Intelligence S3a (D2, Russell-default: honest INTERNAL with a NAMED RETIREMENT
+  // CONDITION, no new tier). The program ships ONE composite read tool (query_spray_decision,
+  // thin in S5a, hard-refusing decisions until S7a/S9) and ONE write tool
+  // (record_spray_application, S11) — rule §3.15. RETIREMENT: when S11 lands its write tool,
+  // these five entries MUST be deleted so verify:ai-native proves reachability; the S11 runbook
+  // gate carries that obligation. ──
+  "src/lib/spray/record-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "S3a: recording a spray pass IS a genuine winemaker capability, but the program's single write tool " +
+      "(record_spray_application) lands in S11 by design (rule §3.15 — one write tool for the whole program, " +
+      "on the signed-proposal path). RETIRE THIS ENTRY when S11 ships; the S11 gate names it.",
+    coveredBy: "record_spray_application (S11) + query_spray_decision (S5a→S9)",
+  },
+  "src/lib/spray/correction-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "S3a: correction/void of a spray record rides the same S11 write tool (a correction is a write with a " +
+      "confirmation card). RETIRE with the record-core entry when S11 ships.",
+    coveredBy: "record_spray_application (S11) + query_spray_decision (S5a→S9)",
+  },
+  "src/lib/spray/drying-override-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "S3a: the attributed driedBeforeRain override + derived recompute — the recompute is a background " +
+      "mechanism (S1's sweep will drive it); the override write joins the S11 tool. RETIRE the override half " +
+      "when S11 ships.",
+    coveredBy: "record_spray_application (S11); S1 recompute sweep (mechanism)",
+  },
+  "src/lib/harvest/planned-harvest-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "S3a: setting/retracting a planned harvest date is a capability the S11 write tool covers; the " +
+      "reads (current/as-of/changesSince) are consumed by S7a's PHI engine and surfaced through " +
+      "query_spray_decision. RETIRE when S11 ships.",
+    coveredBy: "record_spray_application (S11) + query_spray_decision (S5a→S9)",
+  },
+  "src/lib/spray/legacy-mapping-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "S3a: confirming a legacy name→product mapping is a human review gate (rule §3.2 — never " +
+      "LLM-auto-applied), driven from a review list in the PR-3 surface; the conversational surface for " +
+      "legacy sprays is the S5a→S9 read tool. RETIRE alongside the S11 entries.",
+    coveredBy: "query_spray_decision (S5a→S9, read); PR-3 mapping review surface (write)",
+  },
 };
 
 // Temporary — real gaps deferred with a tracked reason. Ratcheted by MAX_ALLOWED.
