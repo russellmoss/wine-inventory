@@ -1,9 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
+import { runAsTenant } from "@/lib/tenant/context";
+import { pullBlockSoil } from "@/lib/soil/pull-core";
 import { action, ActionError, getActionUser } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
@@ -340,6 +343,22 @@ export const saveBlockPolygon = action(
       });
     });
     revalidatePath(PATH);
+
+    // Pull NRCS soil for this block RIGHT AWAY (VI-P4). Soil is free/keyless/static, so a US block should
+    // have soil the moment its boundary is drawn — not wait for the daily soil-sweep (that's the backstop).
+    // Runs AFTER the response so the save returns instantly; re-establishes the tenant context (after() runs
+    // outside the action's ALS) and pulls best-effort — pullBlockSoil is idempotent, gates non-US, and any
+    // failure (SDA has no SLA) is caught here and swept up later.
+    if (geojson != null) {
+      const { actorUserId, actorEmail, tenantId } = actor;
+      after(async () => {
+        try {
+          await runAsTenant(tenantId, () => pullBlockSoil({ actorUserId, actorEmail, tenantId }, blockId), { userId: actorUserId });
+        } catch {
+          // best-effort — /api/cron/soil-sweep backfills any block still missing soil
+        }
+      });
+    }
   },
 );
 
