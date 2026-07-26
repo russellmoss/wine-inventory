@@ -224,6 +224,10 @@ async function main() {
   await owner.blockSpatialMetric.upsert({ where: { id: "iso_bsm_b" }, update: {}, create: { id: "iso_bsm_b", tenantId: B, blockId: "iso_blk_b", datasetId: "iso_ds_b", vineyardId: "iso_vy_b", acquiredAt: now, mean: "0.55000", intersectingPixelCount: 100, validPixelCount: 90, effectivePixelCount: "88.5000", validFraction: "0.900000", coveredAreaM2: "8850.00", mixedPixelShare: "0.100000", qualityFlags: [], geometryVersion: 1, geometryFingerprint: "iso-b" } });
   await owner.cdseUsageCounter.upsert({ where: { tenantId_yearMonth: { tenantId: A, yearMonth: "2026-07" } }, update: {}, create: { tenantId: A, yearMonth: "2026-07", requestCount: 3, processingUnits: "2.6760", blobEgressBytes: BigInt(730000), updatedAt: now } });
   await owner.cdseUsageCounter.upsert({ where: { tenantId_yearMonth: { tenantId: B, yearMonth: "2026-07" } }, update: {}, create: { tenantId: B, yearMonth: "2026-07", requestCount: 3, processingUnits: "2.6760", blobEgressBytes: BigInt(730000), updatedAt: now } });
+  // VI-P4: a block_soil_snapshot per tenant (composite (tenantId, blockId) → vineyard_block FK, K11).
+  const isoSoilComponents = [{ mukey: "1407835", muname: "Mardin channery silt loam", class: "soil", areaPct: 1, areaSqM: 100, comppct: 85, drainageClass: "Moderately well drained", drainageBasis: "map-unit dominant condition", awc: null, awcUnit: null, ph: 6.6, phBasis: "topmost mineral horizon", restrictiveDepthCm: null }];
+  await owner.blockSoilSnapshot.upsert({ where: { id: "iso_soil_a" }, update: {}, create: { id: "iso_soil_a", tenantId: A, blockId: "iso_blk_a", vineyardId: "iso_vy_a", polygonFingerprint: "iso-a", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "100.00", components: isoSoilComponents, processingVersion: "soil-1", attribution: "NRCS SSURGO" } });
+  await owner.blockSoilSnapshot.upsert({ where: { id: "iso_soil_b" }, update: {}, create: { id: "iso_soil_b", tenantId: B, blockId: "iso_blk_b", vineyardId: "iso_vy_b", polygonFingerprint: "iso-b", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "100.00", components: isoSoilComponents, processingVersion: "soil-1", attribution: "NRCS SSURGO" } });
   // Phase 15: an accounting_connection (the token table) per tenant, plus a cost_export_event in A
   // (composite-FK target for the delivery-uniqueness check). DISCONNECTED + null tokens satisfies the
   // SEC-S5 CHECK; null realmId keeps the one-realm partial-unique out of the way.
@@ -652,6 +656,21 @@ async function main() {
       await asTenant(A, (db) => db.blockSpatialMetric.create({ data: { id: "iso_bsm_x", tenantId: A, blockId: "iso_blk_a", datasetId: "iso_ds_b", vineyardId: "iso_vy_a", acquiredAt: new Date(), intersectingPixelCount: 1, validPixelCount: 1, effectivePixelCount: "1.0000", validFraction: "1.000000", coveredAreaM2: "1.00", mixedPixelShare: "0.000000", qualityFlags: [], geometryVersion: 1, geometryFingerprint: "x" } }));
     } catch { metricFkRaised = true; }
     check("metric cross-tenant dataset reference rejected (composite FK, K11)", metricFkRaised);
+
+    // 5c-VI-P4. block_soil_snapshot: RLS isolation, WITH CHECK on a foreign INSERT, and the composite
+    // (tenantId, blockId) FK (K11) rejecting a cross-tenant block reference.
+    check("tenant A sees its own block_soil_snapshot", (await asTenant(A, (db) => db.blockSoilSnapshot.findFirst({ where: { id: "iso_soil_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's block_soil_snapshot (RLS)", (await asTenant(A, (db) => db.blockSoilSnapshot.findFirst({ where: { id: "iso_soil_b" } }))) === null);
+    let soilInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.blockSoilSnapshot.create({ data: { id: "iso_soil_x", tenantId: B, blockId: "iso_blk_a", vineyardId: "iso_vy_a", polygonFingerprint: "x", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "1.00", components: [], processingVersion: "soil-1" } }));
+    } catch { soilInsertRaised = true; }
+    check("foreign-tenant block_soil_snapshot INSERT raises (WITH CHECK)", soilInsertRaised);
+    let soilBlockFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.blockSoilSnapshot.create({ data: { id: "iso_soil_fk", tenantId: A, blockId: "iso_blk_b", vineyardId: "iso_vy_a", polygonFingerprint: "x", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "1.00", components: [], processingVersion: "soil-1" } }));
+    } catch { soilBlockFkRaised = true; }
+    check("soil cross-tenant block reference rejected (composite FK, K11)", soilBlockFkRaised);
 
     // 5d. Phase 15: accounting_connection (the ENCRYPTED-TOKEN table) is tenant-isolated through the
     // pooled endpoint. This is the one that matters most — a leak here is a cross-tenant token read.
