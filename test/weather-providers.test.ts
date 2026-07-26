@@ -120,4 +120,39 @@ describe("SSRF host guard", () => {
     expect(() => assertAllowedHost("nasa_power", "https://evil.example.com/api/x")).toThrow(/SSRF guard/);
     expect(() => assertAllowedHost("gridmet", "https://data.rcc-acis.org/GridData")).not.toThrow();
   });
+
+  // Plan 096 U4 — forecast hosts. open_meteo allows all three tiers (free/archive/paid) so the paid
+  // swap is env-only; anything off-list still throws.
+  it("allows the NWS + Open-Meteo forecast hosts", () => {
+    expect(() => assertAllowedHost("nws", "https://api.weather.gov/points/38.9,-77.0")).not.toThrow();
+    expect(() => assertAllowedHost("open_meteo", "https://api.open-meteo.com/v1/forecast")).not.toThrow();
+    expect(() => assertAllowedHost("open_meteo", "https://archive-api.open-meteo.com/v1/archive")).not.toThrow();
+    expect(() => assertAllowedHost("open_meteo", "https://customer-api.open-meteo.com/v1/forecast")).not.toThrow();
+    expect(() => assertAllowedHost("nws", "https://evil.example.com/points/x")).toThrow(/SSRF guard/);
+    expect(() => assertAllowedHost("open_meteo", "https://evil.example.com/v1/forecast")).toThrow(/SSRF guard/);
+  });
+});
+
+describe("User-Agent on every outbound request (plan 096 U4 — NWS 403s without one)", () => {
+  it("fetchText sends WEATHER_USER_AGENT, and caller headers extend rather than replace it", async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      return new Response("ok", { status: 200 });
+    }) as typeof fetch;
+    try {
+      const { fetchText } = await import("@/lib/weather/providers/fetch-util");
+      const { WEATHER_USER_AGENT } = await import("@/lib/weather/config");
+      await fetchText("nws", "https://api.weather.gov/points/38.9,-77.0");
+      await fetchText("nws", "https://api.weather.gov/points/38.9,-77.0", { headers: { Accept: "application/geo+json" } });
+      const h0 = calls[0].init?.headers as Record<string, string>;
+      const h1 = calls[1].init?.headers as Record<string, string>;
+      expect(h0["User-Agent"]).toBe(WEATHER_USER_AGENT);
+      expect(h1["User-Agent"]).toBe(WEATHER_USER_AGENT);
+      expect(h1["Accept"]).toBe("application/geo+json");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
 });

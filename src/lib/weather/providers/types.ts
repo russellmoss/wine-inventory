@@ -56,9 +56,16 @@ export interface ProviderSeries {
 }
 
 /** A typed provider fault — a failed fetch throws this, never a partial/fabricated record (council R11). */
+/**
+ * Every outbound weather source, observation OR forecast (plan 096 U4). The fetch edge + SSRF
+ * allowlist key on this so the Phase-2 forecast adapters (nws/open_meteo) share the same guarded
+ * pipe as the observation providers instead of growing a second fetch path.
+ */
+export type WeatherSourceKey = ProviderKey | "nws" | "open_meteo";
+
 export class ProviderFetchError extends Error {
   constructor(
-    public providerKey: ProviderKey,
+    public providerKey: WeatherSourceKey,
     public reason: "http" | "parse" | "empty" | "oversized" | "redirect" | "timeout" | "not_configured",
     message: string,
   ) {
