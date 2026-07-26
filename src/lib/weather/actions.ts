@@ -49,6 +49,34 @@ export async function loadVineyardClimateSummary(vineyardId: string, today?: str
   return composeClimateSummaryCore({ vineyardId, rows: dailyRows, config, latitude: centroid.lat, today: todayIso });
 }
 
+/** The provider keys a grower may choose as their primary climate source (R14). */
+const SELECTABLE_PROVIDERS = new Set(["gridmet", "rcc_acis", "nasa_power", "daymet", "noaa_cdo"]);
+
+/**
+ * Set (or clear) the grower's primary-source override for a vineyard (R14). `providerKey = null` reverts to
+ * the auto-resolved default (nearest quality station / best grid). effectivePrimary = override ?? resolved,
+ * so the summary + assistant immediately answer in the chosen source. Only a provider that actually has
+ * stored data for the vineyard may be chosen — no dangling override.
+ */
+export async function setVineyardPrimarySource(
+  vineyardId: string,
+  providerKey: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireReadyUser();
+  const config = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { id: true } });
+  if (!config) return { ok: false, error: "This vineyard has no weather set up yet — refresh its weather first." };
+
+  if (providerKey !== null) {
+    if (!SELECTABLE_PROVIDERS.has(providerKey)) return { ok: false, error: `Unknown source "${providerKey}".` };
+    const hasData = await prisma.vineyardClimateDaily.findFirst({ where: { vineyardId, providerKey }, select: { id: true } });
+    if (!hasData) return { ok: false, error: `No stored data from "${providerKey}" for this vineyard yet.` };
+  }
+
+  await prisma.vineyardWeatherConfig.update({ where: { id: config.id }, data: { primaryProviderOverride: providerKey } });
+  revalidatePath("/vineyards/weather");
+  return { ok: true };
+}
+
 /** Refresh a vineyard's weather from live providers (resolves the centroid, runs ingest). */
 export async function refreshVineyardWeather(vineyardId: string, startIso: string, endIso: string): Promise<IngestResult> {
   await requireReadyUser();

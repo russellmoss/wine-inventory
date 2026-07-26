@@ -39,6 +39,24 @@ export function coverageLabel(state: string): string {
   }
 }
 
+/** Human label for a provider key (for the source selector). Station name folded in when known. */
+export function providerLabel(key: string, stationName?: string | null): string {
+  switch (key) {
+    case "rcc_acis":
+      return stationName ? `Station — ${stationName}` : "Nearest station";
+    case "gridmet":
+      return "gridMET (4 km grid)";
+    case "nasa_power":
+      return "NASA POWER (global grid)";
+    case "daymet":
+      return "Daymet (1 km, historical)";
+    case "noaa_cdo":
+      return "NOAA station history";
+    default:
+      return key;
+  }
+}
+
 /** GDD-vs-last-year phrasing (warmer / cooler / similar), honest about the direction. */
 export function gddComparisonLabel(deltaC: number | null): string {
   if (deltaC === null) return "No prior-year data to compare yet";

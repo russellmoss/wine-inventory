@@ -7,8 +7,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ClimateSummary } from "@/lib/weather/read-core";
-import { coverageLabel, gddComparisonLabel, sparklinePoints, trustLabel } from "@/lib/weather/card-core";
-import { refreshVineyardWeatherCurrentSeason } from "@/lib/weather/actions";
+import { coverageLabel, gddComparisonLabel, providerLabel, sparklinePoints, trustLabel } from "@/lib/weather/card-core";
+import { refreshVineyardWeatherCurrentSeason, setVineyardPrimarySource } from "@/lib/weather/actions";
 
 type VineyardOpt = { id: string; name: string };
 
@@ -50,6 +50,17 @@ export function WeatherCard({
     setBusy(true);
     setErr(null);
     const res = await refreshVineyardWeatherCurrentSeason(selectedId);
+    setBusy(false);
+    if (!res.ok) setErr(res.error);
+    else router.refresh();
+  }
+
+  async function changeSource(value: string) {
+    if (!selectedId) return;
+    setBusy(true);
+    setErr(null);
+    // "auto" clears the override; a provider key sets it.
+    const res = await setVineyardPrimarySource(selectedId, value === "auto" ? null : value);
     setBusy(false);
     if (!res.ok) setErr(res.error);
     else router.refresh();
@@ -133,10 +144,37 @@ export function WeatherCard({
             </Panel>
           </div>
 
-          {/* Station-vs-site + provider panel. */}
+          {/* Station-vs-site + provider panel, with the grower's primary-source selector (R14). */}
           <Panel title="Where this estimate comes from">
-            <div style={{ display: "grid", gap: 4 }}>
-              <div>Primary source: <strong>{summary.primaryProviderKey}</strong> · Coverage: {coverageLabel(summary.coverageState)}</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={label}>Primary source</span>
+                <select
+                  value={summary.primaryProviderOverride ?? "auto"}
+                  onChange={(e) => changeSource(e.target.value)}
+                  disabled={busy}
+                  style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--color-border)", background: "var(--color-surface)", color: "var(--color-text)" }}
+                  aria-label="Primary climate source"
+                >
+                  <option value="auto">Auto — {providerLabel(summary.primaryProviderResolved, summary.station.name)} (recommended)</option>
+                  {summary.perSource.map((p) => (
+                    <option key={p.provider} value={p.provider}>
+                      {providerLabel(p.provider, summary.station.name)} · {p.completenessPct}% complete
+                    </option>
+                  ))}
+                </select>
+                {summary.primaryProviderOverride && (
+                  <button onClick={() => changeSource("auto")} disabled={busy} style={{ background: "none", border: "none", color: "var(--color-accent)", cursor: "pointer", fontSize: 13, padding: 0 }}>
+                    reset to auto
+                  </button>
+                )}
+              </label>
+              <div style={{ ...label, textTransform: "none" }}>
+                {summary.primaryProviderOverride
+                  ? `You chose ${providerLabel(summary.primaryProviderOverride, summary.station.name)} — the headline + assistant answer in this source.`
+                  : `Auto-selected the nearest quality source. The headline + assistant answer in it; compare the others below.`}
+              </div>
+              <div>Coverage: {coverageLabel(summary.coverageState)}</div>
               {summary.station.name && (
                 <div>
                   Nearest station: <strong>{summary.station.name}</strong>
