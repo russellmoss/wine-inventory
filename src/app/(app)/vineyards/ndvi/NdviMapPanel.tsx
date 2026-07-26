@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card } from "@/components/ui";
+import { Card, MapLayerControl, type LayerRow } from "@/components/ui";
 import { SatelliteMap } from "@/components/ui/SatelliteMap.client";
 import type { SerializedBlock } from "@/lib/vineyard/data";
 import type { MapOverlay } from "@/lib/gis/overlay";
@@ -9,6 +9,11 @@ import { PALETTES, type ColorScaleMode } from "@/lib/gis/color";
 import { NdviLegend, type DisplayMetaLite } from "./NdviLegend";
 import { NdviCompare } from "./NdviCompare";
 import { listSpatialStylesAction, saveVineyardStyleAction, type SpatialStylePayload } from "@/lib/spatial/style-actions";
+import { getVineyardSoilOverlaysAction } from "@/lib/soil/actions";
+import type { VineyardSoilOverlays } from "@/lib/soil/read";
+import { SoilUnitPanel } from "../maps/SoilUnitPanel";
+
+type LayerId = "ndvi" | "soil";
 
 export type NdviDataset = { id: string; acquiredAt: string | null };
 
@@ -52,8 +57,46 @@ export function NdviMapPanel({
   const [styles, setStyles] = useState<SpatialStylePayload[]>([]);
   const [styleMsg, setStyleMsg] = useState<string | null>(null);
   const [compare, setCompare] = useState(false);
+  // Layer stack: NDVI raster + soil vector, each toggleable + reorderable. `layerOrder` is TOP→BOTTOM.
+  const [soilData, setSoilData] = useState<VineyardSoilOverlays | null>(null);
+  const [soilLoading, setSoilLoading] = useState(false);
+  const [selectedSoilMukey, setSelectedSoilMukey] = useState<string | null>(null);
+  const [layerOrder, setLayerOrder] = useState<LayerId[]>(["soil", "ndvi"]);
+  const [layerVisible, setLayerVisible] = useState<Record<LayerId, boolean>>({ ndvi: true, soil: false });
 
   const resampling = nearest ? "nearest" : "bilinear";
+
+  // Fetch the vineyard's soil overlays once (lazily painted only when the soil layer is toggled on).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset + lazy-fetch soil when the vineyard changes
+    setSoilData(null);
+    setSelectedSoilMukey(null);
+    if (!vineyardId) return;
+    let cancelled = false;
+    setSoilLoading(true);
+    getVineyardSoilOverlaysAction(vineyardId)
+      .then((r) => {
+        if (!cancelled && r.ok) setSoilData(r.data);
+      })
+      .finally(() => {
+        if (!cancelled) setSoilLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [vineyardId]);
+
+  const moveLayer = (id: string, dir: -1 | 1) => {
+    setLayerOrder((order) => {
+      const i = order.indexOf(id as LayerId);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= order.length) return order;
+      const next = [...order];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+  const toggleLayer = (id: string) => setLayerVisible((v) => ({ ...v, [id as LayerId]: !v[id as LayerId] }));
 
   // Load saved styles (SYSTEM presets + this vineyard's) for the dropdown.
   useEffect(() => {
@@ -129,10 +172,23 @@ export function NdviMapPanel({
     };
   }, [datasetId, query]);
 
-  const overlays: MapOverlay[] =
+  const ndviOverlays: MapOverlay[] =
     imageUrl && meta?.wgs84Bbox
       ? [{ kind: "raster", id: `ndvi-${datasetId}-${query}`, imageUrl, bounds: meta.wgs84Bbox, opacity, resampling }]
       : [];
+  const soilOverlays: MapOverlay[] = soilData?.overlays ?? [];
+  const layerOverlays: Record<LayerId, MapOverlay[]> = { ndvi: ndviOverlays, soil: soilOverlays };
+
+  // Paint bottom→top: `layerOrder` is top→bottom, and SatelliteMap paints later-in-array on top, so reverse.
+  const overlays: MapOverlay[] = [...layerOrder].reverse().flatMap((id) => (layerVisible[id] ? layerOverlays[id] : []));
+  const soilShown = layerVisible.soil && soilOverlays.length > 0;
+
+  const layerRows: LayerRow[] = layerOrder.map((id) =>
+    id === "ndvi"
+      ? { id, label: "NDVI (vigor)", visible: layerVisible.ndvi, available: ndviOverlays.length > 0, note: ndviOverlays.length ? undefined : "select a scene" }
+      : { id, label: "Soil (NRCS)", visible: layerVisible.soil, available: soilOverlays.length > 0, note: soilOverlays.length ? undefined : soilLoading ? "loading…" : "no soil pulled" },
+  );
+  const selectedSoil = selectedSoilMukey && soilData ? soilData.units.find((u) => u.mukey === selectedSoilMukey) : null;
 
   const pickMode = (m: ColorScaleMode) => setMode(m);
 
@@ -251,9 +307,32 @@ export function NdviMapPanel({
           {compare && datasets.length < 2 && (
             <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "0 0 10px" }}>Need two processed scenes to compare — only one is available.</p>
           )}
-          <SatelliteMap lat={center?.lat ?? null} lng={center?.lng ?? null} blocks={blocks} unit="imperial" overlays={overlays} height={420} exportName={vineyardName} />
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+            <MapLayerControl layers={layerRows} onToggle={toggleLayer} onMove={moveLayer} />
+          </div>
+          <SatelliteMap
+            lat={center?.lat ?? null}
+            lng={center?.lng ?? null}
+            blocks={blocks}
+            unit="imperial"
+            overlays={overlays}
+            onOverlayFeatureClick={soilShown ? (props) => setSelectedSoilMukey(props.mukey ? String(props.mukey) : null) : undefined}
+            height={420}
+            exportName={vineyardName}
+          />
           {error && <p style={{ color: "var(--danger, #b00020)", fontSize: 13, margin: "10px 0 0" }}>{error}</p>}
           {loading && !meta && <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "10px 0 0" }}>Loading NDVI…</p>}
+          {soilShown && soilData ? (
+            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
+              {soilData.legend.entries.map((e) => (
+                <span key={e.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-secondary)" }}>
+                  <span aria-hidden style={{ width: 12, height: 12, borderRadius: 3, background: e.color, border: "1px solid var(--border-subtle)" }} />
+                  {e.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {selectedSoil ? <SoilUnitPanel unit={selectedSoil} displayUnit="imperial" onClose={() => setSelectedSoilMukey(null)} /> : null}
           {meta && <NdviLegend meta={meta} paletteId={paletteId} reverse={reverse} mode={mode} />}
         </>
       )}
