@@ -459,7 +459,13 @@ async function main() {
 
   // ── verify everything on disk, including anything written by a previous run ──
   console.log("\n── verifying every fixture on disk ──");
-  const files = readdirSync(FIX_DIR).filter((f) => f.endsWith(".json.gz")).sort();
+  // `_`-prefixed files are SIDECARS, not fixtures: `_season-character.json` and the gzipped Arm B
+  // station cache `_station-observations.json.gz`. Without this filter the station cache matches the
+  // `.json.gz` glob, gets parsed as a Fixture, and `checkFixture` dies on an undefined site — which
+  // is exactly what happened the first time the verifier ran after Unit 5 wrote the cache.
+  const files = readdirSync(FIX_DIR)
+    .filter((f) => f.endsWith(".json.gz") && !f.startsWith("_"))
+    .sort();
   let checksRun = 0;
   for (const f of files) {
     const p = join(FIX_DIR, f);

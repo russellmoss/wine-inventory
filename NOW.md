@@ -7,8 +7,45 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**SPRAY INTELLIGENCE — program spine WRITTEN + COUNCIL-RECONCILED (2026-07-26). Nothing built yet.
-Wave-1 lanes are being `/plan`ned in PARALLEL worktrees (S0 · S2 · S3a · S4).**
+**SPRAY INTELLIGENCE — program spine WRITTEN + COUNCIL-RECONCILED (2026-07-26).
+Wave-1 lanes running in PARALLEL worktrees (S0 · S2 · S3a · S4).**
+
+🟩 **S0 (lane A — the weather-lane spike): COMPLETE. Gate answered, and S1 is NARROWED.**
+[report](docs/spray_assistant/phases/S0-report.md) · [QA](docs/spray_assistant/qa/S0-qa-report.md) ·
+ADR [0011](docs/architecture/decisions/0011-hourly-weather-retention-and-replay.md) (retention/replay) +
+[0012](docs/architecture/decisions/0012-leaf-wetness-estimator-bands-and-refusal.md) (LWD bands/refusal).
+No production code, as scoped. 11 units, 100 committed fixtures (566,400 site-hours), 28 goldens,
+800 fixture assertions, 7 defects found and fixed.
+
+⛔ **The two-arm gate DID NOT PASS and the pre-committed no-go TRIGGERED — the deliverable is the
+narrowing.** Arm B (input validation, the arm council C1 added because Arm A can pass on correlated
+error) splits **by regime, cleanly and physically**: dew-point-depression MAE vs station is
+**1.22 °C Stoney Hill / 1.72 °C Monticello VA** but **3.18 °C Russian River / 5.07 °C Madera**, against
+a 1.85 °C tolerance = half CART's own 3.7 °C node. Both failures are regimes that are **sub-grid at
+25 km** (marine-layer boundary, irrigated valley floor). **Two live Demo sites are in the failing set.**
+→ **Build S1 for eastern sites on fixed-model reanalysis; California needs station-blending first.**
+
+⚠️ **Five findings that change other lanes — do NOT re-derive:**
+1. **The irreversibility is in FORECAST, not OBSERVED** — the reverse of the plan's premise. Observed
+   hourly IS backfillable (NCEI ISD + keyless IEM ASOS, past 2005) and the NWS live window is **7 days**,
+   not 1–2. What's unrecoverable is *what the forecast said when a grower acted on it*. Also: **REANALYSIS
+   is revisable**, so a stored copy can drift from the live archive — a replay hazard nobody had named.
+2. **Archive model choice moves 50.6% of infection-event classifications** (`era5` vs Open-Meteo
+   `default`). "Best match" is unusable for anything replayed. **ERA5-Land carries NO wind at any site** —
+   and wind is a **hard input to the S7b legality gate**, not just a CART input.
+3. **Brief §7's pathogen table is materially wrong → S5b's scope GROWS.** Botrytis (Broome 1995) and
+   phomopsis (Erincik 2003) ARE LWD × temperature models. ⚠️ Both papers are **paywalled**, so S0 could
+   only run coarsened renderings that carried **no gate weight** — S5b must obtain them.
+4. **Madera inverted its own purpose**: lowest refusal rate in the set (0.6%) and the worst inputs
+   (5.07 °C). Confidence keyed on input **availability** reports its highest value exactly where the
+   answer is least trustworthy → the band must carry **provider-vs-station agreement**.
+5. **S4 must collect a per-block `canopyManagement` OBSERVATION with a timestamp** (not a static
+   attribute — an August decision must ask what the canopy was in July). Liftable paragraph in
+   [s0-lwd-estimator-decision.md](docs/spray_assistant/phases/s0-lwd-estimator-decision.md) §4.
+
+⚠️ **Two things still Russell's**: (a) accept the two-zone canopy model (S0 recommends yes — cheap now,
+expensive to retrofit, and the one-zone version is anatomically wrong); (b) **how long must a lot's
+residue flag stay explicable?** — the one input to ADR 0011 that is inferred rather than stated.
 
 🟦 **S4 (lane D — phenology + growth): PLAN v2 COUNCIL-RECONCILED, ready for `/work`.**
 [plan](docs/spray_assistant/phases/S4-phenology-growth-model-plan.md) ·
@@ -1279,7 +1316,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-24 — **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+_Last updated: 2026-07-26 — **S0 (Spray Intelligence lane A) COMPLETE**: the weather-lane gate is answered and S1 is narrowed to eastern regimes. No production code, 0 Neon branches left, `verify:naming` 25/25 green._
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.

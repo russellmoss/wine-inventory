@@ -198,6 +198,12 @@ the same lane and blocks nothing.
   | `src/lib/weather/*` | S1, S4 (GDD interpolator), S7b | S1 lands first within its wave |
   | `src/lib/fieldnotes/*`, `src/lib/harvest/*` | S3a (back-compat + planned harvest), S4 | serialize |
   | cron / config | S1, S2 refresh | additive |
+  | **`package.json` scripts block** | **every lane adding a `verify:*`** | ⚠️ *added by S0* — append-only, one contiguous block. Land early and rebase rather than merging late |
+  | **this runbook's §8 ledger** | **every lane, every phase** | ⚠️ *added by S0* — every lane edits a different row of one table, so the rows are textually adjacent and conflict. **Edit only your own row; never reflow the table** |
+  | **`NOW.md`** | **every concurrent lane** | ⚠️ *added by S0* — the highest-frequency conflict in the program. **Touch it once, at ship, not during the build** |
+  | **`docs/architecture/decisions/00NN-*.md`** | **any lane writing an ADR** | ⚠️ *added by S0* — the ADR number is a shared counter (S0 claimed 0011 and 0012 after S3a had already taken 0010). **Re-read the directory immediately before writing and claim numbers at SHIP time, not plan time** |
+  | **`council-feedback.md` (project root)** | **every lane running `/council`** | ⚠️ *added by S0* — the `/council` skill's default output path. Every lane must deviate to `phases/S<n>-council-feedback.md` per the program convention |
+  | **`test/**` (new files only)** | any lane adding tests | ⚠️ *added by S0* — new uniquely-named files are safe; editing a shared test file is not |
 
 - **S3a does not FK to S2.** The spray record stores the EPA registration number as a string — the
   durable natural key plan 086 already upserts on — **plus the facts snapshot required by rule §3.8**.
@@ -276,7 +282,7 @@ cellar as a residue flag — a thing no incumbent can do, because no incumbent o
 | Phase | Wave/Lane | Status | Plan | Council | PRs | QA | Report |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Runbook** | — | 🟩 council-reconciled | — | [RUNBOOK-council-feedback](RUNBOOK-council-feedback.md) | — | — | — |
-| S0 spike (hourly / LWD / retention) | 1A | ⬜ not started | — | — | — | — | — |
+| S0 spike (hourly / LWD / retention) | 1A | 🟩 **complete — gate answered, S1 NARROWED** | [S0 plan](phases/S0-spike-hourly-lwd-retention-plan.md) | [S0 council](phases/S0-council-feedback.md) | branch `claude/spray-intelligence-s0-spike-0f21b2` | [S0 QA](qa/S0-qa-report.md) | [S0 report](phases/S0-report.md) · ADR [0011](../architecture/decisions/0011-hourly-weather-retention-and-replay.md) + [0012](../architecture/decisions/0012-leaf-wetness-estimator-bands-and-refusal.md) |
 | S2 registration & resistance | 1B | 🟦 planning (council-reconciled) | [S2 plan](phases/S2-registration-resistance-master-plan.md) | [S2 council](phases/S2-council-feedback.md) | — | — | — |
 | S2b product facts master | 1B | ⬜ not started | — | — | — | — | — |
 | S3a spray record + planned harvest | 1C | 🟦 planning (plan council-reconciled, ready for `/work`) | [S3a-spray-record-plan](phases/S3a-spray-record-plan.md) | [S3a-council-feedback](phases/S3a-council-feedback.md) | — | — | — |
@@ -334,6 +340,50 @@ knows what it must emit.
 latency measurements; a written **retention decision sized by replay horizon** and a written **LWD
 estimator decision with confidence bands and refusal threshold**, both in the phase report and an
 ADR. No production code required.
+
+---
+
+#### 🟩 S0 OUTCOME (2026-07-26) — read this before planning S1
+
+**The gate did not pass. S1 is NARROWED, not cancelled.** Full evidence in the
+[S0 report](phases/S0-report.md); ADRs [0011](../architecture/decisions/0011-hourly-weather-retention-and-replay.md)
+and [0012](../architecture/decisions/0012-leaf-wetness-estimator-bands-and-refusal.md) are binding.
+
+> **Reanalysis inputs are adequate to run the LWD estimator at humid-continental and humid-subtropical
+> sites, and are NOT adequate at coastal-fog or hot-arid-interior sites** (dew-point-depression MAE
+> vs station: 1.22 / 1.72 °C East, 3.18 / 5.07 °C California, against a 1.85 °C tolerance derived from
+> half CART's own decision node). Both failures are regimes whose microclimate is sub-grid at ~25 km.
+> **Two live Demo sites are in the failing set.**
+
+**Nine things S1 inherits and must not re-derive:**
+
+1. **The irreversibility sits with FORECAST, not OBSERVED.** Observed hourly data IS backfillable
+   (NCEI ISD + the keyless IEM ASOS archive, back past 2005), and the NWS live window is **7 days**,
+   not 1–2. What cannot be recovered is what the forecast *said* when a grower acted on it.
+2. **REANALYSIS is revisable** — a stored copy can drift from the live archive, so a recomputation
+   months later can legitimately differ from identical code. Replay-integrity hazard, newly named.
+3. **Fix the archive model and record it. Never "best match".** `era5` vs Open-Meteo `default` moves
+   **50.6 %** of infection-event classifications.
+4. **Exclude ERA5-Land** — no wind at any of 5 sites over a full week. Wind is also a hard input to
+   the **S7b legality gate**, not merely a CART input: a null-wind provider cannot support an
+   application-window answer at all, and rendering it otherwise advises a label violation.
+5. **Three timestamps, and replay keys on `ingestedAt`.** `providerIssuedAt` must be nullable, and
+   null must mean *"the provider does not expose one"* — Open-Meteo exposes none at all.
+6. **`NULLS NOT DISTINCT`** on the replace-identity index, or the unique constraint enforces nothing
+   for rows with a null `providerIssuedAt` and `ON CONFLICT` silently inserts duplicates.
+7. **Carry the native interval width per property.** NWS RH arrives in bins up to **10 h** wide at
+   long lead; a 10-hour RH plateau fed to a threshold model manufactures or erases a wetness run.
+8. **Confidence must carry provider-vs-station AGREEMENT, not just completeness.** Madera has the
+   lowest refusal rate in the fixture set (0.6 %) and the worst inputs (5.07 °C) — confidence keyed on
+   availability reports its highest value exactly where the answer is least trustworthy.
+9. **Wire every retained provider through the SSRF-guarded fetch edge and its allowlist.** S0's
+   probes deliberately bypassed it as throwaway code on no production path.
+
+**Also:** brief §7's pathogen table is materially incomplete — **botrytis (Broome 1995) and phomopsis
+(Erincik 2003) are LWD × temperature models**, so **S5b's scope grows**, and S5b must obtain both
+papers (their coefficients are paywalled; S0 could only run coarsened renderings, which carried no
+gate weight). **S4 must collect a per-block `canopyManagement` OBSERVATION with a timestamp** — see
+the liftable paragraph in [s0-lwd-estimator-decision.md](phases/s0-lwd-estimator-decision.md) §4.
 
 ### S2 — Registration and resistance master (Wave 1, lane B — first PR)
 

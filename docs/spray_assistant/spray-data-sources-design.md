@@ -75,9 +75,25 @@ parameter is unused and supplies `relative_humidity_2m`, `dew_point_2m`, `precip
 `cloud_cover`, `wind_speed_10m`, `shortwave_radiation`, and soil-moisture layers. **No leaf-wetness
 variable exists** — it must be estimated (§2.4).
 
-Historical archive: ERA5 (0.25°, ~25 km, 1940→present), **ERA5-Land (0.1°, ~11 km, 1950→present)**,
+Historical archive: ERA5 (0.25°, ~25 km, 1940→present), ~~**ERA5-Land (0.1°, ~11 km, 1950→present)**~~,
 ECMWF IFS (9 km). Coarse for a single vineyard, but it is the only free hourly history for
 non-US sites and for backfilling a season.
+
+> ⚠️ **CORRECTED BY S0 (2026-07-26).** This section preferred **ERA5-Land** on resolution.
+> **ERA5-Land carries NO WIND, NO PRECIPITATION, NO CLOUD COVER and NO RADIATION** — confirmed live
+> at all five S0 fixture sites over a full week, not a spot check. CART is RH + dew-point depression
+> + **wind**, so *the archive this document preferred cannot run the estimator this document
+> prefers*. Worse, wind is a hard input to the **S7b legality gate** (labels dictate maximum wind
+> speeds for drift), so a null-wind provider cannot support an application-window answer at all.
+>
+> **Use ERA5 (0.25°). Do not use ERA5-Land.** And fix the model explicitly — S0 measured `era5`
+> versus Open-Meteo's `default` blend moving **50.6 %** of infection-event classifications, so
+> "best match" is unusable for anything that will be replayed.
+>
+> Two further corrections to this section: `forecast-open-meteo.ts` **already sends `hourly=`** (plan
+> 097 changed that), so S1's work there is three variables appended to an existing list; and
+> Open-Meteo exposes **no issuance timestamp** on either endpoint, so `providerIssuedAt` is
+> structurally unknowable for it. Evidence: [phases/s0-hourly-field-inventory.md](phases/s0-hourly-field-inventory.md).
 
 The adapter already threads `OPEN_METEO_API_KEY` and `elevation=` downscaling — the commercial-tier
 seam and the site-elevation correction are both in place.
