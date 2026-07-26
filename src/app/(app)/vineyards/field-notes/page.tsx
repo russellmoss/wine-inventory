@@ -1,4 +1,5 @@
 import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
+import { isTenantAdminLike } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { getLatestFieldNote } from "@/lib/fieldnotes/actions";
 import { listFieldInputs } from "@/lib/fieldnotes/input-actions";
@@ -37,7 +38,12 @@ export default async function FieldNotesPage({
   const user = await requireReadyUser();
   await requireActiveTenant();
 
-  if (user.role === "admin") {
+  // `isTenantAdminLike`, not a strict role === "admin": a developer is "admin-like in every
+  // tenant" (src/lib/access.ts) and already gets the admin view on all three sibling vineyard
+  // pages — harvest, maps, and weather. Field notes was the only one comparing the raw role, so a
+  // developer fell through to the manager branch and hit "You haven't been assigned a vineyard
+  // yet" with no way to reach either view. This grants nothing the app does not already grant.
+  if (isTenantAdminLike(user)) {
     const sp = await searchParams;
     const view = sp.view === "manager" ? "manager" : "admin";
 

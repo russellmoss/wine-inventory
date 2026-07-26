@@ -205,6 +205,11 @@ the same lane and blocks nothing.
   durable natural key plan 086 already upserts on — **plus the facts snapshot required by rule §3.8**.
   That is what makes lanes B and C genuinely parallel, and it is also correct on the merits: a spray
   record must survive a product being de-registered.
+  ✅ **The snapshot shape is now FROZEN and shipped**:
+  [S2-S3a-factsAsOf-contract.md](phases/S2-S3a-factsAsOf-contract.md) — the composite
+  `{ publishedRevisionId, apprilAsOf, cdprAsOf, resistanceArtifactSha256 }` returned by every
+  `lookupRegistration` read. **S3a consumes it; it does not re-derive it.** Adding a field is safe;
+  removing or renaming one is a two-lane breaking change.
 - **Two gate tiers** *(council S10)* — branch acceptance cannot be parallel even when branch work is.
   **Branch-local** (parallelizable): `tsc`, pure unit tests, goldens. **Serialized from the MAIN
   checkout**: DB-backed `verify:*`, browser QA, anything needing the generated Prisma client.
@@ -284,11 +289,11 @@ cellar as a residue flag — a thing no incumbent can do, because no incumbent o
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Runbook** | — | 🟩 council-reconciled | — | [RUNBOOK-council-feedback](RUNBOOK-council-feedback.md) | — | — | — |
 | S0 spike (hourly / LWD / retention) | 1A | ⬜ not started | — | — | — | — | — |
-| S2 registration & resistance | 1B | 🟦 planning (council-reconciled) | [S2 plan](phases/S2-registration-resistance-master-plan.md) | [S2 council](phases/S2-council-feedback.md) | — | — | — |
+| S2 registration & resistance | 1B | 🟩 shipped (MERGED + **live in prod** 2026-07-26, deploy `147b75c3`; 2,420 grape registrations · 361 AIs **zero unclassified** · `verify:pesticide` 31/31. Ships **DARK** — `epa-pesticide` defaultEnabled:false. **S7a unblocked.** One QA row deferred: settings-card click-through) | [S2 plan](phases/S2-registration-resistance-master-plan.md) | [S2 council](phases/S2-council-feedback.md) | [#522](https://github.com/russellmoss/wine-inventory/pull/522) · [#525](https://github.com/russellmoss/wine-inventory/pull/525) | [S2-qa-report](qa/S2-qa-report.md) | [S2-report](phases/S2-report.md) |
 | S2b product facts master | 1B | ⬜ not started | — | — | — | — | — |
 | S3a spray record + planned harvest | 1C | 🟩 shipped (PR1+PR2 MERGED 2026-07-26 — **Wave 2 unblocked**; PR3 QA'd in-browser same day, 2 findings found+fixed) | [S3a-spray-record-plan](phases/S3a-spray-record-plan.md) | [S3a-council-feedback](phases/S3a-council-feedback.md) | [#523](https://github.com/russellmoss/wine-inventory/pull/523) · [#524](https://github.com/russellmoss/wine-inventory/pull/524) · [#527](https://github.com/russellmoss/wine-inventory/pull/527) | [S3a-qa-report](qa/S3a-qa-report.md) | [S3a-report](phases/S3a-report.md) |
 | S3b spray program / season plan | 1C | ⬜ not started | — | — | — | — | — |
-| S4 phenology + growth | 1D | 🟪 QA (code MERGED + live; all gates green; UI-placement QA blocked by a non-S4 RLS bug) | [S4 plan v2](phases/S4-phenology-growth-model-plan.md) | [S4 council](phases/S4-council-feedback.md) | [#521](https://github.com/russellmoss/wine-inventory/pull/521) · [#526](https://github.com/russellmoss/wine-inventory/pull/526) both merged | [S4 QA](qa/S4-qa-report.md) | [S4 report](phases/S4-report.md) |
+| S4 phenology + growth | 1D | 🟩 shipped | [S4 plan v2](phases/S4-phenology-growth-model-plan.md) | [S4 council](phases/S4-council-feedback.md) | [#521](https://github.com/russellmoss/wine-inventory/pull/521) · [#526](https://github.com/russellmoss/wine-inventory/pull/526) · [#529](https://github.com/russellmoss/wine-inventory/pull/529) | [S4 QA](qa/S4-qa-report.md) ✅ | [S4 report](phases/S4-report.md) |
 | S7a legality + rotation | 2A | ⬜ not started | — | — | — | — | — |
 | S8 lot residue crossover | 2B | ⬜ not started | — | — | — | — | — |
 | S5a powdery index + latent ledger | 2C | ⬜ not started | — | — | — | — | — |
@@ -342,7 +347,18 @@ latency measurements; a written **retention decision sized by replay horizon** a
 estimator decision with confidence bands and refusal threshold**, both in the phase report and an
 ADR. No production code required.
 
-### S2 — Registration and resistance master (Wave 1, lane B — first PR)
+### S2 — Registration and resistance master (Wave 1, lane B — first PR) — 🟩 **SHIPPED 2026-07-26**
+
+> **Gate outcome — read before building on it.** Shipped in [#522](https://github.com/russellmoss/wine-inventory/pull/522)
+> + [#525](https://github.com/russellmoss/wine-inventory/pull/525) (`147b75c3`, live in prod, dark).
+> Every criterion below **met except one**, and the exception is deliberate:
+> **❌ `Zampro → 45, 40` was NOT met — it resolves `GAP`.** The free extension sources do not code
+> dimethomorph or ametoctradin; this is exactly the miss plan 086's own de-risk measured. It is
+> **visible in the coverage report, not silently wrong**, which is the behaviour the gate actually
+> protects. Closing it needs the Cornell guide (a purchase) — decide against
+> `biologicalsShareOfGap: 59`. Also note the scale moved: **2,420** active grape registrations and
+> **361** AIs (not 2,509 / 338) between the 07-15 and 07-21 dumps — churn, not a shape change.
+> Full record: [S2-report](phases/S2-report.md) · [S2 QA](qa/S2-qa-report.md).
 
 **Read [plan 086](../plans/2026-07-20-086-feat-us-pesticide-registration-plan.md) before planning.**
 Scope: its Units 1–3 (APPRIL parse → schema → idempotent ingest), 5 (CA DPR state layer), 6
