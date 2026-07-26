@@ -19,6 +19,7 @@ import { ingestVineyardWeatherCore, type IngestResult } from "./ingest-core";
 import { resolveVineyardCentroid } from "./location";
 import { fetchAcisStationSeries, listAcisStations, type AcisStation } from "./providers/rcc-acis";
 import { seasonWindowFor, seasonYearFor } from "./season-core";
+import { zonedClock } from "@/lib/work-orders/due-at";
 import { addDaysIso } from "./obs-time-core";
 import { ROLLING_INGEST_DAYS } from "./backfill-window-core";
 import { resolveSiteTimeZone, siteTodayIso } from "./site-time-core";
@@ -285,7 +286,14 @@ export async function loadVineyardForecastHours(
   vineyardId: string,
   targetDate: string,
 ): Promise<
-  | { ok: true; day: ForecastHourlyDay | null; unitSystem: string; thresholds: { frostWarnC: number; hardFreezeC: number; heatWatchC: number; extremeHeatC: number } }
+  | {
+      ok: true;
+      day: ForecastHourlyDay | null;
+      unitSystem: string;
+      thresholds: { frostWarnC: number; hardFreezeC: number; heatWatchC: number; extremeHeatC: number };
+      /** Site-local current hour when targetDate IS today (drives the chart's now-marker); else null. */
+      nowLocalHour: number | null;
+    }
   | { ok: false; error: string }
 > {
   try {
@@ -293,8 +301,12 @@ export async function loadVineyardForecastHours(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return { ok: false, error: "Invalid date." };
     const configRow = await prisma.vineyardWeatherConfig.findFirst({
       where: { vineyardId },
-      select: { unitSystem: true, frostWarnC: true, hardFreezeC: true, heatWatchC: true, extremeHeatC: true },
+      select: { unitSystem: true, timeZone: true, frostWarnC: true, hardFreezeC: true, heatWatchC: true, extremeHeatC: true },
     });
+    // The now-marker: only meaningful when the modal's day IS the site-local today.
+    const wineryTz = await getWineryTimeZone().catch(() => null);
+    const tz = resolveSiteTimeZone(configRow?.timeZone, wineryTz);
+    const nowLocalHour = siteTodayIso(tz) === targetDate ? Number(zonedClock(new Date(), tz).slice(0, 2)) : null;
     const thresholds = {
       frostWarnC: dec(configRow?.frostWarnC) ?? 0,
       hardFreezeC: dec(configRow?.hardFreezeC) ?? -2,
@@ -320,7 +332,7 @@ export async function loadVineyardForecastHours(
       })),
       { targetDate, frostWarnC: thresholds.frostWarnC, heatWatchC: thresholds.heatWatchC },
     );
-    return { ok: true, day, unitSystem: configRow?.unitSystem ?? "METRIC", thresholds };
+    return { ok: true, day, unitSystem: configRow?.unitSystem ?? "METRIC", thresholds, nowLocalHour };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

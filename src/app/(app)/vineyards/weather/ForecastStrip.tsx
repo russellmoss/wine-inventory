@@ -17,6 +17,7 @@ import type { NwsActiveAlert } from "@/lib/weather/providers/nws-alerts";
 import { tierLabel } from "@/lib/weather/alert-core";
 import { formatPrecip, formatTemp, gddCToF, normalizeUnitSystem } from "@/lib/weather/units-core";
 import { ConditionIcon, conditionLabel } from "./ConditionIcon";
+import { ForecastDayModal } from "./ForecastDayModal";
 import type { ConditionCode } from "@/lib/weather/providers/forecast-types";
 
 const label: React.CSSProperties = { fontSize: 12, textTransform: "uppercase", letterSpacing: 0.6, color: "var(--text-muted)" };
@@ -42,6 +43,8 @@ export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
   const [alerts, setAlerts] = React.useState<NwsActiveAlert[]>([]);
   const [err, setErr] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
+  // Plan 097 U5 — the tapped day whose hourly modal is open (null = closed).
+  const [selectedDate, setSelectedDate] = React.useState<string | null>(null);
   const tried = React.useRef<Set<string>>(new Set());
 
   React.useEffect(() => {
@@ -124,8 +127,11 @@ export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
         }}
       >
         {view.days.map((d) => (
-          <div
+          <button
             key={d.targetDate}
+            type="button"
+            onClick={() => setSelectedDate(d.targetDate)}
+            aria-label={`Hour-by-hour detail for ${d.targetDate}`}
             style={{
               border: "1px solid var(--border-default)",
               borderRadius: 10,
@@ -137,8 +143,11 @@ export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
               textAlign: "center",
               scrollSnapAlign: "start",
               opacity: d.reducedConfidence ? 0.62 : 1,
+              cursor: "pointer",
+              font: "inherit",
+              color: "inherit",
             }}
-            title={conditionLabel(d.conditionCode as ConditionCode)}
+            title={`${conditionLabel(d.conditionCode as ConditionCode)} — tap for hour-by-hour`}
           >
             <div style={{ fontSize: 12.5, fontWeight: 600 }}>{dayName(d.targetDate, todayIso)}</div>
             <div style={{ ...label, textTransform: "none", fontSize: 11 }}>{shortDate(d.targetDate)}</div>
@@ -157,9 +166,20 @@ export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
               </div>
             )}
             {d.reducedConfidence && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>lower confidence</div>}
-          </div>
+          </button>
         ))}
       </div>
+
+      {/* Plan 097 U5 — the hourly day-detail modal. */}
+      {selectedDate && (
+        <ForecastDayModal
+          vineyardId={vineyardId}
+          targetDate={selectedDate}
+          providerName={view.providerKey === "nws" ? "US National Weather Service" : "Open-Meteo"}
+          reducedConfidence={view.days.find((d) => d.targetDate === selectedDate)?.reducedConfidence ?? false}
+          onClose={() => setSelectedDate(null)}
+        />
+      )}
       <div style={{ ...label, textTransform: "none", display: "flex", gap: 12, flexWrap: "wrap" }}>
         {view.spread && (
           <span>
