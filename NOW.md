@@ -47,7 +47,8 @@ legend on `/vineyards/maps`**. Live browser QA: toggling painted **18 soil polyg
 Water in a distinct blue, legend "39% Mardin / 26% Volusia / …". `verify:soil` 24/24 (+geometry stored, EMPTY
 dropped); 30 overlay unit tests. ⚠️ QA fixture "QA-Soil Overlay Vineyard" left in Demo for viewing — clean up after.
 
-▶️ **NEXT:** `/review` + `/ship` (PR to protected main; MERGE main first — P3 shipped #498). ⚠️ Shares `prisma/schema.prisma` + the shared prisma CLIENT
+▶️ **PR OPEN → [#502](https://github.com/russellmoss/wine-inventory/pull/502)** (soil docs + map overlay). Merged `main` (P3 #498) in — additive conflicts (schema/goldens/isolation fixtures) kept both sides. Post-merge gates all green (vitest **4059/0**, verify:soil/tenant-isolation/invariants/ai-native). Awaiting CI + review.
+⚠️ Shares `prisma/schema.prisma` + the shared prisma CLIENT
 with the parallel P3/P8 lanes — **`prisma generate` gets clobbered by their generates; regenerate right before any
 tsc/verify/dev-server run.** P3 display migrations (`..._ndvi_display_*`) are already in prod but not on this branch (fine).
 
