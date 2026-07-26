@@ -73,7 +73,7 @@ export function WeatherCard({
         setBusy(false);
         if (!res.ok) setErr(res.error);
         else router.refresh();
-      } else if (summary && !summary.normals.hasHistory && !backfilling && summary.coverageState === "US_HIGH_RES") {
+      } else if (summary && !summary.normals.hasHistory && !backfilling && summary.coverageState !== "UNAVAILABLE") {
         const k = `h:${selectedId}`;
         if (autoTried.current.has(k)) return;
         autoTried.current.add(k);

@@ -1,18 +1,20 @@
 import "server-only";
 
-// VI-P8b — backfill many years of historical gridMET (via ACIS GridData grid 21, keyless, back to 1979) so
-// the card can show the Winkler LONG-TERM normal + the 10/20-yr average GDD curves. One ACIS request returns
-// the whole multi-year range; we keep only the Apr–Oct (NH) growing-season days and bulk-upsert them as
-// gridMET FINAL rows. No config change (the primary source is unaffected) and no live-provider quota churn.
+// VI-P8b — backfill many years of historical daily weather so the card can show the Winkler LONG-TERM normal
+// + the 10/20-yr average GDD curves. In CONUS this is gridMET (4 km, via ACIS GridData grid 21, keyless);
+// OUTSIDE the US it's NASA POWER (global, ~50 km, keyless, 1981–present) — so a site like Bhutan still gets a
+// long-term normal + graph. One request returns the whole multi-year range; we keep only the growing-season
+// days and bulk-upsert them as FINAL rows under the chosen provider's key. No config change, no quota churn.
 
 import { Prisma } from "@prisma/client";
 import { requireTenantId } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { gridmetProvider } from "./providers/gridmet";
+import { nasaPowerProvider } from "./providers/nasa-power";
 import { mapSeriesToLocalDaily } from "./obs-time-core";
 import { hemisphereFor } from "./season-core";
 
-/** Fetch + store `years` of historical gridMET growing-season days for a vineyard. Returns rows written. */
+/** Fetch + store `years` of historical growing-season days for a vineyard (gridMET in US, else NASA POWER). */
 export async function backfillVineyardGridmetHistory(
   vineyardId: string,
   lat: number,
@@ -20,10 +22,8 @@ export async function backfillVineyardGridmetHistory(
   years: number,
   currentYear: number,
 ): Promise<{ rowsWritten: number; fromYear: number; toYear: number }> {
-  if (gridmetProvider.coverageFor(lat, lon) === "UNAVAILABLE") {
-    // Non-CONUS: gridMET history isn't available; caller falls back to whatever live history exists.
-    return { rowsWritten: 0, fromYear: currentYear, toYear: currentYear };
-  }
+  // gridMET (4 km) where it covers; NASA POWER (global) everywhere else — the latter never returns UNAVAILABLE.
+  const provider = gridmetProvider.coverageFor(lat, lon) !== "UNAVAILABLE" ? gridmetProvider : nasaPowerProvider;
   const nh = hemisphereFor(lat) === "N";
   const fromYear = currentYear - years;
   const toYear = currentYear - 1; // complete past seasons only
@@ -31,7 +31,7 @@ export async function backfillVineyardGridmetHistory(
   const startIso = `${fromYear}-01-01`;
   const endIso = `${toYear + (nh ? 0 : 1)}-12-31`;
 
-  const series = await gridmetProvider.fetchDailySeries(lat, lon, startIso, endIso);
+  const series = await provider.fetchDailySeries(lat, lon, startIso, endIso);
   // Keep only growing-season months (NH Apr–Oct = 4..10; SH Oct–Apr = 10,11,12,1,2,3,4).
   const inSeasonMonth = (m: number) => (nh ? m >= 4 && m <= 10 : m >= 10 || m <= 4);
   const seasonRecords = series.records.filter((r) => inSeasonMonth(Number(r.sourceDate.slice(5, 7))));
@@ -39,7 +39,7 @@ export async function backfillVineyardGridmetHistory(
 
   const tenantId = requireTenantId();
   const provenanceBase = JSON.stringify({
-    providerKey: "gridmet",
+    providerKey: provider.key,
     obsConvention: series.obsConvention,
     resolutionM: series.resolutionM,
     attribution: series.attribution,
@@ -50,7 +50,7 @@ export async function backfillVineyardGridmetHistory(
   for (const r of local) {
     if (r.tmaxC === null && r.tminC === null && r.precipMm === null) continue;
     tuples.push(
-      Prisma.sql`(gen_random_uuid()::text, ${tenantId}, ${vineyardId}, ${r.localDate}::date, 'gridmet',
+      Prisma.sql`(gen_random_uuid()::text, ${tenantId}, ${vineyardId}, ${r.localDate}::date, ${provider.key},
         ${r.tmaxC}::decimal, ${r.tminC}::decimal, ${r.precipMm}::decimal, null::decimal, null::decimal,
         'FINAL', ${provenanceBase}::jsonb, now(), now())`,
     );

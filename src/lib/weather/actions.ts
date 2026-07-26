@@ -201,7 +201,7 @@ export async function backfillVineyardWeatherHistory(
       const { backfillVineyardGridmetHistory } = await import("./backfill-core");
       const res = await backfillVineyardGridmetHistory(vineyardId, centroid.lat, centroid.lon, years, currentYear);
       if (res.rowsWritten === 0) {
-        return { ok: false as const, error: "No historical gridMET available here (gridMET is CONUS-only). The long-term Winkler needs a US site." };
+        return { ok: false as const, error: "No historical weather available for this location yet." };
       }
       revalidatePath("/vineyards/weather");
       return { ok: true as const, rows: res.rowsWritten, fromYear: res.fromYear, toYear: res.toYear };
