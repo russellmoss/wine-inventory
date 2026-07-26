@@ -22,7 +22,15 @@ All 9 units committed (8 feat commits + planning). Migration `20260725140000_soi
 100% covered, survey NY123; DB read-back matched (9 comps, geodesic areaSqM 912,832). Plan:
 [phase-4-soil-documentation-plan.md](docs/GIS/phases/phase-4-soil-documentation-plan.md) · council (11 findings folded):
 [phase-4-council-feedback.md](docs/GIS/phases/phase-4-council-feedback.md).
-▶️ **NEXT:** `/review` + `/ship` (PR to protected main). ⚠️ Shares `prisma/schema.prisma` + the shared prisma CLIENT
+✅ **SOIL MAP OVERLAY ADDED (2026-07-26)** — the deferred Wave-4 item, de-risked by a live geom spike (clipped
+`STIntersection.Reduce.STAsText` = ~10 KB/block). Best-effort 3rd SDA call stores block-clipped display
+geometry (`displayGeometry` column, migration `20260726120000`); pure WKT→GeoJSON + per-map-unit **colored
+vector overlays via P1's `overlays` prop (ZERO SatelliteMap-internals change)**; **"Soil layer" toggle + color
+legend on `/vineyards/maps`**. Live browser QA: toggling painted **18 soil polygons inside the block** (paths 1→19),
+Water in a distinct blue, legend "39% Mardin / 26% Volusia / …". `verify:soil` 24/24 (+geometry stored, EMPTY
+dropped); 30 overlay unit tests. ⚠️ QA fixture "QA-Soil Overlay Vineyard" left in Demo for viewing — clean up after.
+
+▶️ **NEXT:** `/review` + `/ship` (PR to protected main; MERGE main first — P3 shipped #498). ⚠️ Shares `prisma/schema.prisma` + the shared prisma CLIENT
 with the parallel P3/P8 lanes — **`prisma generate` gets clobbered by their generates; regenerate right before any
 tsc/verify/dev-server run.** P3 display migrations (`..._ndvi_display_*`) are already in prod but not on this branch (fine).
 
