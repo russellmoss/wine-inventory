@@ -37,6 +37,22 @@ function carryForward(prev: BlockStatus): BlockStatus {
     diseasePestSpotted: false,
     diseaseDescription: null,
     photoUrls: [],
+    // ── S4 ──────────────────────────────────────────────────────────────────────────────────
+    // A stale shoot length fabricates ZERO growth since last week, which reads as a canopy still
+    // fully covered by the last spray. That is the dangerous direction, so length never carries.
+    shootLengthCm: null,
+    shootLengthBand: null,
+    // Hedging is an EVENT, not a standing state (D5 / council C7). Hedging breaks apical
+    // dominance and triggers a flush of LATERAL growth — it is followed by MORE growth, not
+    // less. Carrying it forward would pin the growth model at `unknown` for the rest of the
+    // season with nothing able to clear it.
+    hedgedThisWeek: null,
+    // A genuine standing condition until someone reverses it — the one S4 field that DOES carry.
+    fruitZoneLeafRemoval: prev.fruitZoneLeafRemoval,
+    // Point-in-time scouting, same rule as diseasePestSpotted. Carrying last week's "NONE"
+    // forward would assert that somebody walked the fruit zone this week when nobody did.
+    clusterDamage: null,
+    vinegarFlyPressure: null,
   };
 }
 

@@ -5,6 +5,7 @@ import { Card, Button, Input, Checkbox, Badge } from "@/components/ui";
 import {
   DEFAULT_HEALTHY_BLOCK_STATUS,
   EMPTY_BLOCK_STATUS,
+  isUntouchedBlockStatus,
   type BlockStatus,
   type InputApplication,
   type CreateFieldNoteInput,
@@ -286,9 +287,10 @@ export function FieldNoteForm({
   function markRemainingHealthy() {
     const untouched = blockIds.filter((id) => !touchedRef.current.has(id));
     const wouldOverwrite = untouched.filter((id) => {
-      const s = statuses[id];
-      // an "edited" untouched block: differs from the empty baseline (e.g. carried-forward)
-      return s && JSON.stringify(s) !== JSON.stringify(EMPTY_BLOCK_STATUS);
+      // an "edited" untouched block: differs from the empty baseline (e.g. carried-forward).
+      // Key-wise, not JSON.stringify — adding a BlockStatus key changed the serialized string
+      // and silently made EVERY block look edited, so the healthy stamp stopped landing.
+      return statuses[id] && !isUntouchedBlockStatus(statuses[id]);
     });
     if (wouldOverwrite.length > 0) {
       const ok = window.confirm(
