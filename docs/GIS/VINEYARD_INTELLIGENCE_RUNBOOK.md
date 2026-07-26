@@ -397,19 +397,27 @@ done until its slice of the relevant §22 narrative can be demonstrated live on 
 | Phase | Wave/Lane | Status | Plan | PRs | Report |
 | --- | --- | --- | --- | --- | --- |
 | P0 spike | 0 | 🟩 shipped | [094](../plans/2026-07-24-094-spike-vineyard-intelligence-p0-plan.md) | `spike/vi-p0-no-worker` | [phase-0](phases/phase-0-report.md) |
-| P1 planting geometry | 1A | 🟪 QA (PR green, awaiting merge) | [phase-1-plan](phases/phase-1-planting-geometry-plan.md) | [#494](https://github.com/russellmoss/wine-inventory/pull/494) | [phase-1](phases/phase-1-report.md) |
-| P4 soil cards | 1B | ⬜ not started | — | — | — |
-| POF offline foundation | 1C | ⬜ not started | — | — | — |
-| P2 NDVI core | 2 | 🟦 planning | [phase-2-plan](phases/phase-2-ndvi-core-plan.md) | — | — |
+| P1 planting geometry | 1A | 🟩 shipped | [phase-1-plan](phases/phase-1-planting-geometry-plan.md) | [#494](https://github.com/russellmoss/wine-inventory/pull/494) | [phase-1](phases/phase-1-report.md) |
+| P4 soil cards | 1C | 🟩 shipped | — | [#502](https://github.com/russellmoss/wine-inventory/pull/502) | — |
+| POF offline foundation | 1 · POF | ⬜ not started | — | — | — |
+| P2 NDVI core | 2 | 🟩 shipped | [phase-2-plan](phases/phase-2-ndvi-core-plan.md) | [#495](https://github.com/russellmoss/wine-inventory/pull/495) · [#496](https://github.com/russellmoss/wine-inventory/pull/496) | [phase-2](phases/phase-2-report.md) |
 | P5 observations + plans | 2 | ⬜ not started | — | — | — |
-| P3 NDVI display | 3 | ⬜ not started | — | — | — |
+| P3 NDVI display | 3 | 🟩 shipped | [phase-3-plan](phases/phase-3-ndvi-display-plan.md) | [#498](https://github.com/russellmoss/wine-inventory/pull/498) · [#499](https://github.com/russellmoss/wine-inventory/pull/499) | [phase-3](phases/phase-3-report.md) |
 | P6 field collection | 3 | ⬜ not started | — | — | — |
 | P7 derived analysis | 4 | ⬜ not started | — | — | — |
-| P8 weather climate spine | 5 | 🟦 planning | [phase-8-plan](phases/phase-8-weather-climate-spine-plan.md) | — | — |
+| P8 weather climate spine | 5 | 🟩 shipped | [phase-8-plan](phases/phase-8-weather-climate-spine-plan.md) | [#500](https://github.com/russellmoss/wine-inventory/pull/500) · #501 · #503–#511 | — |
 | P9 weather disease | 5 | ⬜ not started | — | — | — |
 
 Statuses: ⬜ not started → 🟦 planning → 🟨 building → 🟪 QA → 🟩 shipped.
 Update this table at every transition; link the plan doc, PR(s), and phase report.
+
+> **As of 2026-07-26:** Release 1 (P1 geometry + P2/P3 NDVI + P4 soil) and Release 4A (P8 weather) are
+> shipped + live. Genuinely-next unbuilt work: **P5 observations/sampling** (Wave 2) and **P9 weather
+> disease** (needs P8). **Parked landmine:** a `feat/vi-p4-soil` continuation branch (Map Explorer fold —
+> merges the two map pages, renames "Satellite NDVI" → "Map Explorer", soil-as-a-toggleable-NDVI-layer,
+> auto-pull soil sweep) is UNMERGED and STALE (predates the P3 #498/#499 fixes). Rebase on main before it
+> lands or it will revert the P3 prod-client fix + block-clip. P4's core gate (#502) is shipped regardless.
+> Doc gap: P4 (soil) and P8 (weather) shipped without a `phases/*-report.md` — worth backfilling.
 
 ## 8. Phase reports and decisions
 
