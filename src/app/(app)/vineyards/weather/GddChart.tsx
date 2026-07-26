@@ -8,6 +8,7 @@
 
 import React from "react";
 import type { NamedCurve } from "@/lib/weather/normals-core";
+import { gddFToC } from "@/lib/weather/units-core";
 
 const W = 680;
 const H = 360;
@@ -169,7 +170,7 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
           <g key={v}>
             <line x1={PAD_L} y1={yOf(v)} x2={W - PAD_R} y2={yOf(v)} stroke="var(--border-subtle)" strokeWidth={1} />
             <text x={PAD_L - 7} y={yOf(v) + 3} textAnchor="end" fontSize={10} fill="var(--text-muted)">{v.toLocaleString()}</text>
-            <text x={W - PAD_R + 7} y={yOf(v) + 3} textAnchor="start" fontSize={10} fill="var(--text-muted)">{Math.round(v / 1.8).toLocaleString()}</text>
+            <text x={W - PAD_R + 7} y={yOf(v) + 3} textAnchor="start" fontSize={10} fill="var(--text-muted)">{Math.round(gddFToC(v)).toLocaleString()}</text>
           </g>
         ))}
         {visibleMonths.map((m) => (
@@ -204,7 +205,7 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
             {readout.map(({ s, v }) => (
               <span key={s.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: s.emphasis ? 600 : 400, color: "var(--text-primary)" }}>
                 <span style={{ display: "inline-block", width: 14, height: s.emphasis ? 4 : 3, background: s.dash ? undefined : s.color, borderTop: s.dash ? `2px dashed ${s.color}` : undefined }} />
-                {s.label}: <strong style={{ fontVariantNumeric: "tabular-nums" }}>{(v as number).toLocaleString()}</strong>&nbsp;°F ({Math.round((v as number) / 1.8).toLocaleString()}&nbsp;°C)
+                {s.label}: <strong style={{ fontVariantNumeric: "tabular-nums" }}>{(v as number).toLocaleString()}</strong>&nbsp;°F ({Math.round(gddFToC(v as number)).toLocaleString()}&nbsp;°C)
               </span>
             ))}
           </div>

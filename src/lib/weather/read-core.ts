@@ -14,6 +14,7 @@ import { rainfall, type RainfallResult } from "./rainfall-core";
 import { filterToSeason, seasonCompleteness, seasonWindowFor, seasonYearFor, hemisphereFor } from "./season-core";
 import { computeSpreadCore, effectivePrimary, gapFillCore, type Spread, type WeatherConfigLike } from "./source-selection-core";
 import { comparisonSeries, gddGraphCurves, perYearSeasonGdd, winklerNormal, type CurvePoint, type NamedCurve, type WinklerNormal, type YearGdd } from "./normals-core";
+import { normalizeUnitSystem } from "./units-core";
 import type { ProviderKey } from "./providers/types";
 
 /** A stored daily row (Prisma Decimals already coerced to number|null). */
@@ -36,6 +37,8 @@ export interface ClimateConfig extends WeatherConfigLike {
   siteElevationM: number | null;
   attribution: string | null;
   lastRefreshAt: string | null;
+  /** Display units ("METRIC" | "IMPERIAL") — plan 096 U3; storage stays metric, units-core converts. */
+  unitSystem?: string | null;
 }
 
 export interface PerSourceAggregate {
@@ -58,6 +61,8 @@ export interface ClimateSummary {
   siteElevationM: number | null;
   attribution: string | null;
   lastRefreshAt: string | null;
+  /** The vineyard's display unit system (plan 096 U3) — every rendered number goes through units-core with this. */
+  unitSystem: "METRIC" | "IMPERIAL";
   // Headline — the PRIMARY's numbers (R14).
   headline: {
     seasonGddC: number;
@@ -221,6 +226,7 @@ export function composeClimateSummaryCore(input: {
     siteElevationM: config.siteElevationM,
     attribution: config.attribution,
     lastRefreshAt: config.lastRefreshAt,
+    unitSystem: normalizeUnitSystem(config.unitSystem),
     headline: {
       seasonGddC: headlineGdd.gddTotal,
       gddCompletenessPct: Math.round(headlineComp.fraction * 100),

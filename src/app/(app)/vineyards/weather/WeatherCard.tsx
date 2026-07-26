@@ -8,12 +8,10 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ClimateSummary } from "@/lib/weather/read-core";
 import { coverageLabel, providerLabel, trustLabel } from "@/lib/weather/card-core";
-import { backfillVineyardWeatherHistory, listNearbyStations, refreshVineyardWeatherCurrentSeason, setVineyardPrimarySource, setVineyardStation, type StationOption } from "@/lib/weather/actions";
-import { C_TO_F_GDD } from "@/lib/weather/normals-core";
+import { backfillVineyardWeatherHistory, listNearbyStations, refreshVineyardWeatherCurrentSeason, setVineyardPrimarySource, setVineyardStation, setVineyardUnitSystem, type StationOption } from "@/lib/weather/actions";
+import { formatGdd, formatPrecip, formatTemp, gddCToF, gddFToC, type UnitSystem } from "@/lib/weather/units-core";
 import { StationMapClient } from "./StationMap.client";
 import { GddChart } from "./GddChart";
-
-const gddF = (gddC: number) => Math.round(gddC * C_TO_F_GDD);
 
 type VineyardOpt = { id: string; name: string };
 
@@ -147,6 +145,16 @@ export function WeatherCard({
   }
 
   const h = summary?.headline;
+  // Display units (plan 096 U3) — every number below renders through units-core with this.
+  const unit: UnitSystem = summary?.unitSystem ?? "METRIC";
+
+  async function changeUnits(next: UnitSystem) {
+    if (!selectedId || next === unit) return;
+    setErr(null);
+    const res = await setVineyardUnitSystem(selectedId, next);
+    if (!res.ok) setErr(res.error);
+    else router.refresh();
+  }
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -188,12 +196,15 @@ export function WeatherCard({
         </div>
       ) : (
         <>
-          {/* Headline — cumulative GDD in °F (US viticulture convention), from the PRIMARY source (R14). */}
+          {/* Headline — cumulative GDD in the vineyard's display units, from the PRIMARY source (R14). */}
           <div style={{ ...card, display: "grid", gap: 10 }}>
-            <div style={label}>Season {summary.seasonYear} · Cumulative Growing Degree Days (base 50 °F, Apr 1–Oct 31)</div>
+            <div style={label}>Season {summary.seasonYear} · Cumulative Growing Degree Days ({unit === "IMPERIAL" ? "base 50 °F" : "base 10 °C"}, Apr 1–Oct 31)</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
-              <span style={big}>{gddF(h.seasonGddC).toLocaleString()}<span style={{ fontSize: 18, color: "var(--text-muted)" }}> °F-GDD</span></span>
-              <span style={{ color: "var(--text-muted)" }}>to date · {trustLabel(h.gddCompletenessPct)} confidence ({h.gddCompletenessPct}% of season) · {h.seasonGddC.toLocaleString()} °C</span>
+              <span style={big}>{formatGdd(h.seasonGddC, unit)}</span>
+              <span style={{ color: "var(--text-muted)" }}>
+                to date · {trustLabel(h.gddCompletenessPct)} confidence ({h.gddCompletenessPct}% of season) ·{" "}
+                {unit === "IMPERIAL" ? `${h.seasonGddC.toLocaleString()} °C-GDD` : `${Math.round(gddCToF(h.seasonGddC)).toLocaleString()} °F-GDD`}
+              </span>
             </div>
             {summary.normals.hasHistory ? (
               <GddChart series={summary.normals.comparison} />
@@ -221,7 +232,7 @@ export function WeatherCard({
                 return (
                   <>
                     <div style={big}>{n.region}</div>
-                    <div style={{ ...label, textTransform: "none" }}>{n.avgGddF.toLocaleString()} °F-GDD avg over {n.yearsUsed} yr</div>
+                    <div style={{ ...label, textTransform: "none" }}>{formatGdd(gddFToC(n.avgGddF), unit)} avg over {n.yearsUsed} yr</div>
                     <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                       {[10, 20].map((w) => (
                         <button
@@ -238,19 +249,19 @@ export function WeatherCard({
               })()}
             </Panel>
             <Panel title="Growing-season temp (Jones)">
-              <div style={big}>{h.gst.gstC ?? "—"}°C</div>
+              <div style={big}>{formatTemp(h.gst.gstC, unit, 1)}</div>
               <div style={{ ...label, textTransform: "none" }}>{h.gst.group ?? ""}</div>
             </Panel>
             <Panel title="Frost — vulnerable window">
               <div>{h.frost.vulnerableWindow.startIso} → {h.frost.vulnerableWindow.endIso}</div>
               <div style={{ marginTop: 4 }}>
-                <strong>{h.frost.lightCount}</strong> light (≤0 °C) · <strong>{h.frost.killingCount}</strong> killing (≤−2 °C)
+                <strong>{h.frost.lightCount}</strong> light (≤{formatTemp(0, unit)}) · <strong>{h.frost.killingCount}</strong> killing (≤{formatTemp(-2, unit)})
               </div>
               <div style={{ ...label, textTransform: "none", marginTop: 4 }}>Elevated-risk signal → check the vines. Not a damage report.</div>
             </Panel>
             <Panel title="Heat & rain">
-              <div><strong>{h.heat.daysOverByThreshold["35"]}</strong> days ≥ 35 °C</div>
-              <div style={{ marginTop: 4 }}><strong>{h.rainfall.totalMm}</strong> mm rain</div>
+              <div><strong>{h.heat.daysOverByThreshold["35"]}</strong> days ≥ {formatTemp(35, unit)}</div>
+              <div style={{ marginTop: 4 }}><strong>{formatPrecip(h.rainfall.totalMm, unit)}</strong> rain</div>
               <div style={{ ...label, textTransform: "none", marginTop: 4 }}>Regional Rainfall Estimate (≈4 km average, not your rain gauge).</div>
             </Panel>
           </div>
@@ -284,6 +295,19 @@ export function WeatherCard({
                 {summary.primaryProviderOverride
                   ? `You chose ${providerLabel(summary.primaryProviderOverride, summary.station.name)} — the headline + assistant answer in this source.`
                   : `Auto-selected the nearest quality source. The headline + assistant answer in it; compare the others below.`}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={label}>Units</span>
+                {(["IMPERIAL", "METRIC"] as const).map((u) => (
+                  <button
+                    key={u}
+                    onClick={() => changeUnits(u)}
+                    disabled={busy}
+                    style={{ padding: "4px 10px", borderRadius: 6, fontSize: 13, cursor: "pointer", border: "1px solid var(--border-default)", background: unit === u ? "var(--accent)" : "transparent", color: unit === u ? "var(--accent-on)" : "var(--text-secondary)" }}
+                  >
+                    {u === "IMPERIAL" ? "°F / in" : "°C / mm"}
+                  </button>
+                ))}
               </div>
               <div>Coverage: {coverageLabel(summary.coverageState)}</div>
               {summary.station.name && (

@@ -150,6 +150,7 @@ export async function loadVineyardClimateSummary(vineyardId: string, today?: str
     siteElevationM: dec(configRow.siteElevationM),
     attribution: configRow.attribution,
     lastRefreshAt: configRow.lastRefreshAt ? configRow.lastRefreshAt.toISOString() : null,
+    unitSystem: configRow.unitSystem,
   };
   // Site-local today (config row is already in hand — no second lookup).
   const wineryTz = await getWineryTimeZone().catch(() => null);
@@ -187,6 +188,24 @@ export async function setVineyardPrimarySource(
     where: { id: config.id },
     data: { primaryProviderOverride: providerKey, ...(clearStation ? { stationOverrideId: null } : {}) },
   });
+  revalidatePath("/vineyards/weather");
+  return { ok: true };
+}
+
+/**
+ * Set the vineyard's display unit system (plan 096 U3). Storage stays metric; this only changes what
+ * the card/assistant RENDER. Defaults at config-create (IMPERIAL for US-forecast coverage, else
+ * METRIC); this is the grower's override.
+ */
+export async function setVineyardUnitSystem(
+  vineyardId: string,
+  unitSystem: "METRIC" | "IMPERIAL",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireReadyUser();
+  if (unitSystem !== "METRIC" && unitSystem !== "IMPERIAL") return { ok: false, error: "Unknown unit system." };
+  const config = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { id: true } });
+  if (!config) return { ok: false, error: "This vineyard has no weather set up yet — refresh its weather first." };
+  await prisma.vineyardWeatherConfig.update({ where: { id: config.id }, data: { unitSystem } });
   revalidatePath("/vineyards/weather");
   return { ok: true };
 }

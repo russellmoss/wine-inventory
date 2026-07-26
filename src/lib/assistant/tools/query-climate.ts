@@ -4,6 +4,7 @@ import { resolveVineyards } from "../scope";
 import { prisma } from "@/lib/prisma";
 import { getWineryTimeZone } from "@/lib/settings/data";
 import { resolveSiteTimeZone, siteTodayIso } from "@/lib/weather/site-time-core";
+import { gddCToF } from "@/lib/weather/units-core";
 import { composeClimateSummaryCore, type DailyRow, type ClimateConfig } from "@/lib/weather/read-core";
 import { resolveVineyardCentroid } from "@/lib/weather/location";
 import { addDaysIso } from "@/lib/weather/obs-time-core";
@@ -84,6 +85,7 @@ export const queryClimateTool: AssistantTool = {
         siteElevationM: dec(configRow.siteElevationM),
         attribution: configRow.attribution,
         lastRefreshAt: configRow.lastRefreshAt ? configRow.lastRefreshAt.toISOString() : null,
+        unitSystem: configRow.unitSystem,
       };
       const s = composeClimateSummaryCore({ vineyardId: v.id, rows: dailyRows, config, latitude: centroid.lat, today: todayLocal });
 
@@ -111,7 +113,7 @@ export const queryClimateTool: AssistantTool = {
           if (!n) return { region: null, note: "No long-term history loaded yet — Winkler needs the multi-year full-season average. Load history on the Weather & climate page." };
           return { region: n.region, basis: `${n.yearsUsed}-yr average`, avgGddF: n.avgGddF };
         })(),
-        gddThisYearVsAverageF: s.normals.graph.avg20.length ? { thisYearToDateF: Math.round(s.headline.seasonGddC * 1.8) } : undefined,
+        gddThisYearVsAverageF: s.normals.graph.avg20.length ? { thisYearToDateF: Math.round(gddCToF(s.headline.seasonGddC)) } : undefined,
         gst: { degC: s.headline.gst.gstC, group: s.headline.gst.group },
         frostLastNight,
         frostSeason: { vulnerableWindow: s.headline.frost.vulnerableWindow, lightNights: s.headline.frost.lightCount, killingNights: s.headline.frost.killingCount, framing: s.honesty.frostFraming },
