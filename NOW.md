@@ -7,6 +7,17 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**PLAN 097 — HOURLY forecast modal: SHIPPED + LIVE ([#520](https://github.com/russellmoss/wine-inventory/pull/520) → `4bae9ab6`, deploy success, 2026-07-26).**
+Tap a day card → modal graphing that day's hourly temp line + rain bars (NATIVE interval width —
+OM per-hour, NWS 3/6h QPF buckets), frost/heat threshold reference lines (crossing hour visible +
+in words: "reaches 95 °F around 4 PM"), site-local hours, now-marker, °F/°C per vineyard.
+`vineyard_forecast_hourly` (isolation 148 tables) replaced in the same ingest tx; assistant
+answers "what time will it freeze tonight?" (crossingTimes). ⚠️ **The modal SELF-HEALS missing
+hourly rows** (refresh-once-on-open — Russell's live find on Stoney Hill; a fresh daily forecast
+never trips the on-view refresh). Plan `docs/plans/2026-07-26-097-…` (completed). Live proofs:
+Madera "reaches 95 °F ~4 PM"; Stoney Hill 1.66 in incl. a real past-midnight bucket; Paro monsoon
+rain 13:00–20:00.
+
 **PLAN 096 — Weather forecast + rainfall time-series: ALL 5 PHASES SHIPPED + LIVE IN PROD (2026-07-26, deploy `bcd70e29` success).**
 PRs [#514](https://github.com/russellmoss/wine-inventory/pull/514) (P0 foundations) ·
 [#515](https://github.com/russellmoss/wine-inventory/pull/515) (P1 rainfall) ·
