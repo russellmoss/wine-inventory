@@ -55,17 +55,23 @@ export async function ingestVineyardForecastCore(input: ForecastIngestInput, dep
   const covering = forecastProvidersForLocation(input.lat, input.lon).map((p) => p.key);
 
   // ── OUTSIDE any tx (R8): every covering provider; one failure never blocks the others ──
+  // U24 observability: one structured line per attempt outcome (the inbox.emit `evt:` idiom — the
+  // repo has no logger module; don't invent one). A silently failing forecast is a user-visible
+  // blank strip, so failures must be greppable in the platform logs, not just in lastError.
   const succeeded: Array<ForecastSeries & { grid?: NwsGrid }> = [];
   const providersFailed: Array<{ provider: ForecastProviderKey; error: string }> = [];
   for (const key of covering) {
+    const t0 = Date.now();
     try {
       const series = await fetchSeries(key, input);
       if (series.records.length > 0) succeeded.push(series);
       await recordWeatherUsage(key, { requests: 1 }, now).catch(() => {});
+      console.info(JSON.stringify({ evt: "weather.forecast.success", provider: key, vineyardId: input.vineyardId, days: series.records.length, ms: Date.now() - t0 }));
     } catch (e) {
       const msg = e instanceof ProviderFetchError ? e.message : (e as Error).message;
       providersFailed.push({ provider: key, error: msg });
       await recordWeatherUsage(key, { requests: 1, error: msg }, now).catch(() => {});
+      console.info(JSON.stringify({ evt: "weather.forecast.failure", provider: key, vineyardId: input.vineyardId, error: msg.slice(0, 300), ms: Date.now() - t0 }));
     }
   }
   if (succeeded.length === 0) {

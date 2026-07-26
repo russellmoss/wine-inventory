@@ -10,7 +10,7 @@
 
 import { OPEN_METEO_API_KEY, OPEN_METEO_BASE_URL } from "../config";
 import { conditionFromWmo } from "../condition-core";
-import { fetchJson } from "./fetch-util";
+import { fetchJson, fetchJsonRetry } from "./fetch-util";
 import { ProviderFetchError } from "./types";
 import type { ForecastDailyRecord, ForecastProvider, ForecastSeries } from "./forecast-types";
 
@@ -58,7 +58,7 @@ export async function fetchOpenMeteoForecast(
   args: { lat: number; lon: number; elevationM: number | null },
   deps: { fetch?: typeof fetchJson; now?: Date } = {},
 ): Promise<ForecastSeries> {
-  const f = deps.fetch ?? fetchJson;
+  const f = deps.fetch ?? fetchJsonRetry; // U24 retry on transient faults
   const params = new URLSearchParams({
     latitude: String(args.lat),
     longitude: String(args.lon),
