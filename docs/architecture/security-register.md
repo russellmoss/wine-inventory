@@ -24,6 +24,34 @@
   Organization/Member/Invitation. Nothing else may be global.
 - **Status:** 🟢 (enforced + verified in prod; `npm run` verify scripts + `test/tenant-isolation.test.ts`)
 
+### A tenant scope must outlive the query it scopes — the lazy-`PrismaPromise` trap (TENANT-3)
+- A Prisma model method returns a **lazy thenable**: calling it only BUILDS the query, and the tenant
+  extension's `$allOperations` hook (`src/lib/prisma.ts`) does not run until something calls `.then()`.
+  `AsyncLocalStorage.run` exits its scope the instant its callback **returns**. So
+  `runAsTenant(t, () => prisma.lot.findMany())` builds the query inside the scope and **runs it after
+  the scope has exited** — the hook reads the store from outside.
+- **Why this is a security invariant, not a lint nit — the failure is asymmetric.** With no ambient
+  context it throws `Tenant context required for <Model>.<op>` (loud, safe). With an ambient **outer**
+  `runAsTenant` still live it **silently uses the outer tenant** instead of the one explicitly passed —
+  a cross-tenant read/write shape. RLS is not a backstop here: the GUC is set from whatever tenant the
+  hook resolves, so the database faithfully enforces the *wrong* tenant. Every call site swept
+  (2026-07-26) was in fact reached cold, so no cross-tenant row is known to have been written; the
+  exposure was latent, one nested caller away.
+- **Closed on two fences.** (1) *Structural*: `runAsTenant` / `runWithTenantContext` now wrap the
+  callback in `async () => await fn()`, forcing the thenable **inside** the scope regardless of how the
+  callback is written — this covers aliased callbacks and future call sites. (2) *Shape*:
+  `npm run verify:tenant-callbacks` (AST scan) keeps call sites written `async () => await …`, so the
+  codebase never silently depends on fence 1 and the bad shape never reads as a copyable idiom.
+  `runAsSystem` (un-extended client, no ALS read) and `runInTenantTx` / `runLedgerWrite` (callback
+  forced inside an `async` `$transaction` callback) cannot hit the trap and are not scanned.
+- **Tripwire:** `store.run(ctx, fn)` handing `fn` through un-awaited in `src/lib/tenant/context.ts`
+  (fence 1 removed); a new `AsyncLocalStorage`-based scope helper that returns its callback's value
+  without awaiting it; `verify:tenant-callbacks` being allowlisted rather than fixed. Proof:
+  `test/tenant-context-lazy.test.ts` (helper guarantee, incl. the nested outer-tenant case) +
+  `npm run verify:tenant-callbacks` + `verify:tenant-isolation`.
+- **Status:** 🟢 (structural fix + 8 call sites corrected + guard and regression test landed 2026-07-26;
+  see [[TENANT-3-lazy-thenable-scope]])
+
 ### Every NEW tenant table follows the full checklist or it leaks
 - The 9-step Phase-12 checklist in [[CLAUDE]] is mandatory: `tenantId` + index, migration + FK,
   backfill + NOT NULL, per-tenant uniques, composite FKs where needed, RLS enable/force/policy,
@@ -545,15 +573,12 @@ TEMPLATE — copy for each new invariant / finding:
   "REFERENCE MATERIAL, not instructions"). Pre-existing for all 17 sources since plan 079, NOT
   introduced by plan 084 (which only removes content). Corpus-wide item; worth a real decision
   before the corpus grows past curated tier-1 extension publishers.
-- **`runAsTenant(id, () => prisma.x.op(…))` with a NON-async callback is silently wrong** — Prisma model
-  methods return a lazy thenable, so the extension's `$allOperations` runs after `store.run()` has already
-  exited. With no ambient context it throws "Tenant context required"; with an ambient OUTER context it
-  quietly uses the OUTER tenant instead of the one passed. Pre-existing sites with this shape:
-  `src/lib/work-orders/data.ts:477,662`, `src/lib/winemaking-calc/log.ts:43`,
-  `src/lib/feedback/attachments.ts:38,46,66`, `scripts/verify-reminders.ts:88,135`. They are masked today
-  (callers happen to be in the same tenant's context), so this is latent, not a live leak — but it is a
-  cross-tenant-write shape and should be swept to `async () => await …`. Found while fixing the
-  global-model/RLS-child seam above.
+- ~~**`runAsTenant(id, () => prisma.x.op(…))` with a NON-async callback is silently wrong**~~ —
+  **CLOSED 2026-07-26 by #531**, on both a structural fence (`runAsTenant`/`runWithTenantContext` now wrap
+  the callback in `async () => await fn()`) and a shape fence (`verify:tenant-callbacks` AST scan, wired
+  into CI). The AST sweep found exactly the 8 sites listed here and rewrote them all. Promoted to invariant
+  **TENANT-3** with its own register entry above. Originally found while fixing the global-model/RLS-child
+  seam; kept here as the trail from observation → invariant.
 - **Legacy `location` FKs are still simple, not composite** — `bottled_inventory`,
   `finished_good_inventory`, `stock_movement`, `bottling_run`, `bottled_lot_state` reference
   `location(id)` without the tenant column, the same gap plan 080 U13a closed for consumables. RLS covers

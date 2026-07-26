@@ -1012,6 +1012,35 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   ℹ️ The DB holds exactly **ONE** `user_vineyard` row (`awerth@gmail.com` → Demo Winery) — the row the
   QA report attributed to `russellmoss87@gmail.com` (id `50d97614-…`) is **not there**.
 
+- **TENANT-3 — the lazy-`PrismaPromise` tenancy bug class: SWEPT + CLOSED STRUCTURALLY**
+  (branch `claude/silly-goldwasser-d2aedf`, 2026-07-26). `runAsTenant(t, () => prisma.x.op())` with a
+  **non-async** arrow BUILDS the query inside the ALS scope and **runs it after the scope exits** —
+  the tenant extension's hook then reads the store from outside. With no ambient context it throws;
+  with an ambient **outer** `runAsTenant` live it silently uses the **outer** tenant. AST sweep found
+  exactly **8** sites (the 8 known ones — no others). Fixed on two fences: (1) *structural* —
+  `runAsTenant`/`runWithTenantContext` now wrap the callback in `async () => await fn()`, so the
+  thenable is forced inside the scope however the callback is written; (2) *shape* — all 8 call sites
+  rewritten `async () => await …`, guarded by a new AST scan `npm run verify:tenant-callbacks` (wired
+  into CI). Pinned by `test/tenant-context-lazy.test.ts` (9 cases incl. the nested outer-tenant one;
+  4 fail if the wrapper is removed). Registered as invariant **TENANT-3** + a security-register entry.
+  🔎 **`npm run verify:reminders` was RED on `main` because of this** — it died at the step-2
+  `ComplianceReport.create`. Now green end-to-end (15 assertions) for the first time; that unmasked a
+  second, unrelated bug in the script itself (the badge assertion compared a **30**-day count to a
+  **60**-day one), also fixed. Gates: tsc 0, eslint 0 errors, **vitest 4482/0**,
+  `verify:tenant-isolation` / `raw-sql` / `invariants` (45/45) / `tripwires` / `parity` / `ai-native` /
+  `work-orders` / `feedback` / `naming` all green.
+  ⚠️ **This entry's original "two premises did not hold" note is now SUPERSEDED — it was accurate
+  only against an uncommitted working tree.** `src/lib/users/vineyard-memberships.ts` and the security
+  register's "GLOBAL model may never select a relation to a tenant-scoped table" section both EXIST, on
+  branch `claude/relaxed-bardeen-5cfae9` → **[PR #530](https://github.com/russellmoss/wine-inventory/pull/530)**
+  (CI green: `check` + `tenant-isolation` + `review`), merged into this branch alongside TENANT-3.
+  ⛔ **And the LOW-MED re-grade (inherited from #529) is WRONG.** #529's `isTenantAdminLike` gate is a
+  correct, separate fix and IS what unblocked S4's QA — but it only routes **admin-like** roles away
+  from the manager branch. A genuine `role: "user"` manager still reads `vineyardIds: []`, and #529
+  does not touch `/users`, where the silent membership WIPE lives (the checkboxes render from those ids
+  and `setUserVineyards` REPLACES the set). Browser-proved side by side on `/users`, same DB + session:
+  unfixed server showed Aaron Werth `[]`, #530 showed `["WV Oregon"]` — the row that is actually in the
+  database. The two fixes are complementary; neither supersedes the other.
 - **Spray Intelligence S3a — record + planned harvest: SHIPPED (2026-07-26). PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED → WAVE 2 UNBLOCKED (S7a, S8, S6, S7b start against the merged cores); PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) browser-QA'd GREEN.**
   Seven append-only tables (DB triggers + at-most-once correction incl. VOID), facts-as-of
   snapshots (copied verbatim on correction — KD-14), knownness CHECKs (SPRAY-3), planned-harvest
@@ -1383,7 +1412,9 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 — **detour (from S4 browser QA): `AppUser.vineyardIds` was always `[]` under
+_Last updated: 2026-07-26 — **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
+inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
+added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also: **detour (from S4 browser QA): `AppUser.vineyardIds` was always `[]` under
 the `app_rls` role — FIXED, [PR #530](https://github.com/russellmoss/wine-inventory/pull/530).**
 `userSelect` selected `vineyardMemberships`, but `User` is a GLOBAL model so the tenant extension never
 sets `app.tenant_id` — the RLS-forced `user_vineyard` join fail-closed to zero rows, silently, locking
@@ -1395,13 +1426,15 @@ session). ⚠️ **S4's re-grade of this to LOW-MED / "not the RLS theory" (#529
 `isTenantAdminLike` gate is a correct and separate fix that only covers admin-like roles. ⚠️ **Russell:
 confirm whether Vercel's `DATABASE_URL` is `app_rls` or still `neondb_owner`** — that decides whether
 this was live in prod or latent (the Vercel env page is blocked to me, prod needs a login, and Neon
-telemetry is unavailable in this region). ⛔ Also learned: `runAsTenant(id, () => prisma.x.op(…))` needs
-`async () => await` (lazy thenable escapes the ALS scope); ~6 other sites still carry the broken shape.
+telemetry is unavailable in this region). The `runAsTenant` lazy-thenable trap this uncovered is now
+closed repo-wide by TENANT-3 (#531), on both a structural and a shape fence.
 Also this date: **S3a spray record SHIPPED (PR1+PR2 merged → Wave 2 unblocked; PR3 browser-QA'd GREEN —
 prefill area provenance + correction UTC→datetime-local shift). Spray Wave 1: S2 (registration +
 resistance) BUILT — #522 schema slice, #525 Units 2-11, 2,420 grape registrations + 361 AIs live with
 zero unclassified. S4 (phenology + growth) SHIPPED — #521 + #526 + #529 merged and live, 135 new tests,
-browser QA GREEN; scouting coverage 0/0 = NOT YET MEASURABLE, recorded as-is.**
+browser QA GREEN; scouting coverage 0/0 = NOT YET MEASURABLE, recorded as-is** — but note that S4's
+"NOT the RLS theory / re-graded LOW-MED" conclusion is **superseded**: #529 fixes admin-like roles only,
+#530 fixes the underlying seam, and both are needed.
 Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
