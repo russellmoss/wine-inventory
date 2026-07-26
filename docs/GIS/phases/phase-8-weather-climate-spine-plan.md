@@ -1,7 +1,7 @@
 ---
 title: Release 4A — Weather & Climate spine (Vineyard Intelligence phase P8)
 type: feat
-status: planning (council-revised + units reconciled 2026-07-25)
+status: BUILT (Units 1–11, unmerged) 2026-07-25 — see phase-8-report.md
 date: 2026-07-25
 branch: (unset — plan only)
 depth: deep

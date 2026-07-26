@@ -13,18 +13,25 @@ legend + histogram + date comparison. Renders directly from what P2 stored: the 
 `BlockSpatialMetric` per-block stats — the mask is already validated, so P3 doesn't redo it. Inherits `render.ts`/
 `color.ts`. Plan next via `/plan`. Scale-register tripwire (>2M-px streaming) is load-bearing; decoder refuses >4M px.
 
-<details><summary>✅ VI P8 — Weather & Climate spine — PLAN EXECUTION-READY (hardened 2026-07-25, not built)</summary>
+<details><summary>✅ VI P8 — Weather & Climate spine — BUILT (Units 1–11) + browser-verified 2026-07-25, UNMERGED</summary>
 
-`docs/GIS/phases/phase-8-weather-climate-spine-plan.md` (12 units) — parallel lane, deps satisfied (needs only
-`Vineyard` + centroid from P1 #494). Was already council-reviewed (Codex gpt-5.4 + Gemini 3.1 → R1–R16). This
-session **folded R1–R16 DOWN into the units** (Unit 1 no longer describes the superseded mutable-snapshot
-schema) + ran a **confirmatory council gate**, which surfaced one real fold-down hazard now fixed:
-- **Gap-fill is a READ-TIME composition, never a stored row.** Every `VineyardClimateDaily` row is strictly
-  single-provider; `gapFillCore` (U3) composes the primary series in memory and stamps `filledFromProvider`
-  on the DTO — **no `filledFromProvider` DB column** (both reviewers converged; keeps R3 purity + mirrors R10).
-- Also fixed: `effectivePrimary(config) = override ?? resolvedDefault` (one helper, ingest+read can't diverge);
-  explicit `id String @id @default(cuid())` on both new models; per-metric RH is provenance, never a blended headline.
-- Ready for `/work` after or in parallel with P3. Council doc: `phase-8-council-feedback.md`.
+`docs/GIS/phases/phase-8-weather-climate-spine-plan.md` (BUILT) · report `phase-8-report.md`. Branch
+`claude/distracted-edison-bcf259` (11 commits). **Migration `20260725150000_weather_schema` is APPLIED to prod**
+(bumped past the parallel P3 `ndvi_display` + P4 `soil_snapshot` slices already in the DB).
+
+**Proven with REAL live data** (Russian River Ranch + Bhutan) + a deterministic fixture gate:
+- 3 tenant tables (fact-table `vineyard_climate_daily` + 1:1 `vineyard_weather_config` + daily-keyed
+  `weather_provider_usage`); 6-provider registry (gridMET-via-ACIS, RCC-ACIS station, NASA POWER, USGS EPQS
+  LIVE; Daymet+CDO fixture-tested); ingest (344 rows/4.7s, obs-shift visible); `query_climate` tool (R9
+  freshness fallback + operating-tz-beats-viewer both proven live); grower card (browser-rendered real data:
+  GDD 656.5, Winkler I, GST 18.42 Warm, **3-source spread 499–656**).
+- Gates: `verify:weather` 12/12, `verify:tenant-isolation` ✓, `verify:ai-native` ✓, 46 weather unit tests, +4 goldens.
+- ⚠️ **Isolated worktree Prisma client** (copied @prisma into worktree + generated) so DB/dev-server work here
+  never touched the P4 session's main-checkout client. `.env` copied into worktree (gitignored).
+
+**Follow-ons (small):** alert INBOX EMIT stubbed (detection done); explicit weather case in
+`verify-tenant-isolation.ts`; gridMET RH needs a direct adapter (4B); doc weave (brief §13/§14 + runbook
+ledger); **merge the code PR after P3/P4 slices settle** (Unit 1 migration already in prod).
 </details>
 
 <details><summary>✅ Vineyard Intelligence P2 — NDVI core (data half) — SHIPPED + LIVE IN PROD 2026-07-25</summary>
