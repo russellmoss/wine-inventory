@@ -2346,6 +2346,19 @@ model AppSettings {
   // unset means "not configured", and every reader falls back to the VIEWER's browser zone, which is
   // exactly the behaviour before this column existed. See src/lib/work-orders/due-at.ts.
   timeZone                 String?
+  // Plan 098 — tenant display-unit preferences. Storage stays canonical metric everywhere; these
+  // columns steer DISPLAY only. `unitSystem` is the master ("METRIC" | "IMPERIAL"); the six
+  // per-dimension columns are explicit overrides (NULL = follow the master; master NULL = metric,
+  // i.e. today's behavior). String unions, NOT Prisma enums, per the coverageState/unitSystem
+  // precedent (Windows enum-migration rule). Parsed into precise unions ONLY by
+  // resolveUnitPrefs (src/lib/units/display.ts) — nothing downstream sees raw strings.
+  unitSystem               String? // "METRIC" | "IMPERIAL"
+  unitTemperature          String? // "C" | "F"
+  unitPrecipitation        String? // "MM" | "IN"
+  unitVolume               String? // "L" | "HL" | "GAL"
+  unitArea                 String? // "HA" | "ACRES"
+  unitLength               String? // "M" | "FT"
+  unitWeight               String? // "KG" | "LB"
   costingMethod            CostingMethod          @default(WEIGHTED_AVG)
   costingMethodEffectiveAt DateTime?
   capitalizeFruit          Boolean                @default(true)
