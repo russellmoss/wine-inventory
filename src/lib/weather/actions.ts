@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireReadyUser } from "@/lib/dal";
 import { runAsTenant } from "@/lib/tenant/context";
 import { resolveActiveTenantId } from "@/lib/tenant/resolve";
-import { composeClimateSummaryCore, type ClimateSummary, type DailyRow, type ClimateConfig } from "./read-core";
+import { composeClimateSummaryCore, resolveWeatherUnitSystem, type ClimateSummary, type DailyRow, type ClimateConfig } from "./read-core";
 import { composeRainfallRangeCore, type RainfallRangeResult } from "./rainfall-range-core";
 import { attachForecastBadges, composeForecastViewCore, isForecastStale, type ForecastView } from "./forecast-read-core";
 import { composeForecastHoursCore, type ForecastHourlyDay } from "./forecast-hourly-read-core";
@@ -23,7 +23,7 @@ import { zonedClock } from "@/lib/work-orders/due-at";
 import { addDaysIso } from "./obs-time-core";
 import { ROLLING_INGEST_DAYS } from "./backfill-window-core";
 import { resolveSiteTimeZone, siteTodayIso } from "./site-time-core";
-import { getWineryTimeZone } from "@/lib/settings/data";
+import { getWineryTimeZone, getUnitPrefs } from "@/lib/settings/data";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -165,7 +165,17 @@ export async function loadVineyardClimateSummary(vineyardId: string, today?: str
   // Site-local today (config row is already in hand — no second lookup).
   const wineryTz = await getWineryTimeZone().catch(() => null);
   const todayIso = today ?? siteTodayIso(resolveSiteTimeZone(configRow.timeZone, wineryTz));
-  return composeClimateSummaryCore({ vineyardId, rows: dailyRows, config, latitude: centroid.lat, today: todayIso });
+  // Plan 098 — tenant master for the unit chain (config override → tenant → geo). Best-effort like the tz read.
+  const prefs = await getUnitPrefs().catch(() => null);
+  return composeClimateSummaryCore({
+    vineyardId,
+    rows: dailyRows,
+    config,
+    latitude: centroid.lat,
+    longitude: centroid.lon,
+    today: todayIso,
+    tenantUnitSystem: prefs?.configuredSystem ?? null,
+  });
 }
 
 /** The provider keys a grower may choose as their primary climate source (R14). */
@@ -230,6 +240,10 @@ export async function loadVineyardForecast(
     if (!configRow) return { ok: true, view: null, unitSystem: "METRIC", stale: false, activeAlerts: [] };
     const wineryTz = await getWineryTimeZone().catch(() => null);
     const todayIso = siteTodayIso(resolveSiteTimeZone(configRow.timeZone, wineryTz));
+    // Plan 098 — resolve the display system up front (the badge path below reuses this centroid).
+    const centroid = await resolveVineyardCentroid(vineyardId);
+    const prefs = await getUnitPrefs().catch(() => null);
+    const unitSystem = resolveWeatherUnitSystem(configRow.unitSystem, prefs?.configuredSystem ?? null, centroid?.lat, centroid?.lon);
     const rows = await prisma.vineyardForecastDaily.findMany({
       where: { vineyardId },
       orderBy: { targetDate: "asc" },
@@ -250,7 +264,6 @@ export async function loadVineyardForecast(
     );
     // U23 — warning badges from the SAME classification core that drives notifications (one truth).
     if (view) {
-      const centroid = await resolveVineyardCentroid(vineyardId);
       if (centroid) {
         const candidates = classifyForecastAlertsCore(
           view.days.map((d) => ({ targetDate: d.targetDate, tminC: d.tminC, tmaxC: d.tmaxC })),
@@ -271,7 +284,7 @@ export async function loadVineyardForecast(
     }
     const stale = view ? isForecastStale(view.issuedAt, new Date()) : false;
     const activeAlerts = Array.isArray(configRow.activeAlertsJson) ? (configRow.activeAlertsJson as unknown as NwsActiveAlert[]) : [];
-    return { ok: true, view, unitSystem: configRow.unitSystem, stale, activeAlerts };
+    return { ok: true, view, unitSystem, stale, activeAlerts };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -332,7 +345,11 @@ export async function loadVineyardForecastHours(
       })),
       { targetDate, frostWarnC: thresholds.frostWarnC, heatWatchC: thresholds.heatWatchC },
     );
-    return { ok: true, day, unitSystem: configRow?.unitSystem ?? "METRIC", thresholds, nowLocalHour };
+    // Plan 098 — the modal must resolve the same chain as the strip, or the two disagree on a US site.
+    const centroid = await resolveVineyardCentroid(vineyardId);
+    const prefs = await getUnitPrefs().catch(() => null);
+    const unitSystem = resolveWeatherUnitSystem(configRow?.unitSystem, prefs?.configuredSystem ?? null, centroid?.lat, centroid?.lon);
+    return { ok: true, day, unitSystem, thresholds, nowLocalHour };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -400,23 +417,27 @@ export async function loadVineyardRainfallRange(
       startIso,
       endIso,
     });
-    return { ok: true, range, unitSystem: configRow.unitSystem };
+    // Plan 098 — resolved chain, same as the card that hosts this section.
+    const centroid = await resolveVineyardCentroid(vineyardId);
+    const prefs = await getUnitPrefs().catch(() => null);
+    const unitSystem = resolveWeatherUnitSystem(configRow.unitSystem, prefs?.configuredSystem ?? null, centroid?.lat, centroid?.lon);
+    return { ok: true, range, unitSystem };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
 }
 
 /**
- * Set the vineyard's display unit system (plan 096 U3). Storage stays metric; this only changes what
- * the card/assistant RENDER. Defaults at config-create (IMPERIAL for US-forecast coverage, else
- * METRIC); this is the grower's override.
+ * Set (or clear) the vineyard's display unit-system OVERRIDE (plan 096 U3, plan 098). Storage stays
+ * metric; this only changes what the card/assistant RENDER. `null` = "Auto": follow the winery's
+ * display units, else the geo default — the resolution chain in resolveWeatherUnitSystem.
  */
 export async function setVineyardUnitSystem(
   vineyardId: string,
-  unitSystem: "METRIC" | "IMPERIAL",
+  unitSystem: "METRIC" | "IMPERIAL" | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireReadyUser();
-  if (unitSystem !== "METRIC" && unitSystem !== "IMPERIAL") return { ok: false, error: "Unknown unit system." };
+  if (unitSystem !== null && unitSystem !== "METRIC" && unitSystem !== "IMPERIAL") return { ok: false, error: "Unknown unit system." };
   const config = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { id: true } });
   if (!config) return { ok: false, error: "This vineyard has no weather set up yet — refresh its weather first." };
   await prisma.vineyardWeatherConfig.update({ where: { id: config.id }, data: { unitSystem } });

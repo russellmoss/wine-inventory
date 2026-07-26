@@ -3,6 +3,7 @@
 // `alreadyAlerted`. Pure + tested.
 
 import type { LocalDailyRecord } from "./obs-time-core";
+import { formatTemp, type UnitSystem } from "@/lib/units/display";
 
 export type WeatherAlertKind = "FROST" | "HEAT";
 
@@ -40,13 +41,14 @@ export function detectWeatherAlertsCore(
   return out;
 }
 
-/** Grower-facing copy for an alert — risk framing, never a damage claim. */
-export function alertMessage(a: WeatherAlert, vineyardName: string): string {
+/** Grower-facing copy for an alert — risk framing, never a damage claim. Prose renders in the
+ *  site's resolved display units (plan 098); detection stays °C like everything stored. */
+export function alertMessage(a: WeatherAlert, vineyardName: string, unitSystem: UnitSystem = "METRIC"): string {
   if (a.kind === "FROST") {
     const severity = a.valueC <= -2 ? "killing-range" : "light";
-    return `Frost risk at ${vineyardName}: ${a.valueC.toFixed(1)} °C low on ${a.localDate} (${severity}). Elevated risk — check the vines; this is not a damage report.`;
+    return `Frost risk at ${vineyardName}: ${formatTemp(a.valueC, unitSystem, 1)} low on ${a.localDate} (${severity}). Elevated risk — check the vines; this is not a damage report.`;
   }
-  return `Heat stress at ${vineyardName}: ${a.valueC.toFixed(1)} °C high on ${a.localDate}. Check irrigation and canopy exposure.`;
+  return `Heat stress at ${vineyardName}: ${formatTemp(a.valueC, unitSystem, 1)} high on ${a.localDate}. Check irrigation and canopy exposure.`;
 }
 
 // ────────────────────────── Plan 096 Phase 3 (U20) — FORECAST tier classification ──────────────────────────
@@ -248,7 +250,10 @@ export function weatherAlertDigest(input: {
   vineyardNames: string[];
   worstValueC: number;
   runEndDate?: string;
+  /** Plan 098 — the tenant's display system for the prose; detection stays °C. Default = metric (pre-098 copy). */
+  unitSystem?: UnitSystem;
 }): { title: string; snippet: string } {
+  const u: UnitSystem = input.unitSystem ?? "METRIC";
   const many = input.vineyardNames.length;
   const list = input.vineyardNames.slice(0, 6).join(", ") + (many > 6 ? ` +${many - 6} more` : "");
   const isFrost = input.tier.startsWith("FROST") || input.tier === "HARD_FREEZE";
@@ -259,8 +264,8 @@ export function weatherAlertDigest(input: {
       : input.targetDate;
   const title = `${tierLabel(input.tier)} — ${when}${many > 1 ? ` · ${many} vineyards` : ` · ${input.vineyardNames[0] ?? ""}`}`;
   const detail = isFrost
-    ? `forecast low ${input.worstValueC.toFixed(1)} °C. Elevated risk — check the vines and your frost protection; this is a forecast, not a damage report.`
-    : `forecast high ${input.worstValueC.toFixed(1)} °C. Check irrigation and canopy exposure.`;
+    ? `forecast low ${formatTemp(input.worstValueC, u, 1)}. Elevated risk — check the vines and your frost protection; this is a forecast, not a damage report.`
+    : `forecast high ${formatTemp(input.worstValueC, u, 1)}. Check irrigation and canopy exposure.`;
   return { title, snippet: `${list}: ${detail}` };
 }
 

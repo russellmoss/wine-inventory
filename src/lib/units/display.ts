@@ -41,6 +41,12 @@ export type WeightUnit = "KG" | "LB";
 
 /** Fully-resolved display preferences — every dimension non-null. Only `resolveUnitPrefs` builds one. */
 export type UnitPrefs = {
+  /**
+   * The RAW stored master — null when the tenant never configured one. Distinct from `system`
+   * (which defaults to METRIC) because some chains treat "unconfigured" differently from "chose
+   * metric": the weather chain falls through an unconfigured tenant to the geo default.
+   */
+  configuredSystem: UnitSystem | null;
   system: UnitSystem;
   temperature: TemperatureUnit;
   precipitation: PrecipitationUnit;
@@ -61,7 +67,7 @@ export type UnitPrefsRow = {
   unitWeight?: string | null;
 };
 
-const METRIC_MAPPING: Omit<UnitPrefs, "system"> = {
+const METRIC_MAPPING: Omit<UnitPrefs, "system" | "configuredSystem"> = {
   temperature: "C",
   precipitation: "MM",
   volume: "L",
@@ -70,7 +76,7 @@ const METRIC_MAPPING: Omit<UnitPrefs, "system"> = {
   weight: "KG",
 };
 
-const IMPERIAL_MAPPING: Omit<UnitPrefs, "system"> = {
+const IMPERIAL_MAPPING: Omit<UnitPrefs, "system" | "configuredSystem"> = {
   temperature: "F",
   precipitation: "IN",
   volume: "GAL",
@@ -79,8 +85,8 @@ const IMPERIAL_MAPPING: Omit<UnitPrefs, "system"> = {
   weight: "LB",
 };
 
-export const DEFAULT_METRIC_PREFS: UnitPrefs = { system: "METRIC", ...METRIC_MAPPING };
-export const DEFAULT_IMPERIAL_PREFS: UnitPrefs = { system: "IMPERIAL", ...IMPERIAL_MAPPING };
+export const DEFAULT_METRIC_PREFS: UnitPrefs = { configuredSystem: null, system: "METRIC", ...METRIC_MAPPING };
+export const DEFAULT_IMPERIAL_PREFS: UnitPrefs = { configuredSystem: "IMPERIAL", system: "IMPERIAL", ...IMPERIAL_MAPPING };
 
 // ── Strict parsers (write-side validation; read side uses them permissively via ??) ──────
 
@@ -101,9 +107,11 @@ export const parseWeightUnit = parseIn<WeightUnit>(["KG", "LB"]);
  * behavior (metric). An unknown stored string reads as "not set" — never an error.
  */
 export function resolveUnitPrefs(row: UnitPrefsRow | null | undefined): UnitPrefs {
-  const system = parseUnitSystem(row?.unitSystem) ?? "METRIC";
+  const configuredSystem = parseUnitSystem(row?.unitSystem);
+  const system = configuredSystem ?? "METRIC";
   const mapping = system === "IMPERIAL" ? IMPERIAL_MAPPING : METRIC_MAPPING;
   return {
+    configuredSystem,
     system,
     temperature: parseTemperatureUnit(row?.unitTemperature) ?? mapping.temperature,
     precipitation: parsePrecipitationUnit(row?.unitPrecipitation) ?? mapping.precipitation,

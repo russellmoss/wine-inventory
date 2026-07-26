@@ -8,7 +8,7 @@
 
 import React from "react";
 import type { NamedCurve } from "@/lib/weather/normals-core";
-import { gddFToC } from "@/lib/weather/units-core";
+import { gddFToC, type UnitSystem } from "@/lib/weather/units-core";
 
 const W = 680;
 const H = 360;
@@ -44,7 +44,10 @@ function valueAt(curve: NamedCurve["curve"], dayIndex: number): number | null {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-export function GddChart({ series }: { series: NamedCurve[] }) {
+// Plan 098: the PREFERRED system reads on the LEFT axis, the other on the right. Data stays
+// °F-native internally (normals-core is °F by convention); conversion happens only at the label
+// edge via gddFToC — a degree-day scales by 1.8 with no offset, so the axis clamp commutes.
+export function GddChart({ series, unitSystem = "IMPERIAL" }: { series: NamedCurve[]; unitSystem?: UnitSystem }) {
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const [hoverDay, setHoverDay] = React.useState<number | null>(null);
   const [domain, setDomain] = React.useState<[number, number]>(FULL);
@@ -52,6 +55,8 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
   const drag = React.useRef<{ startX: number; startDomain: [number, number] } | null>(null);
   const pinch = React.useRef<{ startDist: number; startSpan: number; center: number } | null>(null);
 
+  const imp = unitSystem !== "METRIC";
+  const toC = (f: number) => Math.round(gddFToC(f)).toLocaleString();
   const all = series.flatMap((s) => s.curve);
   const [d0, d1] = domain;
   const span = d1 - d0;
@@ -149,7 +154,7 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
     <div style={{ display: "grid", gap: 8, position: "relative" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>
-          Accumulated GDD (base 50&nbsp;°F){zoomed ? <span style={{ fontWeight: 400, color: "var(--text-muted)" }}> · {dayLabel(d0)} – {dayLabel(d1)}</span> : <span style={{ fontWeight: 400, color: "var(--text-muted)" }}> · drag / pinch / ± to zoom in on a few days</span>}
+          Accumulated GDD ({imp ? <>base 50&nbsp;°F</> : <>base 10&nbsp;°C</>}){zoomed ? <span style={{ fontWeight: 400, color: "var(--text-muted)" }}> · {dayLabel(d0)} – {dayLabel(d1)}</span> : <span style={{ fontWeight: 400, color: "var(--text-muted)" }}> · drag / pinch / ± to zoom in on a few days</span>}
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <button aria-label="Zoom out" onClick={() => zoomBy(1.4)} style={btn}>−</button>
@@ -169,8 +174,8 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
         {fTicks.map((v) => (
           <g key={v}>
             <line x1={PAD_L} y1={yOf(v)} x2={W - PAD_R} y2={yOf(v)} stroke="var(--border-subtle)" strokeWidth={1} />
-            <text x={PAD_L - 7} y={yOf(v) + 3} textAnchor="end" fontSize={10} fill="var(--text-muted)">{v.toLocaleString()}</text>
-            <text x={W - PAD_R + 7} y={yOf(v) + 3} textAnchor="start" fontSize={10} fill="var(--text-muted)">{Math.round(gddFToC(v)).toLocaleString()}</text>
+            <text x={PAD_L - 7} y={yOf(v) + 3} textAnchor="end" fontSize={10} fill="var(--text-muted)">{imp ? v.toLocaleString() : toC(v)}</text>
+            <text x={W - PAD_R + 7} y={yOf(v) + 3} textAnchor="start" fontSize={10} fill="var(--text-muted)">{imp ? toC(v) : v.toLocaleString()}</text>
           </g>
         ))}
         {visibleMonths.map((m) => (
@@ -179,8 +184,8 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
             <text x={xOf(m.d)} y={H - PAD_B + 15} textAnchor="middle" fontSize={10} fill="var(--text-muted)">{m.label}</text>
           </g>
         ))}
-        <text x={12} y={H / 2} transform={`rotate(-90 12 ${H / 2})`} textAnchor="middle" fontSize={10.5} fill="var(--text-secondary)">Cumulative GDD (°F)</text>
-        <text x={W - 10} y={H / 2} transform={`rotate(90 ${W - 10} ${H / 2})`} textAnchor="middle" fontSize={10.5} fill="var(--text-secondary)">Cumulative GDD (°C)</text>
+        <text x={12} y={H / 2} transform={`rotate(-90 12 ${H / 2})`} textAnchor="middle" fontSize={10.5} fill="var(--text-secondary)">Cumulative GDD ({imp ? "°F" : "°C"})</text>
+        <text x={W - 10} y={H / 2} transform={`rotate(90 ${W - 10} ${H / 2})`} textAnchor="middle" fontSize={10.5} fill="var(--text-secondary)">Cumulative GDD ({imp ? "°C" : "°F"})</text>
         <g clipPath="url(#gddplot)">
           {ordered.map((s) => (
             <path key={s.key} d={pathD(s)} fill="none" stroke={s.color} strokeWidth={s.emphasis ? 3 : 1.75} strokeDasharray={s.dash} strokeLinejoin="round" opacity={s.emphasis ? 1 : 0.9} />
@@ -205,7 +210,7 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
             {readout.map(({ s, v }) => (
               <span key={s.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: s.emphasis ? 600 : 400, color: "var(--text-primary)" }}>
                 <span style={{ display: "inline-block", width: 14, height: s.emphasis ? 4 : 3, background: s.dash ? undefined : s.color, borderTop: s.dash ? `2px dashed ${s.color}` : undefined }} />
-                {s.label}: <strong style={{ fontVariantNumeric: "tabular-nums" }}>{(v as number).toLocaleString()}</strong>&nbsp;°F ({Math.round(gddFToC(v as number)).toLocaleString()}&nbsp;°C)
+                {s.label}: <strong style={{ fontVariantNumeric: "tabular-nums" }}>{imp ? (v as number).toLocaleString() : toC(v as number)}</strong>&nbsp;{imp ? "°F" : "°C"} ({imp ? toC(v as number) : (v as number).toLocaleString()}&nbsp;{imp ? "°C" : "°F"})
               </span>
             ))}
           </div>
@@ -215,7 +220,7 @@ export function GddChart({ series }: { series: NamedCurve[] }) {
           {series.map((s) => (
             <span key={s.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: s.emphasis ? 600 : 400, color: "var(--text-primary)" }}>
               <span style={{ display: "inline-block", width: 18, height: s.emphasis ? 4 : 3, background: s.dash ? undefined : s.color, borderTop: s.dash ? `2px dashed ${s.color}` : undefined }} />
-              {s.label} <strong style={{ fontVariantNumeric: "tabular-nums" }}>{s.totalF.toLocaleString()}</strong>&nbsp;°F
+              {s.label} <strong style={{ fontVariantNumeric: "tabular-nums" }}>{imp ? s.totalF.toLocaleString() : toC(s.totalF)}</strong>&nbsp;{imp ? "°F" : "°C"}
             </span>
           ))}
         </div>

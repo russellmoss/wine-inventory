@@ -29,7 +29,7 @@ import {
 import { selectPrimaryForecastSeries, type ForecastRow } from "./forecast-read-core";
 import { resolveVineyardCentroid } from "./location";
 import { resolveSiteTimeZone, siteTodayIso } from "./site-time-core";
-import { getWineryTimeZone } from "@/lib/settings/data";
+import { getWineryTimeZone, getUnitPrefs } from "@/lib/settings/data";
 
 export interface AlertEmitSummary {
   candidates: number;
@@ -74,6 +74,10 @@ export async function emitForecastAlertsForTenant(opts: { onlyVineyardIds?: stri
     ).map((c) => [c.vineyardId, c]),
   );
   const wineryTz = await getWineryTimeZone().catch(() => null);
+  // Plan 098 — digest prose renders in the tenant's display temperature (a digest is tenant-grain).
+  // Best-effort like the tz read; unconfigured stays °C, the pre-098 copy.
+  const prefs = await getUnitPrefs().catch(() => null);
+  const proseUnits = prefs?.temperature === "F" ? ("IMPERIAL" as const) : ("METRIC" as const);
 
   // 1) Classify every vineyard's PRIMARY forecast series (C3 — never the secondary provider).
   const candidatesByVineyard = new Map<string, ForecastAlertCandidate[]>();
@@ -186,6 +190,7 @@ export async function emitForecastAlertsForTenant(opts: { onlyVineyardIds?: stri
           vineyardNames: group.map((g) => nameById.get(g.vineyardId) ?? g.vineyardId),
           worstValueC: worst,
           runEndDate: group.length === 1 ? group[0].runEndDate : undefined,
+          unitSystem: proseUnits,
         });
         const payload = buildWeatherAlertNotificationPayload({ ...copy, targetDate: group[0].targetDate, tier });
         for (const r of recipients) {

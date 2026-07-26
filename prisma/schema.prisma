@@ -557,7 +557,7 @@ model VineyardDetail {
   elevationM  Decimal? @db.Decimal(8, 2)
   soilType    String?
   manager     String?
-  defaultUnit String   @default("imperial") // "imperial" | "metric"
+  defaultUnit String? // "imperial" | "metric" | NULL. Plan 098 Migration B: NULL = "Auto" — geometry displays follow the winery's unit prefs (resolveSpacingUnit/resolveAreaUnit); a non-null value is this vineyard's explicit override.
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   vineyard    Vineyard @relation(fields: [vineyardId], references: [id], onDelete: Cascade)
@@ -952,7 +952,7 @@ model VineyardWeatherConfig {
   attribution             String? // combined provider attribution for the card
   lastRefreshAt           DateTime? // last successful ingest
   timeZone                String? // IANA zone, provider-reported (NWS points.timeZone / Open-Meteo timezone=auto); null = not yet resolved. Site-local "today" chain: this → AppSettings.timeZone → UTC (site-time-core)
-  unitSystem              String    @default("METRIC") // String union: "METRIC" | "IMPERIAL" (like coverageState — NOT a Prisma enum). Display-edge only; storage stays metric. Default IMPERIAL for US-forecast-coverage sites (us-coverage helper, NOT the CONUS-only coverageState — council S2)
+  unitSystem              String? // String union: "METRIC" | "IMPERIAL" | NULL (like coverageState — NOT a Prisma enum). Display-edge only; storage stays metric. Plan 098 Migration B: NULL = "Auto" — resolveWeatherUnitSystem chains override → winery prefs → geo default (us-coverage); a non-null value is the grower's explicit per-vineyard override.
   lastHistoryTopUpAt      DateTime? // last monthly 3-yr full-year history top-up (sweep; council S3 — keeps the 13–24-month rainfall window from decaying)
   nwsGridId               String? // NWS /points grid cache (plan 096 U11) — the mapping never changes for a fixed coordinate
   nwsGridX                Int?
