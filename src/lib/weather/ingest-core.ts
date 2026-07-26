@@ -16,7 +16,8 @@ import { mapSeriesToLocalDaily, type LocalDailyRecord } from "./obs-time-core";
 import { selectPrimaryCore, type PrimaryCandidate } from "./source-selection-core";
 import { recordWeatherUsage } from "./usage-core";
 import { coverageStateFor, providersForLocation } from "./providers/registry";
-import { fetchElevationM } from "./providers/usgs-epqs";
+import { defaultUnitSystemFor } from "./us-coverage";
+import { fetchSiteElevationM } from "./providers/open-meteo-elevation";
 import { fetchAcisStationSeries, type AcisStation } from "./providers/rcc-acis";
 import { ProviderFetchError, type ClimateProvider, type ProviderKey, type ProviderSeries } from "./providers/types";
 
@@ -73,7 +74,8 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
   const now = deps.now ?? new Date();
   const providers = deps.providers ?? providersForLocation(lat, lon);
   const fetchSeries = deps.fetchSeries ?? ((p, la, lo, s, e) => p.fetchDailySeries(la, lo, s, e));
-  const elevFn = deps.fetchElevationM ?? fetchElevationM;
+  // Elevation chain (plan 096 U5): EPQS (US) → Open-Meteo (global) — Bhutan finally gets a real siteElevationM.
+  const elevFn = deps.fetchElevationM ?? fetchSiteElevationM;
 
   // ── OUTSIDE any tx (R8): elevation + all provider fetches ──
   const siteElevationM = await elevFn(lat, lon).catch(() => null);
@@ -173,6 +175,10 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
         stationDistanceM,
         siteElevationM,
         coverageState,
+        // Display default at FIRST config creation only (plan 096 U3, council S2): US forecast
+        // coverage (CONUS+AK+HI+territories — not the CONUS-only coverageState) → IMPERIAL.
+        // Never set on update — the grower's toggle owns it after creation.
+        unitSystem: defaultUnitSystemFor(input.lat, input.lon),
         attribution: [...new Set(succeeded.map((s) => s.series.attribution))].join(" · "),
         lastRefreshAt: now,
       },

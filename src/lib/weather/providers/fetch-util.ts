@@ -1,10 +1,10 @@
 // VI-P8 — the impure fetch edge, shared by all adapters. SSRF-guarded (fixed host, no redirects off-allowlist),
 // size-bounded, timed out. Never on a render path. A failure throws ProviderFetchError — never a partial record.
 
-import { assertAllowedHost, FETCH_TIMEOUT_MS, MAX_RESPONSE_BYTES } from "../config";
-import { ProviderFetchError, type ProviderKey } from "./types";
+import { assertAllowedHost, FETCH_TIMEOUT_MS, MAX_RESPONSE_BYTES, WEATHER_USER_AGENT } from "../config";
+import { ProviderFetchError, type WeatherSourceKey } from "./types";
 
-export async function fetchJson(providerKey: ProviderKey, url: string, init?: RequestInit): Promise<unknown> {
+export async function fetchJson(providerKey: WeatherSourceKey, url: string, init?: RequestInit): Promise<unknown> {
   const text = await fetchText(providerKey, url, init);
   try {
     return JSON.parse(text);
@@ -13,13 +13,15 @@ export async function fetchJson(providerKey: ProviderKey, url: string, init?: Re
   }
 }
 
-export async function fetchText(providerKey: ProviderKey, url: string, init?: RequestInit): Promise<string> {
+export async function fetchText(providerKey: WeatherSourceKey, url: string, init?: RequestInit): Promise<string> {
   assertAllowedHost(providerKey, url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  // User-Agent on EVERY request (plan 096 U4 — NWS 403s without one); caller headers may extend, not remove.
+  const headers = { "User-Agent": WEATHER_USER_AGENT, ...(init?.headers as Record<string, string> | undefined) };
   let res: Response;
   try {
-    res = await fetch(url, { ...init, signal: controller.signal, redirect: "manual" });
+    res = await fetch(url, { ...init, headers, signal: controller.signal, redirect: "manual" });
   } catch (e) {
     throw new ProviderFetchError(providerKey, "timeout", `fetch failed: ${(e as Error).message}`);
   } finally {
@@ -43,7 +45,7 @@ export async function fetchText(providerKey: ProviderKey, url: string, init?: Re
 }
 
 /** POST JSON body (RCC-ACIS accepts params as a JSON body or as ?params=). */
-export async function postJson(providerKey: ProviderKey, url: string, params: unknown): Promise<unknown> {
+export async function postJson(providerKey: WeatherSourceKey, url: string, params: unknown): Promise<unknown> {
   return fetchJson(providerKey, url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

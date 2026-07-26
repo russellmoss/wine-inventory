@@ -918,6 +918,9 @@ model VineyardWeatherConfig {
   coverageState           String    @default("UNAVAILABLE") // String union: "US_HIGH_RES" | "GLOBAL_COARSE" | "UNAVAILABLE"
   attribution             String? // combined provider attribution for the card
   lastRefreshAt           DateTime? // last successful ingest
+  timeZone                String? // IANA zone, provider-reported (NWS points.timeZone / Open-Meteo timezone=auto); null = not yet resolved. Site-local "today" chain: this → AppSettings.timeZone → UTC (site-time-core)
+  unitSystem              String    @default("METRIC") // String union: "METRIC" | "IMPERIAL" (like coverageState — NOT a Prisma enum). Display-edge only; storage stays metric. Default IMPERIAL for US-forecast-coverage sites (us-coverage helper, NOT the CONUS-only coverageState — council S2)
+  lastHistoryTopUpAt      DateTime? // last monthly 3-yr full-year history top-up (sweep; council S3 — keeps the 13–24-month rainfall window from decaying)
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
