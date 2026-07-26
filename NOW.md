@@ -10,8 +10,7 @@
 **SPRAY INTELLIGENCE — Wave 1 BUILDING in parallel worktrees (S0 · S2 · S3a · S4).
 S3a's record cores are MERGED (2026-07-26) → Wave 2 (S7a · S8 · S6 · S7b) can start.**
 
-🟪 **S3a (lane C — spray record + planned harvest): PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED; PR3 (surface + docs) OPEN; browser QA pending (needs Russell's Demo login).**
-See ✅ Done recently for the full ledger; the S3a runbook row is 🟪 until the QA report is green.
+🟩 **S3a (lane C — spray record + planned harvest): SHIPPED.** PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) merged; PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) **browser-QA'd GREEN** same day (2 findings — area provenance + correction datetime shift — found, fixed `d11c38d8`, re-proven). QA report: `docs/spray_assistant/qa/S3a-qa-report.md`.
 
 🟦 **S4 (lane D — phenology + growth): PLAN v2 COUNCIL-RECONCILED, ready for `/work`.**
 [plan](docs/spray_assistant/phases/S4-phenology-growth-model-plan.md) ·

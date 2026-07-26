@@ -4,7 +4,7 @@ type: phase-report
 phase: S3a
 date: 2026-07-26
 branch: claude/s3a-spray-application-record-b199eb (+ -pr2-cores, -pr3-surface)
-status: PR1+PR2 merged (Wave 2 UNBLOCKED); PR3 open; browser QA PENDING
+status: SHIPPED — PR1+PR2 merged (Wave 2 UNBLOCKED); PR3 browser-QA'd green (2 findings, both fixed in-phase)
 ---
 
 # S3a — phase report
@@ -15,7 +15,7 @@ status: PR1+PR2 merged (Wave 2 UNBLOCKED); PR3 open; browser QA PENDING
 |---|---|---|
 | [#523](https://github.com/russellmoss/wine-inventory/pull/523) — schema slice | 1–3 | **MERGED** 2026-07-26 |
 | [#524](https://github.com/russellmoss/wine-inventory/pull/524) — domain cores + `verify:spray-record` | 4–12 | **MERGED** 2026-07-26 — **Wave 2 (S7a, S8, S6, S7b) is unblocked** |
-| PR3 — minimal surface + docs | 13–15 | open; **browser QA pending** (needs an interactive Demo-Winery login — Claude never types a password) |
+| PR3 — minimal surface + docs | 13–15 | **browser-QA'd GREEN** ([qa report](../qa/S3a-qa-report.md)) — 2 findings (area provenance, correction datetime shift), both fixed in-phase (`d11c38d8`) and re-proven in browser + DB |
 
 Seven tenant-scoped tables (full Phase-12 checklist), 22 enums, DB-enforced append-only
 (BEFORE UPDATE/DELETE triggers, per-table bookkeeping allowlists), at-most-once correction
@@ -36,7 +36,7 @@ seam + the ProductFactsResolver port with the null resolver. 79 unit tests;
 | Unknown product ⇒ unknown, never clear | #8 + #9 (DB CHECK bites) ✓ |
 | Planned-harvest audited | #12 ✓ (versions, point-in-time, split picks, watermark replay) |
 | verify:spray-record e2e | all 14 ✓ (run twice: pre- and post-merge with S2+S4 schema slices) |
-| QA report | **PENDING — the only open gate.** Ledger stays 🟪 until it is green. |
+| QA report | **GREEN** — [qa/S3a-qa-report.md](../qa/S3a-qa-report.md): SAFE-2/SAFE-10/SAFE-3/SAFE-17/SAFE-19 pass at S3a scope, 17 rows explicitly deferred to their owning phases, 16/16 persistence proofs, mobile pass, fixtures purged, naming green before+after. |
 
 ## Deviations from the plan (all called out in the PRs)
 
