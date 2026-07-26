@@ -186,6 +186,32 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     args: {},
     note: "no vineyard named — defaults to the manager's assigned vineyard",
   },
+  // Plan 096 — the 7-DAY FORECAST + rolling rainfall now live in the SAME domain-composite tool
+  // (query_climate carries `forecast` + `rainfallLast30Days`); forward-looking questions must not
+  // strand on the retrospective framing or drift to query_ndvi_stats.
+  {
+    utterance: "Will it frost this week at Paro?",
+    tool: "query_climate",
+    args: { vineyard: "Paro" },
+    note: "forward-looking frost = the forecast block (tiers) — R11: no rows → 'no forecast yet', never inferred",
+  },
+  {
+    utterance: "What does the weather look like this week at Russian River Ranch?",
+    tool: "query_climate",
+    args: { vineyard: "Russian River Ranch" },
+    note: "the 7-day outlook — carries issuedAt freshness and the days 6–7 lower-confidence note",
+  },
+  {
+    utterance: "Is any rain coming for Madera in the next few days?",
+    tool: "query_climate",
+    args: { vineyard: "Madera" },
+  },
+  {
+    utterance: "How much rain did we get in the last 30 days at Oakville Estate?",
+    tool: "query_climate",
+    args: { vineyard: "Oakville Estate" },
+    note: "rolling recent rainfall — answerable YEAR-ROUND since the off-season ingest (plan 096 U6)",
+  },
   // VI-P3 — NDVI date COMPARISON (change over time). Distinct from a single-date read (query_ndvi_stats).
   {
     utterance: "How has the NDVI changed in Estate Vineyard since last month?",
