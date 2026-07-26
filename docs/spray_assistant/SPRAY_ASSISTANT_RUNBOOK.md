@@ -195,7 +195,9 @@ the same lane and blocks nothing.
   | `docs/architecture/assistant-coverage.md` | any lane changing a core export | **generated** — run `verify:ai-native -- --write` before push, or CI reds |
   | `test/evals/assistant-*.golden.ts` + `assistant-tools.eval.test.ts` | S5a, S11 | serialize |
   | `src/lib/assistant/registry.ts`, `prompt.ts` | S5a (thin tool), S11 | serialize |
-  | `src/lib/weather/*` | S1, S4 (GDD interpolator), S7b | S1 lands first within its wave |
+  | `src/lib/weather/*` | S1, S4 (GDD interpolator), S7b | S1 lands first within its wave. **S4 shipped without touching it** — it reuses `gdd-core`/`season-core`/`obs-time-core` read-only and anchors on a biofix instead. |
+  | `src/lib/phenology/units.ts` | S4 (shipped), S1 | ⚠️ **S4 deviation, agreed at plan time.** `units-core.ts` owns all unit conversion but has no LENGTH formatter, and S4 may not modify `src/lib/weather/`. `formatShootLength` / `formatShootLengthRange` / `cmToInches` therefore live in `src/lib/phenology/units.ts`. **S1 folds them into `units-core.ts`** when that lane owns the file, and deletes them here. |
+  | `docs/spray_assistant/SPRAY_ASSISTANT_RUNBOOK.md` | every lane | ⚠️ **Now tracked in git, and it HAS already been clobbered once** — S3a PR3 (`11bcbf20`) reverted S4's ledger + §4 + §9 edits by committing an older copy. Re-read the file immediately before editing, edit only your own rows, and never commit a wholesale copy from a stale worktree. |
   | `src/lib/fieldnotes/*`, `src/lib/harvest/*` | S3a (back-compat + planned harvest), S4 | serialize |
   | cron / config | S1, S2 refresh | additive |
 
@@ -209,7 +211,12 @@ the same lane and blocks nothing.
 - Worktrees share ONE `.git` index — stage with `git commit --only <paths>`; run `gh pr list`
   before starting.
 - **`prisma generate` immediately before `tsc`/`verify`/`dev`** in any worktree — parallel lanes
-  clobber the shared generated client (learned in VI P4/P8).
+  clobber the shared generated client (learned in VI P4/P8). ⚠️ **Sharpened by S4:** the client lives
+  in the **shared** `node_modules`, so a sibling lane clobbers it *mid-session*, not only at start —
+  it happened **four times** during S4's build, each time surfacing as phantom "column does not
+  exist" type errors in already-correct code. Chain the generate into the **SAME command** as the
+  run (`npx prisma generate && npx tsc --noEmit`); running it as an earlier separate step is not
+  enough.
 - A lane is not shipped until its gate **and its QA report** are green. Parallelism never waives a
   gate.
 
@@ -281,7 +288,7 @@ cellar as a residue flag — a thing no incumbent can do, because no incumbent o
 | S2b product facts master | 1B | ⬜ not started | — | — | — | — | — |
 | S3a spray record + planned harvest | 1C | 🟦 planning (plan council-reconciled, ready for `/work`) | [S3a-spray-record-plan](phases/S3a-spray-record-plan.md) | [S3a-council-feedback](phases/S3a-council-feedback.md) | — | — | — |
 | S3b spray program / season plan | 1C | ⬜ not started | — | — | — | — | — |
-| S4 phenology + growth | 1D | 🟦 planning (council-reconciled) | [S4 plan v2](phases/S4-phenology-growth-model-plan.md) | [S4 council](phases/S4-council-feedback.md) | — | — | — |
+| S4 phenology + growth | 1D | 🟪 QA (code MERGED + live; all gates green; UI-placement QA blocked by a non-S4 RLS bug) | [S4 plan v2](phases/S4-phenology-growth-model-plan.md) | [S4 council](phases/S4-council-feedback.md) | [#521](https://github.com/russellmoss/wine-inventory/pull/521) · [#526](https://github.com/russellmoss/wine-inventory/pull/526) both merged | [S4 QA](qa/S4-qa-report.md) | [S4 report](phases/S4-report.md) |
 | S7a legality + rotation | 2A | ⬜ not started | — | — | — | — | — |
 | S8 lot residue crossover | 2B | ⬜ not started | — | — | — | — | — |
 | S5a powdery index + latent ledger | 2C | ⬜ not started | — | — | — | — | — |
@@ -573,6 +580,15 @@ anthracnose; botrytis (bloom-latency and pre-harvest windows). Each a pure core,
 latent-infection ledger.
 
 **Plus sour rot** *(returned from Later on 2026-07-26 — S4 added the scouting observation; §12 q3)*.
+
+> **S4 SHIPPED THE FIELDS AND MEASURED THE GATE. The gate is not yet passable — and not because it
+> failed.** `verify:phenology` on 2026-07-26 reported **0/0 (0 %)** over the trailing 28 days: no
+> live block reached `FRUIT_SET` inside the window, so the controls never rendered and the
+> denominator is EMPTY. ⚠️ **An empty denominator is `unknown`, NOT a failed gate and NOT 0 %
+> coverage** — reading a zero denominator as zero coverage is the same gap-read-as-a-result failure
+> rule §3.6 exists to prevent, pointed at ourselves. **Re-run `npm run verify:phenology` when S5b is
+> planned and use that number.** The denominator counts only block-weeks where the control would
+> actually have rendered (a grower cannot be faulted for not scouting at bud break).
 Brief §7.6 is the contract: Brix ≳ 15 (`BrixLog`) × cluster compactness × berry wounds
 (`clusterDamage`) × vinegar-fly pressure × warm wet forecast. ⚠️ **Two conditions.** (1) **Coverage
 gate:** build it only if scouting coverage clears **60 % in a rolling 4-week window** before the
