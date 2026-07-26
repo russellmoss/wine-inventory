@@ -8,6 +8,8 @@ import { riddlingAction, disgorgeAndFinishAction } from "@/lib/sparkling/actions
 import { reverseOperationAction } from "@/lib/ledger/actions";
 import { tirageSugarForPressure, dosageSugarGpl, finalRS, classifyStyle, nearStyleBandEdge } from "@/lib/sparkling/sugar";
 import type { WorklistRow, TirageCandidate, FinishedSparklingRow } from "@/lib/sparkling/worklist-data";
+import { formatVolume } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 const num = { fontVariantNumeric: "tabular-nums" } as React.CSSProperties;
 const UNDO_LABEL: Record<string, string> = { TIRAGE: "tirage → tank", RIDDLING: "riddling", DISGORGEMENT: "disgorgement", DOSAGE: "dosage" };
@@ -211,6 +213,7 @@ export function EnTirageClient({
 function TirageModal({ open, onClose, candidates, locations, materials, pending, run }: {
   open: boolean; onClose: () => void; candidates: TirageCandidate[]; locations: { id: string; name: string }[]; materials: { id: string; name: string }[]; pending: boolean; run: (fn: () => Promise<string>) => void;
 }) {
+  const vol = useUnitPrefs().volume;
   const [lotId, setLotId] = React.useState(candidates[0]?.lotId ?? "");
   // Per-tank selection + draw for the chosen cuvée: vesselId → { checked, draw }.
   const [tankSel, setTankSel] = React.useState<Record<string, { checked: boolean; draw: string }>>({});
@@ -273,7 +276,7 @@ function TirageModal({ open, onClose, candidates, locations, materials, pending,
                     <label style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", cursor: "pointer" }}>
                       <input type="checkbox" checked={row.checked} onChange={(e) => setTank(t.vesselId, { checked: e.target.checked }, t.volumeL)} style={{ width: 18, height: 18 }} />
                       <span style={{ fontWeight: 500 }}>{t.vesselCode}</span>
-                      <span style={{ ...num, color: "var(--text-muted)", fontSize: 13 }}>holds {t.volumeL} L</span>
+                      <span style={{ ...num, color: "var(--text-muted)", fontSize: 13 }}>holds {formatVolume(t.volumeL, vol)}</span>
                     </label>
                     <input type="number" value={row.draw} disabled={!row.checked} onChange={(e) => setTank(t.vesselId, { draw: e.target.value }, t.volumeL)}
                       aria-label={`Draw from ${t.vesselCode}`}

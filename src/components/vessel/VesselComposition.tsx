@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { formatL } from "@/lib/lot/timeline";
+import { formatVolume } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import { compositionAriaLabel, summarizeVesselComposition, type CompositionComponent, type CompositionSlice } from "@/lib/vessel/composition";
 import { usePrefersReducedMotion } from "@/components/ui/Collapsible";
 
@@ -24,6 +25,7 @@ export function VesselComposition({
   components: CompositionComponent[];
   style?: React.CSSProperties;
 }) {
+  const vol = useUnitPrefs().volume;
   const reduced = usePrefersReducedMotion();
   const bodyId = React.useId();
   const [open, setOpen] = React.useState(false);
@@ -75,7 +77,7 @@ export function VesselComposition({
           {comp.detail.map((s) => <DetailRow key={s.key} slice={s} />)}
           {!comp.provenanceComplete ? (
             <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--text-muted)", maxWidth: "52ch" }}>
-              Part of this wine&rsquo;s source isn&rsquo;t recorded — {formatL(comp.unrecordedL)} L arrived without a
+              Part of this wine&rsquo;s source isn&rsquo;t recorded — {formatVolume(comp.unrecordedL, vol)} arrived without a
               vineyard and vintage on it. The volume is right; only the breakdown is short.
             </p>
           ) : null}
@@ -86,6 +88,7 @@ export function VesselComposition({
 }
 
 function DetailRow({ slice }: { slice: CompositionSlice }) {
+  const vol = useUnitPrefs().volume;
   const origin = [slice.vineyardName, slice.vintage == null ? null : String(slice.vintage)].filter(Boolean).join(" · ");
   return (
     <div
@@ -100,7 +103,7 @@ function DetailRow({ slice }: { slice: CompositionSlice }) {
         {slice.label}
         {origin ? <span style={{ color: "var(--text-muted)" }}> · {origin}</span> : null}
       </span>
-      <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{formatL(slice.volumeL)} L</span>
+      <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{formatVolume(slice.volumeL, vol)}</span>
     </div>
   );
 }

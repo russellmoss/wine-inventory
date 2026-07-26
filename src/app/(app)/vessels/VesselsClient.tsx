@@ -4,7 +4,8 @@ import React from "react";
 import Link from "next/link";
 import { Card, Input, Button, Badge, Eyebrow, Modal, ConfirmButton } from "@/components/ui";
 import { createVessel, updateVessel, setVesselActive } from "@/lib/vessels/actions";
-import { formatL } from "@/lib/lot/timeline";
+import { formatVolume } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import { VesselComposition } from "@/components/vessel/VesselComposition";
 import type { CompositionComponent } from "@/lib/vessel/composition";
 
@@ -29,6 +30,7 @@ export type VesselRow = {
 };
 
 export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
+  const vol = useUnitPrefs().volume;
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -92,7 +94,7 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
                     <span style={{ flex: 1, height: 8, background: "var(--paper-200)", borderRadius: 999, overflow: "hidden" }}>
                       <span style={{ display: "block", width: `${Math.min(100, v.pct)}%`, height: "100%", background: v.over ? "var(--danger)" : "var(--accent)" }} />
                     </span>
-                    <span style={{ fontSize: 12.5, color: v.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>{v.filledL}/{v.capacityL} L</span>
+                    <span style={{ fontSize: 12.5, color: v.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>{formatVolume(v.filledL, vol)} / {formatVolume(v.capacityL, vol)}</span>
                   </span>
                   {!v.isActive ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
                   <span style={{ color: "var(--text-accent)", fontSize: 13 }}>edit ›</span>
@@ -102,7 +104,7 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
                 {v.wine ? (
                   <div style={{ padding: "0 8px 6px 8px" }}>
                     <Link href={`/lots/${v.wine.lotId}`}>
-                      <Badge tone="neutral" variant="soft">{v.wine.code} · {formatL(v.filledL)} L</Badge>
+                      <Badge tone="neutral" variant="soft">{v.wine.code} · {formatVolume(v.filledL, vol)}</Badge>
                     </Link>
                     <VesselComposition totalVolumeL={v.filledL} components={v.components} />
                   </div>
@@ -134,7 +136,7 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
         open={!!selected}
         onClose={() => setSelectedId(null)}
         title={selected ? `Edit ${selected.code}` : ""}
-        subtitle={selected ? `${selected.type === "BARREL" ? "Barrel" : "Tank"} · currently holds ${selected.filledL} L` : null}
+        subtitle={selected ? `${selected.type === "BARREL" ? "Barrel" : "Tank"} · currently holds ${formatVolume(selected.filledL, vol)}` : null}
         maxWidth={460}
       >
         {selected ? (

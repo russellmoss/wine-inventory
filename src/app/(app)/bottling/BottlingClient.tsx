@@ -14,6 +14,8 @@ import {
   missingRequiredPackaging,
 } from "@/lib/bottling/packaging-bom";
 import { validateBottlingAbv, MAX_BOTTLING_ABV } from "@/lib/bottling/abv-range";
+import { formatVolume } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 export type VesselOpt = { id: string; code: string; type: "BARREL" | "TANK"; availableL: number; contents: string[] };
 export type LocOpt = { id: string; name: string };
@@ -43,6 +45,7 @@ function BottlingForm({
   vessels: VesselOpt[]; locations: LocOpt[]; packagingOptions: MaterialPickerOption[]; initial: Initial; mode: "create" | "edit";
   onSubmit: (fd: FormData) => void; onCancel?: () => void; pending: boolean;
 }) {
+  const vol = useUnitPrefs().volume;
   const [picked, setPicked] = React.useState<string[]>(initial.vesselIds);
   const [bottles, setBottles] = React.useState<number | "">(initial.bottles);
   // ABV is controlled so we can range-check inline (mirrors the server guard in runBottlingTx). An
@@ -103,7 +106,7 @@ function BottlingForm({
                   <input type="checkbox" checked={on} onChange={() => toggle(v.id)} />
                   <Badge tone={v.type === "BARREL" ? "maroon" : "gold"} variant="soft">{v.type === "BARREL" ? "Barrel" : "Tank"}</Badge>
                   <span style={{ flex: 1, fontSize: 14 }}>{v.type === "BARREL" ? `Barrel ${v.code}` : v.code}</span>
-                  <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{v.availableL} L</span>
+                  <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{formatVolume(v.availableL, vol)}</span>
                 </label>
               );
             })
@@ -122,7 +125,7 @@ function BottlingForm({
         <div style={{ flex: "0 1 170px" }}>
           <Input label={max !== undefined ? `Bottles (max ${max})` : "Bottles"} name="bottlesProduced" type="number" min="1" max={max} value={bottles} onChange={(e) => setBottles(e.target.value === "" ? "" : Number(e.target.value))} required />
         </div>
-        <span style={{ fontSize: 13, color: "var(--text-muted)", paddingBottom: 12 }}>= {split.cases}c + {split.loose} · uses {consumed} L</span>
+        <span style={{ fontSize: 13, color: "var(--text-muted)", paddingBottom: 12 }}>= {split.cases}c + {split.loose} · uses {formatVolume(consumed, vol)}</span>
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 220px" }}>

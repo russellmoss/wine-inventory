@@ -11,6 +11,8 @@ import type { VesselGroupDTO } from "@/lib/vessels/groups";
 import { CellarActions, type KegOption, type ResidentLot } from "./CellarActions";
 import { VesselComposition } from "@/components/vessel/VesselComposition";
 import { GroupActions, type GroupVessel } from "./GroupActions";
+import { formatVolume } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 function vesselLabel(type: "BARREL" | "TANK", code: string): string {
   return type === "BARREL" ? `Barrel ${code}` : `Tank ${code}`;
@@ -63,10 +65,11 @@ function FillBar({ v }: { v: VesselWithContents }) {
 }
 
 function BarrelMeta({ v }: { v: VesselWithContents }) {
+  const vol = useUnitPrefs().volume;
   if (v.type !== "BARREL") return null;
   const rows: Array<[string, React.ReactNode]> = [
     ["Barrel #", v.code],
-    ["Volume", `${v.capacityL} L`],
+    ["Volume", formatVolume(v.capacityL, vol)],
     ["Oak origin", v.oakOrigin],
     ["Year of cooperage", v.cooperageYear],
     ["Cooperage", v.cooperage],

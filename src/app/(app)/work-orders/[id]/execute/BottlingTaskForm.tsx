@@ -8,6 +8,8 @@ import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import { consumedForBottles, suggestBottles, casesAndLoose } from "@/lib/bottling/draw";
 import { type PackagingPlanLine, type PackagingRole, theoreticalConsumption, classifyPackagingRole, missingRequiredPackaging } from "@/lib/bottling/packaging-bom";
+import { formatVolume } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Plan 053 E15: the run-time bottling sub-form on the work-order execute screen. Pick the source vessels,
 // the bottle count, the measured ABV and the destination; the SAME completeTaskAction the generic executor
@@ -18,6 +20,7 @@ const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
 
 export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskView; data: BottlingTaskFormData | null; onDone: () => void }) {
+  const vol = useUnitPrefs().volume;
   const commandId = React.useMemo(() => crypto.randomUUID(), []);
   const planned = (task.plannedPayload ?? {}) as Record<string, unknown>;
   const vessels = data?.vessels ?? [];
@@ -208,8 +211,8 @@ export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskVi
       </label>
 
       <div style={{ fontSize: 13, color: short ? "var(--danger)" : "var(--text-muted)", marginTop: 12 }}>
-        {bottleCount > 0 ? `${bottleCount} bottles (${cases}c + ${loose}) need ${consumedL} L` : "Enter a bottle count"}
-        {availableL > 0 ? ` · ${availableL} L selected` : ""}
+        {bottleCount > 0 ? `${bottleCount} bottles (${cases}c + ${loose}) need ${formatVolume(consumedL, vol)}` : "Enter a bottle count"}
+        {availableL > 0 ? ` · ${formatVolume(availableL, vol)} selected` : ""}
       </div>
 
       {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}

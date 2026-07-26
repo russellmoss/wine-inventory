@@ -13,6 +13,8 @@ import {
   deactivateGroupAction,
   previewGroupApplyAction,
 } from "@/lib/cellar/actions";
+import { formatVolume } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Group actions on /bulk (Phase 3, Unit 9, D13). Target a saved group OR an ad-hoc
 // multi-select, pick an op, and fan it out — one op per member sharing a batchId. The
@@ -443,6 +445,7 @@ function VesselSection({
 }
 
 function VesselChip({ v, on, onToggle }: { v: GroupVessel; on: boolean; onToggle: () => void }) {
+  const vol = useUnitPrefs().volume;
   const empty = !(v.totalL > 0);
   const shownLots = v.lotCodes.slice(0, 2);
   const extra = v.lotCodes.length - shownLots.length;
@@ -469,7 +472,7 @@ function VesselChip({ v, on, onToggle }: { v: GroupVessel; on: boolean; onToggle
     >
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontWeight: 500 }}>{v.label}</span>
-        <span style={{ color: empty ? "var(--text-muted)" : "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>· {v.totalL} L</span>
+        <span style={{ color: empty ? "var(--text-muted)" : "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>· {formatVolume(v.totalL, vol)}</span>
       </span>
       {v.lotCodes.length > 0 ? (
         <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
