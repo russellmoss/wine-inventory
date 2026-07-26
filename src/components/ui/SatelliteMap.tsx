@@ -173,6 +173,9 @@ export interface SatelliteMapProps {
    * `blocks`/`editable` behaviour is untouched. The `kind: "raster"` arm is wired in P3.
    */
   overlays?: MapOverlay[];
+  /** Click handler for a vector-overlay feature (e.g. a soil map unit) — receives the feature's
+   *  properties (which carry an identifying `mukey`). Enables click-to-inspect without forking the map. */
+  onOverlayFeatureClick?: (properties: Record<string, unknown>) => void;
 }
 
 /**
@@ -293,6 +296,7 @@ export function SatelliteMap({
   exportName,
   vineyardMeta,
   overlays,
+  onOverlayFeatureClick,
 }: SatelliteMapProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   // The relative wrapper around the map AND its HTML overlays (key, controls).
@@ -301,6 +305,12 @@ export function SatelliteMap({
   const frameRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<L.Map | null>(null);
   const overlayRef = React.useRef<L.FeatureGroup | null>(null);
+  // Keep the overlay-click callback in a ref so the layer-stack effect depends only on `overlays`
+  // (the callback identity from a parent can change every render without repainting the polygons).
+  const overlayClickRef = React.useRef(onOverlayFeatureClick);
+  React.useEffect(() => {
+    overlayClickRef.current = onOverlayFeatureClick;
+  }, [onOverlayFeatureClick]);
   const layerStackRef = React.useRef<L.FeatureGroup | null>(null); // VI-P1 governed overlays (planting boundaries, …)
   const markerRef = React.useRef<L.Marker | null>(null);
   const baseLayerRef = React.useRef<L.TileLayer | null>(null);
@@ -546,7 +556,7 @@ export function SatelliteMap({
     const rasters: { layer: L.ImageOverlay; resampling: string }[] = [];
     for (const ov of overlays) {
       if (ov.kind === "vector") {
-        L.geoJSON(ov.data as unknown as GeoJSON.GeoJsonObject, {
+        const gj = L.geoJSON(ov.data as unknown as GeoJSON.GeoJsonObject, {
           style: {
             color: ov.style.color,
             weight: ov.style.weight ?? 2,
@@ -554,7 +564,15 @@ export function SatelliteMap({
             fillOpacity: ov.style.fillOpacity ?? 0.1,
             dashArray: ov.style.dashArray,
           },
+          onEachFeature: (feature, layer) => {
+            if (!overlayClickRef.current) return;
+            const props = (feature?.properties ?? {}) as Record<string, unknown>;
+            layer.on("click", () => overlayClickRef.current?.(props));
+          },
         }).addTo(group);
+        // A permanent map-unit-symbol label (e.g. "MdB") centered on the overlay, token-styled via CSS.
+        // A center-direction permanent tooltip anchors itself at the layer's centroid automatically.
+        if (ov.label) gj.bindTooltip(ov.label, { permanent: true, direction: "center", className: "soil-unit-label", opacity: 1 });
       } else if (ov.kind === "raster" && ov.imageUrl) {
         // The PNG is painted over its exact WGS84 bbox (warp already removed the UTM/3857 misregistration).
         const img = L.imageOverlay(ov.imageUrl, leafletBounds(ov.bounds), {

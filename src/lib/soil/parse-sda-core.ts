@@ -12,6 +12,7 @@ export type SdaTable = { cols: string[]; rows: (string | null)[][] };
 /** Composition (spatial) row — one per map unit. Areas are SQL-Server square degrees (ratios only). */
 export type SdaCompositionRow = {
   mukey: string;
+  musym: string | null; // the map unit SYMBOL (e.g. "MdB") — the short code printed on soil survey maps
   muname: string;
   mukind: string | null;
   drclassdcd: string | null; // muaggatt dominant-condition drainage (NRCS roll-up — cited as such)
@@ -60,6 +61,7 @@ function pick(table: SdaTable, name: string): (row: (string | null)[]) => string
 
 export function parseCompositionRows(table: SdaTable): SdaCompositionRow[] {
   const mukey = pick(table, "mukey");
+  const musym = pick(table, "musym");
   const muname = pick(table, "muname");
   const mukind = pick(table, "mukind");
   const dr = pick(table, "drclassdcd");
@@ -71,6 +73,7 @@ export function parseCompositionRows(table: SdaTable): SdaCompositionRow[] {
   return table.rows
     .map((r) => ({
       mukey: mukey(r) ?? "",
+      musym: musym(r),
       muname: muname(r) ?? "",
       mukind: mukind(r),
       drclassdcd: dr(r),

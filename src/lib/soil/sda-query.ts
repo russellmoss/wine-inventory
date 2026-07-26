@@ -24,7 +24,7 @@ export const SOIL_QUERY_VERSION = "soil-sda-1";
 export function buildCompositionQuery(wkt: string): string {
   const G = `geometry::STGeomFromText('${wkt}', 4326).MakeValid()`;
   return [
-    "SELECT p.mukey, m.muname, m.mukind, mag.drclassdcd, mag.aws025wta,",
+    "SELECT p.mukey, m.musym, m.muname, m.mukind, mag.drclassdcd, mag.aws025wta,",
     "       lg.areasymbol AS areasymbol, sac.saverest AS saverest,",
     "       SUM(p.isect) AS isect_sqdeg,",
     `       MAX(${G}.STArea()) AS block_sqdeg`,
@@ -38,7 +38,7 @@ export function buildCompositionQuery(wkt: string): string {
     "JOIN muaggatt mag ON mag.mukey = p.mukey",
     "LEFT JOIN legend    lg  ON lg.lkey = m.lkey",
     "LEFT JOIN sacatalog sac ON sac.areasymbol = lg.areasymbol",
-    "GROUP BY p.mukey, m.muname, m.mukind, mag.drclassdcd, mag.aws025wta, lg.areasymbol, sac.saverest",
+    "GROUP BY p.mukey, m.musym, m.muname, m.mukind, mag.drclassdcd, mag.aws025wta, lg.areasymbol, sac.saverest",
     "ORDER BY isect_sqdeg DESC",
   ].join("\n");
 }

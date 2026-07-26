@@ -77,7 +77,7 @@ describe("classify-core — spike NEW-1: Water is a map unit, not a gap", () => 
 describe("composition-core — coverage 3-branch, share floor, no blending, one row per mukey", () => {
   const B = 1e-4; // block_sqdeg
   const comp = (mukey: string, muname: string, dr: string, awc: string, isect: number): SdaCompositionRow => ({
-    mukey, muname, mukind: "Consociation", drclassdcd: dr, aws025wta: awc === "" ? null : Number(awc), isectSqDeg: isect, blockSqDeg: B, surveyAreaSymbol: "NY123", surveyAreaVersion: "9/2/2025",
+    mukey, musym: `M${mukey}`, muname, mukind: "Consociation", drclassdcd: dr, aws025wta: awc === "" ? null : Number(awc), isectSqDeg: isect, blockSqDeg: B, surveyAreaSymbol: "NY123", surveyAreaVersion: "9/2/2025",
   });
 
   it("within 1±ε -> covered; shares normalize to 1 against the intersection sum", () => {

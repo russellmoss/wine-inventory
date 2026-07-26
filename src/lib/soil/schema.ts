@@ -22,6 +22,8 @@ export type CoverageState = (typeof COVERAGE_STATES)[number];
  *  the UI groups under "Other" — but the mukey + properties STAY in the JSON (council C8). */
 export const SoilComponentSchema = z.object({
   mukey: z.string(),
+  // OPTIONAL + defaulted so a snapshot written before musym existed still parses (degrade-on-read, not 500).
+  musym: z.string().nullable().optional().default(null),
   muname: z.string(),
   class: z.enum(SOIL_CLASSES),
   areaPct: z.number(), // normalized share in [0,1]

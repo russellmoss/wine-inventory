@@ -10,6 +10,7 @@ import { getVineyardSoilOverlaysAction } from "@/lib/soil/actions";
 import type { VineyardSoilOverlays } from "@/lib/soil/read";
 import type { VineyardDetailPayload } from "@/lib/vineyard/data";
 import { BlockDetails } from "../../reference/BlockDetails";
+import { SoilUnitPanel } from "./SoilUnitPanel";
 
 type Vineyard = { id: string; name: string };
 
@@ -72,12 +73,14 @@ function MapModal({
   const [soilOn, setSoilOn] = React.useState(false);
   const [soilData, setSoilData] = React.useState<VineyardSoilOverlays | null>(null);
   const [soilLoading, setSoilLoading] = React.useState(false);
+  const [selectedSoilMukey, setSelectedSoilMukey] = React.useState<string | null>(null);
 
   // Fetch the soil overlays lazily, only when the layer is switched on. Reset when the vineyard changes.
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the previous vineyard's soil layer
     setSoilData(null);
     setSoilOn(false);
+    setSelectedSoilMukey(null);
   }, [vineyardId]);
   React.useEffect(() => {
     if (!soilOn || soilData) return;
@@ -229,6 +232,7 @@ function MapModal({
                 onBlockClick={setInfoBlockId}
                 exportName={vineyardName}
                 overlays={soilOn && soilData ? soilData.overlays : undefined}
+                onOverlayFeatureClick={soilOn ? (props) => setSelectedSoilMukey(props.mukey ? String(props.mukey) : null) : undefined}
                 vineyardMeta={{ soilType: detail?.soilType, manager: detail?.manager, elevationM: detail?.elevationM }}
               />
               {soilOn && soilData ? (
@@ -245,6 +249,13 @@ function MapModal({
                   No soil geometry stored yet — pull soil on a block (in Reference) to paint it here.
                 </p>
               ) : null}
+              {soilOn && soilData && !selectedSoilMukey ? (
+                <p style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>Tip: click a soil area on the map for its full detail.</p>
+              ) : null}
+              {(() => {
+                const selected = selectedSoilMukey && soilData ? soilData.units.find((u) => u.mukey === selectedSoilMukey) : null;
+                return selected ? <SoilUnitPanel unit={selected} displayUnit={unit} onClose={() => setSelectedSoilMukey(null)} /> : null;
+              })()}
               <div style={{ marginTop: 12 }}>
                 <MapLegend blocks={blocks} unit={unit} />
               </div>

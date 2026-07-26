@@ -35,11 +35,11 @@ const POLY: VineyardPolygon = {
 
 // Recorded SDA tables (shape + values mirror the live spike): 2 soils + a Water sliver.
 const COMP: SdaTable = {
-  cols: ["mukey", "muname", "mukind", "drclassdcd", "aws025wta", "areasymbol", "saverest", "isect_sqdeg", "block_sqdeg"],
+  cols: ["mukey", "musym", "muname", "mukind", "drclassdcd", "aws025wta", "areasymbol", "saverest", "isect_sqdeg", "block_sqdeg"],
   rows: [
-    ["1407835", "Mardin channery silt loam", "Consociation", "Moderately well drained", "4.62", "NY123", "9/2/2025", "6.0E-05", "1.0E-04"],
-    ["1407898", "Volusia channery silt loam", "Consociation", "Somewhat poorly drained", "3.00", "NY123", "9/2/2025", "3.97E-05", "1.0E-04"],
-    ["3250410", "Water", "Consociation", null, null, "NY123", "9/2/2025", "3.0E-07", "1.0E-04"],
+    ["1407835", "MdB", "Mardin channery silt loam", "Consociation", "Moderately well drained", "4.62", "NY123", "9/2/2025", "6.0E-05", "1.0E-04"],
+    ["1407898", "VoB", "Volusia channery silt loam", "Consociation", "Somewhat poorly drained", "3.00", "NY123", "9/2/2025", "3.97E-05", "1.0E-04"],
+    ["3250410", "W", "Water", "Consociation", null, null, "NY123", "9/2/2025", "3.0E-07", "1.0E-04"],
   ],
 };
 const PROP: SdaTable = {
@@ -104,6 +104,7 @@ async function main() {
       const mardin = v1.components.find((c) => c.mukey === "1407835");
       const water = v1.components.find((c) => c.mukey === "3250410");
       check("Mardin is soil with cited pH 6.6 (topmost mineral horizon)", mardin?.class === "soil" && mardin?.ph === 6.6 && mardin?.phBasis === "topmost mineral horizon");
+      check("map-unit symbol (musym) stored for the map label", mardin?.musym === "MdB", `${mardin?.musym}`);
       check("Mardin drainage cited as map-unit dominant condition", mardin?.drainageClass === "Moderately well drained" && mardin?.drainageBasis === "map-unit dominant condition");
       check("Water classified non-soil (class=water), no soil properties invented", water?.class === "water" && water?.ph === null && water?.drainageClass === null);
       check("Water sliver marked belowFloor but retained in the JSON (C8)", water?.belowFloor === true);

@@ -4,7 +4,7 @@ import { buildSoilOverlays } from "@/lib/soil/overlay-core";
 import type { SoilComponent } from "@/lib/soil/schema";
 
 const comp = (mukey: string, muname: string, klass: SoilComponent["class"], areaPct: number, belowFloor = false): SoilComponent => ({
-  mukey, muname, class: klass, areaPct, areaSqM: areaPct * 40000, comppct: 85, drainageClass: null, drainageBasis: null, awc: null, awcUnit: null, ph: null, phBasis: null, restrictiveDepthCm: null, belowFloor,
+  mukey, musym: mukey === "W" ? "W" : `M${mukey}`, muname, class: klass, areaPct, areaSqM: areaPct * 40000, comppct: 85, drainageClass: null, drainageBasis: null, awc: null, awcUnit: null, ph: null, phBasis: null, restrictiveDepthCm: null, belowFloor,
 });
 
 describe("wkt-parse — SDA clipped-geometry WKT → GeoJSON", () => {
@@ -66,6 +66,13 @@ describe("overlay-core — one colored vector overlay per map unit + legend", ()
     expect(r.legend.entries[0].label).toContain("Mardin");
     expect(r.legend.entries[0].label).toContain("60%");
     expect(r.legend.title).toBe("Soil (NRCS SSURGO)");
+  });
+
+  it("each overlay carries its map-unit symbol as a label + the mukey on every feature (for click)", () => {
+    const r = buildSoilOverlays({ blockId: "blk", components, displayGeometry: geom })!;
+    const mardin = r.overlays.find((o) => o.id.endsWith(":1"))!;
+    expect(mardin.kind === "vector" && mardin.label).toBe("M1"); // musym from the comp() helper
+    if (mardin.kind === "vector") expect(mardin.data.features.every((f) => f.properties?.mukey === "1")).toBe(true);
   });
 
   it("returns null when the snapshot has no display geometry", () => {

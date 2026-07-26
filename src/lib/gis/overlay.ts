@@ -37,6 +37,8 @@ export type MapOverlay =
       data: OverlayFeatureCollection;
       style: VectorStyle;
       legend?: LegendModel;
+      /** Optional short label (e.g. a soil map-unit symbol) painted at the overlay's centroid. */
+      label?: string;
     }
   | {
       kind: "raster";

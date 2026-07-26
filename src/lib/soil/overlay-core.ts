@@ -48,11 +48,14 @@ export function buildSoilOverlays(input: {
     const feats = byMukey.get(c.mukey);
     if (!feats || feats.length === 0) continue;
     const color = c.class === "water" ? WATER_COLOR : c.class === "non-soil" ? NONSOIL_COLOR : SOIL_PALETTE[soilIdx++ % SOIL_PALETTE.length];
+    // Carry the mukey on every feature so a map click can resolve the unit; label with the map-unit symbol.
+    const features = feats.map((f) => ({ ...f, properties: { mukey: c.mukey } }));
     overlays.push({
       kind: "vector",
       id: `soil:${input.blockId}:${c.mukey}`,
-      data: { type: "FeatureCollection", features: feats },
+      data: { type: "FeatureCollection", features },
       style: styleFor(color),
+      label: c.musym ?? undefined,
     });
     const share = `${(c.areaPct * 100).toFixed(c.areaPct < 0.1 ? 1 : 0)}%`;
     legendEntries.push({ label: `${share} · ${c.muname}`, color });

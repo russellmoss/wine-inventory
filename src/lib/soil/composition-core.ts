@@ -86,6 +86,7 @@ export function computeSoilComposition(input: {
     const isSoil = klass === "soil" || klass === "mixed";
     return {
       mukey: r.mukey,
+      musym: r.musym,
       muname: r.muname,
       class: klass,
       areaPct: share,
@@ -110,6 +111,7 @@ export function computeSoilComposition(input: {
     const uncoveredShare = Math.max(0, 1 - covered);
     components.push({
       mukey: "UNCOVERED",
+      musym: null,
       muname: "Uncovered area",
       class: "uncovered",
       areaPct: uncoveredShare,
