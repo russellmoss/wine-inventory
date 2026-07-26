@@ -163,4 +163,27 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     tool: "query_ndvi_stats",
     args: { vineyard: "Russian River Ranch", block: "3" },
   },
+  // VI-P8 weather/climate — GDD-vs-last-year, warmer-than-last-year, frost-last-night, Winkler, summary.
+  {
+    utterance: "How do our GDDs compare to last year at Russian River Ranch?",
+    tool: "query_climate",
+    args: { vineyard: "Russian River Ranch" },
+  },
+  {
+    utterance: "Was last night a frost at Russian River Ranch?",
+    tool: "query_climate",
+    args: { vineyard: "Russian River Ranch" },
+    note: "frost-last-night resolves in the operating tz; the tool carries the freshness fallback",
+  },
+  {
+    utterance: "What Winkler region is Oakville Estate this year?",
+    tool: "query_climate",
+    args: { vineyard: "Oakville Estate" },
+  },
+  {
+    utterance: "Is this growing season warmer than last year?",
+    tool: "query_climate",
+    args: {},
+    note: "no vineyard named — defaults to the manager's assigned vineyard",
+  },
 ];
