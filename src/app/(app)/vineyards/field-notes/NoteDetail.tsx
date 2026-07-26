@@ -7,6 +7,17 @@ import {
   type InputApplication,
   type BlockStatus,
 } from "@/lib/fieldnotes/types";
+import { scoutingLabel } from "@/lib/phenology/labels";
+import { formatShootLength } from "@/lib/phenology/units";
+import type { ShootLengthBand } from "@/lib/phenology/observation-types";
+
+/** Band chip text. Mirrors the authoring labels in BlockCard so read-back matches what was tapped. */
+const SHOOT_BAND_TEXT: Record<ShootLengthBand, string> = {
+  LT_10: "< 10 cm",
+  CM_10_30: "10–30 cm",
+  CM_30_60: "30–60 cm",
+  GT_60: "> 60 cm",
+};
 
 // Shared read-only renderer for a submitted field note: weather, spray/fert
 // timeline, per-block statuses, photos, general notes. Used by the manager's
@@ -59,7 +70,7 @@ function InputList({
 }
 
 function BlockRow({ label, status }: { label: string; status: BlockStatus }) {
-  const chips: { text: string; tone: "neutral" | "red" | "green" }[] = [];
+  const chips: { text: string; tone: "neutral" | "red" | "green" | "gold" }[] = [];
   if (status.phenoStage)
     chips.push({
       text:
@@ -71,6 +82,37 @@ function BlockRow({ label, status }: { label: string; status: BlockStatus }) {
   if (status.canopyDensity) chips.push({ text: `Canopy: ${pretty(status.canopyDensity)}`, tone: "neutral" });
   if (status.waterStress) chips.push({ text: `Water: ${pretty(status.waterStress)}`, tone: "neutral" });
   if (status.weedPressure) chips.push({ text: `Weeds: ${pretty(status.weedPressure)}`, tone: "neutral" });
+  // ── S4 ────────────────────────────────────────────────────────────────────────────────────
+  // This is a REPORT read-back, so it shows what was recorded that week, not a live estimate —
+  // no provenance badge belongs here (the estimate surfaces through the read seam). Every check
+  // is an explicit `!== null`, so a recorded `0 cm` or `hedged: no` shows up instead of vanishing.
+  if (status.shootLengthCm !== null) {
+    chips.push({ text: `Shoots ${formatShootLength(status.shootLengthCm, "METRIC")} (measured)`, tone: "neutral" });
+  }
+  if (status.shootLengthBand !== null) {
+    chips.push({ text: `Shoots ${SHOOT_BAND_TEXT[status.shootLengthBand]}`, tone: "neutral" });
+  }
+  if (status.shootTip) chips.push({ text: `Shoot tip: ${pretty(status.shootTip)}`, tone: "neutral" });
+  if (status.hedgedThisWeek !== null) {
+    chips.push({ text: status.hedgedThisWeek ? "Hedged this week" : "Not hedged", tone: "neutral" });
+  }
+  if (status.fruitZoneLeafRemoval !== null) {
+    chips.push({ text: `Fruit-zone leaves: ${pretty(status.fruitZoneLeafRemoval)}`, tone: "neutral" });
+  }
+  // The scouting pair renders its three states as three different chips. A gap is AMBER and says
+  // "didn't check" in words — never green, never silently absent, never read as "none".
+  if (status.clusterDamage !== null) {
+    chips.push({
+      text: scoutingLabel("clusterDamage", status.clusterDamage),
+      tone: status.clusterDamage === "NONE" ? "green" : status.clusterDamage === "NOT_ASSESSED" ? "gold" : "red",
+    });
+  }
+  if (status.vinegarFlyPressure !== null) {
+    chips.push({
+      text: scoutingLabel("vinegarFlyPressure", status.vinegarFlyPressure),
+      tone: status.vinegarFlyPressure === "NONE" ? "green" : status.vinegarFlyPressure === "NOT_ASSESSED" ? "gold" : "red",
+    });
+  }
   for (const lc of status.leafConditions) chips.push({ text: pretty(lc), tone: "red" });
   if (status.diseasePestSpotted) chips.push({ text: "Disease/pest", tone: "red" });
 

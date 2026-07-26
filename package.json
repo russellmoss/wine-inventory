@@ -44,6 +44,7 @@
     "verify:reverse-transform": "tsx --env-file=.env scripts/verify-reverse-transform.ts",
     "verify:phase6-reversal": "tsx --conditions=react-server --env-file=.env scripts/verify-phase6-reversal.ts",
     "verify:split-in-place": "tsx --conditions=react-server --env-file=.env scripts/verify-split-in-place.ts",
+    "verify:spray-record": "tsx --conditions=react-server --env-file=.env scripts/verify-spray-record.ts",
     "verify:barrel-groups": "tsx --conditions=react-server --env-file=.env scripts/verify-barrel-groups.ts",
     "verify:group-maintenance": "tsx --conditions=react-server --env-file=.env scripts/verify-group-maintenance.ts",
     "verify:long-tail-ops": "tsx --conditions=react-server --env-file=.env scripts/verify-long-tail-ops.ts",
@@ -138,7 +139,8 @@
     "verify:gis-live": "tsx --conditions=react-server --env-file=.env scripts/gis-p0-live-scene.ts",
     "verify:gis-measure": "tsx --conditions=react-server --env-file=.env scripts/gis-p0-measure.ts",
     "verify:weather": "tsx --conditions=react-server --env-file=.env scripts/verify-weather.ts",
-    "backfill:weather-offseason": "tsx --conditions=react-server --env-file=.env scripts/backfill-weather-offseason.ts"
+    "backfill:weather-offseason": "tsx --conditions=react-server --env-file=.env scripts/backfill-weather-offseason.ts",
+    "verify:phenology": "tsx --conditions=react-server --env-file=.env scripts/verify-phenology.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

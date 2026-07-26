@@ -124,6 +124,29 @@ function describeBlock(label: string, s: BlockStatus): string {
     `weed pressure ${s.weedPressure ?? "—"}`,
     `leaf ${s.leafConditions.length ? s.leafConditions.join("/") : "healthy"}`,
   ];
+  // ── S4 ────────────────────────────────────────────────────────────────────────────────────
+  // Every check below is an explicit `!= null` / `!== null`, NOT truthiness: `shootLengthCm: 0`
+  // and `hedgedThisWeek: false` are meaningful readings and must reach the briefing.
+  if (s.shootLengthCm != null) parts.push(`shoot length ${s.shootLengthCm} cm (measured)`);
+  if (s.shootLengthBand !== null) parts.push(`shoot length band ${s.shootLengthBand}`);
+  if (s.hedgedThisWeek !== null) parts.push(s.hedgedThisWeek ? "HEDGED this week" : "not hedged this week");
+  if (s.fruitZoneLeafRemoval !== null) parts.push(`fruit-zone leaf removal ${s.fruitZoneLeafRemoval}`);
+  // The scouting pair renders its THREE states distinctly. "not assessed" must never read as
+  // "none" — nobody looking is not the same fact as somebody looking and finding nothing.
+  if (s.clusterDamage !== null) {
+    parts.push(
+      s.clusterDamage === "NOT_ASSESSED"
+        ? "cluster damage NOT ASSESSED (nobody checked — this is not a clean result)"
+        : `cluster damage ${s.clusterDamage}`,
+    );
+  }
+  if (s.vinegarFlyPressure !== null) {
+    parts.push(
+      s.vinegarFlyPressure === "NOT_ASSESSED"
+        ? "vinegar-fly pressure NOT ASSESSED (nobody checked — this is not a clean result)"
+        : `vinegar-fly pressure ${s.vinegarFlyPressure}`,
+    );
+  }
   if (s.diseasePestSpotted) {
     parts.push(`DISEASE/PEST FLAGGED${s.diseaseDescription ? `: ${s.diseaseDescription}` : ""}`);
   }

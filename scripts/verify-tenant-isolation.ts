@@ -20,12 +20,14 @@ const A = "org_demo_winery";
 const B = "org_isolation_test_b";
 
 // GLOBAL_MODELS (mirror of src/lib/tenant/models.ts): the Better Auth core + org-plugin tables, the
-// Plan-073 FxRate reference cache, and the Plan-079 knowledge-base CORPUS tables are the ONLY non-tenant
-// tables — every other model must be RLS-isolated. These globals have no tenantId (identical for every
-// tenant); they're excluded from the RLS coverage guard below exactly like the auth globals. The
-// knowledge-base SUBSCRIPTION table (KnowledgeSourceSubscription) IS tenant-scoped and is NOT listed here.
+// Plan-073 FxRate reference cache, the Plan-079 knowledge-base CORPUS tables, and the Spray-S2
+// pesticide registration/resistance master are the ONLY non-tenant tables — every other model must be
+// RLS-isolated. These globals have no tenantId (identical for every tenant); they're excluded from the
+// RLS coverage guard below exactly like the auth globals. The knowledge-base SUBSCRIPTION table
+// (KnowledgeSourceSubscription) IS tenant-scoped and is NOT listed here; pesticide entitlement is a
+// SERVICE-layer check in src/lib/pesticide/lookup.ts, not RLS.
 // Inlined so this exit-proof script stays self-contained.
-const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation", "FxRate", "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument", "KnowledgeUrlObservation", "KnowledgeChunk"]);
+const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation", "FxRate", "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument", "KnowledgeUrlObservation", "KnowledgeChunk", "PesticideDataRevision", "PesticideProduct", "PesticideActiveIngredient", "PesticideProductIngredient", "PesticideSiteRegistration", "PesticideStateRegistration", "PesticideUseRestriction", "PesticideResistanceAssignment"]);
 
 const OWNER_URL = process.env.DATABASE_URL_UNPOOLED;
 const APP_URL = process.env.DATABASE_URL_APP;
@@ -202,8 +204,20 @@ async function main() {
   await owner.vineyard.upsert({ where: { id: "iso_vy_b" }, update: {}, create: { id: "iso_vy_b", name: "ISO VY B", tenantId: B } });
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_a" }, update: {}, create: { id: "iso_blk_a", vineyardId: "iso_vy_a", tenantId: A, updatedAt: now } });
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_b" }, update: {}, create: { id: "iso_blk_b", vineyardId: "iso_vy_b", tenantId: B, updatedAt: now } });
+  // S4: a variety per tenant carrying the DURABLE cluster-compactness default (D12). The block
+  // columns (trellisSystem / clusterCompactness) ride the existing vineyard_block fixtures.
+  await owner.variety.upsert({ where: { id: "iso_var_a" }, update: { clusterCompactness: "TIGHT" }, create: { id: "iso_var_a", name: "ISO VAR A", clusterCompactness: "TIGHT", tenantId: A } });
+  await owner.variety.upsert({ where: { id: "iso_var_b" }, update: { clusterCompactness: "LOOSE" }, create: { id: "iso_var_b", name: "ISO VAR B", clusterCompactness: "LOOSE", tenantId: B } });
+  await owner.vineyardBlock.update({ where: { id: "iso_blk_a" }, data: { varietyId: "iso_var_a", trellisSystem: "VSP", clusterCompactness: "MODERATE" } });
+  await owner.vineyardBlock.update({ where: { id: "iso_blk_b" }, data: { varietyId: "iso_var_b", trellisSystem: "SPRAWL", clusterCompactness: "LOOSE" } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_a" }, update: {}, create: { id: "iso_brix_a", blockId: "iso_blk_a", vineyardId: "iso_vy_a", brixValue: "22.5", createdByEmail: "iso@test", tenantId: A } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_b" }, update: {}, create: { id: "iso_brix_b", blockId: "iso_blk_b", vineyardId: "iso_vy_b", brixValue: "23.5", createdByEmail: "iso@test", tenantId: B } });
+  // S3a: spray record fixtures (header + block line per tenant). Append-only tables — cleanup
+  // below runs in a purge-GUC transaction (owner role) or the DELETE trigger refuses it.
+  await owner.sprayApplication.upsert({ where: { id: "iso_spray_a" }, update: {}, create: { id: "iso_spray_a", tenantId: A, vineyardId: "iso_vy_a", applicatorName: "Iso A", applicationMethod: "AIRBLAST", startedAt: now, enteredByEmail: "iso@test" } });
+  await owner.sprayApplication.upsert({ where: { id: "iso_spray_b" }, update: {}, create: { id: "iso_spray_b", tenantId: B, vineyardId: "iso_vy_b", applicatorName: "Iso B", applicationMethod: "AIRBLAST", startedAt: now, enteredByEmail: "iso@test" } });
+  await owner.sprayBlockLine.upsert({ where: { id: "iso_sbl_a" }, update: {}, create: { id: "iso_sbl_a", tenantId: A, applicationId: "iso_spray_a", blockId: "iso_blk_a", blockLabelSnapshot: "Iso Block A", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } });
+  await owner.sprayBlockLine.upsert({ where: { id: "iso_sbl_b" }, update: {}, create: { id: "iso_sbl_b", tenantId: B, applicationId: "iso_spray_b", blockId: "iso_blk_b", blockLabelSnapshot: "Iso Block B", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } });
   // VI-P1: a planting area per tenant (analysis mask parent). geometry/fingerprint/anchor are opaque here.
   const isoGeom = { type: "Polygon", coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] };
   const isoAnchor = { epsg: 32617, originX: 0, originY: 0 };
@@ -636,6 +650,21 @@ async function main() {
       await asTenant(A, (db) => db.vineyardBlock.update({ where: { id: "iso_blk_a" }, data: { plantingAreaId: "iso_pa_b" } }));
     } catch { paFkRaised = true; }
     check("block cross-tenant plantingArea reference rejected (composite FK, K11)", paFkRaised);
+
+    // 5c-S4. Spray Intelligence S4: the durable canopy-profile columns are additive on two tables
+    // that were ALREADY tenant-scoped and RLS-forced, so the AGENTS.md U7 checklist entry for
+    // vineyard_block and variety is "covered by the existing policies". These cases prove that —
+    // a new column on an RLS-forced table inherits the policy and does not open a read path.
+    const s4BlockA = await asTenant(A, (db) => db.vineyardBlock.findFirst({ where: { id: "iso_blk_a" }, select: { trellisSystem: true, clusterCompactness: true } }));
+    check("tenant A reads its own block trellis/compactness (S4)", s4BlockA?.trellisSystem === "VSP" && s4BlockA?.clusterCompactness === "MODERATE", `saw ${JSON.stringify(s4BlockA)}`);
+    check("tenant A CANNOT read tenant B's block canopy profile (RLS, S4)", (await asTenant(A, (db) => db.vineyardBlock.findFirst({ where: { id: "iso_blk_b" }, select: { trellisSystem: true } }))) === null);
+    check("tenant A sees its own variety clusterCompactness (S4/D12)", (await asTenant(A, (db) => db.variety.findFirst({ where: { id: "iso_var_a" }, select: { clusterCompactness: true } })))?.clusterCompactness === "TIGHT");
+    check("tenant A CANNOT see tenant B's variety default (RLS, S4/D12)", (await asTenant(A, (db) => db.variety.findFirst({ where: { id: "iso_var_b" } }))) === null);
+    let s4VarietyInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.variety.create({ data: { id: "iso_var_x", name: "ISO VAR X", clusterCompactness: "TIGHT", tenantId: B } }));
+    } catch { s4VarietyInsertRaised = true; }
+    check("foreign-tenant variety INSERT raises (WITH CHECK, S4)", s4VarietyInsertRaised);
     // Exactly one OPEN geometry version per subject (partial unique, council C3/S2).
     let openVersionRaised = false;
     try {
@@ -678,6 +707,22 @@ async function main() {
       await asTenant(A, (db) => db.blockSoilSnapshot.create({ data: { id: "iso_soil_fk", tenantId: A, blockId: "iso_blk_b", vineyardId: "iso_vy_a", polygonFingerprint: "x", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "1.00", components: [], processingVersion: "soil-1" } }));
     } catch { soilBlockFkRaised = true; }
     check("soil cross-tenant block reference rejected (composite FK, K11)", soilBlockFkRaised);
+
+    // 5c-S3a. spray_application + spray_block_line: RLS isolation, WITH CHECK on a foreign INSERT,
+    // and the composite (tenantId, blockId) FK (K11) rejecting a cross-tenant block reference.
+    check("tenant A sees its own spray_application", (await asTenant(A, (db) => db.sprayApplication.findFirst({ where: { id: "iso_spray_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's spray_application (RLS)", (await asTenant(A, (db) => db.sprayApplication.findFirst({ where: { id: "iso_spray_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's spray_block_line (RLS)", (await asTenant(A, (db) => db.sprayBlockLine.findFirst({ where: { id: "iso_sbl_b" } }))) === null);
+    let sprayInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.sprayApplication.create({ data: { id: "iso_spray_x", tenantId: B, vineyardId: "iso_vy_a", applicatorName: "Iso X", applicationMethod: "AIRBLAST", startedAt: new Date(), enteredByEmail: "iso@test" } }));
+    } catch { sprayInsertRaised = true; }
+    check("foreign-tenant spray_application INSERT raises (WITH CHECK)", sprayInsertRaised);
+    let sprayBlockFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.sprayBlockLine.create({ data: { id: "iso_sbl_fk", tenantId: A, applicationId: "iso_spray_a", blockId: "iso_blk_b", blockLabelSnapshot: "X", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } }));
+    } catch { sprayBlockFkRaised = true; }
+    check("spray_block_line cross-tenant block reference rejected (composite FK, K11)", sprayBlockFkRaised);
 
     // 5d. Phase 15: accounting_connection (the ENCRYPTED-TOKEN table) is tenant-isolated through the
     // pooled endpoint. This is the one that matters most — a leak here is a cross-tenant token read.
@@ -1061,7 +1106,16 @@ async function main() {
     await owner.spatialDataset.deleteMany({ where: { id: { in: ["iso_ds_a", "iso_ds_b"] } } });
     await owner.spatialScene.deleteMany({ where: { id: { in: ["iso_scene_a", "iso_scene_b", "iso_scene_x"] } } });
     await owner.cdseUsageCounter.deleteMany({ where: { yearMonth: "2026-07", tenantId: { in: [A, B] } } });
+    // S3a: spray rows are append-only — DELETE requires the purge GUC on a non-app_rls connection
+    // (council C15), so the teardown runs inside one owner transaction with the flag set.
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.allow_spray_purge', 'on', true)`;
+      await tx.sprayBlockLine.deleteMany({ where: { id: { in: ["iso_sbl_a", "iso_sbl_b", "iso_sbl_fk"] } } });
+      await tx.sprayApplication.deleteMany({ where: { id: { in: ["iso_spray_a", "iso_spray_b", "iso_spray_x"] } } });
+    });
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["iso_blk_a", "iso_blk_b"] } } });
+    // S4: varieties are referenced by the blocks above (SetNull) — drop after them.
+    await owner.variety.deleteMany({ where: { id: { in: ["iso_var_a", "iso_var_b", "iso_var_x"] } } });
     // VI-P1: geometry_version FK's organization (RESTRICT), so delete before the org drop; planting areas
     // after their blocks (block→planting is RESTRICT) and before the vineyard (which would cascade them).
     await owner.vineyardGeometryVersion.deleteMany({ where: { id: { in: ["iso_gv_a", "iso_gv_b", "iso_gv_dup"] } } });

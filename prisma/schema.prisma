@@ -326,6 +326,30 @@ enum VineSpecies {
   OTHER
 }
 
+// Spray Intelligence S4 — DURABLE canopy architecture. The trellis system is a standing
+// property of the block, not a weekly observation (a grower must never re-state it 52×/year).
+// S1's leaf-wetness modifier needs it: wetness in a leaf-pulled VSP canopy behaves nothing
+// like an unmanaged sprawl. OTHER is the escape hatch so a closed set never blocks recording.
+enum TrellisSystem {
+  VSP
+  HIGH_WIRE_CORDON
+  SPRAWL
+  GDC
+  SCOTT_HENRY
+  LYRE
+  OTHER
+}
+
+// Spray Intelligence S4/D12 — cluster architecture, the botrytis/sour-rot microclimate driver.
+// Variety carries the DEFAULT (Pinot Noir tight, Cabernet Sauvignon loose — a static viticultural
+// fact we already know); VineyardBlock carries an OVERRIDE for clone/site differences.
+// Resolution order lives in src/lib/phenology/canopy-profile.ts: block → variety → unknown.
+enum ClusterCompactness {
+  LOOSE
+  MODERATE
+  TIGHT
+}
+
 model Variety {
   tenantId        String            @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
   id              String            @id @default(cuid())
@@ -342,6 +366,9 @@ model Variety {
   nursery         String? // source nursery the vine material came from
   berryColor      BerryColor? // black or white — see BerryColor, distinct from `color`
   species         VineSpecies?
+  // S4/D12: the DEFAULT cluster compactness for this variety. A per-block override lives on
+  // VineyardBlock. NULL = not recorded → resolves to `unknown`, never to a default (rule §3.6).
+  clusterCompactness ClusterCompactness?
   createdAt       DateTime          @default(now())
   components      VesselComponent[]
   bottlingSources BottlingSource[]
@@ -562,6 +589,12 @@ model VineyardBlock {
   geometryVersion     Int                @default(1) // VI-P1: mirrors the open VineyardGeometryVersion row for this block
   geometryFingerprint String? // VI-P1: canonical-form hash of the current polygon (null until first versioned write)
   color               String? // optional per-block polygon color override (hex)
+  // S4: durable canopy architecture — the trellis half of "a leaf-pulled VSP canopy" (council S6).
+  // The leaf-pulled half is a weekly FieldNote observation; this half never changes week to week.
+  trellisSystem       TrellisSystem?
+  // S4/D12: per-block OVERRIDE of Variety.clusterCompactness (clone/site differences are real).
+  // NULL = fall back to the variety default; both NULL = `unknown`, never a default (rule §3.6).
+  clusterCompactness  ClusterCompactness?
   sortOrder           Int                @default(0)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -5386,4 +5419,756 @@ model DirectMessageAttachment {
   @@unique([tenantId, id])
   @@index([tenantId, messageId])
   @@map("direct_message_attachment")
+}
+
+// ───────────────────────── Pesticide registration + resistance master (Spray S2) ─────────────────────────
+// GLOBAL reference data (like FxRate / the knowledge-base corpus): US EPA registrations, active
+// ingredients, CA DPR state registrations, and resistance-code assignments are identical for every
+// tenant — NO tenantId, NO RLS. All eight models are listed in GLOBAL_MODELS (src/lib/tenant/models.ts),
+// mirrored in scripts/verify-tenant-isolation.ts, and in the hard-coded set in test/tenant-context.test.ts.
+// Entitlement is enforced at the SERVICE layer: src/lib/pesticide/lookup.ts is the single choke point
+// (K7) — every read checks the `epa-pesticide` KnowledgeSourceSubscription first and fails closed.
+// Per-tenant control is that existing subscription table; nothing here is tenant-scoped.
+//
+// The safety contracts live in the DB, not in convention (S2 plan K2/K4/K11–K14 + council G1–G4):
+// CHECKs and partial unique indexes are hand-added in the _pesticide_schema migration (Prisma's DSL
+// expresses neither — the SpatialStyle precedent), documented per-model below.
+
+// Ingest-run lifecycle (K8/C8): reads resolve ONLY against the latest PUBLISHED revision, so a crashed
+// or partly-failed run never exposes mixed old/new rows under a misleading stamp.
+enum PesticideRevisionStatus {
+  RUNNING
+  FAILED
+  PUBLISHED
+}
+
+// K14 mark-and-sweep: rows unseen in a completed run flip to WITHDRAWN_FROM_SOURCE — never deleted
+// (audit trail). A withdrawn product must stop answering "registered".
+enum PesticideSourceStatus {
+  ACTIVE
+  WITHDRAWN_FROM_SOURCE
+}
+
+// K11 (council G1): bearing vs non-bearing site registration. A non-bearing-only herbicide applied to
+// bearing vines is an illegal application whose residues make the crop unsellable. UNSPECIFIED is the
+// honest default for a bare "Grapes" site string — it is NOT "both" and must never be read as BEARING.
+enum PesticideSiteModifier {
+  BEARING
+  NON_BEARING
+  UNSPECIFIED
+}
+
+// K12: a product absent from a state's registry is NOT_REGISTERED; a product we could not resolve is
+// UNKNOWN — two different values, never merged, because absence of knowledge is never a clearance.
+enum PesticideStateRegStatus {
+  REGISTERED
+  NOT_REGISTERED
+  UNKNOWN
+}
+
+// K2: the tri-state that the phase exists to protect. GAP ("we don't know") and NO_CODE_EXISTS
+// ("there is no code — not a rotation partner") are distinct values; a nullable column would conflate
+// them and a missing code would read as "no restriction". A CHECK ties CODED ⟺ codes non-empty.
+enum ResistanceResolution {
+  CODED
+  NO_CODE_EXISTS
+  GAP
+}
+
+// K3 (plan 086 measured constraint 1): rotation-eligibility is modeled separately from chemical
+// identity. Captan is codes ["M 04"] + MULTI — both "has a taxonomic code" and "not a rotation
+// partner" are true, and S7a's rotation engine keys off siteType, not code presence.
+enum ResistanceSiteType {
+  SINGLE
+  MULTI
+  UNKNOWN
+}
+
+enum ResistanceSubjectKind {
+  ACTIVE_INGREDIENT
+  PRODUCT
+}
+
+enum ResistanceScheme {
+  FRAC
+  HRAC
+  IRAC
+}
+
+// K4 provenance (plan 086 measured constraint 2): an AI-keyed source lists trade names as "products
+// containing this AI", not "products whose code is this" — a naive join drops the second AI of a
+// premix (Switch is 9/12, not 9). A DB CHECK forbids subjectKind=PRODUCT with AI_KEYED_TABLE.
+enum ResistanceDerivedFrom {
+  AI_KEYED_TABLE // extension table keyed on active ingredient (UC IPM conventional/biologicals)
+  PRODUCT_KEYED_TABLE // extension table keyed on trade name — the only table join legal at product level
+  EXTENSION_PROSE // LLM-extracted from Tier-1/2 extension prose, human-reviewed
+  LABEL_SINGLE_AI // label text — single-AI products ONLY (labels drop the SDHI partner in premixes)
+  AI_ROLLUP // product-level result composed from constituent-AI assignments (K13 most-conservative)
+}
+
+// One ingest/derivation run. apprilAsOf/cdprAsOf come from the sources' Last-Modified; the artifact
+// sha256 pins which curated resistance-codes.json produced the assignments. Together these four form
+// the composite factsAsOf every lookup returns (K8 — a single scalar would be a false contract).
+model PesticideDataRevision {
+  id                       String                  @id @default(cuid())
+  status                   PesticideRevisionStatus @default(RUNNING)
+  startedAt                DateTime                @default(now())
+  completedAt              DateTime?
+  apprilAsOf               DateTime?
+  cdprAsOf                 DateTime?
+  resistanceArtifactSha256 String?
+  summary                  Json?
+
+  @@index([status, startedAt])
+  @@map("pesticide_data_revision")
+}
+
+// One row per registered product. epaRegNumber is the CANONICAL "COMPANY-PRODUCT[-DISTRIBUTOR]" string
+// from parseRegistrationNumber (K6 — exact match only, never fuzzy). caRegNumber is schema room for
+// S2b's CA-state-only products (adjuvants, FIFRA 25(b)) — G4: a NOT NULL epaRegNumber would make a
+// legally-required tank component permanently unrepresentable. S2 ingests only EPA-numbered products.
+// Hand-added in migration: partial UNIQUE on each reg number WHERE NOT NULL (Postgres treats NULLs as
+// distinct) + CHECK that at least one is present.
+model PesticideProduct {
+  id                 String                @id @default(cuid())
+  epaRegNumber       String? // canonical form; partial unique WHERE NOT NULL (hand-added)
+  caRegNumber        String? // S2b schema room; partial unique WHERE NOT NULL (hand-added)
+  productName        String
+  companyName        String?
+  labelDate          DateTime? // attribute only — S2b owns product versioning; this is NOT a version key (C13)
+  registrationStatus String? // raw source status string (APPRIL) — never interpreted, only displayed
+  sourceStatus       PesticideSourceStatus @default(ACTIVE) // K14 sweep target
+  labelNames         String[]              @default([])
+  pestCategoryRaw    String? // raw PEST_CAT; NULL means UNKNOWN, not "no category" — 317 grape rows are blank
+  lastSeenRevisionId String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  ingredients           PesticideProductIngredient[]
+  siteRegistrations     PesticideSiteRegistration[]
+  stateRegistrations    PesticideStateRegistration[]
+  useRestrictions       PesticideUseRestriction[]
+  resistanceAssignments PesticideResistanceAssignment[]
+
+  @@index([lastSeenRevisionId])
+  @@map("pesticide_product")
+}
+
+// The AI dictionary. `name` is VERBATIM from APPRIL — normalization never rewrites identity (K5/G5);
+// the salt/ester/hydrate collapse is expressed as parentActiveIngredientId (curated, cited in
+// ai-normalization.json) and applied only for resistance-code assignment, never for identity.
+// Hand-added in migration: partial UNIQUE on pcCode WHERE NOT NULL.
+model PesticideActiveIngredient {
+  id                       String   @id @default(cuid())
+  pcCode                   String? // durable EPA PC code; partial unique WHERE NOT NULL (hand-added)
+  casNumber                String?
+  name                     String // verbatim APPRIL string — identity, never rewritten
+  normalizedName           String // lowercased/whitespace-collapsed for exact-normalized joins
+  parentActiveIngredientId String? // curated salt/ester/copper collapse target (G5) — assignment only
+  lastSeenRevisionId       String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  parent   PesticideActiveIngredient?  @relation("AiNormalizationParent", fields: [parentActiveIngredientId], references: [id], onDelete: Restrict)
+  children PesticideActiveIngredient[] @relation("AiNormalizationParent")
+
+  products              PesticideProductIngredient[]
+  resistanceAssignments PesticideResistanceAssignment[]
+
+  @@index([normalizedName])
+  @@index([parentActiveIngredientId])
+  @@index([lastSeenRevisionId])
+  @@map("pesticide_active_ingredient")
+}
+
+model PesticideProductIngredient {
+  productId          String
+  activeIngredientId String
+  percent            Decimal? @db.Decimal(8, 4) // label percent; null when APPRIL omits it
+
+  product          PesticideProduct          @relation(fields: [productId], references: [id])
+  activeIngredient PesticideActiveIngredient @relation(fields: [activeIngredientId], references: [id])
+
+  @@id([productId, activeIngredientId])
+  @@index([activeIngredientId])
+  @@map("pesticide_product_ingredient")
+}
+
+// One row per (product, site string) from APPRIL. isGrape is the /\bGrapes?\b(?!fruit)/ discrimination;
+// siteModifier is K11's bearing/non-bearing parse — a bare "Grapes" is UNSPECIFIED, never BEARING.
+model PesticideSiteRegistration {
+  id                 String                @id @default(cuid())
+  productId          String
+  siteCodeRaw        String?
+  siteNameRaw        String // verbatim APPRIL site string
+  isGrape            Boolean               @default(false)
+  siteModifier       PesticideSiteModifier @default(UNSPECIFIED)
+  lastSeenRevisionId String?
+
+  product PesticideProduct @relation(fields: [productId], references: [id])
+
+  @@unique([productId, siteNameRaw])
+  @@index([productId, isGrape])
+  @@index([lastSeenRevisionId])
+  @@map("pesticide_site_registration")
+}
+
+// K12: state registration is a required conjunct of legality — federal alone is never a clearance.
+// S2 ships only CA (CDPR). siteCode "" = the state-level row (NOT NULL so the upsert key dedupes;
+// Postgres would treat NULL site codes as distinct).
+model PesticideStateRegistration {
+  id                 String                  @id @default(cuid())
+  productId          String
+  state              String // "CA" in S2
+  status             PesticideStateRegStatus
+  siteCode           String                  @default("") // CDPR site code; "" = state-level row
+  lastSeenRevisionId String?
+
+  product PesticideProduct @relation(fields: [productId], references: [id])
+
+  @@unique([productId, state, siteCode])
+  @@index([productId, state])
+  @@index([lastSeenRevisionId])
+  @@map("pesticide_state_registration")
+}
+
+// Structured, non-binary restriction (Unit 7): kind + counties + the 24(c) SLN carve-out, with the
+// label sentence VERBATIM so the citation is the source, not our paraphrase. A restriction we could
+// not resolve is itself disqualifying (composition rule 3).
+model PesticideUseRestriction {
+  id                 String   @id @default(cuid())
+  productId          String
+  state              String
+  counties           String[] @default([])
+  kind               String // e.g. "county-prohibition" | "aerial-application-prohibited"
+  exception          String? // "24c-sln" | null — Luna's carve-out is not a plain ban
+  quote              String // verbatim label sentence (the citation)
+  lastSeenRevisionId String?
+
+  product PesticideProduct @relation(fields: [productId], references: [id])
+
+  @@index([productId, state])
+  @@index([lastSeenRevisionId])
+  @@map("pesticide_use_restriction")
+}
+
+// One assignment per (subject, scheme). `codes` is an ARRAY because the partial uniques allow exactly
+// one row per subject per scheme and premix products legitimately carry several codes (Switch 9+12,
+// Pristine 7+11, Zampro 45+40) — a scalar would force "9 alone", the exact K4 failure. K2's CHECK
+// becomes (resolution = 'CODED') = (cardinality(codes) > 0): an empty array can never read as CODED,
+// and a CODED row can never be empty. Hand-added in migration:
+//   1. chk_pra_coded_has_codes         — (resolution = 'CODED') = (cardinality(codes) > 0)   (K2)
+//   2. chk_pra_subject_exactly_one     — exactly one of activeIngredientId/productId, matching subjectKind
+//   3. chk_pra_product_not_ai_keyed    — NOT (subjectKind = 'PRODUCT' AND derivedFrom = 'AI_KEYED_TABLE') (K4)
+//   6. two partial uniques, one per subjectKind (C3 — @@unique over nullables does not dedupe)
+model PesticideResistanceAssignment {
+  id                 String                @id @default(cuid())
+  subjectKind        ResistanceSubjectKind
+  activeIngredientId String? // set iff subjectKind = ACTIVE_INGREDIENT (CHECK 2)
+  productId          String? // set iff subjectKind = PRODUCT (CHECK 2)
+  scheme             ResistanceScheme
+  resolution         ResistanceResolution
+  codes              String[]              @default([]) // non-empty ⟺ CODED (CHECK 1); e.g. ["9","12"]
+  siteType           ResistanceSiteType // required (K3) — rotation engines key off THIS, not code presence
+  derivedFrom        ResistanceDerivedFrom
+  sourceUrl          String?
+  sourceTitle        String?
+  sourceAsOf         DateTime?
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  revisionId         String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  // Restrict, not SetNull: nulling a subject would violate chk_pra_subject_exactly_one. Reference
+  // rows are never deleted anyway (K14 mark-and-sweep) — this is belt-and-braces.
+  activeIngredient PesticideActiveIngredient? @relation(fields: [activeIngredientId], references: [id], onDelete: Restrict)
+  product          PesticideProduct?          @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([activeIngredientId])
+  @@index([productId])
+  @@index([revisionId])
+  @@map("pesticide_resistance_assignment")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Spray Intelligence S3a — the spray application record + planned harvest date.
+// (docs/spray_assistant/phases/S3a-spray-record-plan.md, council-reconciled 2026-07-26)
+//
+// Seven tenant-scoped tables. The four spray content tables + planned_harvest_date_event +
+// spray_drying_override are APPEND-ONLY, enforced by a Postgres BEFORE UPDATE trigger
+// (spray_reject_content_mutation, per-table bookkeeping allowlist) and a BEFORE DELETE trigger
+// (spray_reject_delete, owner-only QA-teardown escape hatch) — see the _spray_record migration.
+// Corrections are an amendment chain (KD-1): a new revision row with supersedesApplicationId set,
+// at-most-once via @@unique([tenantId, supersedesApplicationId]); a VOID is a successor row too
+// (council C2), so the same unique kills the double-correction race on both paths.
+// Cross-table FKs are RAW-SQL composite (tenantId, refId) → (tenantId, id) — plain String columns,
+// NO Prisma @relation (K11). No FK to S2's product tables ever: the EPA registration number string
+// is the durable natural key (a spray record must survive a product de-registration).
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum SprayApplicationMethod {
+  AIRBLAST
+  BOOM
+  HANDGUN
+  BACKPACK
+  CHEMIGATION
+  AERIAL
+  OTHER
+}
+
+enum SprayRecordStatus {
+  ACTIVE // the current head of its chain
+  SUPERSEDED // corrected — supersededByApplicationId names the successor
+  VOIDED // a VOID successor row (terminal; carries zero line children)
+}
+
+enum SprayCorrectionKind {
+  AMENDMENT // full replacement revision
+  VOID // "this pass never happened" — successor row with no lines (KD-1 / council C2)
+}
+
+enum SprayMaterialRole {
+  PESTICIDE
+  ADJUVANT
+  FERTILIZER
+  OTHER
+}
+
+// Council C9 — the organosilicone penetrant must be distinguishable (captan + penetrant is a
+// known injury combination S7b's interlocks will key on).
+enum SprayAdjuvantClass {
+  NONIONIC_SURFACTANT
+  ORGANOSILICONE_PENETRANT
+  CROP_OIL_CONCENTRATE
+  METHYLATED_SEED_OIL
+  STICKER_SPREADER
+  BUFFER_ACIDIFIER
+  WATER_CONDITIONER
+  DEFOAMER
+  OTHER
+}
+
+enum SprayQuantityUnit {
+  GAL
+  QT
+  PT
+  FLOZ
+  LB
+  OZ
+  L
+  ML
+  KG
+  G
+}
+
+enum SprayQuantityDimension {
+  VOLUME
+  MASS
+}
+
+// Council G3 — a quantity without a denominator is not a dose. Required; never guessed.
+enum SprayQuantityBasis {
+  TOTAL_IN_TANK
+  PER_AREA
+  PER_CARRIER_VOLUME
+}
+
+enum SprayMobilityClass {
+  CONTACT_PROTECTANT
+  TRANSLAMINAR
+  LOCALLY_SYSTEMIC
+  MOBILE_SYSTEMIC
+}
+
+// The COST-2 three-state honesty enum: never a silent zero, never a silent [].
+enum SprayFactsCompleteness {
+  KNOWN
+  PARTIAL
+  UNKNOWN
+}
+
+enum SprayFactsSource {
+  NONE // null resolver / nothing resolved — the S3a default until S2b lands
+  REGISTRY // resolved from the S2/S2b registration + facts master
+  TENANT_DEFINED // grower-supplied, not registry-verified (rule §3.9 — Bhutan path)
+}
+
+enum SprayProductIdentitySource {
+  EPA_REGISTRY
+  TENANT_DEFINED
+  LEGACY_NAME_ONLY
+  UNKNOWN
+}
+
+enum SprayRateBasis {
+  MEASURED // computed from volumeUsedL / treatedAreaHa
+  HEADER_VOLUME // fell back to the header's sprayVolumePerHaL
+  UNKNOWN // neither input present — the rate is null, never 0
+}
+
+// Council CQ2 — a rate dispute turns on whether the area was derived or asserted.
+enum SprayAreaSource {
+  DERIVED_FROM_SPACING
+  OPERATOR_ENTERED
+  SURVEYED
+}
+
+enum SprayDepositionMethod {
+  WATER_SENSITIVE_CARD
+  DYE
+  VISUAL
+  OTHER
+}
+
+enum SprayRowPattern {
+  EVERY_ROW
+  ALTERNATE_ROW
+}
+
+enum SprayDilutionMode {
+  DILUTE
+  CONCENTRATE
+}
+
+// Rule §3.5 — estimated stays labelled estimated.
+enum SprayWeatherSource {
+  OPERATOR_OBSERVED
+  STATION
+  GRID_ESTIMATE
+}
+
+// Council G5 / KD-15 — the compass enum is the entered truth; degrees are reserved for a future
+// measured/sensor value and are never operator-typed. CALM and VARIABLE cannot be degrees at all.
+enum SprayWindDirection {
+  N
+  NNE
+  NE
+  ENE
+  E
+  ESE
+  SE
+  SSE
+  S
+  SSW
+  SW
+  WSW
+  W
+  WNW
+  NW
+  NNW
+  CALM
+  VARIABLE
+}
+
+enum SprayDriedBasis {
+  NO_RAIN_IN_WINDOW
+  HOURLY_PRECIP
+  INSUFFICIENT_DATA
+}
+
+enum PlannedHarvestStatus {
+  ACTIVE
+  SUPERSEDED
+  RETRACTED
+}
+
+enum LegacySprayMappingStatus {
+  SUGGESTED
+  CONFIRMED
+  REJECTED
+}
+
+// The pass header — one physical spray pass, lifted from the real work-order template
+// (docs/spray orders/Spray work order template.xlsx). APPEND-ONLY content: a mistake is corrected
+// by appending a new revision (KD-1), never an in-place edit; the DB trigger allowlists only
+// `status` + `supersededByApplicationId` (bookkeeping, writable once, NULL → value only).
+// Cross-site passes are ALLOWED (KD-12 / council G6): vineyardId is the PRIMARY site; block lines
+// may span vineyards and PUR grouping resolves per block line at read time.
+model SprayApplication {
+  tenantId   String @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id         String @id @default(cuid())
+  vineyardId String // primary site (defaulted from the first block line); composite FK -> vineyard(tenantId,id) RESTRICT, raw SQL (K11)
+
+  // Applicator (durable snapshots — the FieldNote.userEmail pattern; PUR needs all three ids, council G8)
+  applicatorUserId   String?
+  applicatorName     String
+  applicatorLicense  String?
+  operatorIdNumber   String? // CA PUR Operator Identification Number (council G8)
+  countyPermitNumber String? // the site's county permit (council G8)
+
+  // The pass
+  applicationMethod SprayApplicationMethod
+  startedAt         DateTime // UTC instant; PHI/REI day boundaries resolve in the winery operating tz at read (KD-13)
+  finishedAt        DateTime?
+  targetPest        String? // entered free text
+  targetPestCode    String? // nullable slot for a coded DPR/EPA pest — table is S2b's, export is Phase 20's (council GQ1)
+  rowPattern        SprayRowPattern?
+  dilutionMode      SprayDilutionMode?
+
+  // Coverage inputs (brief §12) — canonical metric (KD-5)
+  sprayVolumePerHaL   Decimal? @db.Decimal(18, 8)
+  groundSpeedKph      Decimal? @db.Decimal(10, 2)
+  tankVolumeL         Decimal? @db.Decimal(18, 8) // tank SIZE — not the carrier volume used
+  carrierWaterVolumeL Decimal? @db.Decimal(18, 8) // council GQ3 — the water actually in the tank
+  sprayWaterPh        Decimal? @db.Decimal(4, 2) // brief §8.5 — alkaline water hydrolyzes OPs/carbamates
+
+  // Weather at application (council S5 — distinct columns, never a blob)
+  airTempC          Decimal?            @db.Decimal(10, 2)
+  windSpeedKph      Decimal?            @db.Decimal(10, 2)
+  windDirection     SprayWindDirection? // the entered truth (KD-15)
+  windDirectionDeg  Int? // measured/sensor only, never operator-typed; CHECK 0–359 in migration
+  relHumidityPct    Decimal?            @db.Decimal(10, 2)
+  weatherObservedAt DateTime?
+  weatherSource     SprayWeatherSource?
+
+  // Phase 20 seam — plain columns now; Phase 20 adds equipment FKs beside them and backfills
+  sprayRigName String?
+  tractorName  String?
+  gearSetting  String?
+
+  // Correction chain (KD-1) — at-most-once via @@unique([tenantId, supersedesApplicationId]);
+  // both pointers are raw-SQL composite self-FKs (council C9)
+  status                    SprayRecordStatus    @default(ACTIVE)
+  revision                  Int                  @default(1)
+  supersedesApplicationId   String? // content: set at insert, immutable
+  supersededByApplicationId String? // bookkeeping: writable once, NULL -> value only (trigger-enforced)
+  correctionKind            SprayCorrectionKind?
+  correctionReason          String?
+
+  // Provenance
+  enteredById    String?
+  enteredByEmail String
+  enteredAt      DateTime      @default(now())
+  captureMethod  CaptureMethod @default(MANUAL)
+  commandId      String? // client idempotency key; retry semantics via requestHash (council C8)
+  requestHash    String? // hash of the payload — uniqueness is not idempotency
+
+  notes String?
+
+  @@unique([tenantId, id]) // composite-FK target (K11)
+  @@unique([tenantId, supersedesApplicationId]) // a revision can be corrected AT MOST ONCE — covers voids too (council C2)
+  @@unique([tenantId, commandId])
+  @@index([tenantId])
+  @@index([tenantId, vineyardId, startedAt]) // the season read
+  @@index([tenantId, status])
+  @@map("spray_application")
+}
+
+// One material in the tank for one pass. Product identity is a STRING key (no FK to S2 — KD-10);
+// the facts-as-of snapshot (KD-4, rule §3.8) freezes what the registry said at entry so the record
+// replays under facts-as-of-then. A correction COPIES the snapshot verbatim (KD-14) unless this
+// line's own product identity changed. APPEND-ONLY: no column is ever updated.
+// `[]` with known=false means "we do not know"; `[]` with known=true is impossible (DB CHECK,
+// council C7 — the most important finding in the review; invariant SPRAY-3).
+model SprayMaterialLine {
+  tenantId      String @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id            String @id @default(cuid())
+  applicationId String // composite FK -> spray_application(tenantId,id) CASCADE, raw SQL (K11)
+  lineNo        Int
+
+  // Product identity (KD-10 — nullable EPA number, Bhutan is a live tenant)
+  productName           String
+  epaRegistrationNumber String?
+  tenantProductRef      String?
+  productIdentitySource SprayProductIdentitySource
+
+  // Role (council C9)
+  materialRole  SprayMaterialRole
+  adjuvantClass SprayAdjuvantClass? // set iff materialRole = ADJUVANT (DB CHECK)
+
+  // Quantity (KD-5) — stored AS ENTERED (the legally-filed number) AND canonically
+  quantityEntered   Decimal                @db.Decimal(18, 8)
+  quantityUnit      SprayQuantityUnit
+  quantityBasis     SprayQuantityBasis // council G3 — required; never guessed
+  quantityCanonical Decimal                @db.Decimal(18, 8)
+  quantityDimension SprayQuantityDimension
+
+  // As written on the form (template C7/F7/G7) — a divergence from the snapshot is a data-quality signal
+  enteredReiHours         Int?
+  enteredPhiDays          Int?
+  enteredActiveIngredient String?
+
+  // Facts-as-of snapshot (KD-4 — the BottlingCostSnapshot pattern)
+  snapshotPhiDays              Int?
+  snapshotReiHours             Int?
+  snapshotRainfastHours        Decimal?               @db.Decimal(10, 2)
+  snapshotMobilityClass        SprayMobilityClass?
+  snapshotResistanceGroups     String[] // scheme-prefixed ("FRAC:7","FRAC:11"); GIN index in migration (council C12)
+  resistanceGroupsKnown        Boolean                @default(false) // council C7 — [] must never read as "no groups used"
+  snapshotActiveIngredientKeys String[] // normalized AI keys ("SULFUR"); GIN index in migration
+  activeIngredientsKnown       Boolean                @default(false)
+  snapshotActiveIngredients    Json? // [{ name, percentByWeight, casNumber }] — human-readable decomposition
+  factsRevision                Int? // Int watermark, never a timestamp (COST-3 pattern)
+  factsAsOf                    DateTime?
+  factsSource                  SprayFactsSource       @default(NONE)
+  factsCompleteness            SprayFactsCompleteness @default(UNKNOWN)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, applicationId, lineNo])
+  @@unique([tenantId, applicationId, id]) // council C10 — the mix-order FK must be APPLICATION-scoped
+  @@unique([tenantId, id]) // composite-FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, applicationId])
+  @@index([tenantId, epaRegistrationNumber])
+  @@index([tenantId, factsCompleteness]) // the coverage report
+  @@map("spray_material_line")
+}
+
+// The pour sequence — separate from material lines because mixing order is a COMPATIBILITY rule
+// (brief §8.5: water → compatibility agent → WDG → WP → SC → EC → surfactant/oil last). Water and
+// compatibility agents are mix-order lines with a null materialLineId. APPEND-ONLY.
+model SprayMixOrderLine {
+  tenantId             String             @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                   String             @id @default(cuid())
+  applicationId        String // composite FK -> spray_application(tenantId,id) CASCADE, raw SQL (K11)
+  sequence             Int
+  materialDescription  String
+  amountPerTankEntered Decimal?           @db.Decimal(18, 8)
+  amountPerTankUnit    SprayQuantityUnit?
+  materialLineId       String? // composite FK (tenantId, applicationId, materialLineId) -> spray_material_line(tenantId, applicationId, id) — council C10
+  createdAt            DateTime           @default(now())
+
+  @@unique([tenantId, applicationId, sequence])
+  @@unique([tenantId, id]) // composite-FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, applicationId])
+  @@map("spray_mix_order_line")
+}
+
+// One block × one segment of one pass — THE TABLE S6/S7a/S8 READ. treatedAreaHa is a SNAPSHOT at
+// entry (KD-6), never re-derived — block acreage is spacing-derived and changes on replant, and a
+// past rate/acre must not silently change. Per-block startedAt/finishedAt are what the REI and
+// residual clocks read; a null finishedAt resolves them to UNKNOWN and NEVER falls back to the
+// header timestamp (council G2/C14 — a fallback clears a block still under restricted entry).
+// segmentNo: the same block can legitimately appear twice in one pass (council G7 — breakdown,
+// flush, resume). APPEND-ONLY content; the three driedBeforeRain* columns are DERIVED (KD-2,
+// recomputable — allowlisted in the trigger); the human override lives in spray_drying_override.
+model SprayBlockLine {
+  tenantId      String @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id            String @id @default(cuid())
+  applicationId String // composite FK -> spray_application(tenantId,id) CASCADE, raw SQL (K11)
+  blockId       String // composite FK -> vineyard_block(tenantId,id) RESTRICT — a block with spray history cannot be deleted
+  segmentNo     Int    @default(1)
+
+  // Snapshots (KD-6 / council CQ2)
+  blockLabelSnapshot String
+  treatedAreaHa      Decimal         @db.Decimal(18, 8)
+  treatedAreaSource  SprayAreaSource
+  treatedAreaNote    String?
+
+  // Per-block timing (council S4) — nullable ON PURPOSE: forcing NOT NULL makes operators type a fake time
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  // Tanks (Phase 20 columns — S3a reads them only to compute a rate basis)
+  tankBatchRef String?
+  estTanks     Decimal? @db.Decimal(10, 2)
+  tanksUsed    Decimal? @db.Decimal(10, 2)
+  volumeUsedL  Decimal? @db.Decimal(18, 8)
+
+  // Computed carrier rate (KD-7 — material rate is derived on demand by materialRatePerHa, never stored)
+  computedVolumePerHaL Decimal?       @db.Decimal(18, 8)
+  rateBasis            SprayRateBasis
+
+  // Deposition evidence (council S4 — S6's confidence legitimately falls when none exists)
+  depositionMethod    SprayDepositionMethod?
+  depositionAdequate  Boolean?
+  depositionCheckedAt DateTime?
+  depositionNote      String?
+
+  // DERIVED (KD-2) — recomputable at will, carries its own basis + timestamp; never self-reported
+  driedBeforeRainDerived   Boolean?
+  driedBeforeRainBasis     SprayDriedBasis?
+  driedBeforeRainDerivedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, applicationId, blockId, segmentNo]) // council G7
+  @@unique([tenantId, id]) // composite-FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, blockId, startedAt]) // THE S6/S7a/S8 read path
+  @@index([tenantId, applicationId])
+  @@map("spray_block_line")
+}
+
+// An attributed human override of the driedBeforeRain derivation (KD-2). Its OWN append-only
+// table — never a mutable column. Latest by (enteredAt, id) wins; the whole history is retained
+// because an override changes a residual estimate and must replay. The trigger allowlists
+// NOTHING on this table (council C5).
+model SprayDryingOverride {
+  tenantId       String   @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id             String   @id @default(cuid())
+  blockLineId    String // composite FK -> spray_block_line(tenantId,id) CASCADE, raw SQL (K11)
+  value          Boolean
+  reason         String
+  observedAt     DateTime
+  enteredById    String?
+  enteredByEmail String
+  enteredAt      DateTime @default(now())
+
+  @@unique([tenantId, id]) // composite-FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, blockLineId, enteredAt])
+  @@map("spray_drying_override")
+}
+
+// Planned harvest date per block-vintage-pass as an AUDITED EVENT STREAM (KD-8, Shape D — the
+// VineyardGeometryVersion closed-interval pattern; council D4). One open row per
+// (tenant, block, vintage, passLabel) via a partial unique index (raw SQL); ZERO open rows is
+// legal and is how "no planned date" is represented — retraction closes without a successor
+// (council C3). Split picks are ordinary viticulture (council G4): harvestPassLabel keys them.
+// The stream IS the outbox: S7a consumes plannedHarvestChangesSince(cursor) as a watermark read
+// (council C4 — no in-process listener to lose on a crash). Trigger allowlists only
+// effectiveTo + status. plannedDate crosses every boundary as an ISO YYYY-MM-DD string (KD-13/C6).
+model PlannedHarvestDateEvent {
+  tenantId         String               @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id               String               @id @default(cuid())
+  blockId          String // composite FK -> vineyard_block(tenantId,id) RESTRICT, raw SQL (K11)
+  vintageYear      Int
+  harvestPassLabel String               @default("main") // council G4 — split picks
+  plannedDate      DateTime             @db.Date // written via toISODateUTC only (KD-13)
+  version          Int
+  effectiveFrom    DateTime             @default(now())
+  effectiveTo      DateTime? // NULL = current/open
+  status           PlannedHarvestStatus @default(ACTIVE)
+  reason           String?
+  enteredById      String?
+  enteredByEmail   String
+  enteredAt        DateTime             @default(now())
+
+  @@unique([tenantId, blockId, vintageYear, harvestPassLabel, version])
+  @@unique([tenantId, id]) // composite-FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, blockId, vintageYear, effectiveFrom]) // the point-in-time read
+  @@index([tenantId, enteredAt]) // the watermark read (plannedHarvestChangesSince)
+  @@map("planned_harvest_date_event")
+}
+
+// The human-confirmed name→product mapping for legacy FieldNote.spraysApplied entries (KD-9,
+// council S11). Suggestion is a DETERMINISTIC normalized-name match — never an LLM, never a fuzzy
+// score (rule §3.2); a human confirms. Even a CONFIRMED mapping yields confidence LOW (a field
+// note has no timestamp and no rate — usable for rotation identity, never for residual).
+// MUTABLE (status transitions) — deliberately NOT covered by the append-only trigger.
+model LegacySprayMapping {
+  tenantId              String                   @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id                    String                   @id @default(cuid())
+  normalizedName        String // via the existing normalizeInputKey
+  displayName           String
+  epaRegistrationNumber String?
+  productName           String?
+  status                LegacySprayMappingStatus @default(SUGGESTED)
+  suggestionBasis       String // deterministic rule name — never an LLM
+  confirmedById         String?
+  confirmedByEmail      String?
+  confirmedAt           DateTime?
+  note                  String?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  @@unique([tenantId, normalizedName])
+  @@unique([tenantId, id]) // composite-FK target (K11)
+  @@index([tenantId])
+  @@map("legacy_spray_mapping")
 }

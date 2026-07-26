@@ -14,6 +14,15 @@ import {
   type BlockStatus,
   type PhenoStage,
 } from "@/lib/fieldnotes/types";
+import {
+  CLUSTER_DAMAGE_LEVELS,
+  FRUIT_ZONE_LEAF_REMOVAL_LEVELS,
+  SHOOT_LENGTH_BANDS,
+  VINEGAR_FLY_PRESSURE_LEVELS,
+  clusterDamageApplies,
+  vinegarFlyApplies,
+  type ShootLengthBand,
+} from "@/lib/phenology/observation-types";
 import { downscaleImage } from "./downscaleImage";
 
 const selectStyle: React.CSSProperties = {
@@ -53,11 +62,14 @@ function Segmented<T extends string>({
   value,
   onChange,
   allowClear = false,
+  labelOf,
 }: {
   options: readonly T[];
   value: T | null;
   onChange: (v: T | null) => void;
   allowClear?: boolean;
+  /** Override the derived label — e.g. a band renders as "10–30 cm", not "Cm 10 30". */
+  labelOf?: (v: T) => string;
 }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -72,13 +84,34 @@ function Segmented<T extends string>({
             onClick={() => onChange(allowClear && selected ? null : opt)}
             style={{ height: 40, fontSize: 13 }}
           >
-            {prettyEnum(opt)}
+            {labelOf ? labelOf(opt) : prettyEnum(opt)}
           </Button>
         );
       })}
     </div>
   );
 }
+
+/** Human band labels — the enum names are storage keys, not something a grower should read. */
+const SHOOT_BAND_LABEL: Record<ShootLengthBand, string> = {
+  LT_10: "< 10 cm",
+  CM_10_30: "10–30 cm",
+  CM_30_60: "30–60 cm",
+  GT_60: "> 60 cm",
+};
+
+/** Matches `selectStyle`'s metrics so the measured-length field lines up with the selects. */
+const numberInputStyle: React.CSSProperties = {
+  height: 48,
+  width: "100%",
+  padding: "0 12px",
+  border: "1px solid var(--border-strong)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-raised)",
+  fontFamily: "var(--font-body)",
+  fontSize: 16,
+  color: "var(--text-primary)",
+};
 
 type PhotoState = {
   id: string;
@@ -103,6 +136,9 @@ export function BlockCard({
   onAddPhotoUrl: (url: string) => void;
 }) {
   const [photos, setPhotos] = React.useState<PhotoState[]>([]);
+  // The measured-length input stays behind an affordance: it costs walking the block with a tape,
+  // and an always-visible numeric field is form weight most weeks nobody will pay.
+  const [measuring, setMeasuring] = React.useState(false);
 
   // Keep a local map of in-flight photo files so retry can re-upload.
   const filesRef = React.useRef<Map<string, File>>(new Map());
@@ -207,10 +243,128 @@ export function BlockCard({
         ) : null}
       </div>
 
+      {/* ── S4: GROWTH ────────────────────────────────────────────────────────────────────
+          One section, not three. BlockCard is already a flat stack of ~8 groups and a 6-block
+          vineyard renders ~48 of them, so new fields group rather than append. The BAND is the
+          one-tap primary (every Segmented control in the live corpus measures 100 % filled);
+          the exact measurement hides behind an affordance because it costs walking the block
+          with a tape, and the fields that cost real effort do not get filled. */}
       <div style={sectionGap}>
-        <span style={fieldLabel}>Shoot tip</span>
+        <span style={fieldLabel}>Shoot growth</span>
+        <div style={{ marginBottom: 8 }}>
+          <Segmented
+            options={SHOOT_LENGTH_BANDS}
+            value={status.shootLengthBand}
+            onChange={(v) => update({ shootLengthBand: v })}
+            allowClear
+            labelOf={(b) => SHOOT_BAND_LABEL[b]}
+          />
+        </div>
+        <span style={{ ...fieldLabel, marginTop: 4 }}>Shoot tip</span>
         <Segmented options={SHOOT_TIP_STATES} value={status.shootTip} onChange={(v) => update({ shootTip: v })} allowClear />
+        {measuring || status.shootLengthCm !== null ? (
+          <div style={{ marginTop: 10 }}>
+            <label style={fieldLabel} htmlFor={`shoot-cm-${blockLabel}`}>
+              Measured shoot length (cm, mean of ~10 shoots)
+            </label>
+            <input
+              id={`shoot-cm-${blockLabel}`}
+              type="number"
+              inputMode="decimal"
+              min={0}
+              value={status.shootLengthCm === null ? "" : String(status.shootLengthCm)}
+              onChange={(e) => update({ shootLengthCm: e.target.value === "" ? null : Number(e.target.value) })}
+              style={numberInputStyle}
+            />
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setMeasuring(true)}
+            style={{ marginTop: 8, height: 36 }}
+          >
+            + Add a measured length
+          </Button>
+        )}
       </div>
+
+      {/* ── S4: CANOPY MANAGEMENT ─────────────────────────────────────────────────────────
+          Two INDEPENDENT fields, not one enum — both can be true in the same week and they feed
+          different models. Hedging is an EVENT with an explicit "no", because clearing it to
+          false is a real answer that the growth model needs. */}
+      <div style={sectionGap}>
+        <span style={fieldLabel}>Hedged this week?</span>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          <Button
+            type="button"
+            variant={status.hedgedThisWeek === true ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => update({ hedgedThisWeek: status.hedgedThisWeek === true ? null : true })}
+            style={{ height: 40 }}
+          >
+            Yes
+          </Button>
+          <Button
+            type="button"
+            variant={status.hedgedThisWeek === false ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => update({ hedgedThisWeek: status.hedgedThisWeek === false ? null : false })}
+            style={{ height: 40 }}
+          >
+            No
+          </Button>
+        </div>
+        <span style={fieldLabel}>Fruit-zone leaf removal</span>
+        <Segmented
+          options={FRUIT_ZONE_LEAF_REMOVAL_LEVELS}
+          value={status.fruitZoneLeafRemoval}
+          onChange={(v) => update({ fruitZoneLeafRemoval: v })}
+          allowClear
+        />
+      </div>
+
+      {/* ── S4: SCOUTING ──────────────────────────────────────────────────────────────────
+          Stage-gated, using the same conditional pattern as the phenology % select above, so the
+          controls are absent most of the year and their PRESENCE is itself a signal.
+          `clusterDamage` opens at FRUIT_SET, not veraison: botrytis exploits early wounds
+          (powdery scarring, hail, bird damage at pea-size) and those infections stay latent until
+          veraison, so a veraison gate would blind the model to the damage that matters most.
+          NOT_ASSESSED is an explicit choice — "nobody looked" must never be recorded as "none". */}
+      {clusterDamageApplies(status.phenoStage) || vinegarFlyApplies(status.phenoStage) ? (
+        <div style={sectionGap}>
+          <span style={fieldLabel}>Fruit-zone scouting</span>
+          {clusterDamageApplies(status.phenoStage) ? (
+            <div style={{ marginBottom: 10 }}>
+              <span style={{ ...fieldLabel, fontSize: 12.5 }}>Cluster / berry damage</span>
+              <Segmented
+                options={CLUSTER_DAMAGE_LEVELS}
+                value={status.clusterDamage}
+                onChange={(v) => update({ clusterDamage: v })}
+                allowClear
+                labelOf={(v) => (v === "NOT_ASSESSED" ? "Didn't check" : prettyEnum(v))}
+              />
+            </div>
+          ) : null}
+          {vinegarFlyApplies(status.phenoStage) ? (
+            <div>
+              <span style={{ ...fieldLabel, fontSize: 12.5 }}>Vinegar-fly pressure</span>
+              <Segmented
+                options={VINEGAR_FLY_PRESSURE_LEVELS}
+                value={status.vinegarFlyPressure}
+                onChange={(v) => update({ vinegarFlyPressure: v })}
+                allowClear
+                labelOf={(v) => (v === "NOT_ASSESSED" ? "Didn't check" : prettyEnum(v))}
+              />
+            </div>
+          ) : null}
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "8px 0 0" }}>
+            &ldquo;Didn&rsquo;t check&rdquo; and &ldquo;None&rdquo; mean different things. Leaving it blank records that
+            nobody looked — which is never read as a clean result.
+          </p>
+        </div>
+      ) : null}
 
       <div style={sectionGap}>
         <span style={fieldLabel}>Canopy density</span>
