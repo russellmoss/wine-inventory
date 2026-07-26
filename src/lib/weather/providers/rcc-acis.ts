@@ -45,19 +45,81 @@ export function nearestStation(json: unknown, lat: number, lon: number): AcisSta
   return best;
 }
 
+/** Pure: ALL stations from a StnMeta response, sorted by distance to the point (nearest first). */
+export function allStations(json: unknown, lat: number, lon: number): AcisStation[] {
+  const metas = (json as { meta?: Array<{ name?: string; ll?: [number, number]; sids?: string[]; elev?: number }> })
+    ?.meta;
+  if (!Array.isArray(metas)) return [];
+  const out: AcisStation[] = [];
+  const seen = new Set<string>();
+  for (const m of metas) {
+    if (!m.ll || !Array.isArray(m.sids) || m.sids.length === 0) continue;
+    const [sLon, sLat] = m.ll;
+    const sid = (m.sids.find((s) => s.endsWith(" 2") || s.endsWith(" 6")) ?? m.sids[0]).split(" ")[0];
+    if (seen.has(sid)) continue;
+    seen.add(sid);
+    out.push({
+      sid,
+      name: m.name ?? sid,
+      lat: sLat,
+      lon: sLon,
+      elevM: typeof m.elev === "number" ? m.elev * 0.3048 : null,
+      distanceM: haversineM(lat, lon, sLat, sLon),
+    });
+  }
+  return out.sort((a, b) => a.distanceM - b.distanceM);
+}
+
 /** ~0.4° box around the point (~40 km) to search for stations. */
 function bboxAround(lat: number, lon: number, pad = 0.4): string {
   return `${lon - pad},${lat - pad},${lon + pad},${lat + pad}`;
 }
 
-export async function findNearestAcisStation(lat: number, lon: number): Promise<AcisStation | null> {
-  const url = "https://data.rcc-acis.org/StnMeta";
-  const json = await postJson("rcc_acis", url, {
-    bbox: bboxAround(lat, lon),
+async function fetchStnMeta(lat: number, lon: number, pad = 0.4): Promise<unknown> {
+  return postJson("rcc_acis", "https://data.rcc-acis.org/StnMeta", {
+    bbox: bboxAround(lat, lon, pad),
     meta: ["name", "ll", "sids", "elev"],
     elems: "maxt",
   });
-  return nearestStation(json, lat, lon);
+}
+
+export async function findNearestAcisStation(lat: number, lon: number): Promise<AcisStation | null> {
+  return nearestStation(await fetchStnMeta(lat, lon), lat, lon);
+}
+
+/** List nearby ACIS stations for the map picker (nearest first, capped). */
+export async function listAcisStations(lat: number, lon: number, limit = 25): Promise<AcisStation[]> {
+  return allStations(await fetchStnMeta(lat, lon), lat, lon).slice(0, limit);
+}
+
+/** Fetch a SPECIFIC station's daily series (used for the auto-nearest AND a grower's map pick). */
+export async function fetchAcisStationSeries(station: AcisStation, startIso: string, endIso: string): Promise<ProviderSeries> {
+  const url = "https://data.rcc-acis.org/StnData";
+  const json = await postJson("rcc_acis", url, {
+    sid: station.sid,
+    sdate: startIso,
+    edate: endIso,
+    elems: [
+      { name: "maxt", units: "degreeC" },
+      { name: "mint", units: "degreeC" },
+      { name: "pcpn", units: "mm" },
+    ],
+  });
+  const records = normalizeAcisRows(json, false);
+  if (records.length === 0) throw new ProviderFetchError("rcc_acis", "empty", `no data for station ${station.sid}`);
+  return {
+    providerKey: "rcc_acis",
+    kind: "station",
+    obsConvention: "AM_LST",
+    resolutionM: null,
+    attribution: `RCC-ACIS station ${station.name}`,
+    sourceUrl: url,
+    records,
+    stationId: station.sid,
+    stationName: station.name,
+    stationLat: station.lat,
+    stationLon: station.lon,
+  };
 }
 
 export const rccAcisProvider: ClimateProvider = {
@@ -71,31 +133,6 @@ export const rccAcisProvider: ClimateProvider = {
   async fetchDailySeries(lat, lon, startIso, endIso): Promise<ProviderSeries> {
     const station = await findNearestAcisStation(lat, lon);
     if (!station) throw new ProviderFetchError("rcc_acis", "empty", "no station near the vineyard");
-    const url = "https://data.rcc-acis.org/StnData";
-    const json = await postJson("rcc_acis", url, {
-      sid: station.sid,
-      sdate: startIso,
-      edate: endIso,
-      elems: [
-        { name: "maxt", units: "degreeC" },
-        { name: "mint", units: "degreeC" },
-        { name: "pcpn", units: "mm" },
-      ],
-    });
-    const records = normalizeAcisRows(json, false);
-    if (records.length === 0) throw new ProviderFetchError("rcc_acis", "empty", `no data for station ${station.sid}`);
-    return {
-      providerKey: "rcc_acis",
-      kind: "station",
-      obsConvention: "AM_LST",
-      resolutionM: null,
-      attribution: `RCC-ACIS station ${station.name}`,
-      sourceUrl: url,
-      records,
-      stationId: station.sid,
-      stationName: station.name,
-      stationLat: station.lat,
-      stationLon: station.lon,
-    };
+    return fetchAcisStationSeries(station, startIso, endIso);
   },
 };

@@ -8,8 +8,84 @@ import { requireReadyUser } from "@/lib/dal";
 import { composeClimateSummaryCore, type ClimateSummary, type DailyRow, type ClimateConfig } from "./read-core";
 import { ingestVineyardWeatherCore, type IngestResult } from "./ingest-core";
 import { resolveVineyardCentroid } from "./location";
+import { fetchAcisStationSeries, listAcisStations, type AcisStation } from "./providers/rcc-acis";
 import { seasonWindowFor, seasonYearFor } from "./season-core";
 import { revalidatePath } from "next/cache";
+
+/** A nearby station option for the map picker. */
+export interface StationOption {
+  sid: string;
+  name: string;
+  lat: number;
+  lon: number;
+  distanceKm: number;
+  elevM: number | null;
+}
+
+/** Resolve the grower's chosen station (config.stationOverrideId) back to a full AcisStation, or null. */
+async function resolveChosenStation(vineyardId: string, lat: number, lon: number): Promise<AcisStation | null> {
+  const cfg = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { stationOverrideId: true } });
+  if (!cfg?.stationOverrideId) return null;
+  const stations = await listAcisStations(lat, lon).catch(() => []);
+  return stations.find((s) => s.sid === cfg.stationOverrideId) ?? null;
+}
+
+/** List nearby ACIS stations for a vineyard's map picker (nearest first). */
+export async function listNearbyStations(vineyardId: string): Promise<{ ok: true; stations: StationOption[]; center: { lat: number; lon: number } } | { ok: false; error: string }> {
+  await requireReadyUser();
+  const centroid = await resolveVineyardCentroid(vineyardId);
+  if (!centroid) return { ok: false, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
+  try {
+    const stations = await listAcisStations(centroid.lat, centroid.lon);
+    return {
+      ok: true,
+      center: centroid,
+      stations: stations.map((s) => ({ sid: s.sid, name: s.name, lat: s.lat, lon: s.lon, distanceKm: Math.round(s.distanceM / 100) / 10, elevM: s.elevM })),
+    };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Pick a specific station (map click): store the choice, make it primary, and re-ingest from it. */
+export async function setVineyardStation(vineyardId: string, station: StationOption): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
+  try {
+    await requireReadyUser();
+    const centroid = await resolveVineyardCentroid(vineyardId);
+    if (!centroid) return { ok: false, error: "This vineyard has no planting-area geometry yet." };
+    const cfg = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { id: true } });
+    if (!cfg) return { ok: false, error: "Refresh this vineyard's weather first, then choose a station." };
+    const today = new Date().toISOString().slice(0, 10);
+    const { startIso } = seasonWindowFor(centroid.lat, seasonYearFor(centroid.lat, today));
+    const full: AcisStation = { sid: station.sid, name: station.name, lat: station.lat, lon: station.lon, elevM: station.elevM, distanceM: station.distanceKm * 1000 };
+
+    // VALIDATE FIRST (bug caught in browser QA): some stations report no daily data this season. Probe before
+    // mutating — else we'd delete the current station's rows and replace them with nothing, leaving the
+    // primary source empty. Refuse the pick and change nothing.
+    let probe;
+    try {
+      probe = await fetchAcisStationSeries(full, startIso, today);
+    } catch {
+      probe = null;
+    }
+    if (!probe || probe.records.length === 0) {
+      return { ok: false, error: `${station.name} has no reported data for this season — try a different station.` };
+    }
+
+    // Clear the season's existing rcc_acis rows so the NEW station fully replaces the old one — an upsert
+    // alone would leave stale rows from the previous station on dates the new station doesn't cover (mixing
+    // two stations under one providerKey). Scoped to the re-ingested window; older data untouched.
+    await prisma.vineyardClimateDaily.deleteMany({ where: { vineyardId, providerKey: "rcc_acis", localDate: { gte: new Date(`${startIso}T00:00:00.000Z`) } } });
+    const res = await ingestVineyardWeatherCore({ vineyardId, lat: centroid.lat, lon: centroid.lon, startIso, endIso: today, stationOverride: full });
+    // Only AFTER a successful ingest do we lock in the override flags — so a mid-ingest failure self-heals to
+    // the auto-nearest on the next refresh instead of pinning a half-written station.
+    await prisma.vineyardWeatherConfig.update({ where: { id: cfg.id }, data: { stationOverrideId: station.sid, primaryProviderOverride: "rcc_acis" } });
+    revalidatePath("/vineyards/weather");
+    return { ok: true, rows: res.rowsWritten };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
 
 const dec = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
@@ -38,6 +114,7 @@ export async function loadVineyardClimateSummary(vineyardId: string, today?: str
     primaryProviderKey: configRow.primaryProviderKey,
     primaryProviderOverride: configRow.primaryProviderOverride,
     coverageState: configRow.coverageState,
+    stationId: configRow.stationId,
     stationName: configRow.stationName,
     stationDistanceM: dec(configRow.stationDistanceM),
     stationElevationDeltaM: dec(configRow.stationElevationDeltaM),
@@ -72,7 +149,13 @@ export async function setVineyardPrimarySource(
     if (!hasData) return { ok: false, error: `No stored data from "${providerKey}" for this vineyard yet.` };
   }
 
-  await prisma.vineyardWeatherConfig.update({ where: { id: config.id }, data: { primaryProviderOverride: providerKey } });
+  // Picking "Auto" (null) clears the station pick too — fully automatic. Choosing a non-station source also
+  // drops a stale station lock (it only applies to rcc_acis).
+  const clearStation = providerKey === null || providerKey !== "rcc_acis";
+  await prisma.vineyardWeatherConfig.update({
+    where: { id: config.id },
+    data: { primaryProviderOverride: providerKey, ...(clearStation ? { stationOverrideId: null } : {}) },
+  });
   revalidatePath("/vineyards/weather");
   return { ok: true };
 }
@@ -94,8 +177,9 @@ export async function refreshVineyardWeatherCurrentSeason(vineyardId: string): P
     const today = new Date().toISOString().slice(0, 10);
     const seasonYear = seasonYearFor(centroid.lat, today);
     const { startIso } = seasonWindowFor(centroid.lat, seasonYear);
-    // Cap the window start at the season start; a dormant-season refresh still gets the season so far.
-    const res = await ingestVineyardWeatherCore({ vineyardId, lat: centroid.lat, lon: centroid.lon, startIso, endIso: today });
+    // Preserve a grower's map-picked station across refreshes (else it'd revert to auto-nearest).
+    const stationOverride = await resolveChosenStation(vineyardId, centroid.lat, centroid.lon);
+    const res = await ingestVineyardWeatherCore({ vineyardId, lat: centroid.lat, lon: centroid.lon, startIso, endIso: today, stationOverride });
     revalidatePath("/vineyards/weather");
     return { ok: true, rows: res.rowsWritten };
   } catch (e) {

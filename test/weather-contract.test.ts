@@ -56,7 +56,7 @@ describe("CONTRACT: every headline value carries provenance (a primary source is
     const s = composeClimateSummaryCore({
       vineyardId: "v1",
       rows,
-      config: { primaryProviderKey: "rcc_acis", coverageState: "US_HIGH_RES", stationName: "Test Stn", stationDistanceM: 3000, stationElevationDeltaM: null, siteElevationM: 20, attribution: "x", lastRefreshAt: null },
+      config: { primaryProviderKey: "rcc_acis", coverageState: "US_HIGH_RES", stationId: "TEST1", stationName: "Test Stn", stationDistanceM: 3000, stationElevationDeltaM: null, siteElevationM: 20, attribution: "x", lastRefreshAt: null },
       latitude: 38.5,
       today: "2026-04-02",
     });

@@ -8,7 +8,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ClimateSummary } from "@/lib/weather/read-core";
 import { coverageLabel, gddComparisonLabel, providerLabel, sparklinePoints, trustLabel } from "@/lib/weather/card-core";
-import { refreshVineyardWeatherCurrentSeason, setVineyardPrimarySource } from "@/lib/weather/actions";
+import { listNearbyStations, refreshVineyardWeatherCurrentSeason, setVineyardPrimarySource, setVineyardStation, type StationOption } from "@/lib/weather/actions";
+import { StationMapClient } from "./StationMap.client";
 
 type VineyardOpt = { id: string; name: string };
 
@@ -44,6 +45,9 @@ export function WeatherCard({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showCompare, setShowCompare] = useState(false);
+  const [mapData, setMapData] = useState<{ stations: StationOption[]; center: { lat: number; lon: number } } | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [mapLoading, setMapLoading] = useState(false);
 
   async function refresh() {
     if (!selectedId) return;
@@ -61,6 +65,34 @@ export function WeatherCard({
     setErr(null);
     // "auto" clears the override; a provider key sets it.
     const res = await setVineyardPrimarySource(selectedId, value === "auto" ? null : value);
+    setBusy(false);
+    if (!res.ok) setErr(res.error);
+    else router.refresh();
+  }
+
+  async function toggleMap() {
+    if (mapOpen) {
+      setMapOpen(false);
+      return;
+    }
+    setMapOpen(true);
+    if (!mapData && selectedId) {
+      setMapLoading(true);
+      setErr(null);
+      const res = await listNearbyStations(selectedId);
+      setMapLoading(false);
+      if (!res.ok) setErr(res.error);
+      else setMapData({ stations: res.stations, center: res.center });
+    }
+  }
+
+  async function pickStation(sid: string) {
+    if (!selectedId || !mapData) return;
+    const station = mapData.stations.find((s) => s.sid === sid);
+    if (!station) return;
+    setBusy(true);
+    setErr(null);
+    const res = await setVineyardStation(selectedId, station);
     setBusy(false);
     if (!res.ok) setErr(res.error);
     else router.refresh();
@@ -177,9 +209,36 @@ export function WeatherCard({
               <div>Coverage: {coverageLabel(summary.coverageState)}</div>
               {summary.station.name && (
                 <div>
-                  Nearest station: <strong>{summary.station.name}</strong>
+                  Active station: <strong>{summary.station.name}</strong>
                   {summary.station.distanceM != null && ` · ${Math.round(summary.station.distanceM / 100) / 10} km away`}
                   {summary.siteElevationM != null && ` · site ${Math.round(summary.siteElevationM)} m`}
+                </div>
+              )}
+              {summary.coverageState === "US_HIGH_RES" && (
+                <div>
+                  <button
+                    onClick={toggleMap}
+                    disabled={busy}
+                    style={{ background: "none", border: "none", color: "var(--color-accent)", cursor: "pointer", padding: 0, fontSize: 14 }}
+                    aria-expanded={mapOpen}
+                  >
+                    {mapOpen ? "▾ Hide station map" : "▸ Choose a different station on the map"}
+                  </button>
+                  {mapOpen && (
+                    <div style={{ marginTop: 10 }}>
+                      {mapLoading && <div style={{ ...label, textTransform: "none" }}>Finding nearby stations…</div>}
+                      {mapData && mapData.stations.length > 0 ? (
+                        <>
+                          <StationMapClient center={mapData.center} stations={mapData.stations} activeSid={summary.station.id} onSelect={pickStation} busy={busy} />
+                          <div style={{ ...label, textTransform: "none", marginTop: 6 }}>
+                            Click a green dot to report from that station ({mapData.stations.length} within ~40 km). The dark-outlined dot is active.
+                          </div>
+                        </>
+                      ) : (
+                        !mapLoading && <div style={{ ...label, textTransform: "none" }}>No stations found near this vineyard.</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {summary.attribution && <div style={{ ...label, textTransform: "none" }}>{summary.attribution}</div>}

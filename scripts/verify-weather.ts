@@ -84,7 +84,7 @@ async function main() {
       const cfg = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId: vy.id } });
       const summary = composeClimateSummaryCore({
         vineyardId: vy.id, rows: dr, latitude: LAT, today: END,
-        config: { primaryProviderKey: cfg!.primaryProviderKey, primaryProviderOverride: cfg!.primaryProviderOverride, coverageState: cfg!.coverageState, stationName: cfg!.stationName, stationDistanceM: dec(cfg!.stationDistanceM), stationElevationDeltaM: dec(cfg!.stationElevationDeltaM), siteElevationM: dec(cfg!.siteElevationM), attribution: cfg!.attribution, lastRefreshAt: null },
+        config: { primaryProviderKey: cfg!.primaryProviderKey, primaryProviderOverride: cfg!.primaryProviderOverride, coverageState: cfg!.coverageState, stationId: cfg!.stationId, stationName: cfg!.stationName, stationDistanceM: dec(cfg!.stationDistanceM), stationElevationDeltaM: dec(cfg!.stationElevationDeltaM), siteElevationM: dec(cfg!.siteElevationM), attribution: cfg!.attribution, lastRefreshAt: null },
       });
       const gmSrc = summary.perSource.find((p) => p.provider === "gridmet");
       const npSrc = summary.perSource.find((p) => p.provider === "nasa_power");

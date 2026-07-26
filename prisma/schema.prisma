@@ -868,7 +868,8 @@ model VineyardWeatherConfig {
   vineyardId              String // composite FK → vineyard(tenantId, id); 1:1 per vineyard
   primaryProviderKey      String // resolved default primary (nearest quality station, else grid)
   primaryProviderOverride String? // grower's explicit choice; effectivePrimary = override ?? primaryProviderKey (R14)
-  stationId               String? // chosen reference station id (RCC-ACIS / NOAA)
+  stationOverrideId       String? // grower-chosen ACIS station sid (map pick); when set, ingest uses THIS station, not the auto-nearest
+  stationId               String? // active reference station id (RCC-ACIS / NOAA) — the override if chosen, else the auto-nearest
   stationName             String?
   stationDistanceM        Decimal?  @db.Decimal(12, 2) // station→site distance (m)
   stationElevationDeltaM  Decimal?  @db.Decimal(10, 2) // station elevation − site elevation (m); explains any gap
