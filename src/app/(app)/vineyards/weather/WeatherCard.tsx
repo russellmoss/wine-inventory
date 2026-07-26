@@ -13,6 +13,7 @@ import { formatGdd, formatPrecip, formatTemp, gddCToF, gddFToC, type UnitSystem 
 import { StationMapClient } from "./StationMap.client";
 import { GddChart } from "./GddChart";
 import { RainfallSectionClient } from "./RainfallSection.client";
+import { ForecastStrip } from "./ForecastStrip";
 
 type VineyardOpt = { id: string; name: string };
 
@@ -183,6 +184,13 @@ export function WeatherCard({
       </div>
 
       {err && <div style={{ ...card, borderColor: "var(--danger)", color: "var(--danger)" }}>{err}</div>}
+
+      {/* 7-day forecast strip (plan 096 U16) — at the top, above the retrospective climate. */}
+      {selectedId && (
+        <div style={card}>
+          <ForecastStrip vineyardId={selectedId} />
+        </div>
+      )}
 
       {!summary || !h ? (
         <div style={card}>
