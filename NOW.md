@@ -979,6 +979,34 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **TENANT-3 — the lazy-`PrismaPromise` tenancy bug class: SWEPT + CLOSED STRUCTURALLY**
+  (branch `claude/silly-goldwasser-d2aedf`, 2026-07-26). `runAsTenant(t, () => prisma.x.op())` with a
+  **non-async** arrow BUILDS the query inside the ALS scope and **runs it after the scope exits** —
+  the tenant extension's hook then reads the store from outside. With no ambient context it throws;
+  with an ambient **outer** `runAsTenant` live it silently uses the **outer** tenant. AST sweep found
+  exactly **8** sites (the 8 known ones — no others). Fixed on two fences: (1) *structural* —
+  `runAsTenant`/`runWithTenantContext` now wrap the callback in `async () => await fn()`, so the
+  thenable is forced inside the scope however the callback is written; (2) *shape* — all 8 call sites
+  rewritten `async () => await …`, guarded by a new AST scan `npm run verify:tenant-callbacks` (wired
+  into CI). Pinned by `test/tenant-context-lazy.test.ts` (9 cases incl. the nested outer-tenant one;
+  4 fail if the wrapper is removed). Registered as invariant **TENANT-3** + a security-register entry.
+  🔎 **`npm run verify:reminders` was RED on `main` because of this** — it died at the step-2
+  `ComplianceReport.create`. Now green end-to-end (15 assertions) for the first time; that unmasked a
+  second, unrelated bug in the script itself (the badge assertion compared a **30**-day count to a
+  **60**-day one), also fixed. Gates: tsc 0, eslint 0 errors, **vitest 4482/0**,
+  `verify:tenant-isolation` / `raw-sql` / `invariants` (45/45) / `tripwires` / `parity` / `ai-native` /
+  `work-orders` / `feedback` / `naming` all green.
+  ⚠️ **Two premises in the request did not hold and are worth knowing:** there is no
+  `src/lib/users/vineyard-memberships.ts` on **any** branch, and the security register has no
+  "GLOBAL model may never select a relation to a tenant-scoped table" section — that work was never
+  committed. The real in-repo reference for the correct shape is
+  [`src/lib/knowledge/subscriptions.ts:23`](src/lib/knowledge/subscriptions.ts). The **separate**
+  global-relation observation it described is real but **re-graded LOW-MED**: `getCurrentUser` does
+  select `vineyardMemberships` (RLS-forced `user_vineyard`) through the GLOBAL `User` model, which the
+  extension passes through with no `app.tenant_id`. But S4's browser QA (merged to `main` same day)
+  proved this was **NOT** what blocked the manager view — that was a one-line `isTenantAdminLike` gate
+  on the field-notes page. So it is not the `app_rls` release blocker it was billed as. Keeps its task
+  chip; NOT fixed by this work.
 - **Spray Intelligence S3a — record + planned harvest: SHIPPED (2026-07-26). PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED → WAVE 2 UNBLOCKED (S7a, S8, S6, S7b start against the merged cores); PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) browser-QA'd GREEN.**
   Seven append-only tables (DB triggers + at-most-once correction incl. VOID), facts-as-of
   snapshots (copied verbatim on correction — KD-14), knownness CHECKs (SPRAY-3), planned-harvest
@@ -1345,9 +1373,16 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 — **S3a spray record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd
-GREEN (2 findings found+fixed: prefill area provenance, correction UTC→datetime-local shift).** Also this
-date: **Spray Wave 1: S2 (registration + resistance) BUILT — schema slice merged (#522), Units 2-11 green (#525), 2,420 grape registrations + 361 AIs live with zero unclassified. S4 (phenology + growth) SHIPPED — #521 + #526 + #529 merged and live, 135 new tests, browser QA GREEN (the blocker was a one-line isTenantAdminLike gate on the field-notes page, not the RLS theory); scouting coverage 0/0 = NOT YET MEASURABLE, recorded as-is.** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+_Last updated: 2026-07-26 — **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
+inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
+added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
+record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
+area provenance, correction UTC→datetime-local shift). S2 (registration + resistance) BUILT — schema slice
+merged (#522), Units 2-11 green (#525), 2,420 grape registrations + 361 AIs live with zero unclassified.
+S4 (phenology + growth) SHIPPED — #521 + #526 + #529 merged and live, 135 new tests, browser QA GREEN (the
+blocker was a one-line isTenantAdminLike gate on the field-notes page, NOT the RLS theory — the
+GLOBAL-model-selects-tenant-relation observation is re-graded LOW-MED and keeps its task chip); scouting
+coverage 0/0 = NOT YET MEASURABLE, recorded as-is.** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
 fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
 `Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
 load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.

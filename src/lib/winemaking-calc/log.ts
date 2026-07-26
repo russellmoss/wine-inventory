@@ -40,8 +40,9 @@ export async function logCalculation(input: LogCalculationInput): Promise<void> 
   const tenantId = input.tenantId;
   if (!tenantId) return; // no tenant → nothing to scope the row to; skip silently
   try {
-    await runAsTenant(tenantId, () =>
-      prisma.calculationLog.create({
+    // TENANT-3: await INSIDE the callback (lazy PrismaPromise — see src/lib/tenant/context.ts).
+    await runAsTenant(tenantId, async () =>
+      await prisma.calculationLog.create({
         data: {
           tenantId, // explicit + matches the runAsTenant GUC (RLS WITH CHECK); extension would also inject it
           userId: input.userId,
