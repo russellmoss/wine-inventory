@@ -4,13 +4,15 @@ import React from "react";
 import { Badge, Button, Card, Tabs } from "@/components/ui";
 import type { SoilUnitDetail } from "@/lib/soil/read";
 import type { Unit } from "@/lib/vineyard/units";
+import { formatAreaHa } from "@/lib/units/display";
 
 // VI-P4 — the click-to-inspect soil detail panel. Opened when a soil polygon is clicked on the map;
 // breaks the map unit's data into tabs (Overview / Chemistry / Physical / Source) so it reads easily
 // instead of a wall of fields. Every value is the NRCS-published one, cited to its level — no blending.
 
+// Plan 098: through the display authority (also fixes the "ac"/"acres" label inconsistency).
 function area(sqM: number, unit: Unit): string {
-  return unit === "metric" ? `${(sqM / 10_000).toFixed(2)} ha` : `${(sqM / 4046.856).toFixed(2)} ac`;
+  return formatAreaHa(sqM / 10_000, unit === "metric" ? "HA" : "ACRES");
 }
 const pct = (n: number) => `${(n * 100).toFixed(n < 0.1 ? 1 : 0)}%`;
 

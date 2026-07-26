@@ -4,7 +4,9 @@ import React from "react";
 import { Modal, Button, MapLegend, ConfirmButton } from "@/components/ui";
 import { SatelliteMap } from "@/components/ui/SatelliteMap.client";
 import { effectiveColor } from "@/lib/vineyard/colors";
-import { blockArea, formatArea, mToFt, type Unit } from "@/lib/vineyard/units";
+import { blockArea, formatArea, type Unit } from "@/lib/vineyard/units";
+import { formatLength, resolveSpacingUnit } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import { loadVineyardDetail, saveBlockPolygon } from "@/lib/vineyard/actions";
 import type { VineyardDetailPayload } from "@/lib/vineyard/data";
 import { VineyardSetup } from "./VineyardSetup";
@@ -22,12 +24,20 @@ export interface VineyardModalProps {
 
 type Mode = "summary" | "setup";
 
-function UnitToggle({ unit, onChange }: { unit: Unit; onChange: (u: Unit) => void }) {
+/** Plan 098: "auto" = follow the winery's display units; a Unit value is this vineyard's override. */
+export type UnitChoice = Unit | "auto";
+
+function UnitToggle({ choice, resolved, onChange }: { choice: UnitChoice; resolved: Unit; onChange: (u: UnitChoice) => void }) {
+  const options: Array<{ v: UnitChoice; label: string }> = [
+    { v: "imperial", label: "Feet / acres" },
+    { v: "metric", label: "Meters / hectares" },
+    { v: "auto", label: `Auto (${resolved === "imperial" ? "ft / ac" : "m / ha"})` },
+  ];
   return (
     <div style={{ display: "inline-flex", gap: 6 }}>
-      {(["imperial", "metric"] as Unit[]).map((u) => (
-        <Button key={u} variant={unit === u ? "primary" : "secondary"} size="sm" onClick={() => onChange(u)}>
-          {u === "imperial" ? "Feet / acres" : "Meters / hectares"}
+      {options.map(({ v, label }) => (
+        <Button key={v} variant={choice === v ? "primary" : "secondary"} size="sm" onClick={() => onChange(v)}>
+          {label}
         </Button>
       ))}
     </div>
@@ -38,7 +48,11 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
   // This component is mounted only while open (parent unmounts on close), so it
   // loads fresh on mount and resets its own state naturally — no reset effect.
   const [mode, setMode] = React.useState<Mode>("summary");
-  const [unit, setUnit] = React.useState<Unit>("imperial");
+  // Plan 098: the persisted per-vineyard override ("auto" = follow the winery's display units).
+  const prefs = useUnitPrefs();
+  const wineryUnit: Unit = resolveSpacingUnit(null, prefs);
+  const [unitChoice, setUnitChoice] = React.useState<UnitChoice>("auto");
+  const unit: Unit = unitChoice === "auto" ? wineryUnit : unitChoice;
   // The block whose polygon is being drawn (setup mode only). Null = not drawing.
   const [activeBlockId, setActiveBlockId] = React.useState<string | null>(null);
   // The block whose detail modal is open (clicked on the map). Null = closed.
@@ -57,7 +71,7 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
       .then((p) => {
         setPayload(p);
         if (!seededUnit.current) {
-          setUnit(p.detail?.defaultUnit === "metric" ? "metric" : "imperial");
+          setUnitChoice(p.detail?.defaultUnit === "metric" ? "metric" : p.detail?.defaultUnit === "imperial" ? "imperial" : "auto");
           seededUnit.current = true;
         }
       })
@@ -73,7 +87,7 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
         if (cancelled) return;
         setPayload(p);
         if (!seededUnit.current) {
-          setUnit(p.detail?.defaultUnit === "metric" ? "metric" : "imperial");
+          setUnitChoice(p.detail?.defaultUnit === "metric" ? "metric" : p.detail?.defaultUnit === "imperial" ? "imperial" : "auto");
           seededUnit.current = true;
         }
       })
@@ -157,7 +171,7 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
       subtitle={mode === "summary" ? "Vineyard summary" : "Set up vineyard"}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
-        <UnitToggle unit={unit} onChange={setUnit} />
+        <UnitToggle choice={unitChoice} resolved={wineryUnit} onChange={setUnitChoice} />
         <Button
           variant={mode === "setup" ? "ghost" : "secondary"}
           size="sm"
@@ -205,6 +219,7 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
             blocks={blocks}
             varietyOptions={varietyOptions}
             unit={unit}
+            unitOverride={unitChoice}
             drawEnabled={canDraw}
             activeBlockId={activeBlockId}
             onDraw={(id) => setActiveBlockId((cur) => (cur === id ? null : id))}
@@ -355,8 +370,7 @@ export function VineyardModal({ vineyardId, vineyardName, varietyOptions, open, 
 }
 
 function elevationText(elevationM: number, unit: Unit): string {
-  if (unit === "metric") return `${elevationM.toFixed(0)} m`;
-  return `${mToFt(elevationM).toFixed(0)} ft`;
+  return formatLength(elevationM, unit === "metric" ? "M" : "FT");
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

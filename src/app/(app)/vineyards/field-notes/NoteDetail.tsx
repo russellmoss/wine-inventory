@@ -9,6 +9,8 @@ import {
 } from "@/lib/fieldnotes/types";
 import { scoutingLabel } from "@/lib/phenology/labels";
 import { formatShootLength } from "@/lib/phenology/units";
+import { formatPrecip, formatTemp } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import type { ShootLengthBand } from "@/lib/phenology/observation-types";
 
 /** Band chip text. Mirrors the authoring labels in BlockCard so read-back matches what was tapped. */
@@ -70,6 +72,8 @@ function InputList({
 }
 
 function BlockRow({ label, status }: { label: string; status: BlockStatus }) {
+  // Plan 098: shoot length follows the winery's master system (no per-dimension override exists).
+  const prefs = useUnitPrefs();
   const chips: { text: string; tone: "neutral" | "red" | "green" | "gold" }[] = [];
   if (status.phenoStage)
     chips.push({
@@ -87,7 +91,7 @@ function BlockRow({ label, status }: { label: string; status: BlockStatus }) {
   // no provenance badge belongs here (the estimate surfaces through the read seam). Every check
   // is an explicit `!== null`, so a recorded `0 cm` or `hedged: no` shows up instead of vanishing.
   if (status.shootLengthCm !== null) {
-    chips.push({ text: `Shoots ${formatShootLength(status.shootLengthCm, "METRIC")} (measured)`, tone: "neutral" });
+    chips.push({ text: `Shoots ${formatShootLength(status.shootLengthCm, prefs.system)} (measured)`, tone: "neutral" });
   }
   if (status.shootLengthBand !== null) {
     chips.push({ text: `Shoots ${SHOOT_BAND_TEXT[status.shootLengthBand]}`, tone: "neutral" });
@@ -171,20 +175,24 @@ export function NoteDetail({
   blockLabels: Record<string, string>;
 }) {
   const w = note.weatherData;
+  // Plan 098: the recorded weekly weather (stored metric) renders in the winery's display units.
+  const prefs = useUnitPrefs();
+  const tempSys = prefs.temperature === "F" ? ("IMPERIAL" as const) : ("METRIC" as const);
+  const precipSys = prefs.precipitation === "IN" ? ("IMPERIAL" as const) : ("METRIC" as const);
   return (
     <div>
       <div style={{ display: "flex", gap: "var(--space-5)", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
         <div>
           <div style={sub}>Rainfall</div>
-          <div style={{ fontSize: 18 }}>{w.rainfallMm == null ? "—" : `${w.rainfallMm} mm`}</div>
+          <div style={{ fontSize: 18 }}>{formatPrecip(w.rainfallMm, precipSys)}</div>
         </div>
         <div>
           <div style={sub}>Max temp</div>
-          <div style={{ fontSize: 18 }}>{w.maxTempC == null ? "—" : `${w.maxTempC} °C`}</div>
+          <div style={{ fontSize: 18 }}>{formatTemp(w.maxTempC, tempSys, 1)}</div>
         </div>
         <div>
           <div style={sub}>Min temp</div>
-          <div style={{ fontSize: 18 }}>{w.minTempC == null ? "—" : `${w.minTempC} °C`}</div>
+          <div style={{ fontSize: 18 }}>{formatTemp(w.minTempC, tempSys, 1)}</div>
         </div>
       </div>
 
