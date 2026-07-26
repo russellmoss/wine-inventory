@@ -74,6 +74,12 @@ export class ProviderFetchError extends Error {
 export interface ClimateProvider {
   key: ProviderKey;
   kind: "grid" | "station";
+  /**
+   * `live` = usable for the current/in-season window (gridMET ~14h latency, ACIS daily, POWER).
+   * `history` = baseline/normals only, lags too far to drive in-season GDD/frost (Daymet ~3mo release;
+   * NOAA CDO history/normals). The in-season sweep uses `live`; history is opt-in.
+   */
+  role: "live" | "history";
   obsConvention: ObsConvention;
   resolutionM: number | null;
   capabilities: WeatherMetric[];

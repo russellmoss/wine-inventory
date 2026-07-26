@@ -38,6 +38,7 @@ export function normalizePowerResponse(json: unknown): DailyRecord[] {
 export const nasaPowerProvider: ClimateProvider = {
   key: "nasa_power",
   kind: "grid",
+  role: "live",
   obsConvention: "UTC",
   resolutionM: 50_000,
   capabilities: ["tmax", "tmin", "precip"],

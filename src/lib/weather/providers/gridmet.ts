@@ -47,6 +47,7 @@ function inConus(lat: number, lon: number): boolean {
 export const gridmetProvider: ClimateProvider = {
   key: "gridmet",
   kind: "grid",
+  role: "live",
   obsConvention: "MIDNIGHT_LOCAL",
   resolutionM: 4_000,
   capabilities: ["tmax", "tmin", "precip"],

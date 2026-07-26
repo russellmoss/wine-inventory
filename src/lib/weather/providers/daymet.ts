@@ -71,6 +71,7 @@ function num(s: string | undefined): number | null {
 export const daymetProvider: ClimateProvider = {
   key: "daymet",
   kind: "grid",
+  role: "history",
   obsConvention: "MIDNIGHT_LOCAL",
   resolutionM: 1_000,
   capabilities: ["tmax", "tmin", "precip"],
@@ -80,8 +81,10 @@ export const daymetProvider: ClimateProvider = {
       `https://daymet.ornl.gov/single-pixel/api/data?lat=${lat}&lon=${lon}` +
       `&vars=tmax,tmin,prcp&start=${startIso}&end=${endIso}`;
     const csv = await fetchText("daymet", url);
-    const records = normalizeDaymetCsv(csv);
-    if (records.length === 0) throw new ProviderFetchError("daymet", "empty", "no Daymet records");
+    // Daymet's single-pixel API ignores start/end when the range isn't in its published years (it lags ~3
+    // months) and returns its FULL period of record → window it here so a caller never gets 40 years back.
+    const records = normalizeDaymetCsv(csv).filter((r) => r.sourceDate >= startIso && r.sourceDate <= endIso);
+    if (records.length === 0) throw new ProviderFetchError("daymet", "empty", "no Daymet records in window");
     return {
       providerKey: "daymet",
       kind: "grid",

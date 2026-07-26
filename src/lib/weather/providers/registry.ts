@@ -19,11 +19,19 @@ export const ALL_PROVIDERS: ClimateProvider[] = [
 
 const TIER_RANK: Record<CoverageState, number> = { US_HIGH_RES: 0, GLOBAL_COARSE: 1, UNAVAILABLE: 2 };
 
-/** Providers that cover the point, best tier first. Excludes UNAVAILABLE (incl. CDO when its token is unset). */
-export function providersForLocation(lat: number, lon: number): ClimateProvider[] {
-  return ALL_PROVIDERS.filter((p) => p.coverageFor(lat, lon) !== "UNAVAILABLE").sort(
-    (a, b) => TIER_RANK[a.coverageFor(lat, lon)] - TIER_RANK[b.coverageFor(lat, lon)],
-  );
+/**
+ * Providers that cover the point, best tier first. Excludes UNAVAILABLE (incl. CDO when its token is unset).
+ * Defaults to `live` providers only — `history` providers (Daymet, NOAA CDO) lag too far to drive an
+ * in-season window and are opt-in via `includeHistory`.
+ */
+export function providersForLocation(
+  lat: number,
+  lon: number,
+  opts: { includeHistory?: boolean } = {},
+): ClimateProvider[] {
+  return ALL_PROVIDERS.filter(
+    (p) => p.coverageFor(lat, lon) !== "UNAVAILABLE" && (opts.includeHistory || p.role === "live"),
+  ).sort((a, b) => TIER_RANK[a.coverageFor(lat, lon)] - TIER_RANK[b.coverageFor(lat, lon)]);
 }
 
 /** The best coverage tier available at a point (US_HIGH_RES > GLOBAL_COARSE > UNAVAILABLE). */

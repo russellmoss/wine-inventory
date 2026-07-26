@@ -32,6 +32,7 @@ export function normalizeCdoResults(json: unknown): DailyRecord[] {
 export const noaaCdoProvider: ClimateProvider = {
   key: "noaa_cdo",
   kind: "station",
+  role: "history",
   obsConvention: "AM_LST",
   resolutionM: null,
   capabilities: ["tmax", "tmin", "precip"],

@@ -63,6 +63,7 @@ export async function findNearestAcisStation(lat: number, lon: number): Promise<
 export const rccAcisProvider: ClimateProvider = {
   key: "rcc_acis",
   kind: "station",
+  role: "live",
   obsConvention: "AM_LST",
   resolutionM: null,
   capabilities: ["tmax", "tmin", "precip"],
