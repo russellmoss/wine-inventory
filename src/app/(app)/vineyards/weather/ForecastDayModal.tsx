@@ -10,7 +10,7 @@
 
 import React from "react";
 import { Modal } from "@/components/ui";
-import { loadVineyardForecastHours } from "@/lib/weather/actions";
+import { loadVineyardForecastHours, refreshVineyardForecast } from "@/lib/weather/actions";
 import type { ForecastHourlyDay } from "@/lib/weather/forecast-hourly-read-core";
 import { formatPrecip, formatTemp, normalizeUnitSystem } from "@/lib/weather/units-core";
 import { HourlyChart, type ThresholdLine } from "./HourlyChart";
@@ -41,12 +41,29 @@ export function ForecastDayModal({
   onClose: () => void;
 }) {
   const [state, setState] = React.useState<Awaited<ReturnType<typeof loadVineyardForecastHours>> | null>(null);
+  const [backfilling, setBackfilling] = React.useState(false);
+  const healed = React.useRef<Set<string>>(new Set());
 
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
       const res = await loadVineyardForecastHours(vineyardId, targetDate);
-      if (!cancelled) setState(res);
+      if (cancelled) return;
+      setState(res);
+      // SELF-HEAL (Russell's live find): a vineyard whose daily forecast is fresh never triggers
+      // the strip's on-view refresh, so its hourly rows may simply not exist yet. The modal must
+      // never make the grower click anything — refresh once and re-read. Guarded per vineyard.
+      if (res.ok && !res.day && !healed.current.has(vineyardId)) {
+        healed.current.add(vineyardId);
+        setBackfilling(true);
+        const refreshed = await refreshVineyardForecast(vineyardId);
+        if (cancelled) return;
+        if (refreshed.ok) {
+          const again = await loadVineyardForecastHours(vineyardId, targetDate);
+          if (!cancelled) setState(again);
+        }
+        setBackfilling(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -91,11 +108,11 @@ export function ForecastDayModal({
       }
       maxWidth={720}
     >
-      {!state && <div style={{ ...label, textTransform: "none" }}>Loading hourly detail…</div>}
+      {(!state || backfilling) && <div style={{ ...label, textTransform: "none" }}>{backfilling ? "Fetching hourly detail…" : "Loading hourly detail…"}</div>}
       {state && !state.ok && <div style={{ color: "var(--danger)", fontSize: 13 }}>{state.error}</div>}
-      {ok && !day && (
+      {ok && !day && !backfilling && (
         <div style={{ ...label, textTransform: "none" }}>
-          Hourly detail isn&apos;t in yet for this day — it loads with the forecast refresh (every 6 hours on view).
+          No hourly detail is available for this day from the forecast source yet.
         </div>
       )}
       {ok && day && (
