@@ -3,10 +3,14 @@
 import React from "react";
 import { Button } from "@/components/ui";
 import { topVesselAction } from "@/lib/cellar/actions";
-import { FormShell, fieldStyle, type CellarActionsVessel, type KegOption, type OpSubmit } from "./shared";
+import { FormShell, type CellarActionsVessel, type KegOption, type OpSubmit } from "./shared";
 import { VesselFilterPicker } from "@/components/cellar/VesselFilterPicker";
+import { VolumeInput } from "./VolumeInput";
+import { formatVolume, volumeInputToLiters } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // ── Topping ──
+// Plan 098 U9: entry in the winery's display unit (inline adornment); canonical litres to the action.
 export function ToppingForm({
   vessel,
   kegOptions,
@@ -18,10 +22,11 @@ export function ToppingForm({
   pending: boolean;
   onSubmit: OpSubmit;
 }) {
+  const unit = useUnitPrefs().volume;
   const sources = kegOptions.filter((k) => k.id !== vessel.id && k.totalL > 0);
   const [fromVesselId, setFromVesselId] = React.useState("");
   const [volume, setVolume] = React.useState("");
-  const volNum = Number(volume);
+  const volNum = volumeInputToLiters(volume, unit) ?? Number.NaN;
   const valid = !!fromVesselId && Number.isFinite(volNum) && volNum > 0;
   const resulting = valid ? Math.round((vessel.totalL + volNum) * 100) / 100 : null;
   const overCap = resulting != null && resulting > vessel.capacityL + 1e-9;
@@ -37,12 +42,12 @@ export function ToppingForm({
         emptyHint="No other vessel has wine to top from."
       />
       <FormShell>
-        <input value={volume} onChange={(e) => setVolume(e.target.value)} inputMode="decimal" placeholder="Litres" style={{ ...fieldStyle, width: 96 }} aria-label="Topping volume" />
+        <VolumeInput value={volume} onChange={setVolume} unit={unit} placeholder="Volume" width={110} ariaLabel="Topping volume" />
         <Button
           variant="primary"
           size="sm"
           disabled={pending || !valid || overCap}
-          onClick={() => onSubmit(() => topVesselAction({ toVesselId: vessel.id, fromVesselId, volumeL: volNum }), `topped ${volume} L`)}
+          onClick={() => onSubmit(() => topVesselAction({ toVesselId: vessel.id, fromVesselId, volumeL: volNum }), `topped ${formatVolume(volNum, unit)}`)}
           style={{ minHeight: 44 }}
         >
           {pending ? "Saving…" : `Top ${vessel.code}`}
@@ -53,8 +58,8 @@ export function ToppingForm({
           ? "No other vessel has wine to top from."
           : resulting != null
             ? overCap
-              ? `That would overfill ${vessel.code} (${resulting} L into a ${vessel.capacityL} L vessel).`
-              : `${vessel.code}: ${vessel.totalL} → ${resulting} L`
+              ? `That would overfill ${vessel.code} (${formatVolume(resulting, unit)} into a ${formatVolume(vessel.capacityL, unit)} vessel).`
+              : `${vessel.code}: ${formatVolume(vessel.totalL, unit)} → ${formatVolume(resulting, unit)}${unit !== "L" ? ` (recorded as ${formatVolume(volNum, "L")})` : ""}`
             : "Pick a source and a volume."}
       </div>
     </div>

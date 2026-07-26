@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Card, Input, Button, Badge, Eyebrow, Modal, ConfirmButton } from "@/components/ui";
 import { createVessel, updateVessel, setVesselActive } from "@/lib/vessels/actions";
-import { formatVolume } from "@/lib/units/display";
+import { formatVolume, volumeInputToLiters, volumeInputValue, volumeUnitLabel } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import { VesselComposition } from "@/components/vessel/VesselComposition";
 import type { CompositionComponent } from "@/lib/vessel/composition";
@@ -54,12 +54,12 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
           {title} <span style={{ color: "var(--text-muted)", fontSize: 15 }}>({items.length})</span>
         </h2>
         <form
-          onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; run(() => createVessel(new FormData(f)), () => f.reset()); }}
+          onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; const fd = new FormData(f); const cap = volumeInputToLiters(String(fd.get("capacityL") ?? ""), vol); if (cap != null) fd.set("capacityL", String(cap)); run(() => createVessel(fd), () => f.reset()); }}
           style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 8 }}
         >
           <input type="hidden" name="type" value={type} />
           <Input label={type === "BARREL" ? "Barrel #" : "Code"} name="code" placeholder={type === "BARREL" ? "1" : "TANK-001"} required style={{ flex: "1 1 150px" }} />
-          <Input label={type === "BARREL" ? "Volume (L)" : "Capacity (L)"} name="capacityL" type="number" step="0.01" min="0.01" placeholder={type === "BARREL" ? "225" : "5000"} required style={{ flex: "0 1 130px" }} />
+          <Input label={type === "BARREL" ? `Volume (${volumeUnitLabel(vol)})` : `Capacity (${volumeUnitLabel(vol)})`} name="capacityL" type="number" step="0.01" min="0.01" placeholder={type === "BARREL" ? volumeInputValue(225, vol) : volumeInputValue(5000, vol)} iconRight={<span style={{ fontSize: 13 }}>{volumeUnitLabel(vol)}</span>} required style={{ flex: "0 1 130px" }} />
           {type === "BARREL" ? (
             <>
               <Input label="Oak origin" name="oakOrigin" placeholder="French" style={{ flex: "1 1 120px" }} />
@@ -142,12 +142,12 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
         {selected ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <form
-              onSubmit={(e) => { e.preventDefault(); run(() => updateVessel(selected.id, new FormData(e.currentTarget)), () => setSelectedId(null)); }}
+              onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const cap = volumeInputToLiters(String(fd.get("capacityL") ?? ""), vol, { display: volumeInputValue(selected.capacityL, vol), liters: selected.capacityL }); if (cap != null) fd.set("capacityL", String(cap)); run(() => updateVessel(selected.id, fd), () => setSelectedId(null)); }}
               style={{ display: "flex", flexDirection: "column", gap: 12 }}
             >
               <input type="hidden" name="type" value={selected.type} />
               <Input label={selected.type === "BARREL" ? "Barrel #" : "Code"} name="code" defaultValue={selected.code} required />
-              <Input label={selected.type === "BARREL" ? "Volume (L)" : "Capacity (L)"} name="capacityL" type="number" step="0.01" min="0.01" defaultValue={selected.capacityL} hint={selected.filledL > 0 ? `Can't go below current contents (${selected.filledL} L)` : undefined} required />
+              <Input label={selected.type === "BARREL" ? `Volume (${volumeUnitLabel(vol)})` : `Capacity (${volumeUnitLabel(vol)})`} name="capacityL" type="number" step="0.01" min="0.01" defaultValue={volumeInputValue(selected.capacityL, vol)} iconRight={<span style={{ fontSize: 13 }}>{volumeUnitLabel(vol)}</span>} hint={`${selected.filledL > 0 ? `Can't go below current contents (${formatVolume(selected.filledL, vol)}). ` : ""}${vol !== "L" ? `Stored as ${formatVolume(selected.capacityL, "L")}.` : ""}` || undefined} required />
               {selected.type === "BARREL" ? (
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <Input label="Oak origin" name="oakOrigin" defaultValue={selected.oakOrigin ?? ""} style={{ flex: "1 1 130px" }} />

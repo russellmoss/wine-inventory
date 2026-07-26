@@ -11,7 +11,7 @@ import type { VesselGroupDTO } from "@/lib/vessels/groups";
 import { CellarActions, type KegOption, type ResidentLot } from "./CellarActions";
 import { VesselComposition } from "@/components/vessel/VesselComposition";
 import { GroupActions, type GroupVessel } from "./GroupActions";
-import { formatVolume } from "@/lib/units/display";
+import { formatVolume, volumeInputToLiters, volumeUnitLabel } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 function vesselLabel(type: "BARREL" | "TANK", code: string): string {
@@ -108,6 +108,7 @@ function AddWineForm({
   pending: boolean;
   run: (fn: () => Promise<void>, after?: () => void) => void;
 }) {
+  const vol = useUnitPrefs().volume;
   const [vineyardId, setVineyardId] = React.useState("");
   const [blockId, setBlockId] = React.useState("");
   const vineyardBlocks = blocks.filter((b) => b.vineyardId === vineyardId);
@@ -119,6 +120,9 @@ function AddWineForm({
         const form = e.currentTarget;
         const fd = new FormData(form);
         fd.set("vesselId", vesselId);
+        // Plan 098 U9: typed in the winery's display unit; the action receives canonical litres.
+        const volL = volumeInputToLiters(String(fd.get("volumeL") ?? ""), vol);
+        if (volL != null) fd.set("volumeL", String(volL));
         run(async () => {
           await addComponent(fd);
           form.reset();
@@ -145,7 +149,7 @@ function AddWineForm({
         {blockSubblocks.map((s) => <option key={s.id} value={s.id}>{s.code}{s.label ? ` · ${s.label}` : ""}</option>)}
       </select>
       <input name="vintage" type="number" placeholder="Vintage" style={{ ...selectStyle, width: 96 }} required />
-      <input name="volumeL" type="number" step="0.01" min="0.01" placeholder="Litres" style={{ ...selectStyle, width: 90 }} required />
+      <input name="volumeL" type="number" step="0.01" min="0.01" placeholder={volumeUnitLabel(vol)} title={`Volume in ${volumeUnitLabel(vol)}`} style={{ ...selectStyle, width: 90 }} required />
       <input name="sublotTag" placeholder="Tag (opt.)" maxLength={8} title="Sublot tag for experiments / differential picks (optional)" style={{ ...selectStyle, width: 96, textTransform: "uppercase" }} />
       <Button type="submit" variant="primary" size="sm" disabled={pending}>Add to vessel</Button>
     </form>

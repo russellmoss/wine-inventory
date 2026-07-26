@@ -19,6 +19,8 @@ import {
   resolveUnitPrefs,
   systemToLegacyUnit,
   unitPrefsSentence,
+  volumeInputToLiters,
+  volumeInputValue,
 } from "@/lib/units/display";
 import { LITERS_PER_US_GALLON } from "@/lib/compliance/gallons";
 
@@ -161,6 +163,30 @@ describe("weights", () => {
     expect(formatWeightToAdd(1500, "KG")).toBe("1.50 kg");
     expect(formatWeightToAdd(10, "LB")).toBe("0.4 oz");
     expect(formatWeightToAdd(null, "KG")).toBe("—");
+  });
+});
+
+describe("volume input round-trip (U9, council C5)", () => {
+  it('enter "500" gal → 1892.71 L canonical → hydrates back as "500"', () => {
+    const liters = volumeInputToLiters("500", "GAL");
+    expect(liters).toBe(1892.71);
+    expect(volumeInputValue(liters, "GAL")).toBe("500");
+  });
+  it("dirty check: an untouched field returns the ORIGINAL litres byte-for-byte", () => {
+    const original = { display: volumeInputValue(3785.41, "GAL"), liters: 3785.41 };
+    expect(volumeInputToLiters(original.display, "GAL", original)).toBe(3785.41);
+    // …but an edited value converts fresh
+    expect(volumeInputToLiters("999", "GAL", original)).toBe(Math.round(999 * LITERS_PER_US_GALLON * 100) / 100);
+  });
+  it("litres pass through exactly; hL scales by 100", () => {
+    expect(volumeInputToLiters("225", "L")).toBe(225);
+    expect(volumeInputValue(225, "HL")).toBe("2.25");
+    expect(volumeInputToLiters("2.25", "HL")).toBe(225);
+  });
+  it("empty and junk parse to null", () => {
+    expect(volumeInputToLiters("", "GAL")).toBeNull();
+    expect(volumeInputToLiters("abc", "L")).toBeNull();
+    expect(volumeInputValue(null, "L")).toBe("");
   });
 });
 

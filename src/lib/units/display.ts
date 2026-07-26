@@ -192,6 +192,32 @@ export function displayToLiters(value: number, unit: VolumeUnit): number {
   return value;
 }
 
+// ── Volume INPUT round-trip (plan 098 U9, council C5) ────────────────────────────────────
+// The hydrate/parse pair for a volume input in the preferred unit. The dirty check lives in
+// the PARSER: a raw string identical to the hydrated display returns the ORIGINAL canonical
+// litres byte-for-byte, so opening a form and saving untouched never re-saves a re-converted
+// value. An edited value converts and rounds to the canonical 2 dp (Decimal(10,2)).
+
+/** Canonical litres → the input's display string (no grouping, no unit; 2 dp, zeros trimmed). */
+export function volumeInputValue(liters: number | null | undefined, unit: VolumeUnit): string {
+  if (liters == null || !Number.isFinite(liters)) return "";
+  return String(Number(litersToDisplay(liters, unit).toFixed(2)));
+}
+
+/** An input's raw string → canonical litres. `original` enables the dirty check. Empty/junk → null. */
+export function volumeInputToLiters(
+  raw: string,
+  unit: VolumeUnit,
+  original?: { display: string; liters: number } | null,
+): number | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  if (original && t === original.display) return original.liters;
+  const n = Number(t);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(displayToLiters(n, unit) * 100) / 100;
+}
+
 // ── Formatters ───────────────────────────────────────────────────────────────────────────
 // Every formatter returns the number WITH its unit (NBSP-joined) so a call site can't show a
 // bare number without saying which system it's in. Null/non-finite → "—".
