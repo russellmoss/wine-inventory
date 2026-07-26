@@ -115,6 +115,31 @@ export async function ingestVineyardForecastCore(input: ForecastIngestInput, dep
           })),
         });
         rowsWritten += series.records.length;
+
+        // Plan 097 U3: the hourly slots — same replace discipline (C1) keyed by hourStartUtc.
+        if (series.hourly && series.hourly.length > 0) {
+          const hourStarts = series.hourly.map((h) => h.hourStartUtc).sort();
+          await tx.vineyardForecastHourly.deleteMany({
+            where: { vineyardId: input.vineyardId, providerKey: series.providerKey, hourStartUtc: { gte: new Date(hourStarts[0]) } },
+          });
+          await tx.vineyardForecastHourly.createMany({
+            data: series.hourly.map((h) => ({
+              vineyardId: input.vineyardId,
+              providerKey: series.providerKey,
+              hourStartUtc: new Date(h.hourStartUtc),
+              localDate: new Date(`${h.localDate}T00:00:00.000Z`),
+              localHour: h.localHour,
+              tempC: h.tempC,
+              popPct: h.popPct,
+              precipMm: h.precipMm,
+              precipDurationH: h.precipDurationH,
+              conditionCode: h.conditionCode,
+              windKph: h.windKph,
+              issuedAt: series.issuedAt,
+            })),
+          });
+          rowsWritten += series.hourly.length;
+        }
       }
       // S4: the config cache is an EXPLICIT tx step — timeZone feeds siteToday; the grid skips /points.
       await tx.vineyardWeatherConfig.updateMany({

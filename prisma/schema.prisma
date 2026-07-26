@@ -993,6 +993,38 @@ model VineyardForecastDaily {
   @@map("vineyard_forecast_daily")
 }
 
+// Plan 097 (U3) — hourly forecast slots for the day-detail modal. One row per (provider,
+// hourStartUtc); REPLACED like the daily table (delete forward horizon then insert, same ingest
+// tx — C1). localDate/localHour are computed AT INGEST from the vineyard tz and never re-derived
+// at read. precipDurationH carries the NATIVE amount interval (1 = per-hour Open-Meteo; 3/6 = an
+// NWS raw-gridpoint QPF bucket starting at this hour) — the chart draws bars at that width (S6:
+// no invented uniform rain). Value columns nullable (C7 — NWS precip-only bucket rows have null
+// temps). Volume ≈ 13 vineyards × ≤168 h × ≤2 providers ≈ 4.4k rows fleet-wide, pruned daily.
+model VineyardForecastHourly {
+  tenantId        String   @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id              String   @id @default(cuid())
+  vineyardId      String // composite FK → vineyard(tenantId, id)
+  providerKey     String // "nws" | "open_meteo" (String union — no enum)
+  hourStartUtc    DateTime // the slot's UTC instant — the replace identity
+  localDate       DateTime @db.Date // vineyard-local civil day (modal slicing key)
+  localHour       Int // 0–23 in the vineyard tz
+  tempC           Decimal? @db.Decimal(6, 3)
+  popPct          Decimal? @db.Decimal(6, 3)
+  precipMm        Decimal? @db.Decimal(8, 3)
+  precipDurationH Int      @default(1) // native amount-interval width in hours
+  conditionCode   String   @default("UNKNOWN")
+  windKph         Decimal? @db.Decimal(7, 2)
+  issuedAt        DateTime // staleness label, mirrors the daily table
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, vineyardId, providerKey, hourStartUtc]) // the replace identity
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, vineyardId, localDate]) // the modal's day-slice read
+  @@map("vineyard_forecast_hourly")
+}
+
 // Plan 096 Phase 3 (U19) — the escalation-dedup state that makes "notify once, escalate once,
 // never repeat on the 6-hourly cron" survive restarts AND concurrency. The claim is a single
 // conditional upsert (INSERT … ON CONFLICT DO UPDATE … WHERE "notifiedRank" < EXCLUDED."notifiedRank"
