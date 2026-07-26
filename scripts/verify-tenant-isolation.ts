@@ -20,12 +20,14 @@ const A = "org_demo_winery";
 const B = "org_isolation_test_b";
 
 // GLOBAL_MODELS (mirror of src/lib/tenant/models.ts): the Better Auth core + org-plugin tables, the
-// Plan-073 FxRate reference cache, and the Plan-079 knowledge-base CORPUS tables are the ONLY non-tenant
-// tables — every other model must be RLS-isolated. These globals have no tenantId (identical for every
-// tenant); they're excluded from the RLS coverage guard below exactly like the auth globals. The
-// knowledge-base SUBSCRIPTION table (KnowledgeSourceSubscription) IS tenant-scoped and is NOT listed here.
+// Plan-073 FxRate reference cache, the Plan-079 knowledge-base CORPUS tables, and the Spray-S2
+// pesticide registration/resistance master are the ONLY non-tenant tables — every other model must be
+// RLS-isolated. These globals have no tenantId (identical for every tenant); they're excluded from the
+// RLS coverage guard below exactly like the auth globals. The knowledge-base SUBSCRIPTION table
+// (KnowledgeSourceSubscription) IS tenant-scoped and is NOT listed here; pesticide entitlement is a
+// SERVICE-layer check in src/lib/pesticide/lookup.ts, not RLS.
 // Inlined so this exit-proof script stays self-contained.
-const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation", "FxRate", "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument", "KnowledgeUrlObservation", "KnowledgeChunk"]);
+const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation", "FxRate", "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument", "KnowledgeUrlObservation", "KnowledgeChunk", "PesticideDataRevision", "PesticideProduct", "PesticideActiveIngredient", "PesticideProductIngredient", "PesticideSiteRegistration", "PesticideStateRegistration", "PesticideUseRestriction", "PesticideResistanceAssignment"]);
 
 const OWNER_URL = process.env.DATABASE_URL_UNPOOLED;
 const APP_URL = process.env.DATABASE_URL_APP;

@@ -55,9 +55,14 @@ describe("global-model denylist (K3)", () => {
         // Plan 079: the knowledge-base CORPUS is global reference data (the subscription table is NOT).
         "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument",
         "KnowledgeUrlObservation", "KnowledgeChunk",
+        // Spray S2: the pesticide registration/resistance master is global reference data
+        // (entitlement is a service-layer check in src/lib/pesticide/lookup.ts, not RLS).
+        "PesticideDataRevision", "PesticideProduct", "PesticideActiveIngredient",
+        "PesticideProductIngredient", "PesticideSiteRegistration", "PesticideStateRegistration",
+        "PesticideUseRestriction", "PesticideResistanceAssignment",
       ].sort(),
     );
-    for (const m of ["User", "Session", "Organization", "Member", "Invitation", "FxRate", "KnowledgeChunk"]) expect(isGlobalModel(m)).toBe(true);
+    for (const m of ["User", "Session", "Organization", "Member", "Invitation", "FxRate", "KnowledgeChunk", "PesticideProduct"]) expect(isGlobalModel(m)).toBe(true);
     // the subscription table is tenant-scoped, NOT global
     for (const m of ["Lot", "Vessel", "AppSettings", "AuditLog", "KnowledgeSourceSubscription"]) expect(isGlobalModel(m)).toBe(false);
   });

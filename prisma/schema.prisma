@@ -5387,3 +5387,273 @@ model DirectMessageAttachment {
   @@index([tenantId, messageId])
   @@map("direct_message_attachment")
 }
+
+// ───────────────────────── Pesticide registration + resistance master (Spray S2) ─────────────────────────
+// GLOBAL reference data (like FxRate / the knowledge-base corpus): US EPA registrations, active
+// ingredients, CA DPR state registrations, and resistance-code assignments are identical for every
+// tenant — NO tenantId, NO RLS. All eight models are listed in GLOBAL_MODELS (src/lib/tenant/models.ts),
+// mirrored in scripts/verify-tenant-isolation.ts, and in the hard-coded set in test/tenant-context.test.ts.
+// Entitlement is enforced at the SERVICE layer: src/lib/pesticide/lookup.ts is the single choke point
+// (K7) — every read checks the `epa-pesticide` KnowledgeSourceSubscription first and fails closed.
+// Per-tenant control is that existing subscription table; nothing here is tenant-scoped.
+//
+// The safety contracts live in the DB, not in convention (S2 plan K2/K4/K11–K14 + council G1–G4):
+// CHECKs and partial unique indexes are hand-added in the _pesticide_schema migration (Prisma's DSL
+// expresses neither — the SpatialStyle precedent), documented per-model below.
+
+// Ingest-run lifecycle (K8/C8): reads resolve ONLY against the latest PUBLISHED revision, so a crashed
+// or partly-failed run never exposes mixed old/new rows under a misleading stamp.
+enum PesticideRevisionStatus {
+  RUNNING
+  FAILED
+  PUBLISHED
+}
+
+// K14 mark-and-sweep: rows unseen in a completed run flip to WITHDRAWN_FROM_SOURCE — never deleted
+// (audit trail). A withdrawn product must stop answering "registered".
+enum PesticideSourceStatus {
+  ACTIVE
+  WITHDRAWN_FROM_SOURCE
+}
+
+// K11 (council G1): bearing vs non-bearing site registration. A non-bearing-only herbicide applied to
+// bearing vines is an illegal application whose residues make the crop unsellable. UNSPECIFIED is the
+// honest default for a bare "Grapes" site string — it is NOT "both" and must never be read as BEARING.
+enum PesticideSiteModifier {
+  BEARING
+  NON_BEARING
+  UNSPECIFIED
+}
+
+// K12: a product absent from a state's registry is NOT_REGISTERED; a product we could not resolve is
+// UNKNOWN — two different values, never merged, because absence of knowledge is never a clearance.
+enum PesticideStateRegStatus {
+  REGISTERED
+  NOT_REGISTERED
+  UNKNOWN
+}
+
+// K2: the tri-state that the phase exists to protect. GAP ("we don't know") and NO_CODE_EXISTS
+// ("there is no code — not a rotation partner") are distinct values; a nullable column would conflate
+// them and a missing code would read as "no restriction". A CHECK ties CODED ⟺ codes non-empty.
+enum ResistanceResolution {
+  CODED
+  NO_CODE_EXISTS
+  GAP
+}
+
+// K3 (plan 086 measured constraint 1): rotation-eligibility is modeled separately from chemical
+// identity. Captan is codes ["M 04"] + MULTI — both "has a taxonomic code" and "not a rotation
+// partner" are true, and S7a's rotation engine keys off siteType, not code presence.
+enum ResistanceSiteType {
+  SINGLE
+  MULTI
+  UNKNOWN
+}
+
+enum ResistanceSubjectKind {
+  ACTIVE_INGREDIENT
+  PRODUCT
+}
+
+enum ResistanceScheme {
+  FRAC
+  HRAC
+  IRAC
+}
+
+// K4 provenance (plan 086 measured constraint 2): an AI-keyed source lists trade names as "products
+// containing this AI", not "products whose code is this" — a naive join drops the second AI of a
+// premix (Switch is 9/12, not 9). A DB CHECK forbids subjectKind=PRODUCT with AI_KEYED_TABLE.
+enum ResistanceDerivedFrom {
+  AI_KEYED_TABLE // extension table keyed on active ingredient (UC IPM conventional/biologicals)
+  PRODUCT_KEYED_TABLE // extension table keyed on trade name — the only table join legal at product level
+  EXTENSION_PROSE // LLM-extracted from Tier-1/2 extension prose, human-reviewed
+  LABEL_SINGLE_AI // label text — single-AI products ONLY (labels drop the SDHI partner in premixes)
+  AI_ROLLUP // product-level result composed from constituent-AI assignments (K13 most-conservative)
+}
+
+// One ingest/derivation run. apprilAsOf/cdprAsOf come from the sources' Last-Modified; the artifact
+// sha256 pins which curated resistance-codes.json produced the assignments. Together these four form
+// the composite factsAsOf every lookup returns (K8 — a single scalar would be a false contract).
+model PesticideDataRevision {
+  id                       String                  @id @default(cuid())
+  status                   PesticideRevisionStatus @default(RUNNING)
+  startedAt                DateTime                @default(now())
+  completedAt              DateTime?
+  apprilAsOf               DateTime?
+  cdprAsOf                 DateTime?
+  resistanceArtifactSha256 String?
+  summary                  Json?
+
+  @@index([status, startedAt])
+  @@map("pesticide_data_revision")
+}
+
+// One row per registered product. epaRegNumber is the CANONICAL "COMPANY-PRODUCT[-DISTRIBUTOR]" string
+// from parseRegistrationNumber (K6 — exact match only, never fuzzy). caRegNumber is schema room for
+// S2b's CA-state-only products (adjuvants, FIFRA 25(b)) — G4: a NOT NULL epaRegNumber would make a
+// legally-required tank component permanently unrepresentable. S2 ingests only EPA-numbered products.
+// Hand-added in migration: partial UNIQUE on each reg number WHERE NOT NULL (Postgres treats NULLs as
+// distinct) + CHECK that at least one is present.
+model PesticideProduct {
+  id                 String                @id @default(cuid())
+  epaRegNumber       String? // canonical form; partial unique WHERE NOT NULL (hand-added)
+  caRegNumber        String? // S2b schema room; partial unique WHERE NOT NULL (hand-added)
+  productName        String
+  companyName        String?
+  labelDate          DateTime? // attribute only — S2b owns product versioning; this is NOT a version key (C13)
+  registrationStatus String? // raw source status string (APPRIL) — never interpreted, only displayed
+  sourceStatus       PesticideSourceStatus @default(ACTIVE) // K14 sweep target
+  labelNames         String[]              @default([])
+  pestCategoryRaw    String? // raw PEST_CAT; NULL means UNKNOWN, not "no category" — 317 grape rows are blank
+  lastSeenRevisionId String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  ingredients           PesticideProductIngredient[]
+  siteRegistrations     PesticideSiteRegistration[]
+  stateRegistrations    PesticideStateRegistration[]
+  useRestrictions       PesticideUseRestriction[]
+  resistanceAssignments PesticideResistanceAssignment[]
+
+  @@index([lastSeenRevisionId])
+  @@map("pesticide_product")
+}
+
+// The AI dictionary. `name` is VERBATIM from APPRIL — normalization never rewrites identity (K5/G5);
+// the salt/ester/hydrate collapse is expressed as parentActiveIngredientId (curated, cited in
+// ai-normalization.json) and applied only for resistance-code assignment, never for identity.
+// Hand-added in migration: partial UNIQUE on pcCode WHERE NOT NULL.
+model PesticideActiveIngredient {
+  id                       String   @id @default(cuid())
+  pcCode                   String? // durable EPA PC code; partial unique WHERE NOT NULL (hand-added)
+  casNumber                String?
+  name                     String // verbatim APPRIL string — identity, never rewritten
+  normalizedName           String // lowercased/whitespace-collapsed for exact-normalized joins
+  parentActiveIngredientId String? // curated salt/ester/copper collapse target (G5) — assignment only
+  lastSeenRevisionId       String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  parent   PesticideActiveIngredient?  @relation("AiNormalizationParent", fields: [parentActiveIngredientId], references: [id], onDelete: Restrict)
+  children PesticideActiveIngredient[] @relation("AiNormalizationParent")
+
+  products              PesticideProductIngredient[]
+  resistanceAssignments PesticideResistanceAssignment[]
+
+  @@index([normalizedName])
+  @@index([parentActiveIngredientId])
+  @@index([lastSeenRevisionId])
+  @@map("pesticide_active_ingredient")
+}
+
+model PesticideProductIngredient {
+  productId          String
+  activeIngredientId String
+  percent            Decimal? @db.Decimal(8, 4) // label percent; null when APPRIL omits it
+
+  product          PesticideProduct          @relation(fields: [productId], references: [id])
+  activeIngredient PesticideActiveIngredient @relation(fields: [activeIngredientId], references: [id])
+
+  @@id([productId, activeIngredientId])
+  @@index([activeIngredientId])
+  @@map("pesticide_product_ingredient")
+}
+
+// One row per (product, site string) from APPRIL. isGrape is the /\bGrapes?\b(?!fruit)/ discrimination;
+// siteModifier is K11's bearing/non-bearing parse — a bare "Grapes" is UNSPECIFIED, never BEARING.
+model PesticideSiteRegistration {
+  id                 String                @id @default(cuid())
+  productId          String
+  siteCodeRaw        String?
+  siteNameRaw        String // verbatim APPRIL site string
+  isGrape            Boolean               @default(false)
+  siteModifier       PesticideSiteModifier @default(UNSPECIFIED)
+  lastSeenRevisionId String?
+
+  product PesticideProduct @relation(fields: [productId], references: [id])
+
+  @@unique([productId, siteNameRaw])
+  @@index([productId, isGrape])
+  @@index([lastSeenRevisionId])
+  @@map("pesticide_site_registration")
+}
+
+// K12: state registration is a required conjunct of legality — federal alone is never a clearance.
+// S2 ships only CA (CDPR). siteCode "" = the state-level row (NOT NULL so the upsert key dedupes;
+// Postgres would treat NULL site codes as distinct).
+model PesticideStateRegistration {
+  id                 String                  @id @default(cuid())
+  productId          String
+  state              String // "CA" in S2
+  status             PesticideStateRegStatus
+  siteCode           String                  @default("") // CDPR site code; "" = state-level row
+  lastSeenRevisionId String?
+
+  product PesticideProduct @relation(fields: [productId], references: [id])
+
+  @@unique([productId, state, siteCode])
+  @@index([productId, state])
+  @@index([lastSeenRevisionId])
+  @@map("pesticide_state_registration")
+}
+
+// Structured, non-binary restriction (Unit 7): kind + counties + the 24(c) SLN carve-out, with the
+// label sentence VERBATIM so the citation is the source, not our paraphrase. A restriction we could
+// not resolve is itself disqualifying (composition rule 3).
+model PesticideUseRestriction {
+  id                 String   @id @default(cuid())
+  productId          String
+  state              String
+  counties           String[] @default([])
+  kind               String // e.g. "county-prohibition" | "aerial-application-prohibited"
+  exception          String? // "24c-sln" | null — Luna's carve-out is not a plain ban
+  quote              String // verbatim label sentence (the citation)
+  lastSeenRevisionId String?
+
+  product PesticideProduct @relation(fields: [productId], references: [id])
+
+  @@index([productId, state])
+  @@index([lastSeenRevisionId])
+  @@map("pesticide_use_restriction")
+}
+
+// One assignment per (subject, scheme). `codes` is an ARRAY because the partial uniques allow exactly
+// one row per subject per scheme and premix products legitimately carry several codes (Switch 9+12,
+// Pristine 7+11, Zampro 45+40) — a scalar would force "9 alone", the exact K4 failure. K2's CHECK
+// becomes (resolution = 'CODED') = (cardinality(codes) > 0): an empty array can never read as CODED,
+// and a CODED row can never be empty. Hand-added in migration:
+//   1. chk_pra_coded_has_codes         — (resolution = 'CODED') = (cardinality(codes) > 0)   (K2)
+//   2. chk_pra_subject_exactly_one     — exactly one of activeIngredientId/productId, matching subjectKind
+//   3. chk_pra_product_not_ai_keyed    — NOT (subjectKind = 'PRODUCT' AND derivedFrom = 'AI_KEYED_TABLE') (K4)
+//   6. two partial uniques, one per subjectKind (C3 — @@unique over nullables does not dedupe)
+model PesticideResistanceAssignment {
+  id                 String                @id @default(cuid())
+  subjectKind        ResistanceSubjectKind
+  activeIngredientId String? // set iff subjectKind = ACTIVE_INGREDIENT (CHECK 2)
+  productId          String? // set iff subjectKind = PRODUCT (CHECK 2)
+  scheme             ResistanceScheme
+  resolution         ResistanceResolution
+  codes              String[]              @default([]) // non-empty ⟺ CODED (CHECK 1); e.g. ["9","12"]
+  siteType           ResistanceSiteType // required (K3) — rotation engines key off THIS, not code presence
+  derivedFrom        ResistanceDerivedFrom
+  sourceUrl          String?
+  sourceTitle        String?
+  sourceAsOf         DateTime?
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  revisionId         String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  // Restrict, not SetNull: nulling a subject would violate chk_pra_subject_exactly_one. Reference
+  // rows are never deleted anyway (K14 mark-and-sweep) — this is belt-and-braces.
+  activeIngredient PesticideActiveIngredient? @relation(fields: [activeIngredientId], references: [id], onDelete: Restrict)
+  product          PesticideProduct?          @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([activeIngredientId])
+  @@index([productId])
+  @@index([revisionId])
+  @@map("pesticide_resistance_assignment")
+}
