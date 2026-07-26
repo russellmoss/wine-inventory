@@ -641,6 +641,24 @@ enum SpatialJobStatus {
   WITHHELD
 }
 
+// VI-P3 (NDVI display): what a cached SpatialDatasetDerivative holds. DISPLAY_NDVI = the source NDVI WARPED to a
+// north-up EPSG:3857 display grid (council fix #1 — a UTM raster on a 3857 basemap is misregistered ~10 m) and
+// Int16-quantized for a cheap PNG serve. SMOOTHED_NDVI is RESERVED for the deferred analytical-3×3 follow-on
+// (P3 ships appearance-only resampling); a new value would be an isolated ALTER TYPE (the Windows enum rule).
+enum SpatialDerivativeKind {
+  DISPLAY_NDVI
+  SMOOTHED_NDVI
+}
+
+// VI-P3: the scope a saved SpatialStyle applies at. SYSTEM = a built-in palette/domain preset (vineyardId NULL);
+// VINEYARD = a per-vineyard saved default (vineyardId set). TENANT scope is deferred (Q3). The scope↔vineyardId
+// invariant is a DB CHECK ((scope='VINEYARD') = (vineyardId IS NOT NULL)); uniqueness uses two PARTIAL indexes
+// (Postgres treats every NULL vineyardId as distinct, so a plain composite unique would NOT dedupe SYSTEM rows).
+enum SpatialStyleScope {
+  SYSTEM
+  VINEYARD
+}
+
 // An immutable satellite scene selected for a vineyard "around a date". Provenance-complete: the STAC
 // processing baseline (NOT the Process API serviceVersion), the requested-vs-acquired date drift (S2), and
 // Copernicus attribution all live here. Keyed on (tenant, vineyard, providerSceneId) — the same scene is
@@ -881,6 +899,83 @@ model WeatherProviderUsage {
   @@id([tenantId, dayKey, provider]) // one row per tenant per day per provider (the daily enforcement key)
   @@index([tenantId])
   @@map("weather_provider_usage")
+}
+
+// ───────────────────────── Vineyard Intelligence P3: NDVI display (viz half of Release 1B) ─────────────────────────
+// Two NEW tenant-scoped tables (AGENTS.md Phase-12 checklist). Additive only. The pure render math (color/render/
+// smooth/overlay) already shipped in P2 — P3 adds the DISPLAY caching + saved styles + a serving route + browser wiring.
+
+// A cached, versioned DERIVATIVE of a SpatialDataset raster (council fix #3 — a first-class table, NOT a pointer
+// column: one column can't carry display+smoothed+versions). DISPLAY_NDVI = source NDVI warped to a north-up
+// EPSG:3857 grid (fix #1) and Int16-quantized (×`quantScale`, `-32768` = no-data — NaN doesn't fit Int16; the SOURCE
+// Float32 stays authoritative, fix #6). Blob-stored (mirror SpatialDataset). `recipeVersion` is IN the unique key +
+// the serving-route ETag/cache key (fix #7 — never bare `immutable`). Idempotent claim-first materialization (P2 C1).
+model SpatialDatasetDerivative {
+  tenantId       String                @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id             String                @id @default(cuid())
+  datasetId      String // composite FK → spatial_dataset(tenantId, id)
+  vineyardId     String // denormalized for per-vineyard reads (plain indexed column, no FK)
+  kind           SpatialDerivativeKind @default(DISPLAY_NDVI)
+  recipeVersion  Int // bump when the warp/quantize recipe changes (IN the unique key + the serve ETag)
+  status         SpatialDatasetStatus  @default(INFLIGHT) // INFLIGHT placeholder → READY on store → FAILED terminal
+  blobUrl        String? // private Vercel Blob URL (null until READY)
+  blobKey        String? // deterministic key derived from (datasetId, kind, recipeVersion)
+  blobSha256     String? // content hash of the stored derivative (audit; null until READY)
+  byteSize       Int? // stored derivative size in bytes (null until READY)
+  // Warped display geotransform (EPSG:3857, north-up: axisYSign = -1, origin = NW corner).
+  crsEpsg        Int? // 3857 (web-mercator display grid)
+  originX        Decimal?              @db.Decimal(14, 4) // 3857 easting of the NW corner (m)
+  originY        Decimal?              @db.Decimal(14, 4) // 3857 northing of the NW corner (m)
+  pixelSizeM     Decimal?              @db.Decimal(10, 4) // 3857 pixel size (m)
+  gridWidth      Int? // warped raster width (px)
+  gridHeight     Int? // warped raster height (px)
+  axisYSign      Int? // -1 (north-up, y-down) for the display grid
+  // WGS84 bbox for Leaflet imageOverlay bounds ([minLon, minLat, maxLon, maxLat]) — exact once warped north-up.
+  wgs84Bbox      Json? // [minLon, minLat, maxLon, maxLat]
+  quantScale     Int                   @default(10000) // Int16 quantization: stored = round(ndvi × quantScale)
+  noDataSentinel Int                   @default(-32768) // the Int16 no-data value (NaN doesn't fit Int16)
+  recipeHash     String? // hash(warp recipe + quantScale) — provenance
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([tenantId, datasetId, kind, recipeVersion]) // one cached derivative per (dataset, kind, recipe)
+  @@index([tenantId])
+  @@index([tenantId, datasetId])
+  @@index([tenantId, vineyardId])
+  @@map("spatial_dataset_derivative")
+}
+
+// A saved NDVI color STYLE (palette + domain mode + custom stops). SYSTEM presets (vineyardId NULL) + per-VINEYARD
+// saved defaults (Q3; TENANT scope deferred). One-off styles ride URL params and are NEVER persisted here.
+// council fix #2: SYSTEM uniqueness needs a PARTIAL unique index (WHERE vineyardId IS NULL) because Postgres treats
+// every NULL as distinct; the scope↔vineyardId invariant is a DB CHECK. Both live in the hand-written migration
+// (Prisma's schema DSL can't express partial indexes or CHECK), so they are documented but not @@unique here.
+model SpatialStyle {
+  tenantId       String            @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id             String            @id @default(cuid())
+  scope          SpatialStyleScope @default(SYSTEM)
+  vineyardId     String? // NULL for SYSTEM; set for VINEYARD (composite FK → vineyard(tenantId, id); DB CHECK ties it to scope)
+  metric         SpatialMetric     @default(NDVI)
+  name           String // human label; unique per (tenant, scope-bucket, metric) via the partial indexes
+  mode           String // ColorScaleMode union (String, not enum — mirrors withheldReason/faultClass typed-in-code unions)
+  paletteId      String // "vigor-classic" | "purple-green" | "color-vision-safe"
+  reverse        Boolean           @default(false)
+  customStops    Json? // CUSTOM mode: [{ value, color: [r,g,b] }] (null otherwise)
+  percentileLow  Decimal?          @db.Decimal(4, 3) // relative-mode low percentile (e.g. 0.050); null for fixed modes
+  percentileHigh Decimal?          @db.Decimal(4, 3) // relative-mode high percentile (e.g. 0.950)
+  fixedMin       Decimal?          @db.Decimal(6, 4) // ABSOLUTE/CUSTOM domain min (null otherwise)
+  fixedMax       Decimal?          @db.Decimal(6, 4) // ABSOLUTE/CUSTOM domain max (null otherwise)
+  createdBy      String? // actor userId (null for seeded SYSTEM presets)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  // NOTE: uniqueness + the scope↔vineyardId invariant are enforced by TWO partial unique indexes
+  // (spatial_style_system_key WHERE vineyardId IS NULL; spatial_style_vineyard_key WHERE vineyardId IS NOT NULL)
+  // + a CHECK ((scope = 'VINEYARD') = (vineyardId IS NOT NULL)) in the migration (council fix #2).
+  @@index([tenantId])
+  @@index([tenantId, scope])
+  @@index([tenantId, vineyardId])
+  @@map("spatial_style")
 }
 
 // ───────────────────────── Vineyard operations: field notes ─────────────────────────
