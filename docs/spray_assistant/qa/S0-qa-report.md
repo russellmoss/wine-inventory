@@ -28,6 +28,7 @@ UI. What it ships is measurement scripts under `scripts/s0-*.ts`, committed fixt
 | **Probe self-checks** (Units 0, 2) | ✅ | every data-sources-design claim re-verified live; the check **caught a real key mismatch** on its first run |
 | **Isolation guard** (Unit 7) | ✅ | **negative cases exercised** — see §4 |
 | `verify:naming` | ✅ | **25/25 assertions passed**, before and after |
+| `verify:invariants` | ✅ | **39/39, 100 % coverage** — see defect 8 in §5 for why the two new invariants are staged outside the register |
 | `verify:ai-native` | ⏭ not applicable | no new core is exported. S0 adds no `*-core.ts` |
 | `verify:tenant-isolation` | ⏭ not applicable | no new table. The only table created lived on a throwaway Neon branch and was dropped |
 | Browser QA | ⏭ not applicable | no surface. First applicable at S9/S10 |
@@ -167,6 +168,8 @@ nothing usually means the checks were not sharp enough.
 | 5 | Unit 5 first run | **Import side effect** — `s0-fetch-fixtures.ts` called `main()` at module load, so importing `readFixture` re-ran the entire 100-fixture harvest | LOW (harvest is idempotent) | ✅ fixed: entry-point guard |
 | 6 | Unit 2 assertion harness | Design-doc claim key mismatch (`open_meteo:forecast` vs `open_meteo:forecast-default`) — the harness working as intended | LOW | ✅ fixed |
 | 7 | Unit 7 first run | Synthetic ids collided across series kinds on the primary key | LOW (test-only) | ✅ fixed: kind-distinct id space |
+| 8 | `verify:invariants` post-commit hook | Registering WEATHER-1/WEATHER-2 as invariant notes turned the repo-wide guard checker red (2/41 MISSING), because S0 ships no production code so neither guard can exist yet | LOW, but **repo-wide** | ✅ resolved by moving the notes to `phases/s0-invariant-WEATHER-*.md` until S1 lands the guards. **Deliberately NOT resolved by teaching the checker a `planned` status** — weakening a safety checker from inside a spike, to green the spike's own notes, is the wrong trade. Coverage back to **39/39, 100 %** |
+| 9 | Fixture verifier re-run | Underscore-prefixed sidecars matched the `.json.gz` fixture glob, so the Arm B station cache was parsed as a fixture and crashed the verifier | LOW (tooling) | ✅ fixed: `!f.startsWith("_")` |
 
 ---
 
@@ -202,4 +205,4 @@ a cancelled one.
 - No production schema change, no production row written by S0: ✅ proven in §3
 - Measurement branch created and deleted, deletion verified: ✅ §4
 - All 23 SAFE cases enumerated with reasons and owning phases: ✅ §2
-- Defects found and fixed: **7**, listed in §5
+- Defects found and fixed: **9**, listed in §5

@@ -82,6 +82,7 @@ Supporting: [s0-observed-backfill.md](./s0-observed-backfill.md) (Unit 0),
 [s0-fixture-manifest.md](./s0-fixture-manifest.md) (Unit 3, 100 fixtures / 566,400 site-hours),
 [s0-lwd-disagreement.md](./s0-lwd-disagreement.md) (Unit 5),
 [s0-nws-cadence-and-widths.md](./s0-nws-cadence-and-widths.md) (Unit 2 addendum).
+[s0-invariants-for-s1.md](./s0-invariants-for-s1.md) (WEATHER-1 + WEATHER-2, register-ready).
 
 ---
 
