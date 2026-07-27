@@ -6545,3 +6545,108 @@ model LegacySprayMapping {
   @@index([tenantId])
   @@map("legacy_spray_mapping")
 }
+
+// ─────────────────────────────── Spray Intelligence S5a — the latent-infection ledger ───────────────────────────────
+// Append-only. A clean scouting pass must NOT clear an infection that is still incubating: Fedele
+// et al. 2020 scored a Botrytis model at 65% against field assessment but >87% against post-harvest
+// incubation assays of SYMPTOMLESS berries — it was right about infections scouting could not see.
+//
+// Ships in S5a WITHOUT the powdery index. The Unit 0 probe
+// (docs/spray_assistant/phases/S5a-diurnal-fidelity-probe.md) measured Gubler-Thomas on
+// reconstructed hourly temperature against genuine station METAR and every site failed the
+// pre-committed gate, so the index moved to S5b behind S1. The ledger never depended on it and is
+// the durable half.
+//
+// Identity is the STREAM, not the discriminator (council C4): current state is the latest row per
+// (tenantId, logicalEventId) ordered by seq — never a lookup by pathogen/organ, because a block can
+// carry several episodes of the same pathogen and organ in one season. Corrections are appended rows
+// pointing at what they supersede or reverse; nothing is ever updated in place, and app_rls holds
+// SELECT + INSERT only (the GRANT is the enforcement, the triggers are defence in depth — C5).
+enum InfectionPathogen {
+  POWDERY_MILDEW
+}
+
+enum InfectionHostOrgan {
+  LEAF
+  SHOOT
+  FRUIT
+}
+
+enum InfectionResolutionKind {
+  FIXED_WINDOW
+  UNKNOWN
+  ERADICATED
+}
+
+enum InfectionEventStatus {
+  OPEN
+  CLOSED
+  VOID
+}
+
+enum InfectionEvidenceSource {
+  SCOUTING_OBSERVATION
+  GROWER_REPORT
+}
+
+enum InfectionProjectionKind {
+  PROJECTED
+  UNKNOWN
+  NOT_APPLICABLE
+}
+
+model LatentInfectionEvent {
+  tenantId       String @default("") // Phase 12 tenant scope; FK+RLS at DB level
+  id             String @id @default(cuid()) // immutable row identity, one per append
+  logicalEventId String // the event STREAM (council C4)
+  seq            Int // 1-based append ordinal; unique per stream, so MAX(seq) is race-safe
+  blockId        String // composite FK → vineyard_block(tenantId, id) (raw SQL, K11)
+
+  pathogen       InfectionPathogen
+  hostOrgan      InfectionHostOrgan // first-class discriminator, not a detail (KD-3a)
+  status         InfectionEventStatus // the state THIS append asserts; no SUPERSEDED value — that is derived
+  resolutionKind InfectionResolutionKind
+
+  infectionOccurredOn DateTime @db.Date
+
+  // KD-3b — "visible" and "infectious" are different states and only one is what a scout sees.
+  // Each carries its own projection kind: NEVER encode epistemic state in a null (council C7).
+  symptomExpectedAt        DateTime?               @db.Date
+  symptomProjectionKind    InfectionProjectionKind
+  symptomBasis             String?
+  infectiousExpectedAt     DateTime?               @db.Date
+  infectiousProjectionKind InfectionProjectionKind
+  infectiousBasis          String?
+
+  // FIXED_WINDOW arm. KD-4: the two bounds are used in OPPOSITE directions on purpose —
+  // latentShortDays projects infectiousExpectedAt (assuming later under-warns), latentLongDays
+  // drives expiresOn (closing earlier declares a block clean prematurely). Never averaged.
+  latentShortDays Int?
+  latentLongDays  Int?
+  expiresOn       DateTime? @db.Date
+
+  resolvedOn     DateTime? @db.Date
+  resolutionNote String?
+
+  supersedesRowId String? // self-FK NO ACTION (SET NULL would fire the immutability trigger mid-purge)
+  reversesRowId   String?
+
+  evidenceSource InfectionEvidenceSource
+  observationRef String? // opaque id only — no personal data ever enters this payload (D19)
+
+  commandId   String // idempotency: same commandId + same hash returns the original row (C5)
+  requestHash String
+
+  enteredById    String?
+  enteredByEmail String
+  enteredAt      DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@unique([tenantId, logicalEventId, seq]) // the concurrency guard behind "current = MAX(seq)"
+  @@unique([tenantId, commandId]) // exactly-once under withWriteRetry
+  @@unique([tenantId, id]) // composite cross-tenant FK target (K11)
+  @@index([tenantId])
+  @@index([tenantId, logicalEventId, seq(sort: Desc)]) // latest row per stream
+  @@index([tenantId, blockId, pathogen, hostOrgan, status, createdAt(sort: Desc)])
+  @@map("latent_infection_event")
+}
