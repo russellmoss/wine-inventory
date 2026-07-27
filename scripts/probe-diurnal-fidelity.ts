@@ -33,7 +33,6 @@ import {
   pedutoHeatSuppression,
   type DayHours,
   type DayVerdict,
-  type PressureBand,
 } from "./probe-diurnal/gubler";
 import { fetchStationHourly, bucketToHours, skyFractionByDay, utcOffsetHours, addDays, type StationObs } from "./probe-diurnal/iem";
 
@@ -253,7 +252,7 @@ async function fetchEra5Hourly(lat: number, lon: number, tz: string, startIso: s
     `&start_date=${startIso}&end_date=${endIso}&hourly=temperature_2m&timezone=${encodeURIComponent(tz)}`;
   const res = await fetch(url, { signal: AbortSignal.timeout(300_000) });
   if (!res.ok) throw new Error(`Open-Meteo: HTTP ${res.status}`);
-  const j: any = await res.json();
+  const j = (await res.json()) as { hourly?: { time?: string[]; temperature_2m?: (number | null)[] } };
   const out: StationObs[] = [];
   const times: string[] = j.hourly?.time ?? [];
   const temps: (number | null)[] = j.hourly?.temperature_2m ?? [];
