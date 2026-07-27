@@ -481,8 +481,8 @@ per-tenant rules mean moving lexicon application into the speak route only.
 
 </details>
 
-🟨 **S5a (lane C — powdery index + latent-infection ledger): Unit 0 gate ANSWERED. The index is a
-NO-GO; the ledger proceeds.**
+🟩 **S5a (lane C — powdery index + latent-infection ledger): LEDGER BUILT AND VERIFIED; the index is
+a NO-GO.** [phase report](docs/spray_assistant/phases/S5a-report.md)
 [probe report](docs/spray_assistant/phases/S5a-diurnal-fidelity-probe.md) ·
 [plan v2](docs/spray_assistant/phases/S5a-powdery-index-latent-ledger-plan.md) ·
 [council](docs/spray_assistant/phases/S5a-council-feedback.md)
@@ -504,7 +504,19 @@ fleet (Russian River, 3.7 km) scored *worse* than a 9.8 km one.
 
 → **S5a ships the LEDGER ONLY. The powdery index moves to S5b behind S1, which is now load-bearing
 for powdery mildew and not only for leaf wetness.** Units 3–4 (`diurnal-core`, `powdery-core`) do
-not ship as a risk engine; Units 1, 2, 5 (the ledger) are unaffected and proceed.
+not ship as a risk engine.
+
+✅ **The ledger is BUILT, migrated to prod, and verified.** Units 1, 2, 5, 6, 7, 8, 9, 10, 11 all
+landed: `latent_infection_event` (append-only, RLS, 7 CHECKs), the resolution rules, the read seam,
+`query_spray_decision` **thin + hard-refusing** (first `SPRAY_CONTRIBUTORS` entry), 26 unit tests,
+and **`verify:latent-infection` — 43 assertions green against the live DB**. `verify:invariants`
+49/49, `verify:tenant-isolation` green incl. 6 new cases, `verify:ai-native` green, build green.
+
+⚠️ **The append-only trap, worth remembering repo-wide:** `GRANT SELECT, INSERT` does NOT make a
+table append-only — `ALTER DEFAULT PRIVILEGES` already granted `app_rls` full DML on every new
+table, so a narrow GRANT changes nothing. It needs an explicit **`REVOKE UPDATE, DELETE, TRUNCATE`**.
+Caught only by test-applying the migration to a disposable Neon branch; `prisma validate` checks the
+Prisma schema, not the SQL. See [[append-only-needs-revoke-not-grant]].
 
 ⚠️ **Escalated out of the phase — Bhutan weather may be 8–9 °C wrong.** No station oracle exists for
 either Bhutan site, and NASA POWER vs ERA5 at the same coordinates differ by **9.26 °C (Bajo) /
