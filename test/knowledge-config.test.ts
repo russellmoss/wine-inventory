@@ -686,6 +686,24 @@ describe("Virginia Tech grape IPM source (SKB Unit 7, reconciling virginia-fruit
   it("admits a real pest-biology page", () => {
     expect(admitted("/GBM.html")).toBe(true);
   });
+  it("refuses off-topic sibling-program content reachable by multi-hop --follow", () => {
+    // The scope-creep bug this reconciliation fixed: a live --follow crawl under the old
+    // allowPrefixes: ["/"] config pulled in apple/pear/peach orchard pages, VAFS-* station pages, a
+    // faculty bio, and 14 years of pesticide-use-statistics pages, none of it grape-specific and none
+    // of it linked from the grape hub itself (reached via multi-hop through /index.html instead).
+    for (const path of [
+      "/VirginiaAppleSite.html",
+      "/VirginiaPearSite.html",
+      "/VirginiaPeachSite.html",
+      "/VAFS-faculty.html",
+      "/DougBio.html",
+      "/UseStats2014.html",
+      "/index.html",
+    ]) {
+      expect(admitted(path), path).toBe(false);
+    }
+  });
+
 
   it("refuses the Dreamweaver internals robots.txt disallows", () => {
     for (const path of ["/_mm/foo", "/_notes/bar", "/_baks/baz", "/MMWIP/qux"]) {

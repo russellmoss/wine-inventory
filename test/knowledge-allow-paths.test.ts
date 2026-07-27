@@ -188,11 +188,12 @@ describe("allowPathsMatch — the matcher in isolation", () => {
 
 describe("no incumbent source's behaviour changed", () => {
   it("only SKB sources declare allowPaths — a pre-SKB incumbent adopting it is a deliberate, reviewed change", () => {
-    // extension-psu (SKB Unit 6) is the mechanism's first real adopter, exactly as designed — the
-    // flat-slug namespace collision problem allowPaths exists to solve. If this list grows to include
-    // a PRE-SKB incumbent, that is fine, but it means the blast radius of a path-match change is no
-    // longer "SKB sources only" and this comment is stale.
+    // extension-psu (SKB Unit 6) and virginia-fruit (SKB Unit 7 — added AFTER the reconciliation
+    // found a live --follow crawl under allowPrefixes:["/"] pulling in off-topic sibling-program
+    // content) are both expected adopters, exactly as designed — the flat-slug/whole-host scoping
+    // problem allowPaths exists to solve. If this list grows further, that is fine, but it means the
+    // blast radius of a path-match change is no longer "SKB sources only" and this comment is stale.
     const adopters = KNOWLEDGE_SOURCES.filter((s) => s.allowPaths?.length).map((s) => s.key);
-    expect(adopters).toEqual(["extension-psu"]);
+    expect(adopters).toEqual(["extension-psu", "virginia-fruit"]);
   });
 });

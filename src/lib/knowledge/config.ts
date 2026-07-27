@@ -1014,10 +1014,17 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     // live in the DB (69 documents, 260 chunks, defaultEnabled: true) with NO config entry at all,
     // seeded from a branch that never merged (see the partitionSeededSources comment above and
     // BOUNDARY_LEGACY_DB_ONLY_KEYS in boundary/enforcing.ts). Its prior ad-hoc config had
-    // allowPrefixes: ["/"] - the WHOLE host, including /SprayGuide/'s tier-C rate tables. This entry
-    // replaces that with the scope the SKB plan actually specifies for this source.
-    // robots '*': disallows only Dreamweaver internals (/_mm/, /_notes/, /_baks/, /MMWIP/). No
-    // crawl-delay, no named AI-crawler rules. Static host (AmazonS3), no WAF observed.
+    // allowPrefixes: ["/"] - the WHOLE host.
+    //
+    // ⚠️ FIRST RECONCILIATION ATTEMPT KEPT allowPrefixes: ["/"] and re-ran --follow: it pulled in
+    // VirginiaAppleSite.html, VirginiaPearSite.html, VirginiaPeachSite.html, four VAFS-*.html station
+    // pages, a faculty bio (DougBio.html), and 14 years of UseStats*.html pesticide-use-statistics
+    // pages — none of it grape-specific, reached by multi-hop --follow past /index.html rather than
+    // from the grape hub itself. This entry replaces "/" with allowPaths built from a live fetch of
+    // the grape-fruit-ipm.html hub's OWN outbound links (2026-07-27): 82 hrefs total, of which 2 are
+    // /SprayGuide/ (denied, tier C), ~13 point at other hosts (irrelevant to this source's admission,
+    // refused by the host allowlist regardless), and the remainder are the real same-host grape
+    // pest-biology pages below, plus the hub page itself.
     license:
       "No licence statement of any kind observed on this host - no copyright notice, no VCE " +
       "public-use grant, no disclaimer. Weaker posture than pubs.ext.vt.edu (which DOES carry the " +
@@ -1025,15 +1032,87 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
       "either onto this host. Reference use with citation + link back, resting on the absence of " +
       "any restriction rather than an affirmative grant.",
     seedRoots: ["https://www.virginiafruit.ento.vt.edu/grape-fruit-ipm.html"],
-    // No sitemap exists (404) - discovery is a hub crawl, so --follow is mandatory.
-    allowPrefixes: ["/"],
+    // No sitemap exists (404) - discovery is a hub crawl, so --follow is mandatory. allowPrefixes
+    // stays empty: admission is entirely through the exact allowPaths list below, same shape as PSU.
+    allowPrefixes: [],
+    allowPaths: [
+      "/grape-fruit-ipm.html",
+      "/8spot.html",
+      "/Amblyseius.html",
+      "/ERMGrape.html",
+      "/GBM.html",
+      "/GFB.html",
+      "/GLH.html",
+      "/GRB.html",
+      "/IPMcourse.html",
+      "/JBGrape.html",
+      "/Leptothrips.html",
+      "/MDBull.html",
+      "/MDGBM.html",
+      "/MOA.html",
+      "/PDsharpshooters.html",
+      "/PesticApple.html",
+      "/RegulatoryUpdate.html",
+      "/SLF.html",
+      "/SWD.html",
+      "/SoftScale.html",
+      "/Stethorus.html",
+      "/VAFS-organic-ipm.html",
+      "/VisorGrape.html",
+      "/Zetzellia.html",
+      "/airdemo.html",
+      "/ambrosia.html",
+      "/beetox.html",
+      "/calib.html",
+      "/chafer.html",
+      "/colaspis.html",
+      "/cutwormsgrape.html",
+      "/erineum.html",
+      "/gallmaker.html",
+      "/girdler.html",
+      "/gjb.html",
+      "/grapeaphid.html",
+      "/grapecurc.html",
+      "/grapegalls.html",
+      "/grapelooper.html",
+      "/grapeoutline.html",
+      "/graperustmite.html",
+      "/grapescale.html",
+      "/grapeskel.html",
+      "/grapevineyellows.html",
+      "/grmealy.html",
+      "/lacewings.html",
+      "/lady.html",
+      "/leaffolder.html",
+      "/midge.html",
+      "/mirids.html",
+      "/orius.html",
+      "/pdalinks.html",
+      "/pelidnota.html",
+      "/phylloxera.html",
+      "/plume.html",
+      "/rblr.html",
+      "/rootworm.html",
+      "/sphinx.html",
+      "/syllabus.html",
+      "/syrphid.html",
+      "/traps01GBM.html",
+      "/traps03GBM.html",
+      "/traps04GRB.html",
+      "/traps05GRB.html",
+      "/wft.html",
+      "/yellowjacket.html",
+      "/BMSB.html",
+      "/cicada.html",
+    ],
     denyPrefixes: [
       "/_mm/",
       "/_notes/",
       "/_baks/",
       "/MMWIP/",
       // tier C (D1): GrapeSprays.html and GrapePestEfficacy.html are product/rate tables, not the
-      // pest-biology prose this source exists for.
+      // pest-biology prose this source exists for. Named explicitly even though allowPaths already
+      // excludes them by omission - same auditable-record reasoning as PSU's denyPrefixes.
       "/SprayGuide/",
     ],
     // Per-page Last-Modified (GBM.html: Tue, 03 Mar 2026; hub: Mon, 18 May 2026) makes conditional
