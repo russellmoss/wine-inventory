@@ -10,11 +10,19 @@ import { embedTexts, KB_EMBEDDING_MODEL, KB_EMBEDDING_DIM } from "./embed";
 import { chunkMarkdown } from "./chunk";
 import { extractDocument } from "./extract";
 import { applySectionFilter, deriveIndexHash, shouldApplySectionFilter } from "./sections";
+import { assessProductTable } from "./boundary/product-table-core";
+import { boundaryModeFor } from "./boundary/enforcing";
 import type { DetectedType } from "./crawl/fetcher";
 
 export interface IndexResult {
   chunks: number;
-  skipped: "unchanged" | "low-confidence" | "empty" | "duplicate" | false;
+  /**
+   * SKB Unit 2 — "product-table" joins the existing values. It is a RETURNED FIELD and never an
+   * exception, deliberately: the monthly re-crawl's tombstone pass reads a throw out of this path as
+   * "the page was removed" and would mark a whole source's corpus slice `withdrawn` on it. Same rule
+   * `crawl/challenge.ts` already follows for WAF detection.
+   */
+  skipped: "unchanged" | "low-confidence" | "empty" | "duplicate" | "product-table" | false;
 }
 
 function chunkId(documentId: string, revision: number, ordinal: number, text: string): string {
@@ -71,10 +79,63 @@ export async function indexDocument(input: {
   const doc = await runAsSystem((db) =>
     db.knowledgeDocument.findUnique({
       where: { id: input.documentId },
-      select: { sourceId: true, activeRevision: true, indexedContentHash: true },
+      select: {
+        sourceId: true,
+        activeRevision: true,
+        indexedContentHash: true,
+        // SKB Unit 2 — the boundary gate resolves the source key from the ROW, not from
+        // `input.sourceKey`. Two callers (crawl-ets, crawl-ives) legitimately omit the optional input,
+        // and a gate a caller can bypass by forgetting an argument is not a gate.
+        source: { select: { key: true } },
+      },
     }),
   );
   if (!doc) throw new Error(`indexDocument: document ${input.documentId} not found`);
+
+  // ── KB-1: the tabular/prose boundary gate (SKB Unit 2) ──
+  //
+  // Runs BEFORE the idempotency short-circuit, not after. If it ran after, a source moved onto the
+  // enforcing list would keep its previously-indexed tier-C chunks live and retrievable forever: the
+  // stored hash still matches, chunks still exist, and the function returns "unchanged" without the
+  // detector ever seeing the bytes. Closing D3 has to actually purge, and this is the line that makes
+  // a deletion from the report-only census take effect on the next crawl. The cost is one regex pass
+  // over bytes already in memory, against a network fetch that has already happened.
+  //
+  // Also before extraction, per council C2: `extract/pdf.ts` emits no pipe tables and no headings, so
+  // post-extraction text destroys the row-repetition signal on exactly the documents that matter.
+  const boundaryMode = boundaryModeFor(doc.source?.key);
+  const boundary = assessProductTable(
+    input.contentType === "html"
+      ? { kind: "html", html: input.bytes.toString("utf8") }
+      : { kind: "text", text: input.bytes.toString("utf8") },
+  );
+  if (boundaryMode === "enforce" && boundary.verdict !== "prose") {
+    // `uncertain` skips here and is ADMITTED for a report-only source — the failure direction is
+    // source-dependent because only here is anything actually being gated (council C2).
+    console.log(
+      `  [boundary] ${input.url} — SKIPPED as ${boundary.verdict} (rows=${boundary.rowCount}; ${boundary.signals.join(", ") || "no signals"})`,
+    );
+    // Clear any chunks a previous, pre-enforcement crawl left behind, so the skip is a real removal
+    // rather than a decision that only applies to future content. Same locking discipline as the
+    // all-sections-dropped branch below: the document row is taken FOR UPDATE inside one tx so a
+    // concurrent indexer cannot flip in a new revision while these are deleted. `indexedContentHash`
+    // is deliberately left alone — it describes the last content that was actually indexed, and this
+    // content was not.
+    await runAsSystem(async (db) => {
+      await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "activeRevision" FROM "knowledge_document" WHERE "id" = ${input.documentId} FOR UPDATE`;
+        await tx.knowledgeChunk.deleteMany({ where: { documentId: input.documentId } });
+      }, { timeout: 60_000 });
+    });
+    return { chunks: 0, skipped: "product-table" };
+  }
+  if (boundary.verdict !== "prose") {
+    // Report-only: admitted and counted. This is the number D3's close-out decides against, and
+    // `verify:kb-boundary` is what totals it across the corpus.
+    console.log(
+      `  [boundary] ${input.url} — ${boundary.verdict} on a REPORT-ONLY source (rows=${boundary.rowCount}); admitted`,
+    );
+  }
 
   // Plan 084 — section filtering applies to HTML only (PDFs carry no anchors). The hash the index
   // stores folds in SECTION_FILTER_VERSION, so bumping a drop pattern forces a real re-index instead

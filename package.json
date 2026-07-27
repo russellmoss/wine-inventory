@@ -141,6 +141,7 @@
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate",
     "verify:kb-register": "tsx --env-file=.env scripts/verify-kb-register.ts",
+    "verify:kb-boundary": "tsx --env-file=.env scripts/verify-kb-boundary.ts",
     "crawl:ives": "tsx --env-file=.env scripts/crawl-ives.ts",
     "verify:gis-stats": "tsx scripts/gis-p0-validate-stats.ts",
     "verify:gis-live": "tsx --conditions=react-server --env-file=.env scripts/gis-p0-live-scene.ts",
