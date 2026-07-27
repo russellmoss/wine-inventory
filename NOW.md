@@ -1052,6 +1052,23 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
     (the correct seam); the report-only census reads chunk text and is reported as an **approximate
     FLOOR**, worst on PDFs. Units 4 and 6–11 remain — all of them need `.env`, live crawls, or an
     operator-gated network probe.
+- **/bulk composition-editor phantom ADJUST fixed (2026-07-26, PR #534):** `updateComponentVolume`
+  targeted the lot-tuple total while the editor displayed the component PROJECTION — on a blend (Demo T5,
+  2026-SY-2: 6995 L tuple vs 6370 L Syrah share) saving the untouched value drew 625 L. Now: untouched
+  save = no-op, blend-share edits refused with guidance, single-origin edits unchanged. Pure plan fn +
+  regression test (`src/lib/bulk/component-adjust.ts`). Server-side only — composes with plan 098's
+  unit-input work (merged #533).
+- **Plan 098 tenant unit preferences BUILT (2026-07-26, branch `claude/tenant-unit-preferences-78472c`;
+  merged to main as #533)** —
+  all 12 units done: 7 nullable AppSettings unit columns (Migration A) + the audited hoist-if-uniform
+  Migration B (Demo hoisted IMPERIAL; Bhutan's disagreeing weather/geometry values preserved — zero
+  behavior change, both migrations APPLIED to the live DB); `src/lib/units/display.ts` is the ONE
+  display-unit authority (weather/units-core + phenology/units are re-export shims); settings card +
+  UnitsProvider; weather/vineyard/cellar/harvest/ferment display sweeps; volume INPUTS with inline
+  adornment + dirty-check round-trip; assistant threads units through route → runAssistant →
+  ToolContext → query_climate display strings (the Oregon-forecast °C bug fixed). Full vitest green,
+  verify:naming/invariants/ai-native green. **Remaining: interactive browser QA on Demo Winery
+  (needs the user's pane login) + /review + /ship.**
 
 - **🔴 RELEASE BLOCKER FOUND + FIXED (2026-07-26): `AppUser.vineyardIds` was ALWAYS `[]` under
   `app_rls`.** Surfaced during S4 browser QA (it blocked the pass) but pre-existing and unrelated to S4.

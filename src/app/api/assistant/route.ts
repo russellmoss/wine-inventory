@@ -12,7 +12,8 @@ import {
 } from "@/lib/assistant/conversations";
 import { buildReplayMessages, windowReplayRows } from "@/lib/assistant/replay";
 import { generateTitle } from "@/lib/assistant/title";
-import { getWineryTimeZone } from "@/lib/settings/data";
+import { getWineryTimeZone, getUnitPrefs } from "@/lib/settings/data";
+import type { UnitPrefs } from "@/lib/units/display";
 import { resolveOperatingTimeZone } from "@/lib/work-orders/due-at";
 
 // Node runtime + the Vercel ceiling: the tool-use loop makes several model
@@ -131,7 +132,17 @@ export async function POST(req: Request) {
         }
         const timeZone = resolveOperatingTimeZone(wineryTimeZone, viewerTimeZone);
 
-        const run = await runAssistant({ user, messages: replayed, send, voice: isVoice, timeZone });
+        // Plan 098: the winery's display units, resolved HERE for the same reason as the zone —
+        // the loop stays free of DB reads. Best-effort: a settings hiccup reads as unconfigured
+        // (metric / pre-098 behavior), never a failed turn.
+        let units: UnitPrefs | undefined;
+        try {
+          units = await getUnitPrefs();
+        } catch {
+          /* unconfigured → tools and prompt behave exactly as before the setting existed */
+        }
+
+        const run = await runAssistant({ user, messages: replayed, send, voice: isVoice, timeZone, units });
         // Persist when there is text OR any tool call. A turn that emitted only a card has no text;
         // dropping it (the old `run.text.trim()` gate) threw away exactly the tool evidence replay
         // needs, so the next turn would look like the assistant answered a write request with nothing.

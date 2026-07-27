@@ -5,6 +5,7 @@
 // (resolveSo2Dose) that the print view does not have.
 
 import { computeDoseTotal } from "@/lib/cellar/additions-math";
+import { weighOutSecondary, type WeightUnit } from "@/lib/units/display";
 import { resolveSo2Dose } from "@/lib/cellar/so2-dose";
 
 export type TaskSummaryRow = { label: string; value: string; emphasis?: boolean };
@@ -39,7 +40,11 @@ function fmtVolumeMl(ml: number): string {
 
 const SO2_RATE_UNITS = new Set(["ppm", "mg/L"]);
 
-export function buildTaskSummary(task: TaskSummaryInput, pickers: TaskSummaryPickers): TaskSummary {
+/** Plan 098 U10: optional display prefs — an imperial winery sees the physical weigh-out total in lb
+ *  beside the canonical grams. RATES (mg/L, g/hL) never convert. */
+export type TaskSummaryDisplay = { weight: WeightUnit };
+
+export function buildTaskSummary(task: TaskSummaryInput, pickers: TaskSummaryPickers, display?: TaskSummaryDisplay): TaskSummary {
   const p = (task.plannedPayload ?? {}) as Record<string, unknown>;
   const vById = new Map(pickers.vessels.map((v) => [v.id, v]));
   const mById = new Map(pickers.materials.map((m) => [m.id, m]));
@@ -93,7 +98,10 @@ export function buildTaskSummary(task: TaskSummaryInput, pickers: TaskSummaryPic
     } else {
       // Generic addition total (weigh-out), matching the print view.
       const est = vol > 0 ? computeDoseTotal(amount, doseUnit, vol) : null;
-      if (est) rows.push({ label: "Total to weigh out", value: `≈ ${est.total.toLocaleString()} ${est.unit} (at ${vol.toLocaleString()} L)`, emphasis: true });
+      if (est) {
+        const secondary = display ? weighOutSecondary(est.total, est.unit, display.weight) : "";
+        rows.push({ label: "Total to weigh out", value: `≈ ${est.total.toLocaleString()} ${est.unit}${secondary} (at ${vol.toLocaleString()} L)`, emphasis: true });
+      }
     }
   } else if (isAddition && amount != null) {
     rows.push({ label: "Dose", value: String(amount) });

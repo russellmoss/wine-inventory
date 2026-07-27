@@ -21,6 +21,50 @@ export interface PesticideFactsAsOf {
 
 export type PesticideProvenance = "registry" | "grower-supplied";
 
+/* ─── Spray S2b — the product-facts row shapes the resolver maps from ────────────────────────────
+ * Structural (not Prisma-generated) so this file stays import-free and the pure mapping module can
+ * consume them without pulling the client in. */
+
+export type PesticideFactGroupValue = "REGULATORY" | "AGRONOMIC";
+export type PesticideEntryActivityValue = "GENERAL" | "SCOUTING" | "HAND_LABOR" | "HARVESTING" | "IRRIGATION";
+
+export interface CuratedFactsRow {
+  id: string;
+  epaRegNumber: string;
+  factGroup: PesticideFactGroupValue;
+  labelVersionKey: string;
+  worstCasePhiDays: number | null;
+  worstCaseReiHours: number | null;
+  minRepeatIntervalDays: number | null;
+  rainfastHours: number | null;
+  mobilityClass: string | null;
+  agronomicClass: string[];
+  sourceAsOf: Date;
+  reviewedBy: string | null;
+  reviewDueAt: Date;
+  reiConditions: { activity: PesticideEntryActivityValue; hours: number }[];
+  phiConditions: { days: number; condition: string; isDefault: boolean }[];
+}
+
+export interface TenantFactsRow {
+  productRef: string;
+  productName: string;
+  epaRegistrationNumber: string | null;
+  factGroup: PesticideFactGroupValue;
+  worstCasePhiDays: number | null;
+  worstCaseReiHours: number | null;
+  minRepeatIntervalDays: number | null;
+  rainfastHours: number | null;
+  mobilityClass: string | null;
+  agronomicClass: string[];
+  enteredAt: Date;
+}
+
+export interface RegistryIdentityRow {
+  activeIngredients: { name: string; percentByWeight: number | null; casNumber: string | null }[];
+  resistance: ProductResistanceView | null;
+}
+
 export interface PesticideJurisdiction {
   /** ISO 3166-1 alpha-2, e.g. "US". Anything else → jurisdiction-unsupported (never a throw — rule §3.9). */
   country: string;

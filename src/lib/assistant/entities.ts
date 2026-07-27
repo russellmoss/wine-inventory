@@ -11,6 +11,8 @@ import {
   spacingToCanonicalM,
 } from "@/lib/vineyard/field-coercion";
 import { formatSpacing, type Unit } from "@/lib/vineyard/units";
+import { DEFAULT_METRIC_PREFS, resolveSpacingUnit } from "@/lib/units/display";
+import { getUnitPrefs } from "@/lib/settings/data";
 import { assertBlockCascadeSafe, cascadeDeleteBlockChildrenTx } from "@/lib/vineyard/block-delete";
 
 /**
@@ -192,13 +194,15 @@ const blockFields: EntityField[] = [
     description: "Unit for rowSpacing and vineSpacing. Defaults to imperial (feet)." },
 ];
 
-/** The unit this block's vineyard displays in, so a confirm card never compares feet to meters. */
+/** The unit this block's vineyard displays in, so a confirm card never compares feet to meters.
+ *  Plan 098: a NULL per-vineyard override follows the winery's display units. */
 async function blockDisplayUnit(blockId: string): Promise<Unit> {
   const row = await prisma.vineyardBlock.findUnique({
     where: { id: blockId },
     select: { vineyard: { select: { detail: { select: { defaultUnit: true } } } } },
   });
-  return readUnitValue(row?.vineyard.detail?.defaultUnit);
+  const prefs = await getUnitPrefs().catch(() => DEFAULT_METRIC_PREFS);
+  return resolveSpacingUnit(row?.vineyard.detail?.defaultUnit, prefs);
 }
 
 const num = (v: unknown): number | null => (v == null ? null : Number(v));
@@ -387,8 +391,8 @@ const vineyardFields: EntityField[] = [
     mode: "update-only", why: DETAIL_UPDATE_ONLY },
   { name: "manager", type: "string", max: 120, description: "Vineyard manager's name.",
     mode: "update-only", why: DETAIL_UPDATE_ONLY },
-  { name: "defaultUnit", type: "enum", enumValues: ["imperial", "metric"],
-    description: "Unit this vineyard's readouts display in.",
+  { name: "defaultUnit", type: "enum", enumValues: ["imperial", "metric", "auto"],
+    description: "Unit this vineyard's readouts display in. 'auto' clears the vineyard override so it follows the winery's display units.",
     mode: "update-only", why: DETAIL_UPDATE_ONLY },
 ];
 
@@ -486,7 +490,9 @@ const vineyard: EntityConfig = {
     const detailData: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(values)) {
       if (key === "elevation" || key === "elevationUnit") continue; // display-only
-      if ((DETAIL_COLUMNS as readonly string[]).includes(key)) detailData[key] = value;
+      // Plan 098: "auto" clears the per-vineyard override (NULL) — displays then follow the winery.
+      // Mapped here (not buildUpdate) so the confirm card still reads "auto" rather than a blank.
+      if ((DETAIL_COLUMNS as readonly string[]).includes(key)) detailData[key] = key === "defaultUnit" && value === "auto" ? null : value;
       else vineyardData[key] = value;
     }
     if (Object.keys(vineyardData).length > 0) {

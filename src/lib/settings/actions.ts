@@ -10,6 +10,16 @@ import { coerceCurrency } from "@/lib/money/currency";
 import { ActionError } from "@/lib/action-error";
 import { baseHomeCurrencyMismatch, baseHomeMismatchMessage } from "@/lib/accounting/currency-guard";
 import { isCanonicalTimeZone } from "@/lib/work-orders/due-at";
+import {
+  parseAreaUnit,
+  parseLengthUnit,
+  parsePrecipitationUnit,
+  parseTemperatureUnit,
+  parseUnitSystem,
+  parseVolumeUnit,
+  parseWeightUnit,
+  type UnitPrefsRow,
+} from "@/lib/units/display";
 
 // Phase 7 (K14): toggle the winery-level sparkling capability. Admin-only; audited. Revalidates
 // the layout so the gated nav (En Tirage) appears/disappears immediately.
@@ -95,6 +105,88 @@ export const setWineryTimeZone = adminAction(
     revalidatePath("/settings");
     revalidatePath("/", "layout");
     return { timeZone };
+  },
+);
+
+/**
+ * Plan 098: save the tenant's display-unit preferences — the master system plus six per-dimension
+ * overrides, atomically (the card saves the whole object, mirroring setWineryTimeZone's shape).
+ *
+ * NULL is a real value on every field: a NULL dimension follows the master, a NULL master means
+ * "not configured" and every reader falls back to metric — exactly the pre-feature behavior.
+ * Write-side validation is STRICT (the read side is permissive): a non-null value that isn't in
+ * its dimension's union is refused, so the columns only ever hold parseable strings or NULL.
+ * Display-only: no stored litre/°C/kg changes meaning anywhere.
+ */
+type UnitPrefsInput = {
+  unitSystem: string | null;
+  unitTemperature: string | null;
+  unitPrecipitation: string | null;
+  unitVolume: string | null;
+  unitArea: string | null;
+  unitLength: string | null;
+  unitWeight: string | null;
+};
+
+const UNIT_DIMENSION_PARSERS = {
+  unitSystem: parseUnitSystem,
+  unitTemperature: parseTemperatureUnit,
+  unitPrecipitation: parsePrecipitationUnit,
+  unitVolume: parseVolumeUnit,
+  unitArea: parseAreaUnit,
+  unitLength: parseLengthUnit,
+  unitWeight: parseWeightUnit,
+} as const;
+
+export const setUnitPrefs = adminAction(
+  async ({ actor }, input: UnitPrefsInput): Promise<UnitPrefsRow> => {
+    const next: Record<string, string | null> = {};
+    for (const [field, parse] of Object.entries(UNIT_DIMENSION_PARSERS)) {
+      const raw = input?.[field as keyof UnitPrefsInput];
+      const trimmed = typeof raw === "string" && raw.trim() !== "" ? raw.trim() : null;
+      if (trimmed === null) {
+        next[field] = null;
+        continue;
+      }
+      const parsed = parse(trimmed);
+      if (parsed === null) {
+        throw new ActionError(`"${trimmed}" isn't a valid value for ${field}.`, "VALIDATION");
+      }
+      next[field] = parsed;
+    }
+    await runInTenantTx(async (tx) => {
+      const current = await tx.appSettings.findFirst({
+        select: {
+          unitSystem: true,
+          unitTemperature: true,
+          unitPrecipitation: true,
+          unitVolume: true,
+          unitArea: true,
+          unitLength: true,
+          unitWeight: true,
+        },
+      });
+      const changed = Object.keys(next).filter(
+        (k) => (current?.[k as keyof typeof current] ?? null) !== next[k],
+      );
+      if (changed.length === 0) return;
+      await tx.appSettings.upsert({
+        where: { tenantId: actor.tenantId },
+        update: next,
+        create: next, // tenantId auto-injected; id defaults to a cuid
+      });
+      const describe = (k: string) => `${k.replace(/^unit/, "").toLowerCase()} → ${next[k] ?? "auto"}`;
+      await writeAudit(tx, {
+        ...actor,
+        action: "UPDATE",
+        entityType: "AppSettings",
+        entityId: actor.tenantId,
+        summary: `Display units updated: ${changed.map(describe).join(", ")}`,
+      });
+    });
+    revalidatePath("/settings");
+    revalidatePath("/", "layout");
+    return next;
   },
 );
 

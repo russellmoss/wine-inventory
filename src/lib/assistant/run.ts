@@ -8,6 +8,7 @@ import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION, OVERCLAIM_REPAIR_PROMPT }
 import { type AssistantEvent, asProposal, asChoice, asNavigation, isDraftProposal } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
 import { normalizeTimeZone } from "@/lib/work-orders/due-at";
+import type { UnitPrefs } from "@/lib/units/display";
 import { isCalcToolResult, buildAssistantLogPayload } from "./tools/calc-shared";
 import {
   newAssistantTrace,
@@ -57,6 +58,10 @@ export async function runAssistant(opts: {
    *  (the route does that resolution). Drives "today" in the prompt and every wall clock a tool
    *  resolves; the server is UTC, so without it "tomorrow at 9am" lands hours off. */
   timeZone?: string;
+  /** Plan 098: the tenant's ALREADY-RESOLVED display-unit preferences — resolved by the route
+   *  (beside the timezone) so this loop stays free of DB reads. Adds one system-prompt line and
+   *  rides ToolContext into every tool; omitted (tests, unconfigured) = pre-098 behavior. */
+  units?: UnitPrefs;
   /** Test seam. Omitted in production, where it defaults to the real Anthropic SDK stream. */
   createStream?: AssistantStreamFactory;
 }): Promise<AssistantRunResult> {
@@ -107,7 +112,7 @@ export async function runAssistant(opts: {
   // The clock this turn is reasoned on. The caller resolves it (winery zone if configured, else the
   // viewer's — see the route); this loop only normalizes, so it stays constructible without a database.
   const timeZone = normalizeTimeZone(opts.timeZone);
-  let system = buildSystemPrompt(new Date(), timeZone);
+  let system = buildSystemPrompt(new Date(), timeZone, opts.units);
   // Voice turns get an extra style block so spoken replies are conversational instead of
   // screen-shaped (no markdown, no read-aloud citations, units as words). Text chat and the
   // golden evals never set this, so their behaviour is byte-identical to before.
@@ -176,7 +181,7 @@ export async function runAssistant(opts: {
           try {
             const tool = tools.find((t) => t.name === tu.name);
             if (!tool) throw new Error(`Unknown tool: ${tu.name}`);
-            const out = await tool.run({ user, lastUserMessage, timeZone }, tu.input);
+            const out = await tool.run({ user, lastUserMessage, timeZone, units: opts.units }, tu.input);
 
             const proposal = tool.kind === "write" ? asProposal(out) : null;
             if (proposal) {

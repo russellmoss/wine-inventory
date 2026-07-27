@@ -11,6 +11,8 @@ import type { VesselGroupDTO } from "@/lib/vessels/groups";
 import { CellarActions, type KegOption, type ResidentLot } from "./CellarActions";
 import { VesselComposition } from "@/components/vessel/VesselComposition";
 import { GroupActions, type GroupVessel } from "./GroupActions";
+import { formatVolume, volumeInputToLiters, volumeInputValue, volumeUnitLabel } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 function vesselLabel(type: "BARREL" | "TANK", code: string): string {
   return type === "BARREL" ? `Barrel ${code}` : `Tank ${code}`;
@@ -56,17 +58,18 @@ function FillBar({ v }: { v: VesselWithContents }) {
         <div style={{ width: `${Math.min(100, v.fill.pct)}%`, height: "100%", background: v.fill.over ? "var(--danger)" : "var(--accent)" }} />
       </div>
       <span style={{ fontSize: 12.5, color: v.fill.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>
-        {v.fill.filledL}/{v.capacityL} L{v.fill.over ? " ⚠" : ""}
+        {formatVolume(v.fill.filledL, useUnitPrefs().volume)} / {formatVolume(v.capacityL, useUnitPrefs().volume)}{v.fill.over ? " ⚠" : ""}
       </span>
     </div>
   );
 }
 
 function BarrelMeta({ v }: { v: VesselWithContents }) {
+  const vol = useUnitPrefs().volume;
   if (v.type !== "BARREL") return null;
   const rows: Array<[string, React.ReactNode]> = [
     ["Barrel #", v.code],
-    ["Volume", `${v.capacityL} L`],
+    ["Volume", formatVolume(v.capacityL, vol)],
     ["Oak origin", v.oakOrigin],
     ["Year of cooperage", v.cooperageYear],
     ["Cooperage", v.cooperage],
@@ -105,6 +108,7 @@ function AddWineForm({
   pending: boolean;
   run: (fn: () => Promise<void>, after?: () => void) => void;
 }) {
+  const vol = useUnitPrefs().volume;
   const [vineyardId, setVineyardId] = React.useState("");
   const [blockId, setBlockId] = React.useState("");
   const vineyardBlocks = blocks.filter((b) => b.vineyardId === vineyardId);
@@ -116,6 +120,9 @@ function AddWineForm({
         const form = e.currentTarget;
         const fd = new FormData(form);
         fd.set("vesselId", vesselId);
+        // Plan 098 U9: typed in the winery's display unit; the action receives canonical litres.
+        const volL = volumeInputToLiters(String(fd.get("volumeL") ?? ""), vol);
+        if (volL != null) fd.set("volumeL", String(volL));
         run(async () => {
           await addComponent(fd);
           form.reset();
@@ -142,7 +149,7 @@ function AddWineForm({
         {blockSubblocks.map((s) => <option key={s.id} value={s.id}>{s.code}{s.label ? ` · ${s.label}` : ""}</option>)}
       </select>
       <input name="vintage" type="number" placeholder="Vintage" style={{ ...selectStyle, width: 96 }} required />
-      <input name="volumeL" type="number" step="0.01" min="0.01" placeholder="Litres" style={{ ...selectStyle, width: 90 }} required />
+      <input name="volumeL" type="number" step="0.01" min="0.01" placeholder={volumeUnitLabel(vol)} title={`Volume in ${volumeUnitLabel(vol)}`} style={{ ...selectStyle, width: 90 }} required />
       <input name="sublotTag" placeholder="Tag (opt.)" maxLength={8} title="Sublot tag for experiments / differential picks (optional)" style={{ ...selectStyle, width: 96, textTransform: "uppercase" }} />
       <Button type="submit" variant="primary" size="sm" disabled={pending}>Add to vessel</Button>
     </form>
@@ -150,6 +157,7 @@ function AddWineForm({
 }
 
 export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, materials, groups }: { vessels: VesselWithContents[]; varieties: Option[]; vineyards: Option[]; blocks: BlockOption[]; subblocks: SubblockOption[]; materials: CellarMaterialDTO[]; groups: VesselGroupDTO[] }) {
+  const vol = useUnitPrefs().volume;
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -300,7 +308,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
         open={!!selected}
         onClose={() => setSelectedId(null)}
         title={selected ? selected.code : ""}
-        subtitle={selected ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{selected.type === "BARREL" ? "Barrel" : "Tank"} · {selected.fill.filledL}/{selected.capacityL} L ({selected.fill.pct}%)<WineBadge v={selected} /></span> : null}
+        subtitle={selected ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{selected.type === "BARREL" ? "Barrel" : "Tank"} · {formatVolume(selected.fill.filledL, vol)} / {formatVolume(selected.capacityL, vol)} ({selected.fill.pct}%)<WineBadge v={selected} /></span> : null}
       >
         {selected ? (
           <div>
@@ -342,9 +350,12 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
                       <td style={{ padding: "8px 6px", color: "var(--text-muted)" }}>{c.vineyardName}</td>
                       <td style={{ padding: "8px 6px", color: "var(--text-muted)" }}>{c.vintage}</td>
                       <td style={{ padding: "8px 6px" }}>
-                        <form onSubmit={(e) => { e.preventDefault(); run(() => updateComponentVolume(c.id, new FormData(e.currentTarget))); }} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                          <input name="volumeL" type="number" step="0.01" min="0.01" defaultValue={c.volumeL} style={{ ...selectStyle, width: 88, height: 32 }} />
-                          <span style={{ color: "var(--text-muted)" }}>L</span>
+                        {/* Plan 098: entry in the winery's display unit; the action still receives canonical
+                            litres. Dirty check: an untouched field re-submits the exact stored litres; the
+                            key remounts the uncontrolled input if the unit pref changes mid-session. */}
+                        <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const liters = volumeInputToLiters(String(fd.get("volumeL") ?? ""), vol, { display: volumeInputValue(c.volumeL, vol), liters: c.volumeL }); if (liters != null) fd.set("volumeL", String(liters)); run(() => updateComponentVolume(c.id, fd)); }} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                          <input key={`${c.id}-${vol}`} name="volumeL" type="number" step="0.01" min="0.01" defaultValue={volumeInputValue(c.volumeL, vol)} style={{ ...selectStyle, width: 88, height: 32 }} />
+                          <span style={{ color: "var(--text-muted)" }}>{volumeUnitLabel(vol)}</span>
                           <Button type="submit" variant="ghost" size="sm" disabled={pending}>save</Button>
                         </form>
                       </td>

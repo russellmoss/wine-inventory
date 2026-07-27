@@ -4,7 +4,9 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Button } from "@/components/ui";
-import { formatL, type CurrentLocation } from "@/lib/lot/timeline";
+import { type CurrentLocation } from "@/lib/lot/timeline";
+import { formatVolume } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import type { LotListRow, LotListFilter, TastingSearchRow } from "@/lib/lot/data";
 import { searchTastingNotesAction } from "@/lib/chemistry/actions";
 import { searchLotsAction } from "@/lib/lot/naming-actions";
@@ -277,6 +279,7 @@ export function LotsClient({
   canLens?: boolean;
   lensOn?: boolean;
 }) {
+  const vol = useUnitPrefs().volume;
   const router = useRouter();
   const [hovered, setHovered] = React.useState<string | null>(null);
 
@@ -382,7 +385,7 @@ export function LotsClient({
                         </Badge>
                       </td>
                       <td style={{ ...TD, color: "var(--text-secondary)" }}>{originText(r)}</td>
-                      <td style={{ ...TD, ...numStyle }}>{formatL(r.totalL)} L</td>
+                      <td style={{ ...TD, ...numStyle }}>{formatVolume(r.totalL, vol)}</td>
                       <td style={TD}>
                         <LocationChips locations={r.locations} />
                       </td>
@@ -425,7 +428,7 @@ export function LotsClient({
                   <div style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 8 }}>{originText(r)}</div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <LocationChips locations={r.locations} />
-                    <span style={{ ...numStyle, fontSize: 15, color: "var(--text-primary)" }}>{formatL(r.totalL)} L</span>
+                    <span style={{ ...numStyle, fontSize: 15, color: "var(--text-primary)" }}>{formatVolume(r.totalL, vol)}</span>
                   </div>
                 </Link>
               </Card>
