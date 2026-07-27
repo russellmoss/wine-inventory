@@ -310,7 +310,7 @@ cellar as a residue flag — a thing no incumbent can do, because no incumbent o
 | S9 decision record | 4 | ⬜ not started | — | — | — | — | — |
 | S10 planner surface | 5A | ⬜ not started | — | — | — | — | — |
 | S11 assistant tools | 5B | ⬜ not started | — | — | — | — | — |
-| SKB knowledge sources | anytime | 🟦 planning (plan written 2026-07-26; **2 of the 4 named candidates REJECTED on evidence** — NEWA is a SPA with ~2 KB of grape prose, ENTO-635-C is ~22/23 pages of rate tables. Replacements: PSU Extension + `virginiafruit.ento.vt.edu`. Awaiting `/council`) | [SKB plan](phases/SKB-knowledge-sources-plan.md) | — | — | — | — |
+| SKB knowledge sources | anytime | 🟦 **planning — council-reconciled** (plan v2 2026-07-26, 11 units / 4 PRs. **2 of the 4 named candidates REJECTED on evidence** — NEWA is a SPA with ~2 KB of grape prose, ENTO-635-C is ~22/23 pages of rate tables; replacements PSU Extension + `virginiafruit.ento.vt.edu`. Council 17 findings / 13 folded: the boundary guard ran at the wrong pipeline seam, tier-B prose needs a **handler-level** legality refusal, and ⚠️ **the corpus has NO region dimension while MMR λ 0.7 rewards cross-regional mixing** — a reproduced contamination hard-blocks the `defaultEnabled` flip. **Ready for `/work`; PR 1 blocks every source unit**) | [SKB plan](phases/SKB-knowledge-sources-plan.md) | [SKB council](phases/SKB-council-feedback.md) | — | — | — |
 
 Statuses: ⬜ not started → 🟦 planning → 🟨 building → 🟪 QA → 🟩 shipped.
 Update at every transition; link the plan, council feedback, PR(s), QA report, and phase report.
