@@ -11,7 +11,7 @@ import type { VesselGroupDTO } from "@/lib/vessels/groups";
 import { CellarActions, type KegOption, type ResidentLot } from "./CellarActions";
 import { VesselComposition } from "@/components/vessel/VesselComposition";
 import { GroupActions, type GroupVessel } from "./GroupActions";
-import { formatVolume, volumeInputToLiters, volumeUnitLabel } from "@/lib/units/display";
+import { formatVolume, volumeInputToLiters, volumeInputValue, volumeUnitLabel } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 function vesselLabel(type: "BARREL" | "TANK", code: string): string {
@@ -350,9 +350,12 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
                       <td style={{ padding: "8px 6px", color: "var(--text-muted)" }}>{c.vineyardName}</td>
                       <td style={{ padding: "8px 6px", color: "var(--text-muted)" }}>{c.vintage}</td>
                       <td style={{ padding: "8px 6px" }}>
-                        <form onSubmit={(e) => { e.preventDefault(); run(() => updateComponentVolume(c.id, new FormData(e.currentTarget))); }} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                          <input name="volumeL" type="number" step="0.01" min="0.01" defaultValue={c.volumeL} style={{ ...selectStyle, width: 88, height: 32 }} />
-                          <span style={{ color: "var(--text-muted)" }}>L</span>
+                        {/* Plan 098: entry in the winery's display unit; the action still receives canonical
+                            litres. Dirty check: an untouched field re-submits the exact stored litres; the
+                            key remounts the uncontrolled input if the unit pref changes mid-session. */}
+                        <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const liters = volumeInputToLiters(String(fd.get("volumeL") ?? ""), vol, { display: volumeInputValue(c.volumeL, vol), liters: c.volumeL }); if (liters != null) fd.set("volumeL", String(liters)); run(() => updateComponentVolume(c.id, fd)); }} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                          <input key={`${c.id}-${vol}`} name="volumeL" type="number" step="0.01" min="0.01" defaultValue={volumeInputValue(c.volumeL, vol)} style={{ ...selectStyle, width: 88, height: 32 }} />
+                          <span style={{ color: "var(--text-muted)" }}>{volumeUnitLabel(vol)}</span>
                           <Button type="submit" variant="ghost" size="sm" disabled={pending}>save</Button>
                         </form>
                       </td>
