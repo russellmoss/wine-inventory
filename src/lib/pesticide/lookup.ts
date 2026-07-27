@@ -26,6 +26,9 @@ import { runAsTenant } from "@/lib/tenant/context";
 import { parseRegistrationNumber } from "./reg-number";
 import type {
   AiResistanceView,
+  CuratedFactsRow,
+  RegistryIdentityRow,
+  TenantFactsRow,
   FederalStatusView,
   PesticideFactsAsOf,
   PesticideJurisdiction,
@@ -275,4 +278,98 @@ export async function lookupRegistration(opts: {
     factsAsOf,
     provenance: "registry",
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Spray S2b — the batched PRODUCT-FACTS reads behind ProductFactsResolver.
+//
+// These live HERE, not in product-facts.ts, because lookup.ts is the lane's only permitted prisma
+// importer (K7) and therefore the only place the entitlement gate cannot be routed around.
+//
+// ⚠️ They are NOT built on lookupRegistration (council S3): that yields product data only on
+// `ok: true`, which already requires state legality — but facts resolution must work for a product
+// that is NOT CA-registered, because you still need its PHI to evaluate a PAST spray.
+//
+// ⚠️ Every exported read below checks entitlement FIRST and independently. The K7 boundary test
+// enumerates them; adding a sixth registry-backed read without a gate fails CI (council C5 — the
+// original guard only proved the gate inside lookupRegistration).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Curated REGISTRY facts for a batch of canonical reg numbers. Entitlement-gated; `{}` when off. */
+export async function lookupProductFactsBatch(opts: {
+  tenantId: string;
+  canonicalRegNumbers: string[];
+  now?: Date;
+}): Promise<Record<string, CuratedFactsRow[]>> {
+  if (!(await isPesticideSourceEnabled(opts.tenantId))) return {};
+  const regs = [...new Set(opts.canonicalRegNumbers.filter((r) => r.length > 0))];
+  if (regs.length === 0) return {};
+  // EXACT match only (K6) — `in` is an equality set, never a fuzzy predicate.
+  const rows = await prisma.pesticideProductFacts.findMany({
+    where: { epaRegNumber: { in: regs }, supersededAt: null },
+    include: { reiConditions: true, phiConditions: true, separationRules: true, conditions: true },
+  });
+  const out: Record<string, CuratedFactsRow[]> = {};
+  for (const r of rows) (out[r.epaRegNumber] ??= []).push(r as CuratedFactsRow);
+  return out;
+}
+
+/** Grower-supplied facts for a batch of tenant product refs / reg numbers. NOT entitlement-gated
+ * (KD-4): the toggle protects a source WE ship, and gating data the grower typed would re-brick the
+ * non-US tenant. Tenant-scoped — RLS + the tenant extension do the isolation. */
+export async function lookupTenantProductFactsBatch(opts: {
+  tenantId: string;
+  productRefs: string[];
+  regNumbers: string[];
+}): Promise<TenantFactsRow[]> {
+  const refs = [...new Set(opts.productRefs.filter(Boolean))];
+  const regs = [...new Set(opts.regNumbers.filter(Boolean))];
+  if (refs.length === 0 && regs.length === 0) return [];
+  const or: { productRef?: { in: string[] }; epaRegistrationNumber?: { in: string[] } }[] = [];
+  if (refs.length) or.push({ productRef: { in: refs } });
+  if (regs.length) or.push({ epaRegistrationNumber: { in: regs } });
+  // Await INSIDE runAsTenant — a lazy PrismaPromise evaluated after the ALS scope exits reads the
+  // OUTER tenant (TENANT-3).
+  return await runAsTenant(opts.tenantId, async () => {
+    return (await prisma.tenantProductFacts.findMany({ where: { OR: or } })) as TenantFactsRow[];
+  });
+}
+
+/** The registry identity half — AI keys + resistance groups, independent of the curated facts and
+ * on S2's own refresh cadence. Entitlement-gated. */
+export async function lookupRegistryIdentityBatch(opts: {
+  tenantId: string;
+  canonicalRegNumbers: string[];
+}): Promise<Record<string, RegistryIdentityRow>> {
+  if (!(await isPesticideSourceEnabled(opts.tenantId))) return {};
+  const regs = [...new Set(opts.canonicalRegNumbers.filter((r) => r.length > 0))];
+  if (regs.length === 0) return {};
+  // sourceStatus ACTIVE — a WITHDRAWN_FROM_SOURCE product must stop answering (K14), same rule the
+  // single-product path applies. Include shape mirrors findProductByCanonical so the K13 rollup runs.
+  const products = await prisma.pesticideProduct.findMany({
+    where: { epaRegNumber: { in: regs }, sourceStatus: "ACTIVE" },
+    include: {
+      siteRegistrations: { where: { isGrape: true } },
+      stateRegistrations: true,
+      useRestrictions: true,
+      ingredients: { include: { activeIngredient: true } },
+      resistanceAssignments: true,
+    },
+  });
+  const out: Record<string, RegistryIdentityRow> = {};
+  for (const p of products) {
+    // epaRegNumber is NULLABLE (council G4 — CA-only adjuvants and 25(b) products have none). Such a
+    // row cannot be keyed by EPA number and simply does not participate in this batch.
+    if (!p.epaRegNumber) continue;
+    const resistance = await resolveProductResistance(p);
+    out[p.epaRegNumber] = {
+      activeIngredients: p.ingredients.map((i) => ({
+        name: i.activeIngredient.name,
+        percentByWeight: i.percent == null ? null : Number(i.percent),
+        casNumber: null,
+      })),
+      resistance,
+    };
+  }
+  return out;
 }

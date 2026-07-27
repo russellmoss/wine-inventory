@@ -21,7 +21,7 @@
  *    unique; the audit spine is the product table + revision summary.
  */
 import { createInterface } from "node:readline";
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, readFileSync, statSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,6 +33,7 @@ import {
   CDPR_GRAPE_SITE_CODES,
 } from "@/lib/pesticide/cdpr-parse";
 import { parseRegistrationNumber } from "@/lib/pesticide/reg-number";
+import { parsePestCategories, parseProductPests } from "@/lib/pesticide/pest-parse";
 
 const CDPR_BASE = "https://files.cdpr.ca.gov/pub/outgoing/product";
 const PARSE_FAILURE_TOLERANCE = 50; // above this the dump changed shape — fail, do not publish
@@ -49,6 +50,11 @@ const counters = {
   stateRowsWritten: 0,
   stateRowsRemoved: 0,
   unmatchedCdprEpaNumbers: 0,
+  // S2b Unit 7b — the coded pest vocabulary (41 COARSE categories, never species).
+  pestCategories: 0,
+  pestMappingsWritten: 0,
+  pestMappingsDroppedUnknownCode: 0,
+  pestMappingsDroppedNoEpaNumber: 0,
 };
 
 async function eachLine(path: string, fn: (line: string) => void): Promise<void> {
@@ -73,7 +79,8 @@ async function main() {
       cdprAsOf = statSync(join(dir, "product.dat")).mtime;
     } else {
       dir = tmpdir();
-      for (const f of ["product.dat", "prod_site.dat", "site.dat"]) {
+      // S2b Unit 7b adds the two pest-vocabulary files. Same host, same directory, same refresh.
+      for (const f of ["product.dat", "prod_site.dat", "site.dat", "target_pest.dat", "prod_target_pest.dat"]) {
         const dest = join(dir, f);
         const res = await fetchBulkFile(`${CDPR_BASE}/${f}`, { destPath: dest });
         if (!res.ok) throw new Error(`CDPR fetch failed for ${f}: ${res.reason}`);
@@ -188,6 +195,49 @@ async function main() {
       // EPA numbers CDPR registers on grapes that WE don't carry (inactive federally, or non-grape
       // in APPRIL) — a coverage fact worth reporting, never guessed into the table.
       counters.unmatchedCdprEpaNumbers = grapeSitesByEpa.size;
+
+      // ── S2b Unit 7b — the coded pest vocabulary ──────────────────────────────────────────────
+      // ⚠️ 41 COARSE CATEGORIES, NOT SPECIES. EPA APPRIL carries no target pest at all, and there is
+      // no public species-level source, so "powdery mildew" cannot be coded. The grower's free-text
+      // targetPest stays the truth of record; this only ever rides alongside as an optional,
+      // human-confirmed companion (council GQ1). Nothing may render a category as a species.
+      if (!dryRun && revision) {
+        const catText = readFileSync(join(dir, "target_pest.dat"), "latin1");
+        const categories = parsePestCategories(catText);
+        for (const c of categories) {
+          await db.pesticidePestCategory.upsert({
+            where: { code: c.code },
+            create: { code: c.code, name: c.name, sourceUrl: `${CDPR_BASE}/target_pest.dat`, sourceAsOf: cdprAsOf ?? new Date(), revisionId: revision.id },
+            update: { name: c.name, sourceAsOf: cdprAsOf ?? new Date(), revisionId: revision.id },
+          });
+        }
+        counters.pestCategories = categories.length;
+
+        const validCodes = new Set(categories.map((c) => c.code));
+        const { rows, droppedUnknownCode } = parseProductPests(readFileSync(join(dir, "prod_target_pest.dat"), "latin1"), validCodes);
+        counters.pestMappingsDroppedUnknownCode = droppedUnknownCode;
+
+        // Map DPR prodno -> EPA number using the SAME byProdno table the state rows use. A CDPR-only
+        // product (adjuvant, 25(b)) has no EPA number and is COUNTED, not invented (council G4).
+        const pairs = new Set<string>();
+        for (const r of rows) {
+          const prod = byProdno.get(Number(r.prodno));
+          if (!prod?.canonical) {
+            counters.pestMappingsDroppedNoEpaNumber++;
+            continue;
+          }
+          pairs.add(`${prod.canonical} ${r.pestCode}`);
+        }
+        for (const pair of pairs) {
+          const [epaRegNumber, pestCode] = pair.split(" ");
+          await db.pesticideProductPest.upsert({
+            where: { epaRegNumber_pestCode: { epaRegNumber, pestCode } },
+            create: { epaRegNumber, pestCode, revisionId: revision.id },
+            update: { revisionId: revision.id },
+          });
+          counters.pestMappingsWritten++;
+        }
+      }
     } catch (e) {
       hardFailure = true;
       console.log(`  ! ${e instanceof Error ? e.message.replace(/\s+/g, " ").slice(0, 200) : e}`);

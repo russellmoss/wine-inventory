@@ -25,10 +25,61 @@ export interface FactsSnapshot {
   factsApprilAsOf: Date | null;
   factsCdprAsOf: Date | null;
   factsResistanceArtifactSha256: string | null;
+  /** S2b — the FIFTH source: the curated product-facts artifact, on its own cadence. */
+  factsProductFactsArtifactSha256: string | null;
+  factsProductFactsAsOf: Date | null;
   /** Display/staleness convenience: the NEWEST non-null component. Engines compare components. */
   factsAsOf: Date | null;
   factsSource: SprayFactsSource;
   factsCompleteness: SprayFactsCompleteness;
+  // S2b KD-11 — the fact-group provenance axis, deliberately separate from the watermark above.
+  regulatorySource: SprayFactsSource;
+  regulatoryAsOf: Date | null;
+  regulatoryStaleAtWrite: boolean;
+  agronomicSource: SprayFactsSource;
+  agronomicAsOf: Date | null;
+  agronomicStaleAtWrite: boolean;
+}
+
+/**
+ * The snapshot → `spray_material_line` column mapping, in ONE place.
+ *
+ * Council C4 warned that "additive at the type level is not additive in the running system": both
+ * the write path and the correction copy path hand-listed these columns, and a Prisma create input
+ * treats every nullable column as optional — so adding a field compiled clean while the correction
+ * INSERT silently dropped it. That is not a hypothetical; it happened to S2b's own fifth-source and
+ * fact-group columns before this helper existed. Both call sites now spread this, so a new snapshot
+ * field reaches the database everywhere or nowhere.
+ *
+ * `snapshotActiveIngredients` is excluded: it needs `Prisma.DbNull` and importing Prisma here would
+ * make this module non-pure (rule §3.13). Callers map that one field themselves.
+ */
+export function factsSnapshotColumns(snap: FactsSnapshot) {
+  return {
+    snapshotPhiDays: snap.snapshotPhiDays,
+    snapshotReiHours: snap.snapshotReiHours,
+    snapshotRainfastHours: snap.snapshotRainfastHours,
+    snapshotMobilityClass: snap.snapshotMobilityClass,
+    snapshotResistanceGroups: snap.snapshotResistanceGroups,
+    resistanceGroupsKnown: snap.resistanceGroupsKnown,
+    snapshotActiveIngredientKeys: snap.snapshotActiveIngredientKeys,
+    activeIngredientsKnown: snap.activeIngredientsKnown,
+    factsPublishedRevisionId: snap.factsPublishedRevisionId,
+    factsApprilAsOf: snap.factsApprilAsOf,
+    factsCdprAsOf: snap.factsCdprAsOf,
+    factsResistanceArtifactSha256: snap.factsResistanceArtifactSha256,
+    factsProductFactsArtifactSha256: snap.factsProductFactsArtifactSha256,
+    factsProductFactsAsOf: snap.factsProductFactsAsOf,
+    factsAsOf: snap.factsAsOf,
+    factsSource: snap.factsSource,
+    factsCompleteness: snap.factsCompleteness,
+    regulatorySource: snap.regulatorySource,
+    regulatoryAsOf: snap.regulatoryAsOf,
+    regulatoryStaleAtWrite: snap.regulatoryStaleAtWrite,
+    agronomicSource: snap.agronomicSource,
+    agronomicAsOf: snap.agronomicAsOf,
+    agronomicStaleAtWrite: snap.agronomicStaleAtWrite,
+  };
 }
 
 /** Parse an ISO component to a Date, or null. A malformed string is null — never Invalid Date. */
@@ -84,6 +135,7 @@ export function buildFactsSnapshot(resolved: ResolvedProductFacts): FactsSnapsho
   const activeIngredientsKnown = aiKeys.length > 0;
   const apprilAsOf = parseComponent(resolved.factsAsOf?.apprilAsOf);
   const cdprAsOf = parseComponent(resolved.factsAsOf?.cdprAsOf);
+  const productFactsAsOf = parseComponent(resolved.factsAsOf?.productFactsAsOf);
 
   const discrete = [resolved.phiDays, resolved.reiHours, resolved.rainfastHours, resolved.mobilityClass];
   const presentCount = discrete.filter((v) => v != null).length + (resistanceGroupsKnown ? 1 : 0) + (activeIngredientsKnown ? 1 : 0);
@@ -105,8 +157,18 @@ export function buildFactsSnapshot(resolved: ResolvedProductFacts): FactsSnapsho
     factsApprilAsOf: apprilAsOf,
     factsCdprAsOf: cdprAsOf,
     factsResistanceArtifactSha256: resolved.factsAsOf?.resistanceArtifactSha256 ?? null,
-    factsAsOf: newestFactsComponent([apprilAsOf, cdprAsOf]),
+    factsProductFactsArtifactSha256: resolved.factsAsOf?.productFactsArtifactSha256 ?? null,
+    factsProductFactsAsOf: productFactsAsOf,
+    factsAsOf: newestFactsComponent([apprilAsOf, cdprAsOf, productFactsAsOf]),
     factsSource: resolved.source,
     factsCompleteness,
+    // KD-11. A resolver that does not distinguish groups reports NONE / not-stale — the honest
+    // "we don't track that" answer, never a claim that the group was fresh.
+    regulatorySource: resolved.regulatory?.source ?? "NONE",
+    regulatoryAsOf: parseComponent(resolved.regulatory?.asOf),
+    regulatoryStaleAtWrite: resolved.regulatory?.staleAtWrite ?? false,
+    agronomicSource: resolved.agronomic?.source ?? "NONE",
+    agronomicAsOf: parseComponent(resolved.agronomic?.asOf),
+    agronomicStaleAtWrite: resolved.agronomic?.staleAtWrite ?? false,
   };
 }
