@@ -497,9 +497,14 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     denyPrefixes: [],
     autoCrawl: false,
     crawlCadence: "manual",
-    // Staged rollout (plan 099 Unit 6): ships OFF. Enable for Demo, measure displacement against the
-    // kb-register baseline, then flip in a follow-up.
-    defaultEnabled: false,
+    // Staged rollout (plan 099 Unit 6) COMPLETE — flipped on 2026-07-27 after measuring, not before.
+    // Crawled, read back (1 doc / 82 chunks / 46 distinct breadcrumbs), numeric-fidelity spot check
+    // PASSED against the PDF verbatim, enabled for Demo, displacement 1/120 slots (1%) vs the
+    // pre-change baseline — well under the 25% gate. See the plan's execution log.
+    // NOTE: the first crawl of this document was CORRUPT and was thrown away. It ran on the chunker
+    // before plan 100 PR A (#544) fixed `splitBySentences`, which silently deleted text: 18 of 24
+    // trade names vanished and "2.5TG" was stored as "5TG". Re-crawled clean on the fixed chunker.
+    defaultEnabled: true,
   },
   {
     key: "wbi",

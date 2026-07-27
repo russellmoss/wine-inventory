@@ -29,6 +29,69 @@ the duplicated title, the root already carries that text, so nothing is lost and
 
 ---
 
+## Unit 6 — LIVE, 2026-07-27. The gate fired once and it was right to.
+
+Ran against production in plan order. **The first crawl produced a corrupt document and was thrown
+away.** That is the headline, because the run reported success both times.
+
+| # | Step | Result |
+|---|---|---|
+| 1 | Baselines captured BEFORE | `kb-register` captured; `kb:snapshot --repeat 3` → 18/20 stable, 2 excluded |
+| 2 | Merge + deploy | `64db4cd9`, Vercel Production 04:28Z |
+| 3 | `seed:knowledge-sources` | 26 sources; row verified `active` / `defaultEnabled:false` / `allowPrefixes:[]` |
+| 4 | `crawl:curated --dry-run` → real | 1 URL collected, 1 doc, **77 chunks** |
+| 5 | Read rows back | 46 distinct breadcrumbs (from 11), 0 null embeddings, max path 139, 0 title-duplication |
+| 6 | **Numeric-fidelity spot check** | 🔴 **FAILED — STOPPED** |
+
+**What step 6 caught.** Only 10/20 active ingredients and **6/24 trade names** survived. What remained
+under chapter 8 was a table *header* plus a fragment reading `... EPA Reg. 5TG 3, 21 1 year 12 hr
+62719-175` — the PDF says `trifluralin + isoxaben ^Snapshot **2.5TG** 3, 21 1 year 12 hr 62719-175`.
+The product name was gone and the formulation had lost its leading digits. Prose was 4/4 intact.
+
+That is the worst shape a pesticide chunk can take: it *looks* like an authoritative rate table and
+its numbers are wrong. The source was hard-closed (`active:false`) pending diagnosis. No tenant ever
+had it enabled — `defaultEnabled:false` with zero subscription rows, verified before and after.
+
+**Root cause, found on main not by guesswork:** [plan 100 PR A](2026-07-26-100-fix-kb-text-integrity-and-pnw-handbooks-plan.md)
+(#544) had landed one commit later. `splitBySentences` used `String.match(/g)` with a regex that
+cannot match a decimal point, and `match` **skips** spans it cannot match instead of failing — so
+`0.5` became `5`. It fires on any block over `MAX_TOKENS` that takes the force-split path, which is
+exactly what a 3-page pesticide table is. One bug, both symptoms.
+
+**Re-run on the fixed chunker** (`CHUNKER_VERSION` 2, `reset:knowledge-source` then re-crawl):
+
+| Check | Before fix | After fix |
+|---|---|---|
+| Chunks | 77 | **82** |
+| Active ingredients | 10/20 | **20/20** |
+| Trade names | 6/24 | **24/24** |
+| Decimal values (`0.97`, `2.34`, `2.5TG`…) | 0/10 | **10/10** |
+| EPA reg numbers | 1/8 | **8/8** |
+| Verbatim page-22 rows | — | **5/5 exact** |
+| Corruption signatures | present | **none** |
+
+`Select Max 0.97 EC 1 1 year 24 hr 59639-132` now stores verbatim.
+
+| # | Step | Result |
+|---|---|---|
+| 7 | Displacement, source live | **1/120 slots (1%)** vs a 25% gate — and the one move was Cornell Fruit Resources over AWRI, not this source. PASSED |
+| 8 | Enabled for Demo only | Demo 25 sources / Bhutan 24 — isolation holds. Retrieval returns 1-2 of 6 slots on NY/PA queries |
+| 9 | `defaultEnabled` → true | Flipped in config **after** the measurement, never in the PR that added the source |
+
+Gates green at close: `verify:knowledge-base` 21/21, `verify:kb-subscriptions`, `verify:kb-register`,
+`verify:kb-boundary`.
+
+⚠️ **`verify:kb-boundary` reports `product-table 0` for this source and that is not evidence of
+safety** — it is the PDF blindness recorded in `TODOS.md`. The document does contain the tier-C
+tables; the gate simply cannot see them. The numeric spot check, not the boundary audit, is what
+actually cleared this document.
+
+**The transferable lesson:** both crawls printed `documents:1, errors:0`. The only thing that
+distinguished the corrupt run from the clean one was comparing stored cell values against the source
+PDF. A version bump and a green run prove nothing about content.
+
+---
+
 ## Problem frame
 
 Growers on this platform have no NY/PA-specific IPM reference in the assistant. The corpus'
