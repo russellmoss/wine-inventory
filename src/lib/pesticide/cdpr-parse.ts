@@ -33,6 +33,12 @@ export const CDPR_OFFSETS = {
   prodSite: {
     prodno: [0, 7],
     siteCode: [7, 13],
+    // Spray S2b Unit 0/2 (phases/S2b-cdpr-interval-probe.md) — PHI/REI value+unit, decoded
+    // empirically and oracle-validated against Mancozeb (66D), Pristine (14D/12H), Captan (REI).
+    phiValue: [25, 28],
+    phiUnit: [28, 29],
+    reiValue: [29, 32],
+    reiUnit: [32, 33],
     status: [34, 35],
   },
   site: {
@@ -89,8 +95,42 @@ export function parseProductLine(line: string): CdprProductLine {
 }
 
 export type CdprProdSiteLine =
-  | { ok: true; prodno: number; siteCode: number; siteActive: boolean }
+  | { ok: true; prodno: number; siteCode: number; siteActive: boolean; phiDays: number | null; reiHours: number | null }
   | { ok: false; error: string };
+
+/**
+ * S2b Unit 0/2 — DPR's PHI/REI interval unit lookup. `preharvest_interval.dat` /
+ * `reentry_interval.dat` carry exactly these three letters, nothing else.
+ */
+type IntervalUnit = "D" | "H" | "M";
+
+/**
+ * THE unit-keyed nullity rule (probe §3, contract-tested, not a comment): a BLANK unit means "not
+ * recorded" — never a zero interval. 76% of raw PHI cells contain the digits "0", and reading the
+ * VALUE instead of the UNIT would tell three-quarters of the corpus "PHI = 0 days, pick today." Only
+ * a non-blank unit is a real interval, including a legitimate `0D` (739 rows in the probe sample).
+ */
+function parseInterval(valueRaw: string, unitRaw: string, toHours: (n: number, u: IntervalUnit) => number): number | null {
+  if (unitRaw !== "D" && unitRaw !== "H" && unitRaw !== "M") return null; // blank or unrecognized -> NOT RECORDED
+  const n = Number.parseInt(valueRaw, 10);
+  if (!Number.isFinite(n) || n < 0) return null; // a value without a valid unit is ambiguous -> fail closed
+  return toHours(n, unitRaw as IntervalUnit);
+}
+
+const toHoursUnit = (n: number, u: IntervalUnit): number => (u === "D" ? n * 24 : u === "H" ? n : n / 60);
+
+/** PHI as whole DAYS (the schema's `worstCasePhiDays`, Int). Rounds UP — a minimum wait rounds
+ * toward the safer (longer) side, never truncates it shorter. */
+function phiDaysOf(valueRaw: string, unitRaw: string): number | null {
+  const hours = parseInterval(valueRaw, unitRaw, toHoursUnit);
+  return hours == null ? null : Math.ceil(hours / 24);
+}
+
+/** REI as whole HOURS (the schema's `worstCaseReiHours`, Int). Same round-up discipline. */
+function reiHoursOf(valueRaw: string, unitRaw: string): number | null {
+  const hours = parseInterval(valueRaw, unitRaw, toHoursUnit);
+  return hours == null ? null : Math.ceil(hours);
+}
 
 export function parseProdSiteLine(line: string): CdprProdSiteLine {
   const o = CDPR_OFFSETS.prodSite;
@@ -100,7 +140,9 @@ export function parseProdSiteLine(line: string): CdprProdSiteLine {
   if (!Number.isFinite(prodno) || !Number.isFinite(siteCode)) {
     return { ok: false, error: `unparseable prod_site line: ${line.slice(0, 40)}` };
   }
-  return { ok: true, prodno, siteCode, siteActive: status === "A" };
+  const phiDays = phiDaysOf(slice(line, o.phiValue), slice(line, o.phiUnit));
+  const reiHours = reiHoursOf(slice(line, o.reiValue), slice(line, o.reiUnit));
+  return { ok: true, prodno, siteCode, siteActive: status === "A", phiDays, reiHours };
 }
 
 export type CdprSiteLine = { ok: true; code: number; name: string } | { ok: false; error: string };
