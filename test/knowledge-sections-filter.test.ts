@@ -140,7 +140,7 @@ describe("deriveIndexHash — R1, the silent no-op guard", () => {
   const RAW = "a".repeat(64);
   const ANCHOR = { strategy: "anchor-heading", version: SECTION_FILTER_VERSION } as const;
 
-  // Plan 099 Unit 1b — the signature moved from positional flags to a payload object, and the
+  // Plan 100 Unit 1b — the signature moved from positional flags to a payload object, and the
   // chunker version is now folded in UNCONDITIONALLY. That is a deliberate behaviour change: the
   // old "no version component => bare content hash" shortcut meant a chunker fix could never reach
   // an already-indexed HTML document with unchanged bytes, which is exactly how the v1 text-loss

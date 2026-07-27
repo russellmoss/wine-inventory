@@ -12,6 +12,7 @@ import { collectSitemapUrls, type SitemapUrl } from "./sitemap";
 import { isAllowedByRobots, getCrawlDelayMs } from "./robots";
 import { fetchDocument, type DetectedType, type FetchResult } from "./fetcher";
 import { extractLinks, gateLinks } from "./link-gate";
+import { allowPathsMatch } from "./path-match";
 
 const DEFAULT_DELAY_MS = 1500; // polite default between requests to one host
 const isAllowedHost = (h: string) => TRUSTED_DOMAIN_SET.has(h.toLowerCase());
@@ -117,6 +118,10 @@ export function pathAllowed(cfg: KnowledgeSourceConfig, url: string): boolean {
     return false;
   }
   if (isDenied(cfg, path)) return false;
+  // SKB Unit 5 — allowPaths is admitted IN ADDITION to allowPrefixes, and deny has already won above.
+  // This also covers the "resolved after redirects" clause of the canonicalization contract for free:
+  // the crawl loops already call pathAllowed on `res.finalUrl` to re-gate a redirect.
+  if (allowPathsMatch(cfg.allowPaths, path)) return true;
   return cfg.allowPrefixes.some((p) => path.startsWith(p));
 }
 
@@ -166,6 +171,10 @@ export function decideAdmission(
     return rule.linkedFrom.some((f) => fromPath.startsWith(f)) ? { admit: true, terminal: true } : REFUSE;
   }
 
+  // SKB Unit 5. Sits at the same level as allowPrefixes — deliberately BELOW the linkedOnly
+  // short-circuit above, so a source that listed the same path in both does not lose the provenance
+  // requirement. No source uses both mechanisms today and neither SKB source uses linkedOnlyPrefixes.
+  if (allowPathsMatch(cfg.allowPaths, path)) return { admit: true, terminal: false };
   return cfg.allowPrefixes.some((p) => path.startsWith(p)) ? { admit: true, terminal: false } : REFUSE;
 }
 

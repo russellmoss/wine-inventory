@@ -6,6 +6,33 @@ export type ReadGoldenCase = {
 };
 
 export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
+  // ── S5a: the latent-infection ledger. `query_spray_decision` landed THIN and HARD-REFUSING —
+  // it reports what is incubating and refuses every actual spray decision (council C3), because
+  // legality (S7a), the composed record (S9) and weather interlocks (S7b) do not exist yet.
+  {
+    utterance: "What infections are incubating in Oakville Estate right now?",
+    tool: "query_spray_decision",
+    args: { vineyard: "Oakville Estate" },
+  },
+  {
+    utterance: "Is Block 3 a source of inoculum?",
+    tool: "query_spray_decision",
+    args: {},
+    note: "'source of inoculum' is the infectious-transition question the ledger exists to answer",
+  },
+  {
+    utterance: "What is the powdery mildew pressure at Russian River Ranch?",
+    tool: "query_spray_decision",
+    args: { vineyard: "Russian River Ranch" },
+    note: "disease-pressure phrasing routes here even though the answer is that no index exists (Unit 0 NO-GO) — the tool explains why rather than dead-ending",
+  },
+  {
+    utterance: "Should I spray sulfur tomorrow?",
+    tool: "query_spray_decision",
+    args: {},
+    note: "MUST route here and MUST refuse. The tool never recommends a spray and never fires a write (SAFE-12); the refusal names legality, REI/PHI and rotation as what is missing",
+  },
+
   {
     utterance: "What is in tank 5?",
     tool: "query_cellar_contents",

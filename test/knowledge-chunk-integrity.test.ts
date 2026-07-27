@@ -1,4 +1,4 @@
-// Plan 099 PR A — the chunker must never silently delete text.
+// Plan 100 PR A — the chunker must never silently delete text.
 //
 // The bug this file exists to prevent: `splitBySentences` and `tailForOverlap` both scanned with
 // `text.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g)`. Neither alternative can match a `.` that is NOT

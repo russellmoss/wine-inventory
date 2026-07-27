@@ -141,13 +141,15 @@
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate",
     "verify:kb-register": "tsx --env-file=.env scripts/verify-kb-register.ts",
+    "verify:kb-boundary": "tsx --env-file=.env scripts/verify-kb-boundary.ts",
     "crawl:ives": "tsx --env-file=.env scripts/crawl-ives.ts",
     "verify:gis-stats": "tsx scripts/gis-p0-validate-stats.ts",
     "verify:gis-live": "tsx --conditions=react-server --env-file=.env scripts/gis-p0-live-scene.ts",
     "verify:gis-measure": "tsx --conditions=react-server --env-file=.env scripts/gis-p0-measure.ts",
     "verify:weather": "tsx --conditions=react-server --env-file=.env scripts/verify-weather.ts",
     "backfill:weather-offseason": "tsx --conditions=react-server --env-file=.env scripts/backfill-weather-offseason.ts",
-    "verify:phenology": "tsx --conditions=react-server --env-file=.env scripts/verify-phenology.ts"
+    "verify:phenology": "tsx --conditions=react-server --env-file=.env scripts/verify-phenology.ts",
+    "verify:latent-infection": "tsx --conditions=react-server --env-file=.env scripts/verify-latent-infection.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -208,7 +208,7 @@ empirically during recon rather than from docs.
 ## Council revisions — decisions Russell settled 2026-07-26
 
 Reviewed by Codex `gpt-5.4` and Gemini `gemini-3.1-pro-preview`; full text in
-`docs/plans/council-feedback-099-kb-text-integrity-pnw-handbooks.md`. Russell accepted all
+`docs/plans/council-feedback-100-kb-text-integrity-pnw-handbooks.md`. Russell accepted all
 recommendations. The five open questions resolve as:
 
 1. **Block-level classification (C8): ACCEPTED**, scope increase and all. Section-level would ship
@@ -450,7 +450,7 @@ goes to zero. Spot-check 10 re-indexed chunks against a live re-fetch of their s
 ### Unit 3: Quantify the damage honestly, before and after
 
 **Goal:** A defensible number for how much of the corpus was affected, not a heuristic guess.
-**Files:** `docs/plans/2026-07-26-099-…-plan.md` (this file, results appended); no source changes
+**Files:** `docs/plans/2026-07-26-100-…-plan.md` (this file, results appended); no source changes
 **Approach:** The line-start-unit heuristic returns 74–79 chunks across ~64 documents and 14 sources,
 but spot-checking showed roughly 40–50% false positives (`243 kg Nitrat-N/ha` is a real number, not a
 truncation), and it structurally cannot catch cases where the drop leaves a plausible integer

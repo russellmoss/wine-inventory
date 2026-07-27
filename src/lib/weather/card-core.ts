@@ -46,8 +46,11 @@ export function providerLabel(key: string, stationName?: string | null): string 
       return stationName ? `Station — ${stationName}` : "Nearest station";
     case "gridmet":
       return "gridMET (4 km grid)";
+    case "open_meteo_archive":
+      return "ERA5 reanalysis (elevation-corrected)";
     case "nasa_power":
-      return "NASA POWER (global grid)";
+      // Named for what it is: the raw ~50 km cell, at the cell's mean elevation — not the vineyard's.
+      return "NASA POWER (50 km global grid, uncorrected)";
     case "daymet":
       return "Daymet (1 km, historical)";
     case "noaa_cdo":

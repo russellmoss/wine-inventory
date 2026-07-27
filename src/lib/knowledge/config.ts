@@ -7,6 +7,8 @@
 // mixes technical and non-technical content inside ONE url cannot be expressed with path prefixes, and
 // needs a `sectionFilter` strategy implemented in src/lib/knowledge/sections/ (see vt-enology-notes).
 
+import { normalizeAllowPaths } from "./crawl/path-match";
+
 export interface KnowledgeSourceConfig {
   key: string;
   publisher: string;
@@ -15,6 +17,14 @@ export interface KnowledgeSourceConfig {
   license: string;
   seedRoots: string[];
   allowPrefixes: string[]; // path prefixes permitted (matched on URL pathname)
+  // SKB Unit 5 — EXACT pathnames permitted, admitted IN ADDITION to allowPrefixes. For a source whose
+  // articles live at flat root slugs with no namespace, where a prefix gate structurally cannot work:
+  // Penn State publishes `/grape-disease-black-rot` while `/powdery-mildew` and `/downy-mildew` at the
+  // identical URL shape are the ORNAMENTAL articles. denyPrefixes still win first and unconditionally.
+  // Config-only (like sitemapUrls/autoCrawl) — the seed script does not persist it, so no migration.
+  // Entries are validated at module load: a non-absolute path throws rather than silently matching
+  // nothing. Matching rules (slash-tolerance, case, percent-encoding) live in crawl/path-match.ts.
+  allowPaths?: string[];
   denyPrefixes: string[]; // path prefixes refused (paywalled / robots-disallowed)
   // Explicit sitemap URL(s). The auto crawler otherwise only probes origin/sitemap_index.xml +
   // origin/sitemap.xml; set this when the sitemap lives elsewhere (e.g. WordPress core /wp-sitemap.xml).
@@ -461,6 +471,37 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     defaultEnabled: true,
   },
   {
+    key: "cornell-grape-guide",
+    publisher: "Cornell Cooperative Extension — NY/PA Pest Management Guidelines for Grapes",
+    homeDomain: "cropandpestguides.cce.cornell.edu",
+    tier: 1,
+    // POSTURE, read this before touching the source (plan 099, owner decision 2026-07-27).
+    // The full 166-page guide is a PAID publication sold by the Cornell Store. What we ingest is the
+    // FREE 25-page preview excerpt Cornell publishes at a stable URL, and nothing else on this host.
+    // It carries "© 2025 Cornell University. All rights reserved." with NO licence grant, so this rests
+    // on the same footing as vt-enology-notes: cite and link back, paraphrase rather than reproduce,
+    // and WITHDRAW ON REQUEST. Withdrawal is `active: false` + `npm run reset:knowledge-source`.
+    // This deliberately supersedes plan 087's "do not crawl this host" line FOR THIS ONE PREVIEW URL.
+    // Note plan 087 also recorded the host as unreachable; that is stale, it serves 200.
+    license:
+      "Cornell Cooperative Extension 2025 NY/PA Pest Management Guidelines for Grapes — FREE PREVIEW EXCERPT (25 of 166 pages) of a PAID publication sold by the Cornell Store. © 2025 Cornell University, all rights reserved, no licence granted. Reference use with citation + link back only; paraphrase, never reproduce. WITHDRAW ON PUBLISHER REQUEST.",
+    // Non-empty because crawler.ts dereferences seedRoots[0]; the crawl itself is directUrls-driven.
+    seedRoots: ["https://cropandpestguides.cce.cornell.edu/Preview/2025/2025_Grape_Guide_Preview.pdf"],
+    // Fail-closed: EMPTY, so sitemap discovery and link-following can admit NOTHING on this host
+    // (crawler.ts pathAllowed / decideAdmission). Same pattern as viticulture-extension-refs.
+    // Known limit, stated rather than overclaimed: the curated path this source actually uses is
+    // `crawlUrls`, which gates on HOST per redirect hop but deliberately does NOT re-gate the PATH
+    // (crawler.ts, "operator-directed" note). So a same-host 302 out of /Preview/ would be followed.
+    // What bounds this source in practice is the single pinned directUrls entry, tested below.
+    allowPrefixes: [],
+    denyPrefixes: [],
+    autoCrawl: false,
+    crawlCadence: "manual",
+    // Staged rollout (plan 099 Unit 6): ships OFF. Enable for Demo, measure displacement against the
+    // kb-register baseline, then flip in a follow-up.
+    defaultEnabled: false,
+  },
+  {
     key: "wbi",
     publisher: "WBI Freiburg — Staatliches Weinbauinstitut (Germany)",
     homeDomain: "wbi.landwirtschaft-bw.de",
@@ -795,6 +836,10 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   // the CDN's per-customer namespace — NOT by the host. Do not reuse this domain for another source
   // without an equivalent path prefix, or that source can reach every CampusPress blog on the internet.
   { domain: "bpb-us-e1.wpmucdn.com", sourceKey: "cornell-grapes" },
+  // Host of the paid NY/PA Pest Management Guidelines. Trusted so `crawlUrls` will fetch the ONE free
+  // preview PDF in cornell-grape-guide's directUrls — that source's allowPrefixes are empty, so nothing
+  // else on this host is reachable. See the licence/withdrawal posture on the source itself.
+  { domain: "cropandpestguides.cce.cornell.edu", sourceKey: "cornell-grape-guide" },
 
   // Publishers of the specific technical PDFs the Cornell grape site links out to (curated source
   // viticulture-extension-refs). These entries are REQUIRED, not optional: crawlUrls gates every URL on
@@ -891,6 +936,16 @@ export function partitionSeededSources<T extends { key: string }>(
 export const TRUSTED_DOMAIN_SET: ReadonlySet<string> = new Set(
   TRUSTED_DOMAINS.map((d) => d.domain.toLowerCase()),
 );
+
+// SKB Unit 5 — validate every `allowPaths` entry at MODULE LOAD, not at first match.
+//
+// A malformed entry (a missing leading slash, a smuggled query string) would otherwise match nothing
+// forever: the crawl reports success, the source lands with a fraction of its intended articles, and
+// nothing anywhere says why. That is the same silent-underrun shape as the section-filter version bug.
+// Throwing at import is the cheapest place to catch it, and it cannot be skipped.
+for (const source of KNOWLEDGE_SOURCES) {
+  if (source.allowPaths) normalizeAllowPaths(source.allowPaths, source.key);
+}
 
 export function findSourceConfig(key: string): KnowledgeSourceConfig | undefined {
   return KNOWLEDGE_SOURCES.find((s) => s.key === key);

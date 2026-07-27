@@ -4,16 +4,27 @@
 import { gridmetProvider } from "./gridmet";
 import { daymetProvider } from "./daymet";
 import { nasaPowerProvider } from "./nasa-power";
+import { openMeteoArchiveProvider } from "./open-meteo-archive";
 import { rccAcisProvider } from "./rcc-acis";
 import { noaaCdoProvider } from "./noaa-cdo";
 import type { ClimateProvider, CoverageState } from "./types";
 
-/** All daily-series providers (USGS EPQS is elevation-only, not here). */
+/**
+ * All daily-series providers (USGS EPQS is elevation-only, not here).
+ *
+ * ORDER IS LOAD-BEARING within a coverage tier: `providersForLocation` sorts by tier and the sort is
+ * stable, so ties resolve in this array's order. `open_meteo_archive` sits AHEAD of `nasa_power`
+ * because both are GLOBAL_COARSE but only the archive is elevation-downscaled to the site — POWER
+ * reports its cell's mean elevation, which at the Bhutan vineyards is 1.0–1.8 km above the vines
+ * (docs/analysis/bhutan-nasa-power-elevation-bias.md). POWER stays registered as a second source for
+ * the compare-sources view; it is no longer the one the headline speaks in.
+ */
 export const ALL_PROVIDERS: ClimateProvider[] = [
   gridmetProvider,
   rccAcisProvider,
   noaaCdoProvider,
   daymetProvider,
+  openMeteoArchiveProvider,
   nasaPowerProvider,
 ];
 

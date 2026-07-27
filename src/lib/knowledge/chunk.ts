@@ -21,7 +21,7 @@ export interface Chunk {
  * never reaches a single already-indexed document. The failure is silent — the crawl reports success
  * and repairs nothing.
  *
- * v2 (2026-07-26, plan 099 Unit 1): splitIntoSentences replaced a `String.match(/g)` scan that
+ * v2 (2026-07-26, plan 100 Unit 1): splitIntoSentences replaced a `String.match(/g)` scan that
  *                                   silently DELETED text. Every document indexed at v1 whose
  *                                   content took the force-split path is suspect.
  */
@@ -41,17 +41,119 @@ const OVERLAP_TOKENS = 75; // ~15%
  *
  * extract/pdf.ts now caps its own title, but a cap that lives only in one caller is one new extractor
  * away from regressing. 140 sits above the 96-character average of a real HTML breadcrumb in this
- * corpus and well below the 192 that caused the problem. Truncation is on a word boundary with an
- * ellipsis so a clipped breadcrumb reads as clipped rather than as a mangled sentence.
+ * corpus and well below the 192 that caused the problem.
  */
 const MAX_BREADCRUMB_CHARS = 140;
+const CRUMB_SEP = " > ";
+const CRUMB_ELLIPSIS = "…";
 
-export function capBreadcrumb(crumb: string): string {
-  const s = crumb.trim().replace(/\s+/g, " ");
+/**
+ * Plan 099 — the cap alone was not enough, and truncating the tail was the wrong end.
+ *
+ * Cornell's 2025 Grape Guide extracts cleanly (56 real headings, confidence gate passes) yet produced
+ * only 11 distinct breadcrumbs across 77 chunks, 75 of them truncated. The document title is 68 chars
+ * and the PDF's cover title is re-emitted as an H1 saying the same thing minus the year, 63 chars —
+ * 134 of the 140 budget spent twice on one sentence, so the tail truncation ate every real heading and
+ * left `... > 3…`. The chapter number survived; the chapter name did not.
+ *
+ * Two fixes, both pure. Neither is PDF-specific: `TODOS.md` recorded the same failure on IVES HTML,
+ * where the breadcrumb carries the page <title> complete with its ` | Publisher` suffix.
+ *
+ *   1. Drop a heading that merely restates the root title. A leading year is not identity, so
+ *      "2025 X Guidelines" and "X Guidelines" are the same string for this purpose.
+ *   2. Elide from the MIDDLE, never the leaf. The leaf is the most specific segment and the one worth
+ *      embedding; the root names the publication. Keep both, drop what is between them.
+ */
+function crumbKey(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    // Only a LEADING edition year is dropped. Stripping every year would collide
+    // "...Guidelines for Grapes 2024" with "...Guidelines for Grapes 2025" and delete a section whose
+    // year is the only thing distinguishing it.
+    .replace(/^(?:19|20)\d{2}\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * True when `segment` says nothing the root title has not already said.
+ *
+ * Containment is deliberately ONE-DIRECTIONAL: drop only when the ROOT already contains the heading.
+ * The reverse — a heading that CONTAINS the root — is a heading that is *more specific* than the
+ * title ("Pest Management Guidelines for Grapes in the Finger Lakes" under "Pest Management Guidelines
+ * for Grapes"), and dropping it would merge sibling sections onto one breadcrumb. That is the exact
+ * collapse this whole change exists to fix, so testing containment both ways would reintroduce it.
+ *
+ * The word-count floor stops a root containing "pest management" from swallowing a section
+ * legitimately called "Pest".
+ */
+function restatesRoot(segment: string, root: string): boolean {
+  const seg = crumbKey(segment);
+  const rt = crumbKey(root);
+  if (!seg || !rt) return false;
+  if (seg === rt) return true;
+  if (seg.length >= rt.length) return false; // more specific than the title — keep it
+  if (seg.split(" ").length < 4) return false;
+  return rt.includes(seg);
+}
+
+/**
+ * Truncate a single over-long segment on a word boundary, as plan 090 did.
+ * The ellipsis has to come out of the budget, not be appended past it — the pre-plan-099 version
+ * returned MAX + 1 characters for a segment whose first space fell early (a glued token from PDF
+ * extraction, or a German compound).
+ */
+function truncateSegment(s: string): string {
   if (s.length <= MAX_BREADCRUMB_CHARS) return s;
-  const cut = s.slice(0, MAX_BREADCRUMB_CHARS);
+  const budget = MAX_BREADCRUMB_CHARS - CRUMB_ELLIPSIS.length;
+  const cut = s.slice(0, budget);
   const lastSpace = cut.lastIndexOf(" ");
-  return `${(lastSpace > MAX_BREADCRUMB_CHARS * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+  const body = lastSpace > budget * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return `${body.trimEnd()}${CRUMB_ELLIPSIS}`;
+}
+
+/**
+ * Join breadcrumb segments to at most MAX_BREADCRUMB_CHARS, preserving the root and the leaf and
+ * eliding the middle. Segments arrive root-first.
+ */
+export function capBreadcrumbSegments(segments: string[]): string {
+  const parts = segments.map((s) => s.trim().replace(/\s+/g, " ")).filter(Boolean);
+  if (parts.length === 0) return "";
+
+  const full = parts.join(CRUMB_SEP);
+  if (full.length <= MAX_BREADCRUMB_CHARS) return full;
+  if (parts.length === 1) return truncateSegment(parts[0]);
+
+  const root = parts[0];
+  const leaf = parts[parts.length - 1];
+
+  // Root + leaf is the floor for keeping both. If even that does not fit, the leaf wins: it is the
+  // segment that distinguishes this chunk from its siblings.
+  if (`${root}${CRUMB_SEP}${CRUMB_ELLIPSIS}${CRUMB_SEP}${leaf}`.length > MAX_BREADCRUMB_CHARS) {
+    const withEllipsis = `${CRUMB_ELLIPSIS}${CRUMB_SEP}${leaf}`;
+    return withEllipsis.length <= MAX_BREADCRUMB_CHARS ? withEllipsis : truncateSegment(leaf);
+  }
+
+  // Re-add middles closest to the leaf first — the nearer an ancestor is to the leaf, the more it
+  // narrows the meaning.
+  const middles = parts.slice(1, -1);
+  const kept: string[] = [];
+  for (let i = middles.length - 1; i >= 0; i--) {
+    const candidate = [root, ...(i > 0 ? [CRUMB_ELLIPSIS] : []), middles[i], ...kept, leaf];
+    if (candidate.join(CRUMB_SEP).length <= MAX_BREADCRUMB_CHARS) {
+      kept.unshift(middles[i]);
+    } else {
+      return [root, CRUMB_ELLIPSIS, ...kept, leaf].join(CRUMB_SEP);
+    }
+  }
+  return [root, ...kept, leaf].join(CRUMB_SEP);
+}
+
+/** Back-compat string form: split an already-joined breadcrumb and apply the same rules. */
+export function capBreadcrumb(crumb: string): string {
+  return capBreadcrumbSegments(crumb.split(CRUMB_SEP));
 }
 
 export function estimateTokens(s: string): number {
@@ -74,8 +176,13 @@ const isTableRow = (line: string) => /^\s*\|/.test(line);
 function parseSegments(markdown: string, rootTitle: string): Segment[] {
   const lines = markdown.split("\n");
   const stack: { level: number; text: string }[] = [];
+  const root = rootTitle.trim();
+  // A heading that restates the document title is dropped wherever it sits in the stack, leaf included:
+  // the root already carries that text, so nothing is lost and the budget is freed for real sections.
   const breadcrumb = () =>
-    capBreadcrumb([rootTitle.trim(), ...stack.map((h) => h.text)].filter(Boolean).join(" > "));
+    capBreadcrumbSegments(
+      [root, ...stack.map((h) => h.text).filter((h) => !restatesRoot(h, root))].filter(Boolean),
+    );
 
   const segments: Segment[] = [];
   let blocks: Block[] = [];
@@ -131,7 +238,7 @@ const isTerminator = (ch: string) => ch === "." || ch === "!" || ch === "?";
 const isSpace = (ch: string) => /\s/.test(ch);
 
 /**
- * Plan 099 Unit 1 — split text into sentences WITHOUT losing a single character.
+ * Plan 100 Unit 1 — split text into sentences WITHOUT losing a single character.
  *
  * This replaces `text.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g)`, which silently deleted text.
  * Neither alternative of that regex can match a `.` that is not followed by whitespace, and
@@ -207,7 +314,7 @@ export function tailForOverlap(body: string): string {
 }
 
 /**
- * Plan 099 Unit 3b — the standing guard, not a fix for one regex.
+ * Plan 100 Unit 3b — the standing guard, not a fix for one regex.
  *
  * Fixing `splitIntoSentences` closes the bug we found. It does nothing about the next one, and this
  * failure mode is invisible by construction: a corrupted rate is usually still agronomically

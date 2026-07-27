@@ -151,7 +151,7 @@ Later    Export-market MRL checks (council D1 — documented, not built) · on-s
 
 **Dependency edges (council-corrected):**
 `S0←∅` · `S2←∅` · `S2b←S2` · `S3a←∅` · `S3b←S3a` · `S4←∅`
-`S7a←S2,S2b,S3a` · `S8←S2,S2b,S3a` · `S5a←∅` (existing daily weather) · `S1←S0`
+`S7a←S2,S2b,S3a` · `S8←S2,S2b,S3a` · `S5a←∅` (ledger only — the index edge was measured false, Unit 0) · `S1←S0`
 `S5b←S1,S4` · `S6←S1,S2b,S3a,S4` · `S7b←S1,S2b,S3a,S4`
 `S9←S5a,S5b,S6,S7a,S7b` · `S10←S9,S3b` · `S11←S9` · `SKB←∅`
 
@@ -302,7 +302,7 @@ cellar as a residue flag — a thing no incumbent can do, because no incumbent o
 | S4 phenology + growth | 1D | 🟩 shipped | [S4 plan v2](phases/S4-phenology-growth-model-plan.md) | [S4 council](phases/S4-council-feedback.md) | [#521](https://github.com/russellmoss/wine-inventory/pull/521) · [#526](https://github.com/russellmoss/wine-inventory/pull/526) · [#529](https://github.com/russellmoss/wine-inventory/pull/529) | [S4 QA](qa/S4-qa-report.md) ✅ | [S4 report](phases/S4-report.md) |
 | S7a legality + rotation | 2A | ⬜ not started | — | — | — | — | — |
 | S8 lot residue crossover | 2B | ⬜ not started | — | — | — | — | — |
-| S5a powdery index + latent ledger | 2C | ⬜ not started | — | — | — | — | — |
+| S5a powdery index + latent ledger | 2C | 🟩 **ledger SHIPPED + live in prod; index NO-GO** (MERGED 2026-07-27; Unit 0 gate fired — all 8 sites failed, so Units 3–4 are CANCELLED and the index moves to S5b behind S1, which is now load-bearing for powdery. Ledger verified: `verify:latent-infection` 43 assertions, `verify:tenant-isolation` +6 cases, SPRAY-7. Migration applied to prod.) | [S5a plan v2](phases/S5a-powdery-index-latent-ledger-plan.md) | [S5a council](phases/S5a-council-feedback.md) | [#537](https://github.com/russellmoss/wine-inventory/pull/537) | browser QA n/a — no UI yet (S9 owns presentation) | [S5a report](phases/S5a-report.md) · [Unit 0 probe](phases/S5a-diurnal-fidelity-probe.md) |
 | S1 hourly weather + LWD | 2D | ⬜ not started | — | — | — | — | — |
 | S5b hourly pathogens | 3A | ⬜ not started | — | — | — | — | — |
 | S6 protection budget | 3B | ⬜ not started | — | — | — | — | — |
@@ -310,7 +310,7 @@ cellar as a residue flag — a thing no incumbent can do, because no incumbent o
 | S9 decision record | 4 | ⬜ not started | — | — | — | — | — |
 | S10 planner surface | 5A | ⬜ not started | — | — | — | — | — |
 | S11 assistant tools | 5B | ⬜ not started | — | — | — | — | — |
-| SKB knowledge sources | anytime | ⬜ not started | — | — | — | — | — |
+| SKB knowledge sources | anytime | 🟨 **building — PR 1 (U1–U3) + U5 SHIPPED, 4 of 11 units** (the boundary is REAL, so the source units are unblocked). **KB-1**: a product→fact table never reaches the corpus for an enforcing source — detector on **raw HTML / PDF pre-chunk lines, never post-extraction text**; gate **inline in `index-documents.ts`, before extraction AND before the idempotency short-circuit**, signalling by returned field, **never a throw** (tombstone hazard); `uncertain` **skips for enforcing, is counted for report-only**. Enforcement is the DEFAULT; incumbents are a frozen report-only census whose **deletion** closes D3. **`search_knowledge_base` refuses the legality VERDICT, not the query** (handler-level classifier + rule 9; 12 negative cases against caveat fatigue). `allowPaths` exact-path primitive. **QA: 4 defects found, 3 invisible to unit tests** — detector vs 10 REAL pages 6/10→8/10 (markup density beat the header window; VT's **29-row** efficacy table read as prose), and `verify:kb-boundary`'s first run found **`virginia-fruit`: 69 docs / 260 chunks / `defaultEnabled=true` / NO config entry, silently ENFORCING**. 🔴 **Two findings that change the remaining plan: (1) `virginia-fruit` IS `virginiafruit.ento.vt.edu`, so U7 is a RECONCILIATION not a greenfield add and needs rewriting; (2) `uc-ipm` — a tier-1 INCUMBENT — carries tier-C product×rate×REI/PHI tables TODAY (D3 floor = 19, a severe under-count).** ⚠️ Still open: no region dimension in retrieval while MMR λ 0.7 rewards cross-regional mixing (U9 gates the flip); U4 + U6–U11 all need `.env` / a live crawl / an operator-gated probe | [SKB plan](phases/SKB-knowledge-sources-plan.md) | [SKB council](phases/SKB-council-feedback.md) | [#538](https://github.com/russellmoss/wine-inventory/pull/538) | [SKB QA](qa/SKB-qa-report.md) | — |
 
 Statuses: ⬜ not started → 🟦 planning → 🟨 building → 🟪 QA → 🟩 shipped.
 Update at every transition; link the plan, council feedback, PR(s), QA report, and phase report.
@@ -664,20 +664,48 @@ removes the flag** (rule §3.14 propagation); tenant-configurable thresholds; **
 
 ### S5a — Powdery-mildew index and the latent-infection ledger (Wave 2, lane C)
 
-Scope: **Gubler-Thomas is temperature-only and buildable on today's daily data via diurnal
-reconstruction** — ship it first as the program's modeling proof, with no dependency on S1. Plus the
-**append-only latent-infection ledger**: an infection event recorded with its pathogen-specific
-incubation window, so a clean scouting pass does not clear a black rot event from fourteen days ago.
-The ledger is built here as the foundation every S5b pathogen plugs into.
+⛔ **CORRECTED 2026-07-26 by the S5a Unit 0 measurement. The original scope line below was wrong on
+both of its claims, and it is struck rather than edited so the correction is visible.**
 
-Also: land `query_spray_decision` **thin**, per §5 — and it **must hard-refuse decision questions
-until S7a and S9 exist.**
+> ~~Scope: **Gubler-Thomas is temperature-only and buildable on today's daily data via diurnal
+> reconstruction** — ship it first as the program's modeling proof, with no dependency on S1.~~
 
-**Gate:** Gubler-Thomas goldens on a committed fixture series; the incubation ledger keeps an event
-open across a clean scout; "scout not diagnose" enforced by copy tests; **the index degrades to
-*unknown* (never *low*) when inputs are missing — a dry forecast must never produce "low powdery
-risk"**; the thin tool proven to refuse a "should I spray" question; NEWA comparison recorded as a
-validation oracle where a NEWA station is near a Demo block; **QA report**.
+Two corrections, one from S0 and one measured here:
+
+1. **"Temperature-only" is wrong as a description of the disease** (S0's §7.1 correction). Primary
+   ascospore release requires **wetness**, and liquid water **suppresses** secondary powdery mildew
+   by bursting conidia. A wetness-blind model can recommend spraying into conditions that are
+   already suppressing the pathogen. Gubler-Thomas's *Phase 2* is temperature-only; its *Phase 1*
+   season initiation is not, and the index cannot legitimately self-start without it. Powdery also
+   overwinters as dormant bud mycelium emerging as **flag shoots**, which need no wetness at all —
+   so a biofix gated only on ascospores is a silent false negative.
+2. **"Buildable on today's daily data via diurnal reconstruction" is now MEASURED FALSE.**
+   [S5a Unit 0](phases/S5a-diurnal-fidelity-probe.md) reconstructed hourly curves (Felber et al.
+   2018) from stored daily Tmin/Tmax and scored the resulting Gubler-Thomas point deltas against
+   **genuine station hourly METAR** over six seasons at eight sites. **Every site failed the
+   pre-committed gate.** Consecutive-hours-in-band MAE is 2.2–3.4 h against a rule thresholded at
+   **6 h**; the unsafe-miss rate (model under-calls a real epidemic) breaches its 2% bar at six of
+   eight sites, worst 13.6% at Madera. A sawtooth control performs comparably, and our sites violate
+   the model's shape assumptions far *less* than the sites it was calibrated on — so the failure is
+   structural to the metric, not fixable by a better estimator.
+
+**Revised S5a scope (what actually ships):** the **append-only latent-infection ledger** — an
+infection event recorded with its pathogen-specific resolution rule, its host organ, and its two
+projected transitions, so a clean scouting pass does not clear a black rot event from fourteen days
+ago. The ledger never depended on the index and is the durable half. Plus
+`query_spray_decision` **thin**, per §5, which **must hard-refuse decision questions until S7a and
+S9 exist** — with no index it simply refuses more, which is honest, not degraded.
+
+**The powdery index moves to S5b, behind S1.** S1 is therefore load-bearing for powdery mildew and
+not only for leaf wetness — a dependency edge the original plan did not have. Note this failure does
+**not** split by regime the way ADR 0012's did: the best station oracle in the fleet (Russian River,
+3.7 km) scored *worse* than a 9.8 km one, so there is no subset of sites to narrow to.
+
+**Gate (revised):** the incubation ledger keeps an event open across a clean scout; a `DELETE` is
+refused and a retried command inserts exactly once; `infectiousExpectedAt` provably uses the
+**short** latent bound and the event close the **long** one; "scout not diagnose" enforced by copy
+tests; the thin tool proven to refuse a "should I spray" question; RLS/tenant-isolation green
+through the pooled endpoint; **QA report**.
 
 ### S1 — Hourly weather, humidity, and leaf wetness (Wave 2, lane D)
 

@@ -1,7 +1,7 @@
-# Council Feedback — Plan 099: KB text integrity + PNW Handbooks
+# Council Feedback — Plan 100: KB text integrity + PNW Handbooks
 
 **Date:** 2026-07-26
-**Plan:** `docs/plans/2026-07-26-099-fix-kb-text-integrity-and-pnw-handbooks-plan.md`
+**Plan:** `docs/plans/2026-07-26-100-fix-kb-text-integrity-and-pnw-handbooks-plan.md`
 **Reviewers:** Codex `gpt-5.4` (correctness, types, data layer) · Gemini `gemini-3.1-pro-preview` (domain, data quality, retrieval)
 
 Both reviewers found real defects. Nine findings change the plan materially, two of them change a

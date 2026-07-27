@@ -62,7 +62,7 @@ export function shouldApplySectionFilter(contentType: string, sourceKey?: string
   return resolveSectionFilter(contentType, sourceKey) !== null;
 }
 
-/** The strategies a source may declare. PR C (plan 099 Unit 7) adds "body-heading" to this union. */
+/** The strategies a source may declare. PR C (plan 100 Unit 7) adds "body-heading" to this union. */
 export type SectionFilterStrategy = "anchor-heading";
 
 export interface SectionFilterResolution {
@@ -71,7 +71,7 @@ export interface SectionFilterResolution {
 }
 
 /**
- * Plan 099 Unit 1b — resolve WHICH filter strategy applies, not merely whether one does.
+ * Plan 100 Unit 1b — resolve WHICH filter strategy applies, not merely whether one does.
  *
  * A boolean cannot distinguish two strategies, so a source switching from one to another would
  * produce the same index hash and wrongly short-circuit as "unchanged" — silently keeping the old
@@ -130,7 +130,7 @@ export interface IndexHashInput {
   /**
    * Hash of the RAW FETCHED BYTES. Never of filtered or extracted output.
    *
-   * Plan 099 Unit 1b, and this is the part that is easy to get wrong. Once the section filter runs
+   * Plan 100 Unit 1b, and this is the part that is easy to get wrong. Once the section filter runs
    * before the boundary gate (PR C), it is tempting to fingerprint what survives filtering, since
    * that is what actually gets indexed. Doing so makes every change inside a DROPPED section
    * invisible: the filtered projection is unchanged, the hash matches, the crawl reports
@@ -166,7 +166,7 @@ export function deriveIndexHash(input: IndexHashInput): string {
   // this a PDF's index hash was the bare content hash and NO extractor improvement could ever force a
   // re-index of unchanged bytes. See PDF_EXTRACT_VERSION for the full note.
   if (input.isPdf) parts.push(`pdf:${PDF_EXTRACT_VERSION}`);
-  // Plan 099 Unit 1b — unconditional, unlike the two above. EVERY document is chunked, so a chunker
+  // Plan 100 Unit 1b — unconditional, unlike the two above. EVERY document is chunked, so a chunker
   // fix must be able to reach every document; gating this on some other condition is exactly how the
   // v1 text-loss bug would have survived its own fix.
   parts.push(`ck:${input.chunkerVersion ?? CHUNKER_VERSION}`);
