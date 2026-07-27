@@ -161,6 +161,28 @@ describe("boundary audit — the exit-code arithmetic", () => {
     expect(psu.prose).toBe(0);
   });
 
+  it("empty on an enforcing source is NOT a hit - the gate cleared its chunks, which is success, not a leak", () => {
+    // The scenario this guards: index-documents.ts inline gate fires, deletes the documents
+    // chunks, and returns skipped: "product-table" while leaving the document row in place. A live
+    // re-fetch of the same raw page will re-detect the same table shape (identical pure function,
+    // identical bytes) - auditLive must never run that re-fetch in the first place for a document
+    // with zero stored chunks, because flagging it would report the gate catching a table as the
+    // gate LEAKING one.
+    const s = summarizeBoundaryAudit([row("extension-psu", "empty")]);
+    expect(s.exitCode).toBe(0);
+    expect(s.enforcingHits).toEqual([]);
+    expect(s.enforcingUnaudited).toEqual([]);
+    const psu = s.perSource.find((p) => p.sourceKey === "extension-psu")!;
+    expect(psu.empty).toBe(1);
+    expect(psu.productTable).toBe(0);
+    expect(psu.unaudited).toBe(0);
+  });
+
+  it("empty on a report-only source is not counted toward the D3 flagged number", () => {
+    const s = summarizeBoundaryAudit([row("uc-ipm", "empty")]);
+    expect(s.reportOnlyFlagged).toBe(0);
+  });
+
   it("tallies per source, with the mode attached", () => {
     const s = summarizeBoundaryAudit([
       row("uc-ipm", "prose", 1),
