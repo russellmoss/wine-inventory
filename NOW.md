@@ -1016,8 +1016,9 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
-- **🧵 TANGENT (2026-07-27, branch `claude/grape-guide-pdf-kb-87c8d8`) — Cornell NY/PA Grape Guide as a
-  KB source + the breadcrumb defect it exposed. Plan 099, code BUILT and green, NOT yet PR'd or crawled.**
+- **🧵 TANGENT (2026-07-27) — Cornell NY/PA Grape Guide as a KB source + the breadcrumb defect it
+  exposed. Plan 099, [PR #543](https://github.com/russellmoss/wine-inventory/pull/543) OPEN. Code green;
+  NOT merged, NOT seeded, NOT crawled.**
   Owner asked to ingest the [2025 Grape Guide preview PDF](https://cropandpestguides.cce.cornell.edu/Preview/2025/2025_Grape_Guide_Preview.pdf).
   **Three blockers were surfaced and the owner decided to proceed anyway (2026-07-27):** plan 087 lists
   that host as "paid. Do not crawl." (the *unreachable* half of that note is stale — it serves 200); the
