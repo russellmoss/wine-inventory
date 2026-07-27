@@ -187,10 +187,13 @@ describe("allowPathsMatch — the matcher in isolation", () => {
 });
 
 describe("no incumbent source's behaviour changed", () => {
-  it("no source registered before SKB declares allowPaths", () => {
-    // If this ever fails it is because a source adopted the mechanism — fine, but then the blast
-    // radius of a path-match change is no longer "SKB sources only" and the claim above is stale.
+  it("only SKB sources declare allowPaths — a pre-SKB incumbent adopting it is a deliberate, reviewed change", () => {
+    // extension-psu (SKB Unit 6) and virginia-fruit (SKB Unit 7 — added AFTER the reconciliation
+    // found a live --follow crawl under allowPrefixes:["/"] pulling in off-topic sibling-program
+    // content) are both expected adopters, exactly as designed — the flat-slug/whole-host scoping
+    // problem allowPaths exists to solve. If this list grows further, that is fine, but it means the
+    // blast radius of a path-match change is no longer "SKB sources only" and this comment is stale.
     const adopters = KNOWLEDGE_SOURCES.filter((s) => s.allowPaths?.length).map((s) => s.key);
-    expect(adopters).toEqual([]);
+    expect(adopters).toEqual(["extension-psu", "virginia-fruit"]);
   });
 });

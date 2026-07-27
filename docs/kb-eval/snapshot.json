@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-27T11:45:41.359Z",
+  "capturedAt": "2026-07-27T16:41:51.705Z",
   "entries": [
     {
       "query": "What is a good pre-infection fungicide I can use for downy mildew?",
@@ -49,23 +49,13 @@
           "publisher": "Wine Australia",
           "tier": 1,
           "canonicalUrl": "https://www.wineaustralia.com/getmedia/80ce4f86-58ba-4bfd-9720-a203982c0399/201012-Downy-Mildew-QA?ext=.pdf",
-          "sectionPath": "Downy Mildew > Downy Mildew > Questions and Answers > Q 17.: How can I tell when to spray,",
-          "publishedAt": "2010-12-06",
-          "dateSource": "published",
-          "textHash": "21d074e9d821"
-        },
-        {
-          "rank": 6,
-          "publisher": "Wine Australia",
-          "tier": 1,
-          "canonicalUrl": "https://www.wineaustralia.com/getmedia/80ce4f86-58ba-4bfd-9720-a203982c0399/201012-Downy-Mildew-QA?ext=.pdf",
           "sectionPath": "Downy Mildew > Downy Mildew > Questions and Answers > Q 9.: Are the different pre-infection (protectant)",
           "publishedAt": "2010-12-06",
           "dateSource": "published",
           "textHash": "813eefa4091b"
         },
         {
-          "rank": 7,
+          "rank": 6,
           "publisher": "Wine Australia",
           "tier": 1,
           "canonicalUrl": "https://www.wineaustralia.com/getmedia/80ce4f86-58ba-4bfd-9720-a203982c0399/201012-Downy-Mildew-QA?ext=.pdf",
@@ -75,7 +65,7 @@
           "textHash": "66e2ebb42ad3"
         },
         {
-          "rank": 8,
+          "rank": 7,
           "publisher": "Wine Australia",
           "tier": 1,
           "canonicalUrl": "https://www.wineaustralia.com/getmedia/80ce4f86-58ba-4bfd-9720-a203982c0399/201012-Downy-Mildew-QA?ext=.pdf",
@@ -83,6 +73,16 @@
           "publishedAt": "2010-12-06",
           "dateSource": "published",
           "textHash": "6a57bcfbc427"
+        },
+        {
+          "rank": 8,
+          "publisher": "UC IPM (UC Agriculture & Natural Resources)",
+          "tier": 1,
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/downy-mildew",
+          "sectionPath": "Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Management",
+          "publishedAt": "2015-07-01",
+          "dateSource": "published",
+          "textHash": "48f5b741ccb9"
         }
       ]
     },
@@ -107,30 +107,50 @@
           "sectionPath": "GRAPE DISEASE CONTROL, 2018 Bryan Hed, Department of Plant Pathology and Environmental Microbiology, Penn Stat",
           "publishedAt": "2018-05-17",
           "dateSource": "published",
-          "textHash": "4448d1b3cd7d"
+          "textHash": "3a76061c100c"
         },
         {
           "rank": 3,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
-          "sectionPath": "Strobilurin resistance to powdery mildew in a vineyard > Strobilurin resistance to powdery > The strobilurin group of fungicides has been…",
+          "sectionPath": "Strobilurin resistance to powdery mildew in a vineyard > … > Where to from here?",
           "publishedAt": "2018-08-14",
           "dateSource": "published",
-          "textHash": "84e11cbe4687"
+          "textHash": "f7d79f37fd25"
         },
         {
           "rank": 4,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
-          "sectionPath": "Strobilurin resistance to powdery mildew in a vineyard > Strobilurin resistance to powdery > The strobilurin group of fungicides has been…",
+          "sectionPath": "… > The strobilurin group of fungicides has been registered for control of powdery and downy mildews for",
           "publishedAt": "2018-08-14",
           "dateSource": "published",
-          "textHash": "6f11c22c9ef4"
+          "textHash": "641f0cf125a2"
         },
         {
           "rank": 5,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
+          "sectionPath": "Grape Disease Control, Spring 2021 > Early Season Grape Diseases",
+          "publishedAt": "2021-04-13",
+          "dateSource": "published",
+          "textHash": "bff1fcd546e4"
+        },
+        {
+          "rank": 6,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
+          "sectionPath": "Strobilurin resistance to powdery mildew in a vineyard > … > How does strobilurin resistance",
+          "publishedAt": "2018-08-14",
+          "dateSource": "published",
+          "textHash": "dfab1b7b648a"
+        },
+        {
+          "rank": 7,
           "publisher": "Wine Australia",
           "tier": 1,
           "canonicalUrl": "https://www.wineaustralia.com/getmedia/664857fa-048b-499d-ba17-2a16a8cd240f/201012-Powdery-Mildew-QA?ext=.pdf",
@@ -140,34 +160,14 @@
           "textHash": "ac9d2e216581"
         },
         {
-          "rank": 6,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
-          "sectionPath": "Strobilurin resistance to powdery mildew in a vineyard > Strobilurin resistance to powdery > The strobilurin group of fungicides has been…",
-          "publishedAt": "2018-08-14",
-          "dateSource": "published",
-          "textHash": "397cb377aae1"
-        },
-        {
-          "rank": 7,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
-          "sectionPath": "Strobilurin resistance to powdery mildew in a vineyard > Strobilurin resistance to powdery > The strobilurin group of fungicides has been…",
-          "publishedAt": "2018-08-14",
-          "dateSource": "published",
-          "textHash": "745f5ccb119e"
-        },
-        {
           "rank": 8,
-          "publisher": "Cornell Fruit Resources: Grapes",
+          "publisher": "AWRI",
           "tier": 1,
-          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
-          "sectionPath": "Grape Disease Control, Spring 2021 > Grape Disease Control, Spring 2021 > Designing a Robust Spray Program",
-          "publishedAt": "2021-04-13",
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
+          "sectionPath": "Strobilurin resistance to powdery mildew in a vineyard > … > How do I know if I’m near tipping",
+          "publishedAt": "2018-08-14",
           "dateSource": "published",
-          "textHash": "3b643d959516"
+          "textHash": "cc38840dc7d9"
         }
       ]
     },
@@ -254,9 +254,7 @@
           "dateSource": "published",
           "textHash": "a259f9a407b1"
         }
-      ],
-      "unstable": true,
-      "observedProfiles": 2
+      ]
     },
     {
       "query": "What is the most effective way to sanitize barrels against Brett?",
@@ -296,10 +294,10 @@
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/10/s2117.pdf",
-          "sectionPath": "What does the latest research say about barrel sanitation against Brett? > What does the latest research",
+          "sectionPath": "What does the latest research say about barrel sanitation against Brett?",
           "publishedAt": "2019-10-14",
           "dateSource": "published",
-          "textHash": "3603e147ffa2"
+          "textHash": "8afe42725303"
         },
         {
           "rank": 5,
@@ -315,14 +313,24 @@
           "rank": 6,
           "publisher": "AWRI",
           "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/10/s2117.pdf",
-          "sectionPath": "What does the latest research say about barrel sanitation against Brett? > What does the latest research",
-          "publishedAt": "2019-10-14",
+          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/storage-and-packaging/packaging-operations/barrel-cleaning-storage-and-maintenance/",
+          "sectionPath": "Cleaning, storage and maintenance of barrels > Specialist treatments",
+          "publishedAt": "2020-04-09",
           "dateSource": "published",
-          "textHash": "6afc09cc51c0"
+          "textHash": "d03a8ce1754f"
         },
         {
           "rank": 7,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/10/s2117.pdf",
+          "sectionPath": "What does the latest research say about barrel sanitation against Brett?",
+          "publishedAt": "2019-10-14",
+          "dateSource": "published",
+          "textHash": "94f07b2bdcbb"
+        },
+        {
+          "rank": 8,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/10/s2117.pdf",
@@ -330,16 +338,6 @@
           "publishedAt": "2019-10-14",
           "dateSource": "published",
           "textHash": "1cd130d37f18"
-        },
-        {
-          "rank": 8,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/storage-and-packaging/packaging-operations/barrel-cleaning-storage-and-maintenance/",
-          "sectionPath": "Cleaning, storage and maintenance of barrels > Specialist treatments",
-          "publishedAt": "2020-04-09",
-          "dateSource": "published",
-          "textHash": "d03a8ce1754f"
         }
       ]
     },
@@ -350,24 +348,14 @@
           "rank": 1,
           "publisher": "AWRI",
           "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/wine_fermentation/yan/",
-          "sectionPath": "Yeast Assimilable Nitrogen (YAN) > Recommended YAN levels in grapes/musts/juices",
-          "publishedAt": "2011-06-02",
-          "dateSource": "published",
-          "textHash": "97f434876a83"
-        },
-        {
-          "rank": 2,
-          "publisher": "AWRI",
-          "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/tn-tr175.pdf",
           "sectionPath": "175 Technical Review June 2008",
           "publishedAt": "2008-08-14",
           "dateSource": "published",
-          "textHash": "1db7416afeed"
+          "textHash": "8530d194cb4a"
         },
         {
-          "rank": 3,
+          "rank": 2,
           "publisher": "Scott Laboratories",
           "tier": 2,
           "canonicalUrl": "https://scottlab.com/content/files/documents/handbooks/rev/scott%20laboratories%202025-2026%20winemaking%20handbook%20aug.pdf",
@@ -375,6 +363,16 @@
           "publishedAt": "2025-08-06",
           "dateSource": "published",
           "textHash": "189f0c3a708a"
+        },
+        {
+          "rank": 3,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/wine_fermentation/yan/",
+          "sectionPath": "Yeast Assimilable Nitrogen (YAN) > Recommended YAN levels in grapes/musts/juices",
+          "publishedAt": "2011-06-02",
+          "dateSource": "published",
+          "textHash": "97f434876a83"
         },
         {
           "rank": 4,
@@ -398,6 +396,16 @@
         },
         {
           "rank": 6,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2024/09/Aromella.pdf",
+          "sectionPath": "‘Aromella’",
+          "publishedAt": "2013-01-28",
+          "dateSource": "published",
+          "textHash": "a3f6d1359c90"
+        },
+        {
+          "rank": 7,
           "publisher": "Virginia Tech Enology",
           "tier": 1,
           "canonicalUrl": "https://enology.fst.vt.edu/EN/141.html",
@@ -407,24 +415,14 @@
           "textHash": "282726e91a1b"
         },
         {
-          "rank": 7,
-          "publisher": "Oregon Wine Research Institute (OSU)",
-          "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/vd66w7932",
-          "sectionPath": "VitEnoTechNwsltr-mar2016-Danielle Fianl > Viticulture & Enology > Viticulture & Enology > Oregon Wine Research Institute—Viticulture &…",
-          "publishedAt": "2016-04-04",
-          "dateSource": "published",
-          "textHash": "245ae67d634d"
-        },
-        {
           "rank": 8,
-          "publisher": "Virginia Tech Enology",
+          "publisher": "AWRI",
           "tier": 1,
-          "canonicalUrl": "https://enology.fst.vt.edu/EN/159.html",
-          "sectionPath": "",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "61745bd668e2"
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/drought_response.pdf",
+          "sectionPath": "AWRI drought response advice 070214",
+          "publishedAt": "2007-02-15",
+          "dateSource": "published",
+          "textHash": "6bbb0efcc79d"
         }
       ]
     },
@@ -445,14 +443,24 @@
           "rank": 2,
           "publisher": "AWRI",
           "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/05/s2008.pdf",
+          "sectionPath": "Understanding whole-bunch fermentation",
+          "publishedAt": "2018-05-24",
+          "dateSource": "published",
+          "textHash": "7f3e9e2960e0"
+        },
+        {
+          "rank": 3,
+          "publisher": "AWRI",
+          "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/06/Technical_Review_Issue_234_Godden.pdf",
           "sectionPath": "234 Technical Review June 2018",
           "publishedAt": "2018-06-01",
           "dateSource": "published",
-          "textHash": "04b00e851c28"
+          "textHash": "fb9b790a7b7d"
         },
         {
-          "rank": 3,
+          "rank": 4,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/winemaking-practices/winemaking-treatment-whole-bunch-fermentation/",
@@ -460,16 +468,6 @@
           "publishedAt": "2019-01-18",
           "dateSource": "published",
           "textHash": "c606dca246a9"
-        },
-        {
-          "rank": 4,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/05/s2008.pdf",
-          "sectionPath": "Understanding whole-bunch fermentation",
-          "publishedAt": "2018-05-24",
-          "dateSource": "published",
-          "textHash": "e642dac7b5f9"
         },
         {
           "rank": 5,
@@ -524,7 +522,7 @@
           "sectionPath": "Fact Sheet > 24/12, please let",
           "publishedAt": "2020-03-06",
           "dateSource": "published",
-          "textHash": "d9bf744e2893"
+          "textHash": "b8394976661f"
         },
         {
           "rank": 2,
@@ -540,16 +538,6 @@
           "rank": 3,
           "publisher": "AWRI",
           "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/05/s2080.pdf",
-          "sectionPath": "Getting proactive about protein > Getting proactive about protein > Heat tests and bentonite fining are common practices across the…",
-          "publishedAt": "2019-04-15",
-          "dateSource": "published",
-          "textHash": "f99bc4ca7244"
-        },
-        {
-          "rank": 4,
-          "publisher": "AWRI",
-          "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/heat_stab",
           "sectionPath": "Measuring heat stability of wine > Heat test",
           "publishedAt": "2011-06-02",
@@ -557,14 +545,24 @@
           "textHash": "4baf95f2ff81"
         },
         {
-          "rank": 5,
+          "rank": 4,
           "publisher": "AWRI",
           "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/heat_stab/",
+          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/heat_stab",
           "sectionPath": "Measuring heat stability of wine > Additional resources",
           "publishedAt": "2011-06-02",
           "dateSource": "published",
           "textHash": "c4ffd6523476"
+        },
+        {
+          "rank": 5,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/05/s2080.pdf",
+          "sectionPath": "Getting proactive about protein > Heat tests and bentonite fining are common practices across the winemaking world. Recent",
+          "publishedAt": "2019-04-15",
+          "dateSource": "published",
+          "textHash": "138b615b23c5"
         },
         {
           "rank": 6,
@@ -590,11 +588,11 @@
           "rank": 8,
           "publisher": "AWRI",
           "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/heat_stab/",
-          "sectionPath": "Measuring heat stability of wine > Heat test",
-          "publishedAt": "2011-06-02",
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2020/03/protein-stability-fact-sheet.pdf",
+          "sectionPath": "Fact Sheet > 24/12, please let > Protein stability",
+          "publishedAt": "2020-03-06",
           "dateSource": "published",
-          "textHash": "4baf95f2ff81"
+          "textHash": "b612e4bba1af"
         }
       ]
     },
@@ -616,13 +614,23 @@
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-grape-juice-with-activated-carbon.pdf",
-          "sectionPath": "Fact Sheet > 24/12, please let me > Treating smoke-affected grape juice with activated carbon > Performance differences among different…",
+          "sectionPath": "Fact Sheet > … > Treating smoke-affected grape juice with activated carbon > Performance differences among different carbon products",
           "publishedAt": "2024-11-28",
           "dateSource": "published",
-          "textHash": "43fba3cbd44b"
+          "textHash": "7509e9a88874"
         },
         {
           "rank": 3,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-wine-with-activated-carbon.pdf",
+          "sectionPath": "Fact Sheet > Treating smoke-affected wine with activated carbon > Assessing performance",
+          "publishedAt": "2024-11-28",
+          "dateSource": "published",
+          "textHash": "d1d7ccf8b226"
+        },
+        {
+          "rank": 4,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-grape-juice-with-activated-carbon.pdf",
@@ -632,7 +640,7 @@
           "textHash": "b07159ab5d3d"
         },
         {
-          "rank": 4,
+          "rank": 5,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2022/06/Treating-smoke-affected-wine-with-nanofiltration.pdf",
@@ -642,37 +650,17 @@
           "textHash": "da342a041334"
         },
         {
-          "rank": 5,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-wine-with-activated-carbon.pdf",
-          "sectionPath": "Fact Sheet > Treating smoke-affected wine with activated carbon > Assessing performance",
-          "publishedAt": "2024-11-28",
-          "dateSource": "published",
-          "textHash": "1eb4f6dff456"
-        },
-        {
           "rank": 6,
           "publisher": "AWRI",
           "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-wine-with-activated-carbon.pdf",
-          "sectionPath": "Fact Sheet > Treating smoke-affected wine with activated carbon > Assessing performance",
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-grape-juice-with-activated-carbon.pdf",
+          "sectionPath": "Fact Sheet > … > Impact of carbon treatment of juice on sensory characteristics of wine",
           "publishedAt": "2024-11-28",
           "dateSource": "published",
-          "textHash": "402448abda94"
+          "textHash": "f0d486a1ecbb"
         },
         {
           "rank": 7,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-grape-juice-with-activated-carbon.pdf",
-          "sectionPath": "Fact Sheet > 24/12, please let me > Treating smoke-affected grape juice with activated carbon > Impact of carbon treatment of juice on…",
-          "publishedAt": "2024-11-28",
-          "dateSource": "published",
-          "textHash": "9afb6f9e55d9"
-        },
-        {
-          "rank": 8,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-wine-with-activated-carbon.pdf",
@@ -680,6 +668,16 @@
           "publishedAt": "2024-11-28",
           "dateSource": "published",
           "textHash": "91267527c1d8"
+        },
+        {
+          "rank": 8,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-wine-with-activated-carbon.pdf",
+          "sectionPath": "Fact Sheet > Treating smoke-affected wine with activated carbon > Assessing performance",
+          "publishedAt": "2024-11-28",
+          "dateSource": "published",
+          "textHash": "cb454f3fcacd"
         }
       ]
     },
@@ -813,6 +811,16 @@
         },
         {
           "rank": 5,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2023/12/s2383-smoke-research.pdf",
+          "sectionPath": "Recent smoke research and what it means for industry",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "35b8af77d9c0"
+        },
+        {
+          "rank": 6,
           "publisher": "OSU Extension (Oregon State University)",
           "tier": 1,
           "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-9253-impact-smoke-exposure-wine",
@@ -820,16 +828,6 @@
           "publishedAt": "2019-08-27",
           "dateSource": "published",
           "textHash": "00b908e749a9"
-        },
-        {
-          "rank": 6,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2023/12/s2383-smoke-research.pdf",
-          "sectionPath": "Recent smoke research and what it means for industry > Recent smoke research and what it",
-          "publishedAt": null,
-          "dateSource": "unknown",
-          "textHash": "63cf56202230"
         },
         {
           "rank": 7,
@@ -843,13 +841,13 @@
         },
         {
           "rank": 8,
-          "publisher": "ETS Laboratories",
-          "tier": 2,
-          "canonicalUrl": "https://www.etslabs.com/publications/publication/2",
-          "sectionPath": "Smoke Impact in Grapes and Wine > Smoke Impact",
-          "publishedAt": "2026-01-01",
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/smoke_effect_in_grapes_and_wine.pdf",
+          "sectionPath": "Smoke effect info for MR",
+          "publishedAt": "2011-11-29",
           "dateSource": "published",
-          "textHash": "0ab49ea89499"
+          "textHash": "9c342ca387cd"
         }
       ]
     },
@@ -910,16 +908,6 @@
           "rank": 6,
           "publisher": "OSU Extension (Oregon State University)",
           "tier": 1,
-          "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-8985-field-monitoring-leafroll-virus-mealybug-pacific-northwest-vineyards",
-          "sectionPath": "Field Monitoring for Leafroll Virus and Mealybug in Pacific Northwest Vineyards > Introduction",
-          "publishedAt": "2014-12-18",
-          "dateSource": "published",
-          "textHash": "dda2651a3281"
-        },
-        {
-          "rank": 7,
-          "publisher": "OSU Extension (Oregon State University)",
-          "tier": 1,
           "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-9092-distribution-monitoring-grape-mealybug-key-vector-grapevine-leafroll-disease-oregon",
           "sectionPath": "Distribution and Monitoring of Grape Mealybug: A Key Vector of Grapevine Leafroll Disease in Oregon > For more information",
           "publishedAt": "2014-12-18",
@@ -927,16 +915,28 @@
           "textHash": "680ee8ac810f"
         },
         {
-          "rank": 8,
-          "publisher": "PNW Pest Management Handbooks (OSU / WSU / UI Extension)",
+          "rank": 7,
+          "publisher": "OSU Extension (Oregon State University)",
           "tier": 1,
-          "canonicalUrl": "https://pnwhandbooks.org/insect/small-fruit/grape/grape-mealybug",
-          "sectionPath": "",
-          "publishedAt": "2026-04-30",
-          "dateSource": "last-modified",
-          "textHash": "6a84c84d4315"
+          "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-8985-field-monitoring-leafroll-virus-mealybug-pacific-northwest-vineyards",
+          "sectionPath": "Field Monitoring for Leafroll Virus and Mealybug in Pacific Northwest Vineyards > Introduction",
+          "publishedAt": "2014-12-18",
+          "dateSource": "published",
+          "textHash": "dda2651a3281"
+        },
+        {
+          "rank": 8,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/j098zk18c",
+          "sectionPath": "OSU Wine and Grape Research and Extension Newsletter > Determining vine leafroll distribution",
+          "publishedAt": "2010-12-08",
+          "dateSource": "published",
+          "textHash": "67ccd8ddaa75"
         }
-      ]
+      ],
+      "unstable": true,
+      "observedProfiles": 2
     },
     {
       "query": "How much sugar do I add at tirage to reach the right bottle pressure in méthode champenoise sparkling wine?",
@@ -956,30 +956,30 @@
           "publisher": "Enartis",
           "tier": 2,
           "canonicalUrl": "https://www.enartis.com/wp-content/uploads/2020/09/Enartis-Sparkling-Brochure-2020-EN.pdf",
-          "sectionPath": "### SPARKLING WINEMAKING METHODS 4 JUICE AND BASE WINE PRODUCTS 5 FINING AGENTS POLYSACCHARIDES FOR BASE WINE > GUIDELINES TO PREPARE PIED…",
+          "sectionPath": "… > In Summary: What do you need? Addition to Base Wine",
           "publishedAt": "2020-08-31",
           "dateSource": "published",
-          "textHash": "d823c858d304"
+          "textHash": "0dbe2c9103e9"
         },
         {
           "rank": 3,
           "publisher": "Enartis",
           "tier": 2,
           "canonicalUrl": "https://www.enartis.com/wp-content/uploads/2020/09/Enartis-Sparkling-Brochure-2020-EN.pdf",
-          "sectionPath": "### SPARKLING WINEMAKING METHODS 4 JUICE AND BASE WINE PRODUCTS 5 FINING AGENTS POLYSACCHARIDES FOR BASE WINE > GUIDELINES TO PREPARE PIED…",
+          "sectionPath": "### SPARKLING WINEMAKING METHODS 4 JUICE AND BASE WINE PRODUCTS 5 FINING AGENTS POLYSACCHARIDES FOR BASE WINE > … > Addition to Base Wine",
           "publishedAt": "2020-08-31",
           "dateSource": "published",
-          "textHash": "c816f9b50403"
+          "textHash": "fcf7b0b1f4f9"
         },
         {
           "rank": 4,
           "publisher": "Enartis",
           "tier": 2,
           "canonicalUrl": "https://www.enartis.com/wp-content/uploads/2020/09/Enartis-Sparkling-Brochure-2020-EN.pdf",
-          "sectionPath": "### SPARKLING WINEMAKING METHODS 4 JUICE AND BASE WINE PRODUCTS 5 FINING AGENTS POLYSACCHARIDES FOR BASE WINE > GUIDELINES TO PREPARE PIED…",
+          "sectionPath": "… > 3% OF PDC FOR 100HL OF BASE WINE TRADITIONAL METHOD",
           "publishedAt": "2020-08-31",
           "dateSource": "published",
-          "textHash": "9af42b7dff37"
+          "textHash": "678342171962"
         },
         {
           "rank": 5,
@@ -993,26 +993,6 @@
         },
         {
           "rank": 6,
-          "publisher": "Enartis",
-          "tier": 2,
-          "canonicalUrl": "https://www.enartis.com/wp-content/uploads/2020/09/Enartis-Sparkling-Brochure-2020-EN.pdf",
-          "sectionPath": "### SPARKLING WINEMAKING METHODS 4 JUICE AND BASE WINE PRODUCTS 5 FINING AGENTS POLYSACCHARIDES FOR BASE WINE > GUIDELINES TO PREPARE PIED…",
-          "publishedAt": "2020-08-31",
-          "dateSource": "published",
-          "textHash": "3f44ef51c812"
-        },
-        {
-          "rank": 7,
-          "publisher": "Enartis",
-          "tier": 2,
-          "canonicalUrl": "https://www.enartis.com/wp-content/uploads/2020/09/Enartis-Sparkling-Brochure-2020-EN.pdf",
-          "sectionPath": "### SPARKLING WINEMAKING METHODS 4 JUICE AND BASE WINE PRODUCTS 5 FINING AGENTS POLYSACCHARIDES FOR BASE WINE > GUIDELINES TO PREPARE PIED…",
-          "publishedAt": "2020-08-31",
-          "dateSource": "published",
-          "textHash": "b6e393b0d6c6"
-        },
-        {
-          "rank": 8,
           "publisher": "Union des Maisons de Champagne",
           "tier": 1,
           "canonicalUrl": "https://maisons-champagne.com/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-11-l-elaboration-du-champagne/fr/encyclopedies/histoire-du-champagne/premiere-partie-histoire-du-champagne/chapitre-4-le-xixe-siecle/article/l-elaboration-du-champagne",
@@ -1020,6 +1000,26 @@
           "publishedAt": null,
           "dateSource": "unknown",
           "textHash": "6f872ec7d6fd"
+        },
+        {
+          "rank": 7,
+          "publisher": "Union des Maisons de Champagne",
+          "tier": 1,
+          "canonicalUrl": "https://maisons-champagne.com/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-11-l-elaboration-du-champagne/fr/encyclopedies/histoire-du-champagne/premiere-partie-histoire-du-champagne/chapitre-4-le-xixe-siecle/article/l-elaboration-du-champagne",
+          "sectionPath": "L’élaboration du champagne - Union des Maisons de Champagne > L’élaboration du champagne > LA MAÎTRISE DE LA MOUSSE",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "624723659e5a"
+        },
+        {
+          "rank": 8,
+          "publisher": "Union des Maisons de Champagne",
+          "tier": 1,
+          "canonicalUrl": "https://maisons-champagne.com/fr/encyclopedies/histoire-du-champagne/deuxieme-partie-connaissance-du-champagne/chapitre-11-l-elaboration-du-champagne/fr/encyclopedies/histoire-du-champagne/premiere-partie-histoire-du-champagne/chapitre-4-le-xixe-siecle/article/l-elaboration-du-champagne",
+          "sectionPath": "L’élaboration du champagne - Union des Maisons de Champagne > L’élaboration du champagne > LE TIRAGE ET LA PRISE DE MOUSSE",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "d86024571692"
         }
       ]
     },
@@ -1028,13 +1028,13 @@
       "results": [
         {
           "rank": 1,
-          "publisher": "Cornell Fruit Resources: Grapes",
+          "publisher": "MAPA — Ministerio de Agricultura (Spain)",
           "tier": 1,
-          "canonicalUrl": "https://blogs.cornell.edu/newfruit/files/2016/11/ManagementOfInsectPestsInOrganicVineyards-180zl9z.pdf",
-          "sectionPath": "12 PGMKR Martinson",
-          "publishedAt": "1998-08-10",
+          "canonicalUrl": "https://www.mapa.gob.es/dam/mapa/contenido/agricultura/temas/medios-de-produccion/productos-fitosanitarios/uso-sostenible-de-productos-fitosanitarios/guias-de-gestion-integrada-de-plagas/guiauvadetransformacion.pdf",
+          "sectionPath": "Guia de gestión integrada de plagas: uva de transformación;ISBN 978-84-491-1388-8;NIPO 280-14-113-5 > GUÍA DE GESTIÓN INTEGRADA DE PLAGAS >…",
+          "publishedAt": "2014-10-03",
           "dateSource": "published",
-          "textHash": "24df912d5767"
+          "textHash": "9612cd1263cd"
         },
         {
           "rank": 2,
@@ -1048,23 +1048,23 @@
         },
         {
           "rank": 3,
-          "publisher": "Oregon Wine Research Institute (OSU)",
+          "publisher": "AWRI",
           "tier": 1,
-          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/vh53x446x",
-          "sectionPath": "OSU Wine and Grape Research and Extension Newsletter > Being Burned by Cold in the Vineyard",
-          "publishedAt": "2009-08-05",
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/lbam_management.pdf",
+          "sectionPath": "Lightbrown Apple Management > Managing lightbrown apple moth",
+          "publishedAt": "2010-03-16",
           "dateSource": "published",
-          "textHash": "551f0983a214"
+          "textHash": "32164ff1f317"
         },
         {
           "rank": 4,
-          "publisher": "MAPA — Ministerio de Agricultura (Spain)",
+          "publisher": "UC IPM (UC Agriculture & Natural Resources)",
           "tier": 1,
-          "canonicalUrl": "https://www.mapa.gob.es/dam/mapa/contenido/agricultura/temas/medios-de-produccion/productos-fitosanitarios/uso-sostenible-de-productos-fitosanitarios/guias-de-gestion-integrada-de-plagas/guiauvadetransformacion.pdf",
-          "sectionPath": "Guia de gestión integrada de plagas: uva de transformación;ISBN 978-84-491-1388-8;NIPO 280-14-113-5 > GUÍA DE GESTIÓN INTEGRADA DE PLAGAS >…",
-          "publishedAt": "2014-10-03",
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/leafhoppers",
+          "sectionPath": "Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Treatment Thresholds > Wine and Raisin Thompson Seedless Grapes",
+          "publishedAt": "2019-04-01",
           "dateSource": "published",
-          "textHash": "9612cd1263cd"
+          "textHash": "e6440b6e55fc"
         },
         {
           "rank": 5,
@@ -1078,6 +1078,16 @@
         },
         {
           "rank": 6,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/vh53x446x",
+          "sectionPath": "OSU Wine and Grape Research and Extension Newsletter > Being Burned by Cold in the Vineyard",
+          "publishedAt": "2009-08-05",
+          "dateSource": "published",
+          "textHash": "551f0983a214"
+        },
+        {
+          "rank": 7,
           "publisher": "UC IPM (UC Agriculture & Natural Resources)",
           "tier": 1,
           "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/2017-fungicide-efficacy-and-treatment-timing",
@@ -1087,24 +1097,14 @@
           "textHash": "f68c8a4ad8e7"
         },
         {
-          "rank": 7,
+          "rank": 8,
           "publisher": "UC IPM (UC Agriculture & Natural Resources)",
           "tier": 1,
-          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/leafhoppers",
-          "sectionPath": "Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Treatment Thresholds > Wine and Raisin Thompson Seedless Grapes",
-          "publishedAt": "2019-04-01",
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/mealybugs-pseudococcus",
+          "sectionPath": "Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Management > Monitoring and Treatment Decisions > Delayed Dormant and Early Spring Treatments",
+          "publishedAt": "2015-07-01",
           "dateSource": "published",
-          "textHash": "e6440b6e55fc"
-        },
-        {
-          "rank": 8,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/lbam_management.pdf",
-          "sectionPath": "Lightbrown Apple Management > Managing lightbrown apple moth",
-          "publishedAt": "2010-03-16",
-          "dateSource": "published",
-          "textHash": "32164ff1f317"
+          "textHash": "c452b0cf9c1d"
         }
       ]
     },
@@ -1191,9 +1191,7 @@
           "dateSource": "published",
           "textHash": "9cbfa16da564"
         }
-      ],
-      "unstable": true,
-      "observedProfiles": 2
+      ]
     },
     {
       "query": "What fungicide program controls Phomopsis and black rot in an eastern US vineyard?",
@@ -1203,10 +1201,10 @@
           "publisher": "Cornell Fruit Resources: Grapes",
           "tier": 1,
           "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
-          "sectionPath": "Grape Disease Control, Spring 2021 > Grape Disease Control, Spring 2021 > Early Season Grape Diseases",
+          "sectionPath": "Grape Disease Control, Spring 2021 > Early Season Grape Diseases",
           "publishedAt": "2021-04-13",
           "dateSource": "published",
-          "textHash": "58c2a5ee59d5"
+          "textHash": "758a3f03082e"
         },
         {
           "rank": 2,
@@ -1216,17 +1214,17 @@
           "sectionPath": "DISEASE CONTROL PROGRAMS FOR GRAPES IN THE FINGER LAKES",
           "publishedAt": "2017-05-31",
           "dateSource": "published",
-          "textHash": "1e40b593af30"
+          "textHash": "ed07f2eed8f5"
         },
         {
           "rank": 3,
           "publisher": "Cornell Fruit Resources: Grapes",
           "tier": 1,
-          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2016/12/GRAPE-DISEASE-CONTROL-2018-Bryan-Hed-Penn-State-29u9gz7.pdf",
-          "sectionPath": "GRAPE DISEASE CONTROL, 2018 Bryan Hed, Department of Plant Pathology and Environmental Microbiology, Penn Stat",
-          "publishedAt": "2018-05-17",
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2016/12/Wilcox-Grape-Disease-Control-2017-1uzpoqi.pdf",
+          "sectionPath": "DISEASE CONTROL PROGRAMS FOR GRAPES IN THE FINGER LAKES",
+          "publishedAt": "2017-05-31",
           "dateSource": "published",
-          "textHash": "561dd856a9a5"
+          "textHash": "e971fd0a31ec"
         },
         {
           "rank": 4,
@@ -1236,7 +1234,7 @@
           "sectionPath": "Early Season Grape Disease Management, Spring 2020",
           "publishedAt": "2020-05-07",
           "dateSource": "published",
-          "textHash": "d4461e903c68"
+          "textHash": "4000cbe2b6c0"
         },
         {
           "rank": 5,
@@ -1246,17 +1244,17 @@
           "sectionPath": "New Gadoury",
           "publishedAt": "1998-08-10",
           "dateSource": "published",
-          "textHash": "5c67207bfc86"
+          "textHash": "3a01be42c387"
         },
         {
           "rank": 6,
           "publisher": "Cornell Fruit Resources: Grapes",
           "tier": 1,
-          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2023/06/gold_grapediseasecontrol_spring2023_espanol.pdf",
-          "sectionPath": "Manejo de enfermedades de la vid, 2023 > Manejo de enfermedades de la vid, 2023 > Enfermedades tempranas de la vid",
-          "publishedAt": "2023-06-05",
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2016/12/Wilcox-Grape-Disease-Control-2017-1uzpoqi.pdf",
+          "sectionPath": "DISEASE CONTROL PROGRAMS FOR GRAPES IN THE FINGER LAKES",
+          "publishedAt": "2017-05-31",
           "dateSource": "published",
-          "textHash": "91ea6ee66156"
+          "textHash": "d7a0c3afc9d9"
         },
         {
           "rank": 7,
@@ -1266,17 +1264,17 @@
           "sectionPath": "DISEASE CONTROL PROGRAMS FOR GRAPES IN THE FINGER LAKES",
           "publishedAt": "2017-05-31",
           "dateSource": "published",
-          "textHash": "b2bd02cf50a5"
+          "textHash": "8ba34fc85b70"
         },
         {
           "rank": 8,
           "publisher": "Cornell Fruit Resources: Grapes",
           "tier": 1,
-          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2016/12/Wilcox-Grape-Disease-Control-2017-1uzpoqi.pdf",
-          "sectionPath": "DISEASE CONTROL PROGRAMS FOR GRAPES IN THE FINGER LAKES",
-          "publishedAt": "2017-05-31",
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2023/06/gold_grapediseasecontrol_spring2023_espanol.pdf",
+          "sectionPath": "Manejo de enfermedades de la vid, 2023 > Enfermedades tempranas de la vid",
+          "publishedAt": "2023-06-05",
           "dateSource": "published",
-          "textHash": "420c92d6f5b0"
+          "textHash": "04aa8daafff0"
         }
       ]
     },
@@ -1305,6 +1303,16 @@
         },
         {
           "rank": 3,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2020/03/s2140.pdf",
+          "sectionPath": "Discrepancies in analytical results for volatile acidity",
+          "publishedAt": "2020-03-16",
+          "dateSource": "published",
+          "textHash": "58703a1240fa"
+        },
+        {
+          "rank": 4,
           "publisher": "Virginia Tech Enology",
           "tier": 1,
           "canonicalUrl": "https://enology.fst.vt.edu/EN/120.html",
@@ -1314,7 +1322,7 @@
           "textHash": "89313ccf171d"
         },
         {
-          "rank": 4,
+          "rank": 5,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/va/",
@@ -1324,24 +1332,14 @@
           "textHash": "df114a4b8265"
         },
         {
-          "rank": 5,
+          "rank": 6,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2020/03/s2140.pdf",
           "sectionPath": "Discrepancies in analytical results for volatile acidity",
           "publishedAt": "2020-03-16",
           "dateSource": "published",
-          "textHash": "5adfa3d6a34e"
-        },
-        {
-          "rank": 6,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/04/TR-143.TECHNOTE.03.pdf",
-          "sectionPath": "symb",
-          "publishedAt": "2003-03-12",
-          "dateSource": "published",
-          "textHash": "31b198813a5e"
+          "textHash": "92a8fe804af5"
         },
         {
           "rank": 7,
@@ -1362,6 +1360,431 @@
           "publishedAt": "2011-06-02",
           "dateSource": "published",
           "textHash": "108d89b6140e"
+        }
+      ]
+    },
+    {
+      "query": "What causes eastern black rot in grapes and how do I manage it?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/food-safety-and-quality/grape-and-wine-production/grape-production/",
+          "sectionPath": "Grape Production | Penn State Extension > Grape Disease - Black Rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "7c4318e28b09"
+        },
+        {
+          "rank": 2,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2020/05/Gold_earlyseasonmgmt_flxnewsletter_may2020.pdf",
+          "sectionPath": "Early Season Grape Disease Management, Spring 2020",
+          "publishedAt": "2020-05-07",
+          "dateSource": "published",
+          "textHash": "47d133ae1542"
+        },
+        {
+          "rank": 3,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/food-safety-and-quality/grape-and-wine-production/see-all-grape-and-wine-production/",
+          "sectionPath": "See All Grape and Wine Production - Grape and Wine Production - Food Safety and Quality > Grape Disease - Black Rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "57a1ef3aea95"
+        },
+        {
+          "rank": 4,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Black Rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "e36a16163db7"
+        },
+        {
+          "rank": 5,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/grape-disease-black-rot/",
+          "sectionPath": "Grape Disease - Black Rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "360e9ef11616"
+        },
+        {
+          "rank": 6,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/grape-disease-black-rot/",
+          "sectionPath": "Grape Disease - Black Rot > Disease Management",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "0789391fbece"
+        },
+        {
+          "rank": 7,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Black Rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "a63b7d596197"
+        },
+        {
+          "rank": 8,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/food-safety-and-quality/grape-and-wine-production/common-problems/",
+          "sectionPath": "Common Problems - Grape and Wine Production - Food Safety and Quality > Grape Sour Rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "3a95144b8252"
+        }
+      ]
+    },
+    {
+      "query": "What are the generations and life cycle of grape berry moth in the eastern US?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "585d722f944b"
+        },
+        {
+          "rank": 2,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2022/11/2022-insects-grapes-review.pdf",
+          "sectionPath": "Insects & grapes review, 2022 > Grape Insect and Mite Pests, 2022 Field Season > Bloom to Mid-season",
+          "publishedAt": "2022-05-09",
+          "dateSource": "published",
+          "textHash": "6dc6f6b02c40"
+        },
+        {
+          "rank": 3,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "2e3ecb80d790"
+        },
+        {
+          "rank": 4,
+          "publisher": "UC IPM (UC Agriculture & Natural Resources)",
+          "tier": 1,
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/light-brown-apple-moth",
+          "sectionPath": "Light Brown Apple Moth / Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Description of the Pest",
+          "publishedAt": "2021-12-01",
+          "dateSource": "published",
+          "textHash": "d6adb6fc029c"
+        },
+        {
+          "rank": 5,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "9ce7842b952c"
+        },
+        {
+          "rank": 6,
+          "publisher": "UC IPM (UC Agriculture & Natural Resources)",
+          "tier": 1,
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/grape-leaffolder",
+          "sectionPath": "Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Description of the Pest",
+          "publishedAt": "2015-07-01",
+          "dateSource": "published",
+          "textHash": "31ded28e8966"
+        },
+        {
+          "rank": 7,
+          "publisher": "UC IPM (UC Agriculture & Natural Resources)",
+          "tier": 1,
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/western-grapeleaf-skeletonizer",
+          "sectionPath": "Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Description of the Pest",
+          "publishedAt": "2019-04-01",
+          "dateSource": "published",
+          "textHash": "664c697e208a"
+        },
+        {
+          "rank": 8,
+          "publisher": "UC IPM (UC Agriculture & Natural Resources)",
+          "tier": 1,
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/omnivorous-leafroller",
+          "sectionPath": "Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Description of the Pest",
+          "publishedAt": "2015-07-01",
+          "dateSource": "published",
+          "textHash": "c1bd9eb88459"
+        }
+      ]
+    },
+    {
+      "query": "How do I manage spotted lanternfly in a vineyard?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/food-safety-and-quality/grape-and-wine-production/grape-production/",
+          "sectionPath": "Grape Production | Penn State Extension > Spotted Lanternfly Management in Vineyards",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "b6af28abdf81"
+        },
+        {
+          "rank": 2,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/viticulture-enology-extension-news-fall-2019/",
+          "sectionPath": "Viticulture & Enology Extension News – Fall 2019 | Viticulture & Enology > Washington to Prepare for an Unwelcome Traveler: The Spotted Lanternfly",
+          "publishedAt": "2026-06-26",
+          "dateSource": "published",
+          "textHash": "9152951aefa1"
+        },
+        {
+          "rank": 3,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/veraison-to-harvest-vineyard-and-winery-considerations/",
+          "sectionPath": "Veraison to Harvest Vineyard and Winery Considerations > Late-season Insect Management",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "cca359f0451d"
+        },
+        {
+          "rank": 4,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2022/11/2022-insects-grapes-review.pdf",
+          "sectionPath": "Insects & grapes review, 2022 > Grape Insect and Mite Pests, 2022 Field Season > Update on Spotted Lanternfly",
+          "publishedAt": "2022-05-09",
+          "dateSource": "published",
+          "textHash": "29f8b2498ad8"
+        },
+        {
+          "rank": 5,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/documents/2026/03/veen-fall-2019.pdf",
+          "sectionPath": "Viticulture and Enology Extension News > Viticulture and Enology Extension News > WA to Prepare for an Unwelcome Traveler: The Spotted…",
+          "publishedAt": "2019-09-16",
+          "dateSource": "published",
+          "textHash": "2a21cd13e01b"
+        },
+        {
+          "rank": 6,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/SLF.html",
+          "sectionPath": "SLF in Virginia > Spotted lanternfly, Lycorma delicatula (White) Douglas G. Pfeiffer, Department of Entomology, Virginia Tech",
+          "publishedAt": "2025-10-16",
+          "dateSource": "published",
+          "textHash": "f7cdd95bb61f"
+        },
+        {
+          "rank": 7,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2022/11/2022-insects-grapes-review.pdf",
+          "sectionPath": "Insects & grapes review, 2022 > Grape Insect and Mite Pests, 2022 Field Season > Bloom to Mid-season",
+          "publishedAt": "2022-05-09",
+          "dateSource": "published",
+          "textHash": "9aac7e430693"
+        },
+        {
+          "rank": 8,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/spotted-lanternfly-in-vineyards/",
+          "sectionPath": "Spotted Lanternfly in Vineyards",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "44aaf4db6e18"
+        }
+      ]
+    },
+    {
+      "query": "What weather conditions lead to grape sour rot near harvest?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/grape-sour-rot/",
+          "sectionPath": "Grape Sour Rot > Range and Causal Conditions",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "f93adf26f713"
+        },
+        {
+          "rank": 2,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > Late-Season Grape Diseases > Sour Rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "c37a4d9c60fd"
+        },
+        {
+          "rank": 3,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > Late-Season Grape Diseases > Sour Rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "aaba5ae5297a"
+        },
+        {
+          "rank": 4,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2016/12/Wilcox-Grape-Disease-Control-2017-1uzpoqi.pdf",
+          "sectionPath": "DISEASE CONTROL PROGRAMS FOR GRAPES IN THE FINGER LAKES",
+          "publishedAt": "2017-05-31",
+          "dateSource": "published",
+          "textHash": "97876f43d8f7"
+        },
+        {
+          "rank": 5,
+          "publisher": "Virginia Tech Enology",
+          "tier": 1,
+          "canonicalUrl": "https://enology.fst.vt.edu/EN/161.html",
+          "sectionPath": "",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "fef2a461f4ea"
+        },
+        {
+          "rank": 6,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/viticulture-enology-extension-news-spring-2019/",
+          "sectionPath": "Viticulture & Enology Extension News – Spring 2019 | Viticulture & Enology > The Tale of Two Rots: Sour Rot and Botrytis Bunch Rot > How Rots Form in the Vineyard",
+          "publishedAt": "2026-06-26",
+          "dateSource": "published",
+          "textHash": "a1e3e27f3407"
+        },
+        {
+          "rank": 7,
+          "publisher": "PNW Pest Management Handbooks (OSU / WSU / UI Extension)",
+          "tier": 1,
+          "canonicalUrl": "https://pnwhandbooks.org/plantdisease/host-disease/grape-vitis-spp-sour-rot",
+          "sectionPath": "",
+          "publishedAt": "2026-04-16",
+          "dateSource": "last-modified",
+          "textHash": "2482ff0f0ad5"
+        },
+        {
+          "rank": 8,
+          "publisher": "Wine Australia",
+          "tier": 1,
+          "canonicalUrl": "https://www.wineaustralia.com/growing-making/pest-and-disease-management/botrytis",
+          "sectionPath": "Botrytis bunch rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "a9dfa6cb755c"
+        }
+      ]
+    },
+    {
+      "query": "How do I control powdery mildew on grapes in a humid eastern climate?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/viticulture-enology-extension-news-fall-2017/",
+          "sectionPath": "Viticulture & Enology Extension News – Fall 2017 | Viticulture & Enology > Powdery Mildew in 2017",
+          "publishedAt": "2026-06-30",
+          "dateSource": "published",
+          "textHash": "725b9637dcbb"
+        },
+        {
+          "rank": 2,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Black Rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "e36a16163db7"
+        },
+        {
+          "rank": 3,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Powdery Mildew",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "7dea7b7b954d"
+        },
+        {
+          "rank": 4,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Black Rot",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "a63b7d596197"
+        },
+        {
+          "rank": 5,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Powdery Mildew",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "356895e8b603"
+        },
+        {
+          "rank": 6,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
+          "sectionPath": "Grape Disease Control, Spring 2021 > Early Season Grape Diseases",
+          "publishedAt": "2021-04-13",
+          "dateSource": "published",
+          "textHash": "758a3f03082e"
+        },
+        {
+          "rank": 7,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2020/05/Gold_earlyseasonmgmt_flxnewsletter_may2020.pdf",
+          "sectionPath": "Early Season Grape Disease Management, Spring 2020",
+          "publishedAt": "2020-05-07",
+          "dateSource": "published",
+          "textHash": "4000cbe2b6c0"
+        },
+        {
+          "rank": 8,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Powdery Mildew",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "43eec922a2b3"
         }
       ]
     },
@@ -1390,6 +1813,16 @@
         },
         {
           "rank": 3,
+          "publisher": "Enartis",
+          "tier": 2,
+          "canonicalUrl": "https://www.enartis.com/wp-content/uploads/2020/09/Enartis-Sparkling-Brochure-2020-EN.pdf",
+          "sectionPath": "… > Yeast Population Build-up",
+          "publishedAt": "2020-08-31",
+          "dateSource": "published",
+          "textHash": "3f82f359d6b3"
+        },
+        {
+          "rank": 4,
           "publisher": "IFV France (Institut Français de la Vigne et du Vin)",
           "tier": 1,
           "canonicalUrl": "https://www.vignevin.com/outils/fiches-levures/hop/",
@@ -1397,16 +1830,6 @@
           "publishedAt": null,
           "dateSource": "unknown",
           "textHash": "3b56290ea15f"
-        },
-        {
-          "rank": 4,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/05/AWRI_Practices_Survey_Final_Report.pdf",
-          "sectionPath": "AWRI Practices Survey - Final Report > Alcoholic fermentation",
-          "publishedAt": "2019-05-27",
-          "dateSource": "published",
-          "textHash": "800ef5fbcb35"
         },
         {
           "rank": 5,
@@ -1420,6 +1843,26 @@
         },
         {
           "rank": 6,
+          "publisher": "Enartis",
+          "tier": 2,
+          "canonicalUrl": "https://www.enartis.com/wp-content/uploads/2020/09/Enartis-Sparkling-Brochure-2020-EN.pdf",
+          "sectionPath": "… > Yeast Population Build-up Keep at 20°C (68°F)",
+          "publishedAt": "2020-08-31",
+          "dateSource": "published",
+          "textHash": "1d26575e4daa"
+        },
+        {
+          "rank": 7,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/05/AWRI_Practices_Survey_Final_Report.pdf",
+          "sectionPath": "AWRI Practices Survey - Final Report > Alcoholic fermentation",
+          "publishedAt": "2019-05-27",
+          "dateSource": "published",
+          "textHash": "800ef5fbcb35"
+        },
+        {
+          "rank": 8,
           "publisher": "IFV France (Institut Français de la Vigne et du Vin)",
           "tier": 1,
           "canonicalUrl": "https://www.vignevin.com/outils/fiches-levures/hop/",
@@ -1427,26 +1870,6 @@
           "publishedAt": null,
           "dateSource": "unknown",
           "textHash": "fdd7219dee1d"
-        },
-        {
-          "rank": 7,
-          "publisher": "Laffort",
-          "tier": 2,
-          "canonicalUrl": "https://laffort.com/wp-content/uploads/Protocols/FG_EN_Spark.pdf",
-          "sectionPath": "FFORT SPARK > FFORT > ZYMAFLORE™ KHIOMP",
-          "publishedAt": "2025-05-14",
-          "dateSource": "published",
-          "textHash": "d012104487d2"
-        },
-        {
-          "rank": 8,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/TN05.pdf",
-          "sectionPath": "Fact Sheet > Procedure for rescue of stuck or slow alcoholic fermentation > Rescue procedure",
-          "publishedAt": "2020-03-04",
-          "dateSource": "published",
-          "textHash": "360ed705fb45"
         }
       ]
     },
@@ -1515,6 +1938,16 @@
         },
         {
           "rank": 7,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2019/05/AWRI_Practices_Survey_Final_Report.pdf",
+          "sectionPath": "AWRI Practices Survey - Final Report > … > Flotation for juice clarification",
+          "publishedAt": "2019-05-27",
+          "dateSource": "published",
+          "textHash": "dbbfc3696c29"
+        },
+        {
+          "rank": 8,
           "publisher": "LVWO Weinsberg (Germany)",
           "tier": 1,
           "canonicalUrl": "https://lvwo.landwirtschaft-bw.de/site/pbs-bw-rebrush2024/get/documents_E-879843375/MLR.LEL/PB5Documents/lvwo/Weinbau/Rebschutz/Vorjahr/2025%20Pflanzenschutz%20-%20Mittellisten%20und%20Tabellen/2025_4_PSM_Tafeltrauben.pdf",
@@ -1522,16 +1955,6 @@
           "publishedAt": "2025-01-29",
           "dateSource": "published",
           "textHash": "e08e377ea0bb"
-        },
-        {
-          "rank": 8,
-          "publisher": "LVWO Weinsberg (Germany)",
-          "tier": 1,
-          "canonicalUrl": "https://lvwo.landwirtschaft-bw.de/site/pbs-bw-rebrush2024/get/documents_E-2012455756/MLR.LEL/PB5Documents/lvwo/Weinbau/Rebschutz/Aktuelles/2026_PSM_Mittellisten%20und%20Tabellen/2026_4_PSM_Tafeltrauben.pdf",
-          "sectionPath": "### Behandlungs- > 1. Vorblüte x 1 100 - 400",
-          "publishedAt": "2026-02-04",
-          "dateSource": "published",
-          "textHash": "5ae23420b684"
         }
       ]
     },
@@ -1566,7 +1989,7 @@
           "sectionPath": "viti-notes[pests and diseases] > Monitoring for Downy Mildew",
           "publishedAt": "2011-03-09",
           "dateSource": "published",
-          "textHash": "b0544ded1edd"
+          "textHash": "512d8d734c90"
         },
         {
           "rank": 4,
@@ -1580,6 +2003,16 @@
         },
         {
           "rank": 5,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/veraison-to-harvest-vineyard-and-winery-considerations/",
+          "sectionPath": "Veraison to Harvest Vineyard and Winery Considerations > Late-season Disease Management",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "9bdd2fc6ece4"
+        },
+        {
+          "rank": 6,
           "publisher": "Wine Australia",
           "tier": 1,
           "canonicalUrl": "https://www.wineaustralia.com/getmedia/80ce4f86-58ba-4bfd-9720-a203982c0399/201012-Downy-Mildew-QA?ext=.pdf",
@@ -1589,27 +2022,7 @@
           "textHash": "ea6cec84262d"
         },
         {
-          "rank": 6,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/industry_support/viticulture/pests-and-diseases/downy-mildew/",
-          "sectionPath": "Downy mildew",
-          "publishedAt": "2021-05-18",
-          "dateSource": "published",
-          "textHash": "23540405033e"
-        },
-        {
           "rank": 7,
-          "publisher": "Cornell Fruit Resources: Grapes",
-          "tier": 1,
-          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2020/05/Gold_earlyseasonmgmt_flxnewsletter_may2020.pdf",
-          "sectionPath": "Early Season Grape Disease Management, Spring 2020",
-          "publishedAt": "2020-05-07",
-          "dateSource": "published",
-          "textHash": "c074eaea8311"
-        },
-        {
-          "rank": 8,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/downy_mildew_characteristics.pdf",
@@ -1617,6 +2030,16 @@
           "publishedAt": "2011-03-09",
           "dateSource": "published",
           "textHash": "2c8b538646ca"
+        },
+        {
+          "rank": 8,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2020/05/Gold_earlyseasonmgmt_flxnewsletter_may2020.pdf",
+          "sectionPath": "Early Season Grape Disease Management, Spring 2020",
+          "publishedAt": "2020-05-07",
+          "dateSource": "published",
+          "textHash": "c074eaea8311"
         }
       ]
     },
@@ -1702,6 +2125,346 @@
           "publishedAt": "2015-08-06",
           "dateSource": "published",
           "textHash": "dac29a66d85d"
+        }
+      ]
+    },
+    {
+      "query": "A Michigan vineyard is seeing downy mildew pressure this week - what should I do?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Wine Australia",
+          "tier": 1,
+          "canonicalUrl": "https://www.wineaustralia.com/getmedia/80ce4f86-58ba-4bfd-9720-a203982c0399/201012-Downy-Mildew-QA?ext=.pdf",
+          "sectionPath": "Downy Mildew > Downy Mildew > Questions and Answers > Q 18.: What if my vines were at or just",
+          "publishedAt": "2010-12-06",
+          "dateSource": "published",
+          "textHash": "ea6cec84262d"
+        },
+        {
+          "rank": 2,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/grape-disease-downy-mildew/",
+          "sectionPath": "Grape Disease - Downy Mildew > Disease Management",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "06f107226b81"
+        },
+        {
+          "rank": 3,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/04/s1776.pdf",
+          "sectionPath": "ask the > Skipping vineyard sprays in dry years > DOWNY MILDEW",
+          "publishedAt": "2015-12-15",
+          "dateSource": "published",
+          "textHash": "c29d21d94379"
+        },
+        {
+          "rank": 4,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Downy Mildew",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "6892d7070884"
+        },
+        {
+          "rank": 5,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > … > Six to Ten-Inch Shoot Growth",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "6580d2bbc5be"
+        },
+        {
+          "rank": 6,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/downy_mildew_management.pdf",
+          "sectionPath": "viti-notes[pests and diseases] > Managing downy mildew",
+          "publishedAt": "2011-03-09",
+          "dateSource": "published",
+          "textHash": "677e37b485d5"
+        },
+        {
+          "rank": 7,
+          "publisher": "PNW Pest Management Handbooks (OSU / WSU / UI Extension)",
+          "tier": 1,
+          "canonicalUrl": "https://pnwhandbooks.org/plantdisease/host-disease/grape-vitis-spp-downy-mildew",
+          "sectionPath": "",
+          "publishedAt": "2026-04-16",
+          "dateSource": "last-modified",
+          "textHash": "02cd87ff84d8"
+        },
+        {
+          "rank": 8,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > … > 6- to 10-Inch Shoot Growth",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "7ec319c6586e"
+        }
+      ]
+    },
+    {
+      "query": "Grape berry moth is active in my Pennsylvania vineyard - what generation and timing should I expect?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "585d722f944b"
+        },
+        {
+          "rank": 2,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "2e3ecb80d790"
+        },
+        {
+          "rank": 3,
+          "publisher": "UC IPM (UC Agriculture & Natural Resources)",
+          "tier": 1,
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/omnivorous-leafroller",
+          "sectionPath": "Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Description of the Pest",
+          "publishedAt": "2015-07-01",
+          "dateSource": "published",
+          "textHash": "c1bd9eb88459"
+        },
+        {
+          "rank": 4,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "9ce7842b952c"
+        },
+        {
+          "rank": 5,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "6a058beddc8c"
+        },
+        {
+          "rank": 6,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2022/11/2022-insects-grapes-review.pdf",
+          "sectionPath": "Insects & grapes review, 2022 > Grape Insect and Mite Pests, 2022 Field Season > Bloom to Mid-season",
+          "publishedAt": "2022-05-09",
+          "dateSource": "published",
+          "textHash": "6fdf28869a06"
+        },
+        {
+          "rank": 7,
+          "publisher": "IVES Technical Reviews",
+          "tier": 1,
+          "canonicalUrl": "https://ives-technicalreviews.eu/article/view/9943",
+          "sectionPath": "Cryptoblabes gnidiella : a growing challenge for Mediterranean vineyards\n\t\t\t\t\t\t\t| IVES Technical Reviews, vine and wine > Life cycle",
+          "publishedAt": "2026-03-04",
+          "dateSource": "published",
+          "textHash": "ee9656080f4b"
+        },
+        {
+          "rank": 8,
+          "publisher": "UC IPM (UC Agriculture & Natural Resources)",
+          "tier": 1,
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/light-brown-apple-moth",
+          "sectionPath": "Light Brown Apple Moth / Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Description of the Pest",
+          "publishedAt": "2021-12-01",
+          "dateSource": "published",
+          "textHash": "d6adb6fc029c"
+        }
+      ]
+    },
+    {
+      "query": "How do I manage powdery mildew pressure on grapes in Virginia this humid week?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/viticulture-enology-extension-news-fall-2017/",
+          "sectionPath": "Viticulture & Enology Extension News – Fall 2017 | Viticulture & Enology > Powdery Mildew in 2017",
+          "publishedAt": "2026-06-30",
+          "dateSource": "published",
+          "textHash": "725b9637dcbb"
+        },
+        {
+          "rank": 2,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/documents/2026/03/veen-fall-2017.pdf",
+          "sectionPath": "Viticulture and Enology Extension News > Viticulture and Enology Extension News > NOTE FROM THE EDITOR > Powdery Mildew in 2017",
+          "publishedAt": "2017-09-20",
+          "dateSource": "published",
+          "textHash": "929d076258c6"
+        },
+        {
+          "rank": 3,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/documents/2026/03/veen-fall-2017.pdf",
+          "sectionPath": "Viticulture and Enology Extension News > Viticulture and Enology Extension News > NOTE FROM THE EDITOR > Powdery Mildew in 2017",
+          "publishedAt": "2017-09-20",
+          "dateSource": "published",
+          "textHash": "ab31705421b6"
+        },
+        {
+          "rank": 4,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
+          "sectionPath": "Grape Disease Control, Spring 2021 > Early Season Grape Diseases",
+          "publishedAt": "2021-04-13",
+          "dateSource": "published",
+          "textHash": "cc281a68a898"
+        },
+        {
+          "rank": 5,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Powdery Mildew",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "f7a365f5d40a"
+        },
+        {
+          "rank": 6,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/documents/2026/03/veen-fall-2017.pdf",
+          "sectionPath": "Viticulture and Enology Extension News > Viticulture and Enology Extension News > NOTE FROM THE EDITOR > Powdery Mildew, con’t.",
+          "publishedAt": "2017-09-20",
+          "dateSource": "published",
+          "textHash": "755c7ae63221"
+        },
+        {
+          "rank": 7,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Powdery Mildew",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "b0581f0b8c03"
+        },
+        {
+          "rank": 8,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/vd66w7932",
+          "sectionPath": "VitEnoTechNwsltr-mar2016-Danielle Fianl > Viticulture & Enology > Viticulture & Enology > Oregon Wine Research Institute—Viticulture &…",
+          "publishedAt": "2016-04-04",
+          "dateSource": "published",
+          "textHash": "ee1e235e1940"
+        }
+      ]
+    },
+    {
+      "query": "What are the spray timing recommendations for black rot in an eastern US vineyard this season?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Black Rot > Recent research",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "26a80343a95a"
+        },
+        {
+          "rank": 2,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
+          "sectionPath": "Grape Disease Control, Spring 2021 > Early Season Grape Diseases",
+          "publishedAt": "2021-04-13",
+          "dateSource": "published",
+          "textHash": "758a3f03082e"
+        },
+        {
+          "rank": 3,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > … > One to Two Weeks Post-Bloom",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "e9682181be43"
+        },
+        {
+          "rank": 4,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > … > One to Two Weeks Post-Bloom",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "6c284e3e4ffc"
+        },
+        {
+          "rank": 5,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2020/05/Gold_earlyseasonmgmt_flxnewsletter_may2020.pdf",
+          "sectionPath": "Early Season Grape Disease Management, Spring 2020",
+          "publishedAt": "2020-05-07",
+          "dateSource": "published",
+          "textHash": "55134bde5c6c"
+        },
+        {
+          "rank": 6,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
+          "sectionPath": "Grape Disease Control, Spring 2021 > Seasonal Program Design: Considerations by Growth Stage",
+          "publishedAt": "2021-04-13",
+          "dateSource": "published",
+          "textHash": "d4959c9b67c6"
+        },
+        {
+          "rank": 7,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2020/05/Gold_earlyseasonmgmt_flxnewsletter_may2020.pdf",
+          "sectionPath": "Early Season Grape Disease Management, Spring 2020",
+          "publishedAt": "2020-05-07",
+          "dateSource": "published",
+          "textHash": "d5ac7311e2d3"
+        },
+        {
+          "rank": 8,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > … > Immediate Pre-Bloom to Early Bloom",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "3fc32bbaea30"
         }
       ]
     }

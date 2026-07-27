@@ -56,7 +56,7 @@ describe("boundary scope — enforcement is the default", () => {
   // from the thing council C3 forbade. A literal snapshot cannot drift with config, so the two tests
   // below say what was meant: the census is closed, and anything newer enforces.
   const PRE_SKB_CENSUS = [
-    ...BOUNDARY_LEGACY_DB_ONLY_KEYS,
+    "virginia-fruit",
     "awri",
     "chambre-gironde",
     "cornell-grapes",
@@ -84,7 +84,7 @@ describe("boundary scope — enforcement is the default", () => {
     "wsu",
   ].sort();
 
-  it("the census is the frozen pre-SKB set — nothing may be ADDED to the grandfather list", () => {
+  it("the census is the frozen pre-SKB set - nothing may be ADDED to the grandfather list", () => {
     // Shrinking it is how D3 closes and requires editing this list deliberately. Growing it is the
     // council-C3 violation.
     expect([...BOUNDARY_REPORT_ONLY_SOURCE_KEYS].sort()).toEqual(PRE_SKB_CENSUS);
@@ -98,20 +98,28 @@ describe("boundary scope — enforcement is the default", () => {
     for (const k of post) expect(boundaryModeFor(k), k).toBe("enforce");
   });
 
+  it("virginia-fruit is report-only via the plain census now, not the legacy DB-only mechanism", () => {
+    // SKB Unit 7 reconciled it: it now has a real config entry (extension.psu.edu's sibling grape
+    // IPM source), so it is a plain pre-SKB incumbent like uc-ipm or cornell-grapes, not a DB-only
+    // orphan anymore.
+    expect(boundaryModeFor("virginia-fruit")).toBe("report-only");
+    expect(KNOWLEDGE_SOURCES.some((s) => s.key === "virginia-fruit")).toBe(true);
+    expect(BOUNDARY_LEGACY_DB_ONLY_KEYS).toEqual([]);
+  });
+
   it("a DB-only legacy source is report-only, NOT enforcing", () => {
-    // `virginia-fruit`: 69 active documents, 260 chunks, defaultEnabled=true, and NO config entry —
-    // found live by the first real run of verify:kb-boundary. Before this it fell through to the
-    // `enforce` default, which would arm the gate's chunk-clearing path against live content.
+    // The mechanism, exercised even while the list it guards is currently empty (virginia-fruit was
+    // the one entry, reconciled by Unit 7). Vacuously true today; stays here for the next orphan.
     for (const key of BOUNDARY_LEGACY_DB_ONLY_KEYS) {
       expect(boundaryModeFor(key), key).toBe("report-only");
     }
   });
 
-  it("⚠️ a DB-only source is INVISIBLE to this file — the real check is verify:kb-boundary", () => {
+  it("a DB-only source is INVISIBLE to this file - the real check is verify:kb-boundary", () => {
     // Stated as a test so it is read, not buried in a comment. Every assertion above compares config
     // against config, so a source that exists only as a database row cannot be caught here by
-    // construction. `virginia-fruit` was found by RUNNING the auditor, not by the suite, and the
-    // auditor now reports config-orphaned sources on every run so the next one is caught by a check.
+    // construction. The auditor reports config-orphaned sources on every run against the live DB so
+    // the next one is caught by a check rather than by luck, the same way virginia-fruit was found.
     const configKeys = new Set(KNOWLEDGE_SOURCES.map((s) => s.key));
     expect(BOUNDARY_LEGACY_DB_ONLY_KEYS.every((k) => !configKeys.has(k))).toBe(true);
   });
@@ -159,6 +167,28 @@ describe("boundary audit — the exit-code arithmetic", () => {
     const psu = s.perSource.find((p) => p.sourceKey === "extension-psu")!;
     expect(psu.unaudited).toBe(1);
     expect(psu.prose).toBe(0);
+  });
+
+  it("empty on an enforcing source is NOT a hit - the gate cleared its chunks, which is success, not a leak", () => {
+    // The scenario this guards: index-documents.ts inline gate fires, deletes the documents
+    // chunks, and returns skipped: "product-table" while leaving the document row in place. A live
+    // re-fetch of the same raw page will re-detect the same table shape (identical pure function,
+    // identical bytes) - auditLive must never run that re-fetch in the first place for a document
+    // with zero stored chunks, because flagging it would report the gate catching a table as the
+    // gate LEAKING one.
+    const s = summarizeBoundaryAudit([row("extension-psu", "empty")]);
+    expect(s.exitCode).toBe(0);
+    expect(s.enforcingHits).toEqual([]);
+    expect(s.enforcingUnaudited).toEqual([]);
+    const psu = s.perSource.find((p) => p.sourceKey === "extension-psu")!;
+    expect(psu.empty).toBe(1);
+    expect(psu.productTable).toBe(0);
+    expect(psu.unaudited).toBe(0);
+  });
+
+  it("empty on a report-only source is not counted toward the D3 flagged number", () => {
+    const s = summarizeBoundaryAudit([row("uc-ipm", "empty")]);
+    expect(s.reportOnlyFlagged).toBe(0);
   });
 
   it("tallies per source, with the mode attached", () => {

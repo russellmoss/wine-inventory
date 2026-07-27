@@ -211,11 +211,20 @@ fail-closed on subscriptions.
 | `awri`, `wine-australia` | Warm-climate viticulture, downy mildew |
 | `vt-enology-notes` | Rot chemistry, canopy management (enology notes; the pest guide is a separate pub) |
 
-**Gaps (→ SKB):** **Penn State Extension** grape disease/IPM is absent and is the East's other
-primary authority. **NEWA model documentation** is absent. **Virginia Tech's pest guide**
-(ENTO-635-C) is distinct from the enology notes we crawl. **MSU Extension is registered but
-dormant** — `autoCrawl:false`, `defaultEnabled:false`, blocked by Imperva/Incapsula from both
-residential and GitHub Actions IPs — and it is exactly the cold-climate coverage this program wants.
+**Gaps, and how SKB closed them (updated 2026-07-27, Unit 11):** **Penn State Extension** shipped —
+45 hand-curated tier-A grape disease/IPM articles, `allowPaths`-scoped, dark on landing pending the
+cross-region gate. **NEWA rejected** (D4): its documentation is ~2 KB of crawlable text behind a
+Gatsby SPA with the actual model docs in an uncaptioned video; it is now an S5a/S5b model citation,
+not a corpus source. **Virginia Tech's pest guide (ENTO-635-C) rejected** (D5): ~22 of 23 pages are
+product/rate/REI/PHI tables. `virginiafruit.ento.vt.edu` was taken instead — and turned out to
+already be live in the DB as an unconfigured orphan (`virginia-fruit`, seeded from an unmerged
+branch), reconciled rather than added fresh. **MSU Extension stays dormant** — the operator-gated
+populate attempt is pending (`phases/SKB-msu-decision.md`); `verify:msu` no longer implies
+authorization on a single live PASS. **New finding, not in scope when this section was written:** a
+Michigan/eastern-disease question can retrieve a Mediterranean/Australian or Californian chunk in the
+same result set (measured, reproduces — `phases/SKB-region-finding.md`), which is why
+`extension-psu` stays dark even though it shipped, and why `virginia-fruit`'s pre-existing
+`defaultEnabled:true` is an open question for the owner rather than something this phase changed.
 
 ### 4.1 Two hard constraints on adding sources
 

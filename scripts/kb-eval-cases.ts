@@ -63,6 +63,27 @@ export const RETRIEVAL_CASES: RetrievalCase[] = [
   // that was already right.
   { q: "What is the best way to measure volatile acidity?",
     expectPaths: ["/laboratory_methods/chemical/va/"], expectFact: ["distillation", "cash"] },
+  // SKB Unit 8 - retrieval evidence for the two new eastern sources (Penn State Extension,
+  // Virginia Tech grape IPM). Each case was checked against the LIVE corpus before being written
+  // here (2026-07-27, org_demo_winery with extension-psu enabled for Demo per the staged rollout),
+  // not guessed from the source dossiers.
+  { q: "What causes eastern black rot in grapes and how do I manage it?",
+    expectPaths: ["grape-disease-black-rot", "blogs.cornell.edu"], expectFact: ["black rot"] }, // PSU
+  // The plan's own bar for a source unit: a question ONLY this source's content actually answers.
+  // Measured: virginiafruit.ento.vt.edu's GBM.html takes 3 of the top 6 slots outright.
+  { q: "What are the generations and life cycle of grape berry moth in the eastern US?",
+    expectPaths: ["GBM.html"], expectFact: ["berry moth"] }, // VT
+  { q: "How do I manage spotted lanternfly in a vineyard?",
+    expectPaths: ["spotted-lanternfly-in-vineyards", "blogs.cornell.edu"], expectFact: ["spotted lanternfly"] }, // PSU
+  { q: "What weather conditions lead to grape sour rot near harvest?",
+    expectPaths: ["grape-sour-rot"], expectFact: ["sour rot"] }, // PSU, rank 1 measured
+  // Council S6 - assert eastern powdery mildew coverage instead of assuming it. PSU has no grape PM
+  // article (confirmed 404 in the source recon) and virginia-fruit is an entomology site with no
+  // fungal-disease content, so this asserts the corpus's EXISTING cornell-grapes coverage actually
+  // answers an eastern PM question, rather than falling back to uc-ipm/AWRI's California/Australian
+  // epidemiology. Measured: 4 of 6 top results are Cornell, the rest WSU: zero uc-ipm, zero AWRI.
+  { q: "How do I control powdery mildew on grapes in a humid eastern climate?",
+    expectPaths: ["blogs.cornell.edu"], expectFact: ["powdery mildew"] },
 ];
 
 /**
@@ -134,6 +155,64 @@ export const COVERAGE_CASES: CoverageCase[] = [
 // expectPaths rather than narrowing the Cornell source. Deliberately not pre-widened here: that would
 // weaken a real OSU coverage check on a guess.
 
+
+/**
+ * SKB Unit 9 (council C4/D13) — does a climate-mixed result set actually reproduce?
+ *
+ * There is no region dimension anywhere in retrieval (not on the chunk, not in the query, not in
+ * tenant config), and retrieve.ts runs mmrSelect(..., 0.7) — 30% of the selection weight is
+ * DISSIMILARITY from what is already chosen. A Michigan/eastern question can retrieve an eastern
+ * chunk AND an Australian/Mediterranean or Californian chunk in the same top-k, and the model can
+ * synthesise a climatically impossible strategy fully cited. Closing the eastern coverage gap makes
+ * this case DENSER, not rarer, because there is now more eastern content to sit next to the existing
+ * Australian/Californian material.
+ *
+ * MEASURED 2026-07-27, org_demo_winery, extension-psu enabled for Demo, top-8:
+ *   - "A Michigan vineyard is seeing downy mildew pressure this week" -> Wine Australia + AWRI
+ *     alongside Penn State/Cornell/PNW. MIXED.
+ *   - "Grape berry moth ... in my Pennsylvania vineyard" -> UC IPM alongside Virginia Tech/Cornell.
+ *     MIXED.
+ *   - "How do I manage powdery mildew pressure on grapes in Virginia" -> all eastern/PNW. Clean.
+ *   - "Spray timing for black rot in an eastern US vineyard" -> all Cornell. Clean.
+ *
+ * VERDICT: contamination REPRODUCES (2 of 4 probes). Per D13's pre-committed branch, this is NOT a
+ * pass/fail unit test — the corpus does not get a region filter here (that is a real architecture
+ * change to a global shared corpus, scoped as its own phase per D13's own reasoning). What these
+ * cases DO is keep the reproduction measurable and visible on every future corpus change, so nobody
+ * has to re-derive whether it still reproduces. See SKB-region-finding.md for the full writeup and
+ * what it means for the two SKB sources' `defaultEnabled` state.
+ */
+export interface RegionCase {
+  q: string;
+  /** Publisher substrings that would represent GEOGRAPHIC mismatch if paired with an eastern hit. */
+  offRegionPublishers: string[];
+  /** Publisher substrings representing the eastern/regionally-correct answer. */
+  onRegionPublishers: string[];
+}
+
+export const REGION_CASES: RegionCase[] = [
+  {
+    q: "A Michigan vineyard is seeing downy mildew pressure this week - what should I do?",
+    offRegionPublishers: ["AWRI", "Wine Australia"],
+    onRegionPublishers: ["Cornell", "Penn State", "PNW", "Virginia Tech"],
+  },
+  {
+    q: "Grape berry moth is active in my Pennsylvania vineyard - what generation and timing should I expect?",
+    offRegionPublishers: ["UC IPM"],
+    onRegionPublishers: ["Virginia Tech", "Cornell", "Penn State"],
+  },
+  {
+    q: "How do I manage powdery mildew pressure on grapes in Virginia this humid week?",
+    offRegionPublishers: ["AWRI", "Wine Australia", "UC IPM"],
+    onRegionPublishers: ["Cornell", "WSU", "Penn State", "Virginia Tech", "PNW"],
+  },
+  {
+    q: "What are the spray timing recommendations for black rot in an eastern US vineyard this season?",
+    offRegionPublishers: ["AWRI", "Wine Australia", "UC IPM"],
+    onRegionPublishers: ["Cornell", "Penn State", "Virginia Tech"],
+  },
+];
+
 // Must be REJECTED: nothing on-topic in the corpus.
 export const REJECTION_CASES = [
   { q: "How do I brew a hoppy IPA beer with dry hopping?", offTopic: ["ipa", "hops", "dry hop"] },
@@ -152,6 +231,7 @@ export function allSnapshotQueries(): string[] {
       ...RETRIEVAL_CASES.map((c) => c.q),
       ...REJECTION_CASES.map((c) => c.q),
       ...COVERAGE_CASES.map((c) => c.q),
+      ...REGION_CASES.map((c) => c.q),
     ]),
   ];
 }

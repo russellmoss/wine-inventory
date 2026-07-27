@@ -181,7 +181,7 @@ async function main() {
     process.exit(1);
   }
   if (liveBlocked) {
-    // NOT a feature failure, and saying "PASS" here would be a lie — we verified nothing live.
+    // NOT a feature failure, and saying "PASS" here would be a lie - we verified nothing live.
     console.error(
       `\n✗ BLOCKED — MSU's bot wall answered instead of the origin: ${liveBlocked}\n` +
         "  This is a WAF block, not a broken feature: the config checks above all passed.\n" +
@@ -189,12 +189,20 @@ async function main() {
         "  refused this crawler from the operator's residential IP (5/5, every user-agent) AND from\n" +
         "  GitHub Actions runners, so there is no network we can currently reach it from. A curated\n" +
         "  URL list does NOT help: it fetches from the same blocked network.\n" +
-        "  This script is the probe for whether that has changed. If it ever reports live PASS, the\n" +
-        "  source can be un-dormanted (autoCrawl + defaultEnabled back to true, then re-seed).",
+        "  This script REPORTS what it observed. It never authorises un-dormanting MSU by itself -\n" +
+        "  see SKB Unit 10 / D8: one live PASS from one egress is reputation-scored evidence, not a\n" +
+        "  licence for a scheduled crawl. The runbook policy is N>=3 consecutive PASSes across >=2\n" +
+        "  distinct egresses, at least one a CI runner (the shape the monthly sweep actually runs\n" +
+        "  from) - a human decision recorded against that count, not this script's exit code.",
     );
     process.exit(1);
   }
-  console.log("\n✓ PASS — MSU grape articles are reachable via /grapes/, admitted one hop only, and dated.");
+  console.log(
+    "\n✓ PASS — MSU grape articles are reachable via /grapes/, admitted one hop only, and dated.\n" +
+      "  This is ONE observation from ONE egress. It does not by itself authorise un-dormanting\n" +
+      "  msu-grapes — see SKB Unit 10 / D8: the runbook policy requires N>=3 consecutive PASSes\n" +
+      "  across >=2 distinct egresses, at least one a CI runner, before autoCrawl changes.",
+  );
 }
 
 main().catch((e) => {

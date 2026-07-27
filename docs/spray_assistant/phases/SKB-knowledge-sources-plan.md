@@ -904,6 +904,12 @@ Full reconciliation in [SKB-council-feedback.md](SKB-council-feedback.md).
 **2026-07-27 — PR 1 (Units 1–3) + Unit 5 BUILT** on `claude/skb-knowledge-sources-plan-bd36b7`.
 3 commits, not yet PR'd. 82 new tests; full `vitest run` green, `tsc --noEmit` clean,
 `verify:invariants` 49/49, `verify:ai-native` green.
+(That branch's PR merged as #538 shortly after this was written.)
+
+**2026-07-27, continued — Units 4, 6-11 BUILT** on `claude/skb-knowledge-base-expansion-c58f7c`
+(this worktree copied `.env` in from the main checkout so the DB-backed verify/crawl steps could run
+here rather than needing the main repo). All units complete except Unit 10's operator-gated crawl.
+Full detail in `SKB-report.md`; the per-unit table below is updated in place.
 
 | Unit | State | Evidence |
 |---|---|---|
@@ -911,7 +917,13 @@ Full reconciliation in [SKB-council-feedback.md](SKB-council-feedback.md).
 | 2 inline gate + auditor | ✅ built | `index-documents.ts`, `boundary/{enforcing,audit-core}.ts`, `scripts/verify-kb-boundary.ts`, `test/knowledge-boundary-gate.test.ts` (16) |
 | 3 legality refusal | ✅ built | `search-knowledge-base.ts`, `test/knowledge-{legality-guard,tool-description}.test.ts` (42), `test/evals/assistant-kb-legality-refusal.*` (4 golden) |
 | 5 `allowPaths` | ✅ built | `crawl/path-match.ts`, `test/knowledge-allow-paths.test.ts` (26) |
-| 4, 6–11 | ⏸ not started | every one needs `.env`, a live crawl, or an operator-gated probe — see below |
+| 4 baseline capture | ✅ built | `docs/kb-register-baseline.json`, `docs/kb-eval/snapshot.json`, `SKB-baseline-register.json`, `SKB-baseline.md` |
+| 6 Penn State Extension | ✅ built | `config.ts` entry (45 `allowPaths` articles), `test/knowledge-config.test.ts` (11 new cases). Live-crawled: 47 active docs / 485 chunks after a scope-tightening fix + cleanup |
+| 7 Virginia Tech (reconciling `virginia-fruit`) | ✅ built | `config.ts` entry, `boundary/enforcing.ts` census move, `test/knowledge-config.test.ts` (9 new cases). Live-crawled: 68 active docs / 264 chunks after a scope-tightening fix + cleanup |
+| 8 retrieval evidence | ✅ built | `scripts/kb-eval-cases.ts` (5 new `RETRIEVAL_CASES`), `SKB-measurements.md`. `verify:knowledge-base` 26/26, `verify:kb-register` 8/120 (3%) PASSED |
+| 9 cross-region contamination | ✅ built | `scripts/kb-eval-cases.ts` (`REGION_CASES`, 4 probes), `SKB-region-finding.md`. **Verdict: REPRODUCES** (2 of 4) — hard-blocks `extension-psu`'s flip; `virginia-fruit`'s pre-existing live status left as an open owner question |
+| 10 MSU gated populate | 🟨 partial — the code-safe half only | `scripts/verify-msu.ts` self-authorization narrowed. The operator-gated `crawl:source msu-grapes --follow` was deliberately NOT run this session (D9); `SKB-msu-decision.md` states the exact command + criterion for Russell to run |
+| 11 registers + reports | ✅ built | this plan's build log, runbook §3 rule 19 + §8 ledger + §9 scope + §10 risk row, `scale-register.md` (D11 number corrected, new D13 entry), `spray-data-sources-design.md` §4, `SKB-report.md`, `SKB-qa-report.md` |
 
 ### ⚠️ Three things the build found that the plan did not anticipate
 
@@ -980,3 +992,11 @@ that is a deliberate human action by D9. Unit 9 is still the phase's biggest unk
 run and its findings are folded (plan v2, 11 units / 4 PRs). `/plan-eng-review` remains available for a
 third pass but is not a program gate for this lane. **Build PR 1 first and in full — every source unit
 now depends on it.**
+
+---
+
+**CLOSING UPDATE (2026-07-27):** all 11 units complete except Unit 10's operator-gated MSU crawl,
+which is deliberately deferred to Russell (see `SKB-msu-decision.md`). D13's cross-region-
+contamination gate fired: `extension-psu` stays dark, and `virginia-fruit`'s pre-existing live status
+is an open owner question, not a decision this phase made. Full detail: `SKB-report.md` +
+`SKB-qa-report.md`. Not yet PR'd.
