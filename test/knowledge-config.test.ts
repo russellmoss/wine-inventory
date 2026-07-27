@@ -456,6 +456,72 @@ describe("MSU Extension Grapes source (plan 085)", () => {
   });
 });
 
+// Plan 099. This source is a deliberate, narrow exception to a "do not crawl this host" line recorded
+// in plan 087, granted by the owner on 2026-07-27 for ONE free preview PDF of a paid publication. Every
+// assertion below is a tripwire on the terms of that exception, not bookkeeping: the blast radius is a
+// copyright complaint from a named publisher, and the containment is entirely in this config.
+describe("Cornell NY/PA Grape Guide preview source (plan 099)", () => {
+  const guide = () => findSourceConfig("cornell-grape-guide")!;
+  const PREVIEW_URL =
+    "https://cropandpestguides.cce.cornell.edu/Preview/2025/2025_Grape_Guide_Preview.pdf";
+
+  it("resolves and is a tier-1 extension source", () => {
+    expect(guide()).toBeTruthy();
+    expect(guide().tier).toBe(1);
+    expect(guide().homeDomain).toBe("cropandpestguides.cce.cornell.edu");
+  });
+
+  // Containment, part 1. The rest of this host is a paid book. An empty allowPrefixes means sitemap
+  // discovery and link-following can admit nothing here. A future diff adding a prefix would silently
+  // open a paid publication to the crawler. (Part 2 is the single pinned directUrls entry below —
+  // `crawlUrls` does not re-gate PATH on redirect, so the URL list is the real bound.)
+  it("is undiscoverable by sitemap or link-following — allowPrefixes is EMPTY", () => {
+    expect(guide().allowPrefixes).toEqual([]);
+  });
+
+  it("is kept out of the monthly sweep", () => {
+    expect(guide().autoCrawl).toBe(false);
+    expect(guide().crawlCadence).toBe("manual");
+  });
+
+  // Staged rollout. Flipping this is a follow-up that happens only after the kb-register displacement
+  // measurement, never in the PR that adds the source.
+  it("ships OFF by default", () => {
+    expect(guide().defaultEnabled).toBe(false);
+  });
+
+  it("records the withdraw-on-request posture in its licence", () => {
+    // The owner accepted this source on the explicit condition that it comes down if Cornell asks.
+    // That condition lives in exactly one place; losing it loses the reason the source is allowed.
+    const l = guide().license.toLowerCase();
+    expect(l).toContain("withdraw");
+    expect(l).toContain("all rights reserved");
+    expect(l).toMatch(/preview|excerpt/);
+  });
+
+  it("crawls exactly one URL, on a trusted host", () => {
+    const spec = findCuratedSpec("cornell-grape-guide");
+    expect(spec).toBeTruthy();
+    expect(spec!.directUrls).toEqual([PREVIEW_URL]);
+    // Without the host in TRUSTED_DOMAINS, crawlUrls drops the fetch silently.
+    expect(TRUSTED_DOMAIN_SET.has("cropandpestguides.cce.cornell.edu")).toBe(true);
+  });
+
+  it("seeds from the preview URL — crawler.ts dereferences seedRoots[0]", () => {
+    expect(guide().seedRoots).toEqual([PREVIEW_URL]);
+  });
+
+  it("does not raise the fetch size cap — the preview is ~2.4 MB", () => {
+    // A raised cap here would be the one change that lets a 160-page full edition through.
+    expect(findCuratedSpec("cornell-grape-guide")!.maxBytes).toBeUndefined();
+  });
+
+  it("is the ONLY source touching this host", () => {
+    const onHost = TRUSTED_DOMAINS.filter((d) => d.domain.endsWith("cropandpestguides.cce.cornell.edu"));
+    expect(onHost.map((d) => d.sourceKey)).toEqual(["cornell-grape-guide"]);
+  });
+});
+
 // The monthly sweep died in PRODUCTION on this. `virginia-fruit` was seeded into the global
 // knowledge_source table from a branch that never merged; the old selection
 // (`findSourceConfig(key)?.autoCrawl !== false`) reads `undefined !== false` as TRUE, so the

@@ -46,12 +46,56 @@ describe("boundary scope — enforcement is the default", () => {
     expect(staleReportOnlyKeys()).toEqual([]);
   });
 
-  it("the census covers every source registered today, plus the documented DB-only legacy keys", () => {
-    // This is not a "keep them in sync" chore. It documents that as of SKB, report-only is a CLOSED
-    // set: every future source enforces on arrival. If this fails, someone registered a source and
-    // silently added it to the grandfather list, which is the thing council C3 forbade.
-    const expected = [...KNOWLEDGE_SOURCES.map((s) => s.key), ...BOUNDARY_LEGACY_DB_ONLY_KEYS].sort();
-    expect([...BOUNDARY_REPORT_ONLY_SOURCE_KEYS].sort()).toEqual(expected);
+  // The census is a SNAPSHOT of the sources that existed when SKB landed, frozen HERE rather than
+  // derived from KNOWLEDGE_SOURCES.
+  //
+  // Deriving it inverted the intent (found by plan 099, the first source registered after SKB).
+  // The old assertion was `census == every config key + legacy`, which meant registering a new source
+  // and NOT grandfathering it — the correct enforce-by-default path the comment describes — FAILED,
+  // while registering one AND silently adding it to the grandfather list PASSED. Exactly backwards
+  // from the thing council C3 forbade. A literal snapshot cannot drift with config, so the two tests
+  // below say what was meant: the census is closed, and anything newer enforces.
+  const PRE_SKB_CENSUS = [
+    ...BOUNDARY_LEGACY_DB_ONLY_KEYS,
+    "awri",
+    "chambre-gironde",
+    "cornell-grapes",
+    "enartis",
+    "epa-pesticide",
+    "ets",
+    "icvv",
+    "ifv-france",
+    "ifv-occitanie",
+    "incavi",
+    "ives-technical-reviews",
+    "laffort",
+    "lvwo",
+    "mapa",
+    "msu-grapes",
+    "osu-extension",
+    "osu-owri",
+    "scott-labs",
+    "uc-ipm",
+    "umc",
+    "viticulture-extension-refs",
+    "vt-enology-notes",
+    "wbi",
+    "wine-australia",
+    "wsu",
+  ].sort();
+
+  it("the census is the frozen pre-SKB set — nothing may be ADDED to the grandfather list", () => {
+    // Shrinking it is how D3 closes and requires editing this list deliberately. Growing it is the
+    // council-C3 violation.
+    expect([...BOUNDARY_REPORT_ONLY_SOURCE_KEYS].sort()).toEqual(PRE_SKB_CENSUS);
+  });
+
+  it("every source registered AFTER SKB enforces on arrival, with no opt-in step", () => {
+    const post = KNOWLEDGE_SOURCES.map((s) => s.key).filter((k) => !PRE_SKB_CENSUS.includes(k));
+    // Not vacuous: cornell-grape-guide (plan 099) is in this set, and it is a source whose tier-C
+    // pesticide tables are exactly what the gate exists to refuse.
+    expect(post.length).toBeGreaterThan(0);
+    for (const k of post) expect(boundaryModeFor(k), k).toBe("enforce");
   });
 
   it("a DB-only legacy source is report-only, NOT enforcing", () => {

@@ -2,44 +2,101 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
-## Chunk breadcrumbs carry the page `<title>`, site suffix and all
+## 🔴 KB-1's product-table gate is structurally BLIND to PDFs (found 2026-07-27, plan 099)
 
-**What:** every chunk's `sectionPath` is prefixed with the raw HTML `<title>`, so the embedded text
-of an IVES chunk begins:
+**What:** `index-documents.ts` hands the detector raw bytes — `{ kind: "text", text: input.bytes.toString("utf8") }`
+for anything non-HTML. For HTML that is readable markup and the detector works as designed. **For a PDF
+those bytes are Flate-compressed content streams**, so the detector inspects binary noise.
+
+**Measured** on Cornell's 2025 NY/PA Grape Guide preview, whose pages 22-24 are textbook tier C
+(Common Name × Trade Name × Formulation × WSSA Group × Days to Harvest × REI × EPA Reg. Number):
+
+| Input | verdict | rows | signals |
+|---|---|---|---|
+| raw bytes as utf8 (**what the pipeline does**) | `prose` | 1 | `flat-run:1, flat-unqualified` |
+| extracted markdown (what it never sees) | `prose` | 0 | 7 header hits: trade-name, restricted-entry, days-to-harvest, rate-per-acre, formulation, active-ingredient, relative-effectiveness |
+
+Only 40% of the raw byte-string is printable ASCII, and `"Trade Name"`, `"EPA Reg"`, `"REI"` and
+`"carfentrazone"` are all **absent** from it. So an enforcing source ships a full pesticide rate table
+into the corpus with verdict `prose`.
+
+**Why the second row matters too.** Even given clean extracted text the verdict is still `prose`: the
+structured arm counts repeated rows, and `extract/pdf.ts` emits no pipe tables, so `rowCount` is 0 and
+the seven header signals alone do not carry the verdict. Council C2's reasoning ("post-extraction text
+destroys the row-repetition signal, so run pre-extraction") is right about HTML and does not transfer —
+for PDFs pre-extraction bytes are *less* legible than post-extraction text, not more.
+
+**Why this is not fixed here:** it is SKB's phase and its D3 close-out, it is a safety detector, and the
+fix is a design question (decompress and inspect? build the arm on `extractTextItems` geometry? let
+header-signal density carry a verdict when the row arm cannot run?) that deserves its own plan, not a
+drive-by in a source PR.
+
+**Consequence to hold until then:** for any PDF source, the boundary gate provides **no protection**,
+whatever `boundaryModeFor` says. `verify:kb-boundary`'s per-source counts are a floor on HTML and
+approximately zero-information on PDFs. Treat an "enforcing" PDF source as ungated.
+
+**Where:** `src/lib/knowledge/index-documents.ts` (the `{ kind: "text" }` call site),
+`src/lib/knowledge/boundary/product-table-core.ts` (the structured arm).
+
+## 🟡 Chunk breadcrumbs: CODE FIXED (plan 099), CORPUS PENDING a re-index
+
+**Status 2026-07-27.** The duplication half of this is fixed in `src/lib/knowledge/chunk.ts`. What
+remains is (a) re-indexing the existing corpus so the fix actually reaches stored chunks, and (b) one
+smaller piece of the original defect.
+
+**What was wrong:** every chunk's `sectionPath` began with the document title, then repeated it as the
+first heading. On IVES HTML the title arrived with the publisher's site suffix and literal tabs:
 
 ```
 Understanding Esca: watch out for the grafting type!
 			| IVES Technical Reviews, vine and wine > Understanding Esca: watch out for the grafting type! …
 ```
 
-The article title appears **twice**, once with the publisher's site suffix and literal tabs/newlines.
-That string is part of what gets embedded and part of what the assistant sees, on every chunk.
+Plan 099 found the same failure on PDFs, and measured it: Cornell's Grape Guide extracted cleanly
+(56 real headings, confidence gate passed) and still produced **11 distinct breadcrumbs across 77
+chunks, 75 of them truncated**, because the 68-char title plus the 63-char cover-title H1 consumed 134
+of the 140-char budget and the cap then truncated the *tail* — deleting every real heading and leaving
+`… > 3…`.
 
-**Why it matters:** `sectionPath` is not cosmetic — it is concatenated into the chunk text before
-embedding, so the noise is inside the vector. At ~14 chunks/article it is a few hundred characters of
-repeated boilerplate per chunk. It also lands in the citation UI. Related in kind to the known
-breadcrumb defect where headingless PDFs take a page-one slab as their breadcrumb.
+**What is fixed:** `crumbKey` / `restatesRoot` drop a heading that restates the root title (a leading
+year is not identity, so "2025 X Guidelines" and "X Guidelines" are one string); segment whitespace is
+collapsed, which kills the literal tabs; and `capBreadcrumbSegments` now elides from the **middle**,
+keeping the root and the leaf, because the leaf is the segment worth embedding.
 
-**Why it was NOT fixed with IVES (PR #465):** chunking runs inside `indexDocument`, *before* the
-crawl script re-applies the feed's clean `dc:title`. Fixing it there would mean either reordering the
-index pipeline or special-casing one source — and this is **generic behaviour affecting all 24
-sources**, not an IVES quirk. Patching around it in `crawl-ives.ts` would have been the wrong layer
-and would have hidden the general problem behind one source looking fine.
+**What is NOT fixed — the ` | <publisher>` suffix.** The root title still carries it (once now, not
+twice). It cannot be stripped safely in `chunk.ts`: that layer does not know the source's publisher, so
+any rule would be a guess against titles that legitimately contain `|` or `–`. Doing it properly means
+normalising the title where the publisher IS known — `index-documents.ts` `buildDocumentMetadata`, or
+the extractors.
 
-**Shape of the fix (unverified):** normalise the title before it becomes a breadcrumb — collapse
-whitespace, strip a trailing ` | <publisher>` / ` - <publisher>` suffix, and drop the leading title
-segment when it merely repeats the first heading. Pure and unit-testable.
+**⚠️ The corpus still holds the old breadcrumbs, and NOTHING heals on its own.** The breadcrumb is
+baked into stored chunk text and its vector, so fixing the code does not fix the corpus.
 
-**⚠️ Re-embedding required.** The breadcrumb is baked into stored chunk text and its vector, so
-fixing the code does **not** fix the corpus — the same trap as the `vessel_component` incremental
-fold. Existing chunks need `reset:knowledge-source` + a re-crawl per source, or they keep the old
-breadcrumbs forever (`indexDocument` early-returns on an unchanged content hash).
+An earlier draft of this entry claimed PDFs would self-heal on their next crawl via the
+`PDF_EXTRACT_VERSION` bump. **That was wrong**, caught in review, and the reasoning is worth keeping
+because it is the same trap plan 090 hit:
 
-**Measure before and after:** `npm run verify:kb-register` against
-`docs/kb-register-baseline.json` — this changes embedded text corpus-wide, so it can move retrieval.
+- `PDF_EXTRACT_VERSION` `"1"` → `"2"` is **necessary but not sufficient**. It only changes the *hash*.
+  It does nothing unless `indexDocument` is actually reached with fresh bytes.
+- **The monthly sweep never reaches it.** `crawlWithFollowing` issues a conditional GET and returns
+  early on a 304, before `onDocument` fires. It has no `ignoreValidators` option at all.
+- **And most PDFs are not in the sweep anyway** — 16 of 26 sources are `autoCrawl: false` and routed to
+  `curated`, which is essentially the whole PDF corpus. `scripts/crawl-curated.ts` does not pass
+  `ignoreValidators` either, so a manual curated re-run also no-ops on unchanged bytes.
+- HTML is unhealable for a second, independent reason: a doc with no section filter hashes on the bare
+  `contentHash`, so even a forced re-fetch produces the same index hash.
 
-**Where:** `src/lib/knowledge/chunk.ts`, `src/lib/knowledge/index-documents.ts`,
-`src/lib/knowledge/extract/`.
+**So there is one lever, and it is deliberate:** `npm run reindex:knowledge -- --sources=<keys>`, which
+passes `ignoreValidators: true` precisely for this (see the header comment in
+`scripts/reindex-knowledge-corpus.ts`, which documents the 304 trap by name). Per-source alternative:
+`reset:knowledge-source` + re-crawl.
+
+**Cost is why it is deferred:** ~23.5k chunks re-embedded through Voyage. Run it as its own campaign,
+and **capture `verify:kb-register` and `kb:snapshot --repeat 3` baselines before and after together** —
+this changes embedded text corpus-wide, so it can move retrieval. Do not fold it into an unrelated PR.
+
+**Where:** `src/lib/knowledge/chunk.ts` (fixed), `src/lib/knowledge/index-documents.ts` (publisher
+suffix), `src/lib/knowledge/extract/pdf-structure.ts` (`PDF_EXTRACT_VERSION`).
 
 ## Knowledge-corpus prompt-injection posture (all 17 sources, pre-existing)
 

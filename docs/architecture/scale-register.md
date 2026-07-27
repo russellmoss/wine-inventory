@@ -209,8 +209,31 @@ TEMPLATE — copy this block for each new decision:
   backfill; MMR/RRF over a huge candidate set costs CPU if `k` isn't bounded.
 - **Tripwire:** vector queries trending into tens of ms; chunk counts crossing ~10k; a re-embed job
   scanning the whole corpus on every run instead of the changed subset; retrieval `LIMIT k` unbounded.
-- **Status:** 🟢 (global shared corpus; exact scan at winery+AWRI scale; HNSW is a documented later add;
-  guarded by `verify:knowledge-base` + `verify:tenant-isolation`; see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]]).
+- **Status:** 🟡 **the chunk-count tripwire above has been CROSSED** — the corpus is ~23.5k chunks
+  against a stated "fine until hundreds–low-thousands" and a "~10k" tripwire, so every dense query is
+  now a sequential scan over the whole corpus. Nothing is broken (latency has not been measured as a
+  user-visible problem), but the 🟢 was stale and is corrected here rather than left to look deliberate.
+  HNSW (`vector_cosine_ops`, built after data load) is the documented remedy and remains unbuilt.
+  Guarded by `verify:knowledge-base` + `verify:tenant-isolation`;
+  see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]].
+
+### Breadcrumb text is baked into every stored chunk and its vector (plan 099)
+- **Choice:** `chunk.ts` prepends the section breadcrumb into each chunk's `text`, which is what gets
+  embedded AND what backs the generated `search_vector`. That makes a breadcrumb bug a *data* bug, not a
+  rendering bug: fixing the code does not fix the corpus.
+- **Fine until:** the breadcrumb logic is stable. Plan 099 changed it (root/heading de-duplication,
+  middle elision) to fix Cornell's Grape Guide collapsing to 11 breadcrumbs across 77 chunks.
+- **What breaks at scale:** re-indexing to apply a breadcrumb change is O(corpus) Voyage spend
+  (~23.5k chunks). **Nothing self-heals.** A version bump (`PDF_EXTRACT_VERSION`) changes only the index
+  hash; it is necessary but not sufficient, because the monthly sweep 304s and returns before
+  `onDocument` fires, 16 of 26 sources are `autoCrawl:false` and not in the sweep at all, and
+  `crawl:curated` does not pass `ignoreValidators`. HTML has a second independent blocker: no section
+  filter means the bare `contentHash` is the index hash. So the corpus carries two breadcrumb formats
+  until someone runs `reindex:knowledge` on purpose.
+- **Tripwire:** a third breadcrumb format landing before the second is reconciled; anyone folding a
+  corpus-wide re-index into an unrelated PR; **anyone claiming a version bump alone will propagate a
+  extractor/chunker change** — it will not, and the run will look green.
+- **Status:** 🟡 (code fixed, corpus split; deferred campaign tracked in `TODOS.md` §"Chunk breadcrumbs").
 
 ### Section-level content filtering strips in place; it does NOT create per-anchor documents (plan 084)
 - **Choice:** when a source mixes technical and non-technical content inside ONE url (VT Enology Notes

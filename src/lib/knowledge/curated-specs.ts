@@ -90,6 +90,17 @@ export const CURATED_SPECS: CuratedSpec[] = [
     delayMs: 2000,
     maxBytes: 80 * 1024 * 1024, // the IPM guide is ~62 MB (default 15 MB cap would reject it)
   },
+  // ── United States ──
+  {
+    sourceKey: "cornell-grape-guide",
+    // Exactly one URL, forever. The rest of this host is a paid publication (plan 099); the source's
+    // allowPrefixes are empty so there is no path by which the crawler could reach anything else.
+    // 2.4 MB, comfortably under the 15 MB default cap — do NOT raise maxBytes here.
+    directUrls: [
+      "https://cropandpestguides.cce.cornell.edu/Preview/2025/2025_Grape_Guide_Preview.pdf",
+    ],
+    delayMs: 2000,
+  },
   {
     sourceKey: "incavi",
     // Listings are JS-rendered; fetch the confirmed Catalan PDF assets directly.

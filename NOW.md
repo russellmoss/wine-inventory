@@ -1074,6 +1074,37 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **🧵 TANGENT (2026-07-27) — Cornell NY/PA Grape Guide as a KB source + the breadcrumb defect it
+  exposed. Plan 099, [PR #543](https://github.com/russellmoss/wine-inventory/pull/543) OPEN. Code green;
+  NOT merged, NOT seeded, NOT crawled.**
+  Owner asked to ingest the [2025 Grape Guide preview PDF](https://cropandpestguides.cce.cornell.edu/Preview/2025/2025_Grape_Guide_Preview.pdf).
+  **Three blockers were surfaced and the owner decided to proceed anyway (2026-07-27):** plan 087 lists
+  that host as "paid. Do not crawl." (the *unreachable* half of that note is stale — it serves 200); the
+  preview is a 25-page sampler of a 166-page **paid** book spanning all 8 chapters, so pages 22-24 are
+  tier-C product × rate × REI/PHI tables; and it carries "© 2025 Cornell University. All rights reserved."
+  with no grant. Decision: ingest, **paraphrase + cite rather than reproduce, withdraw on request** — the
+  same posture `vt-enology-notes` already runs under. Posture is recorded in the source's `license` string
+  so takedown is `active:false` + `reset:knowledge-source`.
+  **The bigger half was a corpus-wide defect this forced out.** The guide extracts *cleanly* (56 headings,
+  confidence gate passes) yet collapsed to **11 distinct breadcrumbs across 77 chunks, 75 truncated** — the
+  68-char title plus a 63-char cover-title H1 ate 134 of the 140-char budget and the cap truncated the
+  *tail*, deleting every real heading. Fixed in `chunk.ts` (drop a heading restating the root; elide the
+  MIDDLE, never the leaf) → **46 distinct breadcrumbs, 19/77 elided, 0 over cap.** Closes the long-open
+  `TODOS.md` breadcrumb entry for the duplication half. ⚠️ **NOTHING self-heals** — review killed the
+  claim that PDFs would: `PDF_EXTRACT_VERSION` → `"2"` changes only the index hash, but the sweep 304s
+  before `indexDocument` runs, 16 of 26 sources are `autoCrawl:false` and not in the sweep at all, and
+  `crawl:curated` doesn't pass `ignoreValidators`. **`reindex:knowledge` is the only lever**, deferred
+  (~23.5k chunks of Voyage spend) and tripwired. Also corrected `scale-register.md`: the KB entry claimed
+  🟢 while its own ~10k-chunk tripwire had been crossed at ~23.5k.
+  **Remaining (plan 099 Unit 6, strictly ordered):** capture `verify:kb-register --capture` +
+  `kb:snapshot --repeat 3` BEFORE → merge+deploy → `seed:knowledge-sources` → `crawl:curated -- cornell-grape-guide`
+  → read rows back → **numeric-fidelity spot check on the rate cells** (see the EM 8413 precedent in
+  `TODOS.md` — a live 10× dose error from a converter eating a leading `0.`) → re-measure displacement →
+  enable Demo → flip `defaultEnabled`. Ships `defaultEnabled:false`.
+  🔴 **NEW INTERACTION, unresolved:** #538 merged the **KB-1 tier-C boundary gate** into
+  `index-documents.ts` after plan 099 was written. The Grape Guide's pages 22-24 are exactly what that
+  gate refuses. Whether `cornell-grape-guide` is an *enforcing* source decides whether the crawl indexes
+  the prose and drops the tables, or refuses the document outright. **Settle this before Unit 6 step 4.**
 - **🟩 SKB PR 1 + Unit 5 BUILT (2026-07-27) — the boundary is now REAL, so the source units are
   unblocked.** Branch `claude/skb-knowledge-sources-plan-bd36b7`, 3 commits, **not yet PR'd**.
   Plan: [SKB-knowledge-sources-plan.md](docs/spray_assistant/phases/SKB-knowledge-sources-plan.md).
