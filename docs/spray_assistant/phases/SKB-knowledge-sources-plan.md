@@ -933,6 +933,31 @@ Full reconciliation in [SKB-council-feedback.md](SKB-council-feedback.md).
    pass: a bare integer matched the FRAC-code pattern, so *"apply at 7 to 10 day intervals"* scored two
    resistance-group cells and read as a row.
 
+### Live detector check (2026-07-27) — 6/10 → 8/10, and one finding that changes D3
+
+The unit fixtures were all authored by whoever wrote the detector, so they could not say whether the
+mental model of real extension markup was right. Running the detector against the ACTUAL pages §6
+classified by hand found **two defects all 24 fixtures missed** (both now fixed, both pinned by
+regression tests proven to fail against the pre-fix code):
+
+- `assessTable` sliced **raw markup** to 4 KB and stripped tags afterwards. PSU serves ~4 % text-to-
+  markup, so that window is ~160 characters of TEXT and the header row sits outside it. **VT's
+  `GrapePestEfficacy.html` had all 29 of its product→fact rows counted and then discarded as
+  "unqualified", reading as PROSE.**
+- A spray table's caption is often a heading ABOVE the `<table>`, not a `<th>` inside it.
+
+⚠️ **The finding that matters beyond the detector: `www2.ipm.ucanr.edu/agriculture/grape/Powdery-Mildew/`
+returns `product-table`, and it is a TRUE POSITIVE.** The page carries a real
+`Common name | Amount per acre | R.E.I. | P.H.I. | MODE-OF-ACTION GROUP` table. **`uc-ipm` is a tier-1
+INCUMBENT and that content is live in the corpus today** — exactly the tier-C shape KB-1 forbids.
+Nothing breaks (it is on the report-only census, so it is admitted and counted), but this is direct
+evidence that **D3's count is non-trivial and that council C3 was right** that report-only cannot be
+allowed to settle into a grandfather clause. Unit 8/11 should expect a real number here, not a zero.
+
+The remaining live disagreement is a wrong expectation, not a wrong verdict:
+`/SprayGuide/GrapeSprays.html` is a 2017 table-of-contents page whose tables live on linked sub-pages,
+so 0 rows is correct. (`/SprayGuide/` is denied by prefix regardless.)
+
 ### Deviation from the plan, with the reason
 
 §7 Unit 3 says to register the golden in `test/evals/assistant-tools.eval.test.ts`. It is a **new
