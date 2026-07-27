@@ -12,6 +12,21 @@ export interface Chunk {
   tokenCount: number;
 }
 
+/**
+ * BUMP THIS whenever chunking changes what text ends up in a chunk.
+ *
+ * index-documents.ts short-circuits on `indexedContentHash === indexHash`, and the basis of that
+ * hash is the RAW FETCHED BYTES. Fixing the chunker does not change the bytes, so without this
+ * version participating in the hash, every subsequent crawl returns skipped:"unchanged" and the fix
+ * never reaches a single already-indexed document. The failure is silent — the crawl reports success
+ * and repairs nothing.
+ *
+ * v2 (2026-07-26, plan 100 Unit 1): splitIntoSentences replaced a `String.match(/g)` scan that
+ *                                   silently DELETED text. Every document indexed at v1 whose
+ *                                   content took the force-split path is suspect.
+ */
+export const CHUNKER_VERSION = "2";
+
 const TARGET_TOKENS = 512;
 const MAX_TOKENS = 700; // a single block bigger than this is force-split (prose) or kept whole (table)
 const OVERLAP_TOKENS = 75; // ~15%
@@ -219,8 +234,61 @@ function parseSegments(markdown: string, rootTitle: string): Segment[] {
   return segments;
 }
 
-function splitBySentences(text: string, targetTokens: number): string[] {
-  const sentences = text.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) ?? [text];
+const isTerminator = (ch: string) => ch === "." || ch === "!" || ch === "?";
+const isSpace = (ch: string) => /\s/.test(ch);
+
+/**
+ * Plan 100 Unit 1 — split text into sentences WITHOUT losing a single character.
+ *
+ * This replaces `text.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g)`, which silently deleted text.
+ * Neither alternative of that regex can match a `.` that is not followed by whitespace, and
+ * `String.prototype.match(/…/g)` SKIPS spans it cannot match instead of failing. So any decimal
+ * sitting after the last sentence boundary fell into a dead zone and vanished:
+ *
+ *     "abc. 0.5 def"  ->  ["abc. ", "5 def"]          the "0." is gone
+ *
+ * In the live corpus that turned "Abound at 10 to 15.5 fl oz/A" into "5 fl oz/A" — losing the
+ * product name AND turning the rate into a different number, in a pesticide guide, under a
+ * citation that made it look authoritative.
+ *
+ * The boundary RULE is deliberately unchanged from the regex it replaces: a sentence ends at a run
+ * of [.!?] that is followed by whitespace or end-of-input, and the single whitespace character
+ * after the terminator is consumed with it (the old `(\s|$)` group did exactly that). Improving
+ * sentence detection — abbreviations like `spp.`/`approx.`, European decimal commas — is a
+ * separate, real problem, tracked in TODOS. Bundling it here would destroy the parity control that
+ * proves THIS change is safe.
+ *
+ * The invariant is total coverage, so it is written as one: `splitIntoSentences(s).join("") === s`
+ * for every input. Asserted as a property in test/knowledge-chunk-integrity.test.ts.
+ */
+export function splitIntoSentences(text: string): string[] {
+  if (text === "") return [];
+  const parts: string[] = [];
+  let start = 0;
+  let i = 0;
+  while (i < text.length) {
+    if (!isTerminator(text[i])) {
+      i++;
+      continue;
+    }
+    let end = i;
+    while (end < text.length && isTerminator(text[end])) end++;
+    if (end >= text.length) break; // terminators run to the end; the tail below takes them
+    if (isSpace(text[end])) {
+      parts.push(text.slice(start, end + 1)); // include the one whitespace char, as `(\s|$)` did
+      start = end + 1;
+      i = start;
+      continue;
+    }
+    i = end; // not a boundary (the "." in 0.5) — keep scanning, but never skip the span
+  }
+  if (start < text.length) parts.push(text.slice(start));
+  return parts;
+}
+
+export function splitBySentences(text: string, targetTokens: number): string[] {
+  const sentences = splitIntoSentences(text);
+  if (!sentences.length) return [];
   const out: string[] = [];
   let buf = "";
   for (const s of sentences) {
@@ -234,8 +302,8 @@ function splitBySentences(text: string, targetTokens: number): string[] {
   return out;
 }
 
-function tailForOverlap(body: string): string {
-  const sentences = body.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) ?? [];
+export function tailForOverlap(body: string): string {
+  const sentences = splitIntoSentences(body);
   let tail = "";
   for (let i = sentences.length - 1; i >= 0; i--) {
     const next = sentences[i] + tail;
@@ -243,6 +311,33 @@ function tailForOverlap(body: string): string {
     tail = next;
   }
   return tail.trim();
+}
+
+/**
+ * Plan 100 Unit 3b — the standing guard, not a fix for one regex.
+ *
+ * Fixing `splitIntoSentences` closes the bug we found. It does nothing about the next one, and this
+ * failure mode is invisible by construction: a corrupted rate is usually still agronomically
+ * plausible. 5 lb/A of sulfur is a normal spray; 5 lb/A of a Group 3 DMI is catastrophic and
+ * illegal. Nobody downstream can tell the difference, and the citation makes the wrong number look
+ * checked.
+ *
+ * So: every decimal-shaped token in the extracted text must still be findable in the chunks that
+ * text produced. Presence is the assertion, not position or count — chunk overlap legitimately
+ * duplicates a token, and a chunk boundary legitimately separates a number from its unit.
+ *
+ * Returns the distinct tokens that vanished, in source order. Empty means the document is clean.
+ */
+export function findDroppedNumericTokens(sourceText: string, chunkTexts: string[]): string[] {
+  const dropped: string[] = [];
+  const seen = new Set<string>();
+  for (const match of sourceText.matchAll(/\d+[.,]\d+/g)) {
+    const token = match[0];
+    if (seen.has(token)) continue;
+    seen.add(token);
+    if (!chunkTexts.some((c) => c.includes(token))) dropped.push(token);
+  }
+  return dropped;
 }
 
 function chunkSegment(seg: Segment, startOrdinal: number): Chunk[] {

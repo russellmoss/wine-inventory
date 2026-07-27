@@ -2,6 +2,98 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
+## Deferred from plan 100 PR A (council-raised, deliberately out of scope)
+
+Four real defects found while fixing the chunker text-loss bug. None is a data-corruption risk on
+its own, which is why they were not bundled into a fix whose whole value was a tight parity control.
+
+1. **Sentence boundaries are not domain-aware** (council C1, Gemini). The rule — split at `.`
+   followed by whitespace — is unchanged by the plan-100 fix, and it shatters `approx.`, `var.`,
+   `spp.`, `cv.`, `subsp.`, `Dr.`, `BBCH 12.`, and European decimal formatting (`1.500,00`) used by
+   the French, German, Spanish and Catalan sources. Gemini wanted this fixed inside Unit 1; Codex
+   said explicitly not to touch sentence detection in an integrity fix, and Codex won on sequencing:
+   character *deletion* changes a number's value, whereas a misplaced *boundary* only splits a
+   sentence across two chunks that already carry 75 tokens of overlap. Fix separately, with its own
+   before/after retrieval measurement. Minimum shape: negative-lookahead on digits
+   (`(?<!\d)\.(?!\d)`) plus an explicit agronomic/taxonomic abbreviation list.
+
+2. **No user path to report a dangerous citation** (council design question, Gemini). `/developer`
+   → `bug_reports` exists, but nothing connects a suspect citation in an assistant answer to it.
+   This is the only human backstop against corruption that looks plausible — and plan 100 proved
+   the corruption is usually plausible (5 lb/A of sulfur is a normal spray; 5 lb/A of a Group 3 DMI
+   is catastrophic and illegal). Worth a "report this citation" affordance on the citation chip.
+
+3. **Raw HTML leaks into chunk text — 925 chunks / 476 documents corpus-wide.** Trigger: any
+   `<table>` containing a `colspan` attribute anywhere makes Defuddle abandon markdown conversion
+   and emit the whole table as raw `<table>…</table>` HTML, which the chunker then stores verbatim.
+   `ifv-france` is dominant at **753 chunks across 380 documents, roughly 55% of that source**;
+   also `uc-ipm` (83), `ives-technical-reviews` (26), `awri` (26 `<td>` + 5 `<iframe>`),
+   `osu-extension` (10 + 3). This directly undermines `chunk.ts`'s own stated design goal of
+   preserving dose-table structure. Upstream-library problem, much larger blast radius, own plan.
+
+4. **`extract/index.ts:61` decodes every document as UTF-8 unconditionally** — no HTTP
+   `Content-Type` charset param and no `<meta charset>` sniffing. Latent, not currently triggered:
+   the one `osu-extension` mojibake (`Temperature (В°C)`) is baked into OSU's own bytes upstream,
+   and the single `awri` case is an unrelated PDF font-encoding failure in `extract/pdf.ts`. But a
+   future source served as genuine windows-1252 would be silently mangled by us.
+
+## 🔴 EM 8413 is in the corpus with corrupted pesticide rates (LIVE, safety-relevant)
+
+Found 2026-07-26 during PNW-handbook recon. `osu-extension` document
+`https://extension.oregonstate.edu/catalog/em-8413-pest-management-guide-wine-grapes-oregon`,
+47 chunks, `status = active`, retrievable today. Four independent defects, all reproduced by
+re-fetching the live page and running `extract/html.ts` on it:
+
+1. ~~**Rate corruption — the serious one.**~~ ✅ **ROOT-CAUSED AND FIXED (plan 100 PR A, 2026-07-27).**
+   The guess recorded here — "almost certainly the markdown converter reading a line-initial `0.` as
+   an ordered-list marker" — was **wrong**. Defuddle is innocent. The culprit was
+   `splitBySentences` in `chunk.ts`, whose `String.match(/g)` scan *skipped* spans it could not
+   match. Corpus-wide, not EM-8413-specific: **~630 of 3,299 documents measured corrupted.** See the
+   plan's Unit 3 result.
+2. **The actual rate tables never arrived.** Tables 2, 3 and 7 are **Airtable `<iframe>` embeds**;
+   only the bare `<iframe src="https://airtable.com/embed/…">` tag is in chunk text (chunks 4, 14).
+3. **Raw HTML leaked into chunk text.** Defuddle left 2 `<table>` blocks unconverted, so chunks 7–9
+   and 16–23 are strings of `<td headers="table-cell-413816-4-0 …">3</td><td …>12 hr</td>`. Also
+   mojibake: `Temperature (В°C)` (UTF-8 degree sign decoded as cp1252).
+4. **`publishedAt` = 2014-12-18** while chunk 0 links
+   `…/pest-management-guide-for-wine-grapes-in-oregon-**2026**.pdf`. This guide is revised annually;
+   freshness scoring believes it is 12 years old, which is exactly backwards for a safety document.
+
+The substance lives in that PDF, and `/sites/…*.pdf` already passes `crawl-osu-extension.ts`'s
+`isContentPath`. It was never fetched because `discover()` only reads links from the two wine hubs
+and the sitemap — never from a `/catalog/` page body. Fetching the PDF instead of (or as well as)
+the catalog page is most of the fix.
+
+⚠️ Note the interaction with **KB-1**: most of what is missing here (Tables 3/4/7/8 — product ×
+rate × REI/PHI × FRAC group) is **tier C and must NOT be repaired into the corpus**. The right
+outcome is probably *withdraw the tabular chunks, keep the prose* (resistance strategy, sprayer
+calibration, safe-use, certification bodies), not *ingest the tables properly*.
+
+## PNW Handbooks (`pnwhandbooks.org`) — 71 grape pages, blocked on the KB-1 scope call
+
+Full recon in `NOW.md` tangent 0. Short version: robots and licensing posture are **identical to the
+`osu-extension` source we already run** (`Allow: /`, `Crawl-delay: 10`, `use=reference`,
+`ai-train=no`; our UA is not on the named blocklist). One flat 4,999-loc sitemap. 71 pages in scope
+under four exact prefixes; `grape-vitis-spp-` must be an **exact prefix**, because a naive
+`/grape|vine/` match also takes 4 `oregon-grape-berberis-aquifolium-*` pages (*Mahonia*, an
+ornamental shrub, not a grapevine) plus 23 other false positives. Extraction is clean.
+
+Blocked on:
+- ~~**KB-1 / `src/lib/knowledge/boundary/` is not on main**~~ ✅ **UNBLOCKED — SKB PR 1 merged as
+  #538 (2026-07-27).** The gate, `verify:kb-boundary`, `allowPaths` and the legality refusal are all
+  on main now. ⚠️ But read the PDF-blindness entry above first: for a PDF source the gate provides
+  **no protection at all**, so treat an "enforcing" PDF source as ungated.
+- **A new `sectionFilter` strategy** — and per the council it must be **block-level within a
+  section**, not section-level, so the FRAC resistance-management prose survives. See plan 100 Unit 7. The tier-A/tier-C boundary runs *inside* each page:
+  `Cause` / `Symptoms` / `Cultural control` / `Biology and life history` are exactly the biology
+  prose the corpus wants, and `Chemical control` is a bulleted product list carrying rate + PHI +
+  FRAC/IRAC group + REI. Measured product-signal line density: `/pesticide-safety` 0 %, insect 22 %,
+  disease 30 %, `/weed/…/vineyard-grape` **46 % and effectively 100 % tier C**. PNW splits on body
+  headings, so the existing `"anchor-heading"` strategy does not fit as-is.
+
+`/pesticide-safety` (16 pages, 0 % product signal — WPS, PPE, spills, container disposal, pollinator
+protection, buffer zones) is the one slice with **no boundary question at all** and could ship first.
+
 ## 🔴 KB-1's product-table gate is structurally BLIND to PDFs (found 2026-07-27, plan 099)
 
 **What:** `index-documents.ts` hands the detector raw bytes — `{ kind: "text", text: input.bytes.toString("utf8") }`

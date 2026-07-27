@@ -7,6 +7,7 @@
 
 import crypto from "node:crypto";
 import { PDF_EXTRACT_VERSION } from "../extract/pdf-structure";
+import { CHUNKER_VERSION } from "../chunk";
 import { findSourceConfig } from "../config";
 import { splitHtmlSections } from "./split-html-sections";
 import { classifySection } from "./classify-section";
@@ -58,8 +59,39 @@ export interface SectionFilterResult {
  * the mistake instead of surfacing it.
  */
 export function shouldApplySectionFilter(contentType: string, sourceKey?: string): boolean {
-  if (contentType !== "html" || !sourceKey) return false;
-  return findSourceConfig(sourceKey)?.sectionFilter === "anchor-heading";
+  return resolveSectionFilter(contentType, sourceKey) !== null;
+}
+
+/** The strategies a source may declare. PR C (plan 100 Unit 7) adds "body-heading" to this union. */
+export type SectionFilterStrategy = "anchor-heading";
+
+export interface SectionFilterResolution {
+  strategy: SectionFilterStrategy;
+  version: string;
+}
+
+/**
+ * Plan 100 Unit 1b — resolve WHICH filter strategy applies, not merely whether one does.
+ *
+ * A boolean cannot distinguish two strategies, so a source switching from one to another would
+ * produce the same index hash and wrongly short-circuit as "unchanged" — silently keeping the old
+ * strategy's chunks live forever. Returning the resolution (and folding it into the hash) is what
+ * makes a strategy change actually take effect.
+ *
+ * The `html` gate is load-bearing: VT seeds 7 PDF-only notes, and PDFs carry no anchors. Without it,
+ * PDF bytes would be coerced through toString("utf8"), find nothing, and fail open — masking the
+ * mistake instead of surfacing it.
+ */
+export function resolveSectionFilter(
+  contentType: string,
+  sourceKey?: string,
+): SectionFilterResolution | null {
+  if (contentType !== "html" || !sourceKey) return null;
+  const strategy = findSourceConfig(sourceKey)?.sectionFilter;
+  if (strategy === "anchor-heading") {
+    return { strategy, version: SECTION_FILTER_VERSION };
+  }
+  return null;
 }
 
 export function applySectionFilter(rawHtml: string): SectionFilterResult {
@@ -94,22 +126,51 @@ export function applySectionFilter(rawHtml: string): SectionFilterResult {
   return { html, failedOpen: false, keptAnchors: kept, dropped };
 }
 
+export interface IndexHashInput {
+  /**
+   * Hash of the RAW FETCHED BYTES. Never of filtered or extracted output.
+   *
+   * Plan 100 Unit 1b, and this is the part that is easy to get wrong. Once the section filter runs
+   * before the boundary gate (PR C), it is tempting to fingerprint what survives filtering, since
+   * that is what actually gets indexed. Doing so makes every change inside a DROPPED section
+   * invisible: the filtered projection is unchanged, the hash matches, the crawl reports
+   * "unchanged", and the document is frozen. The damage surfaces later and silently, the moment a
+   * drop rule loosens and that stale content becomes admissible.
+   *
+   * Filtering decides what we INDEX. It must never decide what we consider CHANGED.
+   */
+  rawContentHash: string;
+  isPdf?: boolean;
+  /** Which section-filter strategy applied, or null. Not a boolean — see resolveSectionFilter. */
+  filter?: SectionFilterResolution | null;
+  /** Defaults to the current CHUNKER_VERSION; injectable so tests can pin a value. */
+  chunkerVersion?: string;
+}
+
 /**
- * The value stored in KnowledgeDocument.indexedContentHash. Folds in the filter version so that
- * changing a drop pattern actually forces a re-index. KnowledgeBlob.contentHash (byte-level dedup,
- * written by the crawler) is deliberately NOT affected — only the index idempotency basis moves.
+ * The value stored in KnowledgeDocument.indexedContentHash — the idempotency basis, and the only
+ * thing standing between a shipped pipeline fix and a corpus that silently never receives it.
+ *
+ * Payload: rawContentHash + pdf version + chunker version + filter strategy AND its version.
+ * KnowledgeBlob.contentHash (byte-level dedup, written by the crawler) is deliberately NOT affected.
+ *
+ * Strategy and version are folded in SEPARATELY on purpose. A single global filter version would
+ * mean any one strategy's bump re-indexes every filtered document in the corpus, and — worse — two
+ * strategies at the same version number would collide, so a source switching between them would
+ * short-circuit as "unchanged" and keep the old strategy's chunks forever.
  */
-export function deriveIndexHash(contentHash: string, filterApplied: boolean, isPdf = false): string {
+export function deriveIndexHash(input: IndexHashInput): string {
   const parts: string[] = [];
-  if (filterApplied) parts.push(`sf:${SECTION_FILTER_VERSION}`);
+  if (input.filter) parts.push(`sf:${input.filter.strategy}:${input.filter.version}`);
   // Plan 090 Unit 8 — PDFs get their own version component. Section filtering is HTML-only, so before
   // this a PDF's index hash was the bare content hash and NO extractor improvement could ever force a
   // re-index of unchanged bytes. See PDF_EXTRACT_VERSION for the full note.
-  if (isPdf) parts.push(`pdf:${PDF_EXTRACT_VERSION}`);
-  // No version component applies => the bare content hash, byte-identical to pre-plan-090 behaviour, so
-  // HTML documents are not needlessly re-indexed by this change.
-  if (parts.length === 0) return contentHash;
-  return crypto.createHash("sha256").update([contentHash, ...parts].join("|")).digest("hex");
+  if (input.isPdf) parts.push(`pdf:${PDF_EXTRACT_VERSION}`);
+  // Plan 100 Unit 1b — unconditional, unlike the two above. EVERY document is chunked, so a chunker
+  // fix must be able to reach every document; gating this on some other condition is exactly how the
+  // v1 text-loss bug would have survived its own fix.
+  parts.push(`ck:${input.chunkerVersion ?? CHUNKER_VERSION}`);
+  return crypto.createHash("sha256").update([input.rawContentHash, ...parts].join("|")).digest("hex");
 }
 
 export { splitHtmlSections } from "./split-html-sections";

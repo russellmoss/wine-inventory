@@ -744,7 +744,100 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
-0. ✅ **POPPED — UC IPM knowledge source + corpus dates + stale-guidance warning. MERGED (#405,
+0. 🟩 **PR A [#544](https://github.com/russellmoss/wine-inventory/pull/544) — CI GREEN, MERGEABLE,
+   awaiting Russell's merge. The chunker text-loss bug is FIXED and the damage is MEASURED.**
+   ⚠️ **Merging has a cost side effect**: `CHUNKER_VERSION` is folded into `deriveIndexHash`
+   unconditionally, so the next monthly sweep re-indexes (and re-embeds) every document it
+   re-fetches. That is the repair mechanism working as designed, but it is real embedding spend.
+   🔴 **~630 of 3,299 corpus documents are corrupted — about one in five.** Measured read-only by
+   re-fetch + byte diff (Unit 3): heuristic candidates 44/64 confirmed (69%), random NON-candidates
+   **16/90 confirmed (18.2%, 95% CI ±8.1pp)** → ~590 more across the 3,235 unflagged, CI ~330–850.
+   **The heuristic had ~7% recall**, so the stale set is effectively the whole corpus — which
+   retires the plan's original "re-index only the confirmed" scoping and vindicates council C3.
+   Confirmed in 13 of 14 candidate sources: `uc-ipm` herbicide table `0.5 → 5`, `awri` `15.5 → 5`,
+   `cornell-grapes` Wilcox guide `4.0 → 0`, `wsu` VEEN `0.0005 → 0005`.
+   Shipped: `splitIntoSentences` (lossless scanner, boundary rule deliberately unchanged);
+   `findDroppedNumericTokens` wired into `indexDocument` as a fail-closed `skipped:"numeric-loss"`;
+   `deriveIndexHash` moved to a payload object with **`CHUNKER_VERSION` folded in unconditionally**
+   (so the monthly sweep now progressively repairs every document it re-fetches) and
+   `rawContentHash` documented as RAW bytes, never filtered HTML. 19 new tests, full suite
+   **395 files / 4,696 tests / 0 failures**, tsc clean, lint 0 errors.
+   ⚠️ **NOT run: the repair campaign** (~630 docs re-fetched + re-embedded = real spend + a live
+   corpus mutation). Needs Russell's go-ahead. Also still open: PR B + PR C, both blocked on the
+   SKB/KB-1 merge.
+   Prior state: **RECON + PLAN + COUNCIL DONE; 5 design questions answered by Russell 2026-07-27
+   ("accept all recommendations").**
+   [plan 099](docs/plans/2026-07-26-100-fix-kb-text-integrity-and-pnw-handbooks-plan.md) (12 units,
+   4 PRs) · [council](docs/plans/council-feedback-100-kb-text-integrity-pnw-handbooks.md).
+   🔴 **The headline is no longer the ingestion — it is a LIVE silent text-loss bug in our own
+   chunker.** `splitBySentences` (`src/lib/knowledge/chunk.ts:115`) uses `String.match(/g)` with a
+   regex that cannot match a decimal point, and `match(/g)` **SKIPS** unmatched spans instead of
+   failing: `"abc. 0.5 def"` → `["abc. ", "5 def"]`. The `0.` is deleted with no error.
+   `tailForOverlap` (:131) shares the regex, so overlap tails carry the loss too. Fires on any block
+   over `MAX_TOKENS` (700) that force-splits. Live result in EM 8413: `0.5–1 lb ai` indexed as
+   `5–1 lb ai` — **a citable 10× dose error in a pesticide guide.** Root-caused from first
+   principles; Defuddle is exonerated. Council's Gemini arm made the severity point sharply: a
+   corrupted rate is often *agronomically plausible* (5 lb/A of sulfur is normal; 5 lb/A of a Group 3
+   DMI is catastrophic and illegal), so nobody catches it — the citation makes it look authoritative.
+   🔴 **Second architectural find: the KB-1 gate reads the WHOLE raw page** (`index-documents.ts:106`)
+   while the section filter does not run until :190 — so an enforcing gate drops a PNW disease page
+   **wholesale, biology and all**, before the filter can strip `Chemical control`. Council's Codex arm
+   gave a better fix than the plan's (keep the gate where it is; make the filter a **pure projection**
+   feeding it; one centralized clear path) **and** caught that the idempotency hash must stay a
+   fingerprint of the **raw** bytes — hashing filtered HTML makes changes inside dropped sections
+   invisible forever.
+   🔴 **Third: Gemini changed a design decision.** Stripping the whole `Chemical control` section
+   discards the fungicide **resistance-management prose** (FRAC 3/11 resistance documented in OR/WA;
+   alternate groups; ≤2 sprays per group) — tier B, and the best content on the page. The cut must be
+   **block-level within** the section: keep the `<p>` preambles, drop the `<ul>`/`<table>` product rows.
+   Same applies to `Biological`/`Cultural control`, which also name products.
+   Also corrected: the cross-region test was designed backwards — MMR contaminates **generic** queries,
+   not regional ones, because `mmrSelect(…, 0.7)` actively rewards dissimilarity.
+   Original recon (measured, do not re-litigate):
+   • **EM 8413 IS ALREADY IN THE CORPUS AND IT IS A DEFECT, NOT A WIN.** `osu-extension` doc
+   `/catalog/em-8413-…`, 47 chunks. Its rate tables are **Airtable `<iframe>` embeds** (3) — the
+   substance never arrived, only the empty tag got indexed (chunks 4, 14). 2 raw `<table>` blobs
+   survived Defuddle unconverted → chunks 7–9 + 16–23 are raw `<td headers="table-cell-413816-…">`
+   garbage. **Numeric corruption in a pesticide-rate document**: `0.5–1 lb ai` indexed as `5–1 lb ai`,
+   `0.5 lb ai` → `5 lb ai`, `0.5 inch` → `5 inch` (leading `0.` eaten, markdown ordered-list read).
+   That is a citable 10× dose error. Mojibake `Temperature (В°C)`. `publishedAt` = **2014-12-18** while
+   the page links the **2026** PDF → freshness scoring believes an annually-revised safety document is
+   12 years old. The real content is the PDF
+   (`/sites/extd8/files/documents/donnelja/pest-management-guide-for-wine-grapes-in-oregon-2026.pdf`),
+   which `crawl-osu-extension.ts` never discovers (it reads links from the 2 hubs + sitemap, never from
+   a catalog page body).
+   • **PNW Handbooks (`pnwhandbooks.org`) is NOT in the registry and is technically an easy add.**
+   robots `*` = `Allow: /`, `Crawl-delay: 10`, Content-Signal `search=yes, ai-train=no, use=reference`
+   — **identical posture to the `osu-extension` source already in the registry** (OSU hosts both). Our
+   UA is NOT on the named blocklist (ClaudeBot/GPTBot/CCBot are). One flat sitemap, 4,999 locs, clean.
+   **71 pages in scope**: 27 `/plantdisease/host-disease/grape-vitis-spp-` (== the user's list exactly)
+   + 1 cultivar table + 17 `/insect/small-fruit/grape` + 9 `/weed/…/vineyard-grape` + 16
+   `/pesticide-safety`. ⚠️ **Exact-prefix `grape-vitis-spp-` is load-bearing**: a naive `/grape|vine/`
+   regex also takes 4 `oregon-grape-berberis-aquifolium-*` pages (*Mahonia*, an ornamental shrub — NOT
+   a grapevine), `ivy-boston-grape`, 3 tree-fruit `*-grape-mealybug`, `puncturevine`,
+   `blackberry-vines`, `garlic-wild-allium-vineale`, `cucurbit-vine`, `potato-vine-kill` — 27 false
+   positives. Extraction is excellent (Defuddle: 3,836 clean words on powdery mildew, no `<table>` at
+   all). Per-page `Last-Modified` exists but is **Varnish-generated (all "today") → useless**; content
+   hash is the seam. Metadata `published` is the Drupal node-create date (2015) — same freshness lie as
+   EM 8413.
+   • ⛔ **THE BLOCKER: this collides head-on with the KB-1 tier-C rule Russell set 2026-07-26**
+   (TABULAR product→fact = never in the corpus). Measured product-signal line density: `/pesticide-safety`
+   **0%** (pure PPE/WPS/spill/pollinator prose — unambiguously safe and valuable); insect pages **22%**;
+   disease pages **30%**; `/weed/…/vineyard-grape` **46% and effectively 100% tier C** (`dichlobenil
+   (Casoron 4G) / Rate 4 to 6 lb ai/A / Site of action Group 20 / Chemical family Nitrile`) — and the
+   weed pages are the part the user asked for by name. **The boundary runs THROUGH the middle of every
+   disease and insect page, not between pages**: `Chemical control` is a bulleted product list carrying
+   rate + PHI + FRAC group + REI (`Abound at 10 to 15.5 fl oz/A … Group 11 fungicide. 4-hr reentry.`).
+   So this needs a **`sectionFilter`, like `vt-enology-notes` — and PNW splits on body headings, not
+   `<a name>` anchors, so the existing `"anchor-heading"` strategy does NOT fit.**
+   • ⛔ **And the KB-1 gate is NOT ON MAIN** — `src/lib/knowledge/boundary/` lives only on the unmerged
+   `claude/skb-knowledge-sources-plan-bd36b7` (9 commits). Ingesting PNW first puts 71 pages of
+   product/rate/REI text in with **no gate at all**, and per the SKB build log the gate must run
+   **before** the idempotency short-circuit or already-indexed tier-C chunks stay retrievable forever.
+   → **Russell decides the scope before any build.** Recommended order: land SKB/KB-1 → fix EM 8413 →
+   then PNW prose-only. Full write-up in `TODOS.md`.
+
+1. ✅ **POPPED — UC IPM knowledge source + corpus dates + stale-guidance warning. MERGED (#405,
    `77edb7a8`), branch deleted.** Source #19 `uc-ipm` (ipm.ucanr.edu grape PMGs): 87 docs / 667 chunks,
    `autoCrawl: true` so the monthly sweep takes it with no workflow edit. robots.txt ALLOWS
    `/agriculture/grape/` — no bypass used or needed. What it uncovered, in order of importance:
@@ -1096,7 +1189,7 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   `crawl:curated` doesn't pass `ignoreValidators`. **`reindex:knowledge` is the only lever**, deferred
   (~23.5k chunks of Voyage spend) and tripwired. Also corrected `scale-register.md`: the KB entry claimed
   🟢 while its own ~10k-chunk tripwire had been crossed at ~23.5k.
-  **Remaining (plan 099 Unit 6, strictly ordered):** capture `verify:kb-register --capture` +
+  **Remaining (plan 100 Unit 6, strictly ordered):** capture `verify:kb-register --capture` +
   `kb:snapshot --repeat 3` BEFORE → merge+deploy → `seed:knowledge-sources` → `crawl:curated -- cornell-grape-guide`
   → read rows back → **numeric-fidelity spot check on the rate cells** (see the EM 8413 precedent in
   `TODOS.md` — a live 10× dose error from a converter eating a leading `0.`) → re-measure displacement →
@@ -1606,7 +1699,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-27 — **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness. Bhutan's daily series may be 8–9 °C off vs ERA5 — escalated as its own investigation.** Also this date: plan 098 tenant unit preferences built (all 12 units; QA + ship pending); S2b product-facts FOUNDATION merged + live (#535), phase still open. And: **SKB PR 1 + Unit 5 BUILT AND QA'd on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
+_Last updated: 2026-07-27 — **Plan 100 PR A built + green ([#544](https://github.com/russellmoss/wine-inventory/pull/544)): the chunker was silently DELETING text (`splitBySentences` used `String.match(/g)`, which skips spans it cannot match, so `0.5 lb ai` indexed as `5 lb ai`). Fixed, with a lossless scanner + a standing ingest-time numeric-integrity guard + `CHUNKER_VERSION` folded unconditionally into `deriveIndexHash`. Measured read-only: **~630 of 3,299 corpus documents corrupted, about 1 in 5** (candidates 44/64; random non-candidates 16/90 = 18.2%). The repair campaign is NOT run — it needs a go-ahead.** Correction to the note below: **SKB PR 1 has since MERGED as #538**, so the KB-1 gate is on main. Also this date: **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness. Bhutan's daily series may be 8–9 °C off vs ERA5 — escalated as its own investigation.** Also this date: plan 098 tenant unit preferences built (all 12 units; QA + ship pending); S2b product-facts FOUNDATION merged + live (#535), phase still open. And: **SKB PR 1 + Unit 5 BUILT AND QA'd on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
