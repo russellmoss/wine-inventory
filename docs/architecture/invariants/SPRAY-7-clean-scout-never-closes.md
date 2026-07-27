@@ -1,5 +1,5 @@
 ---
-id: SPRAY-6
+id: SPRAY-7
 group: spray-record
 severity: critical
 enforcedBy: app-code
@@ -12,7 +12,7 @@ tags:
   - invariant
 ---
 
-# SPRAY-6 — a clean scouting pass never closes a latent infection event
+# SPRAY-7 — a clean scouting pass never closes a latent infection event
 
 > [!danger] Invariant (critical, app-code) — GUARDED
 > An open latent-infection event is closed by its resolution rule or by an attributed human append.
@@ -44,6 +44,14 @@ after a clean scout and requires the refusal, then requires the event to still r
 proves the short/long bounds land on the dates they should, and group 6 proves the `UNKNOWN` arm
 never self-closes.
 **Decision:** S5a KD-5 — see [[INVARIANTS]] and the S5a plan.
+
+> [!warning] Renumbered from SPRAY-6
+> This note shipped as `SPRAY-6` in PR #537 and collided with S2b's
+> [[SPRAY-6-no-facts-means-cannot-determine]], which had merged hours earlier in #535. Two notes
+> declared `id: SPRAY-6` on `main` simultaneously. S2b landed first, so it keeps the number.
+> The invariant counter is shared across parallel lanes exactly like the ADR counter —
+> `ls docs/architecture/invariants/` immediately before claiming an id, and re-check after any
+> rebase. `verify:invariants` now fails on a duplicate id, so this cannot recur silently.
 **Applies to:** `src/lib/spray/`
 
 > [!note] Scope note

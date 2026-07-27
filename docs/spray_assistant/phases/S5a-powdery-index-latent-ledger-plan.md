@@ -781,7 +781,12 @@ Three independent problems with the original line, any one of them disqualifying
    inputs is UNKNOWN, never LOW" would guard code that does not exist — and `verify:invariants`
    fails on an invariant whose `verify:` command is missing.
 
-**Ship instead: `SPRAY-6-clean-scout-never-closes.md`** (SPRAY-5 is the current high-water mark) —
+**Ship instead: `SPRAY-7-clean-scout-never-closes.md`** — ⚠️ **this shipped as SPRAY-6 and had to be
+renumbered, so learn from it rather than repeating it.** At authoring time SPRAY-5 was the high-water
+mark, so SPRAY-6 looked free. S2b then merged its OWN SPRAY-6 (#535) hours before S5a merged (#537),
+and because the register is keyed by FILENAME both landed. Reading the high-water mark once is not
+enough: **`ls docs/architecture/invariants/` immediately before claiming an id, AND again after any
+rebase.** `verify:invariants` now fails on a duplicate id, so the next one cannot land silently. —
 **a clean scouting pass never closes an open infection event.** This is the ledger's actual safety
 property, it is the one thing nothing in the register currently guards, and it is empirically
 grounded rather than asserted: Fedele et al. 2020 (*Plant Disease* 104(5):1291-1297) scored a
@@ -791,11 +796,11 @@ rule, a diligent scout walking a clean row is precisely what silently clears a r
 infection. `severity: critical`, `enforcedBy: app-code`, `verify: "npm run verify:latent-infection"`,
 `appliesTo: src/lib/spray/`.
 
-**Files:** `docs/architecture/invariants/SPRAY-6-clean-scout-never-closes.md`,
+**Files:** `docs/architecture/invariants/SPRAY-7-clean-scout-never-closes.md`,
 `docs/architecture/scale-register.md`, `docs/architecture/security-register.md`,
 `docs/spray_assistant/SPRAY_ASSISTANT_RUNBOOK.md`, `docs/architecture/ux-principles.md`,
 `docs/architecture/decisions/00NN-*.md`.
-**Approach:** Add the SPRAY-6 note above plus its `verify:` guard, since `verify:invariants` fails
+**Approach:** Add the SPRAY-7 note above plus its `verify:` guard, since `verify:invariants` fails
 on an invariant whose guard does not exist — so this unit stays sequenced behind Unit 9. Scale
 register gets a row for the **ledger's** growth (append-only rows = blocks × infection episodes ×
 appends, unbounded without a retention statement) — no existing row covers append-only event volume.

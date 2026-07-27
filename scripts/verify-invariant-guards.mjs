@@ -63,8 +63,19 @@ for (const f of files) {
     kind = "file";
     ok = existsSync(join(REPO, verify));
   }
-  rows.push({ id: fm.id, severity: fm.severity || "?", verify, ok, kind });
+  rows.push({ id: fm.id, file: f, severity: fm.severity || "?", verify, ok, kind });
 }
+
+// Duplicate ids. The register is keyed by FILENAME, so two lanes can each claim the same id and
+// both land — which happened on 2026-07-27 when S2b (#535) and S5a (#537) both shipped a SPRAY-6
+// hours apart. Neither PR could see the other, and this script counted them as two happy rows.
+// The invariant counter is shared across parallel lanes exactly like the ADR counter.
+const byId = new Map();
+for (const r of rows) {
+  if (!byId.has(r.id)) byId.set(r.id, []);
+  byId.get(r.id).push(r.file);
+}
+const dupes = [...byId.entries()].filter(([, fs]) => fs.length > 1);
 
 rows.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -81,6 +92,16 @@ for (const r of rows) {
 if (unclaimed.length) {
   console.log(`\n${YEL}⚠ verify:* scripts with no invariant note (candidates for a new invariant):${RST}`);
   for (const s of unclaimed) console.log(`    ${DIM}npm run ${s}${RST}`);
+}
+
+if (dupes.length) {
+  console.log(`
+${RED}✗ DUPLICATE invariant id(s) — two notes claim the same id:${RST}`);
+  for (const [id, fs] of dupes) console.log(`    ${RED}${id}${RST} → ${fs.join(", ")}`);
+  console.log(`${DIM}  The register is keyed by filename, so both landed. Renumber the one that merged LAST${RST}`);
+  console.log(`${DIM}  (ls the directory before claiming an id, and re-check after a rebase).${RST}
+`);
+  process.exit(1);
 }
 
 const pct = rows.length ? Math.round(((rows.length - gaps.length) / rows.length) * 100) : 0;

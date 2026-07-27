@@ -86,7 +86,7 @@ ladder most of all, both having hard boundaries). Raised as its own investigatio
 | 7 — `query_spray_decision` thin + hard-refusing | ✅ contributor barrel gets its first line |
 | 8 — goldens, fleet discrimination, payload test | ✅ 12 tests |
 | 9 — `verify:latent-infection` | ✅ **43 assertions green against the live DB** (renamed from `verify:powdery` — there is no index to verify) |
-| 10 — invariant, registers, runbook correction | ✅ SPRAY-6; runbook §9 corrected |
+| 10 — invariant, registers, runbook correction | ✅ SPRAY-7 (shipped as SPRAY-6, renumbered — see below); runbook §9 corrected |
 | 11 — phase report | ✅ this file |
 
 ### The safety properties, and where each is actually enforced
@@ -98,7 +98,7 @@ ladder most of all, both having hard boundaries). Raised as its own investigatio
   fourteen days makes them wait while it sporulates on day five. Enforced in
   `infection-resolution.ts`, constrained in the database (`lie_latent_bounds_ordered`), and proven as
   literal dates by `verify:latent-infection` group 4.
-- **KD-5 / SPRAY-6 — a clean scouting pass never closes an event.** `evaluateResolution` accepts
+- **KD-5 / SPRAY-7 — a clean scouting pass never closes an event.** `evaluateResolution` accepts
   `scoutedCleanOn` and deliberately ignores it; `closeInfectionEvent` exposes no parameter that
   would let a caller close on absence of symptoms. Grounded in Fedele et al. 2020.
 - **C7 — no epistemic state in a null.** Every projected transition carries a projection *kind*, with
@@ -120,7 +120,16 @@ ladder most of all, both having hard boundaries). Raised as its own investigatio
    `PEST-2-index-unknown-never-low.md`. That could not ship for three independent reasons: `PEST-2`
    is **already taken** by a shipped critical invariant (creating that file would have overwritten
    it), the rule already exists as `SPRAY-3`, and its subject no longer ships. Replaced with
-   **SPRAY-6**. The plan's Unit 10 is corrected in place so the next reader does not repeat it.
+   **SPRAY-7**. The plan's Unit 10 is corrected in place so the next reader does not repeat it.
+
+   ⚠️ **And then I made the very mistake I had just documented.** The note shipped as `SPRAY-6`,
+   because SPRAY-5 was the high-water mark when I checked. S2b merged its own `SPRAY-6` in #535
+   hours before S5a merged in #537; the register is keyed by filename, so **both landed on `main`
+   with the same id** and `verify:invariants` counted them as two happy rows. Fixed by renumbering
+   mine to SPRAY-7 (S2b landed first, so it keeps the number) and by teaching
+   `verify:invariants` to FAIL on a duplicate id — the mechanical guard I had flagged as
+   worth adding and did not add at the time. Checking a shared counter once, before a rebase,
+   is not checking it.
 4. **`GRANT SELECT, INSERT` was not enough to make the table append-only** — see below.
 5. **Scale/security register rows and the `ux-principles.md` risk rule are NOT done.** Deferred
    deliberately: the register row the plan specified was for a per-vineyard-per-day *index* table
