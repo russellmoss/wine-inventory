@@ -744,8 +744,11 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
-0. 🟩 **PR A BUILT + GREEN 2026-07-27 (branch `claude/kb-chunker-text-integrity`, 3 commits, not
-   PR'd). The chunker text-loss bug is FIXED and the damage is MEASURED.**
+0. 🟩 **PR A [#544](https://github.com/russellmoss/wine-inventory/pull/544) — CI GREEN, MERGEABLE,
+   awaiting Russell's merge. The chunker text-loss bug is FIXED and the damage is MEASURED.**
+   ⚠️ **Merging has a cost side effect**: `CHUNKER_VERSION` is folded into `deriveIndexHash`
+   unconditionally, so the next monthly sweep re-indexes (and re-embeds) every document it
+   re-fetches. That is the repair mechanism working as designed, but it is real embedding spend.
    🔴 **~630 of 3,299 corpus documents are corrupted — about one in five.** Measured read-only by
    re-fetch + byte diff (Unit 3): heuristic candidates 44/64 confirmed (69%), random NON-candidates
    **16/90 confirmed (18.2%, 95% CI ±8.1pp)** → ~590 more across the 3,235 unflagged, CI ~330–850.
