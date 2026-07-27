@@ -38,7 +38,11 @@ export interface KnowledgeSourceConfig {
   // structurally cannot express (VT Enology Notes puts rot chemistry and a paid tour ad on the same
   // page). "anchor-heading" = split on <a name="N"> anchors, classify by heading text. Config-only,
   // like sitemapUrls/autoCrawl — the seed script does not persist it, so no migration.
-  sectionFilter?: "anchor-heading";
+  // "anchor-heading" = split on <a name="N"> anchors, classify by heading text (VT Enology Notes).
+  // "pnw-label"      = split on PNW's paragraph-leading section labels, and strip the product
+  //                    LISTS/TABLES out of the chemical- and biological-control sections while
+  //                    keeping their prose (plan 100 Unit 7).
+  sectionFilter?: "anchor-heading" | "pnw-label";
   // Plan 085 — paths admitted ONLY when discovered as a link FROM a page whose path matches one of
   // `linkedFrom`. Never seeded, and TERMINAL: links found on such a page are not followed onward.
   //
@@ -807,6 +811,79 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     crawlCadence: "monthly",
     defaultEnabled: false,
   },
+  {
+    key: "pnw-handbooks",
+    publisher: "PNW Pest Management Handbooks (OSU / WSU / UI Extension)",
+    homeDomain: "pnwhandbooks.org",
+    tier: 1,
+    // Robots posture recorded verbatim because it is the same posture already accepted for
+    // `osu-extension` — OSU hosts both properties. `User-agent: *` is `Allow: /` with
+    // `Crawl-delay: 10`, and the Cloudflare-managed block carries
+    // `Content-Signal: search=yes, ai-train=no, use=reference`. We do reference-use RAG, not
+    // training. Our UA is NOT on the named blocklist (that names ClaudeBot, GPTBot, CCBot,
+    // Google-Extended, Bytespider, Amazonbot, Applebot-Extended, meta-externalagent).
+    license:
+      "PNW Pest Management Handbooks (Oregon State University, Washington State University and " +
+      "University of Idaho Extension) — public land-grant extension content; reference use with " +
+      "citation + link back. robots '*' Allow: / at Crawl-delay 10, Content-Signal " +
+      "search=yes/ai-train=no/use=reference; our UA is not on their named training-crawler blocklist.",
+    //
+    // WHY: the corpus had no Pacific-Northwest disease/insect biology at this depth. 27 grape
+    // disease pages, 17 grape insect pages, the vineyard weed hubs and 16 pesticide-safety pages.
+    //
+    // ⚠️ THE EXACT PREFIX `grape-vitis-spp-` IS LOAD-BEARING. A naive /grape|vine/ match over this
+    // sitemap takes 27 false positives, and four of them are
+    // `/plantdisease/host-disease/oregon-grape-berberis-aquifolium-*` — that is MAHONIA, an
+    // ornamental shrub, not a grapevine. Also caught by the naive match: ivy-boston-grape, three
+    // tree-fruit *-grape-mealybug pages, cucurbit-vine, puncturevine, blackberry-vines,
+    // garlic-wild-allium-vineale and potato-vine-kill. Do not loosen this to a bare /grape/.
+    seedRoots: [
+      "https://pnwhandbooks.org/plantdisease/host-disease/grape-vitis-spp-powdery-mildew",
+      "https://pnwhandbooks.org/insect/small-fruit/grape",
+      "https://pnwhandbooks.org/weed/horticultural/orchards-vineyards/vineyard-grape",
+      "https://pnwhandbooks.org/pesticide-safety",
+    ],
+    sitemapUrls: ["https://pnwhandbooks.org/sitemap.xml"], // one flat file, 4,999 locs, well-formed
+    allowPrefixes: [
+      "/plantdisease/host-disease/grape-vitis-spp-",
+      "/plantdisease/cultivar-tables/grape-vitis-spp-",
+      "/insect/small-fruit/grape",
+      "/weed/horticultural/orchards-vineyards/vineyard-grape",
+      "/weed/horticultural/orchards-vineyards/vegetation-management",
+      "/pesticide-safety",
+    ],
+    // The seven `/vineyard-grape/*` product children are ~100% tier C — "dichlobenil (Casoron 4G) /
+    // Rate 4 to 6 lb ai/A / Site of action Group 20 / Chemical family Nitrile" and nothing else.
+    // Not crawled at all: the section filter would strip them to nothing, which produces
+    // skipped:"empty" noise plus seven pointless monthly fetches against a Crawl-delay 10 host.
+    // The `vineyard-grape` hub and `weed-vegetation-management` (prose overviews) are still allowed.
+    denyPrefixes: [
+      "/weed/horticultural/orchards-vineyards/vineyard-grape/established-plantings-preemergent",
+      "/weed/horticultural/orchards-vineyards/vineyard-grape/established-plantings-pre-postemergent-activity",
+      "/weed/horticultural/orchards-vineyards/vineyard-grape/established-plantings-postemergent-contact-translocated-applications",
+      "/weed/horticultural/orchards-vineyards/vineyard-grape/new-plantings-soil-active-herbicides",
+      "/weed/horticultural/orchards-vineyards/vineyard-grape/new-plantings-postemergence-contact-translocated-applications",
+      "/weed/horticultural/orchards-vineyards/vineyard-grape/sucker-control-nondormant-grape",
+      "/weed/horticultural/orchards-vineyards/vineyard-grape/site-preparation-0",
+      "/search",
+      "/user",
+      "/node/add",
+    ],
+    // The tier-A/tier-C boundary runs THROUGH each disease and insect page rather than between
+    // pages: `Cause`/`Symptoms`/`Cultural control`/`Biology and life history` are the biology we
+    // want, while `Chemical control` opens with FRAC resistance-management prose (tier B, the best
+    // content on the page) and then lists ~30 products with rates, PHI and REI (tier C).
+    sectionFilter: "pnw-label",
+    crawlCadence: "monthly",
+    // ⚠️ Ships DARK on purpose, and this is a gate rather than caution. Two things must be measured
+    // before it flips: the `verify:kb-register` displacement diff against a baseline captured
+    // BEFORE this source existed, and cross-region contamination. The corpus has NO region
+    // dimension and `retrieve.ts` runs mmrSelect(..., 0.7), so 30% of the selection weight is
+    // DISSIMILARITY — a Pacific-Northwest source can be pulled into a Bhutan answer precisely
+    // because it is different. Test that with GENERIC disease queries in a non-PNW tenant, not
+    // regional ones. Same staged shape as `ives-technical-reviews`.
+    defaultEnabled: false,
+  },
 ];
 
 // Domains the crawler may follow links INTO (allowlist-gated cross-domain following). A link to a domain
@@ -897,6 +974,11 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   // TRUSTED_DOMAINS entry for the source, so both forms route correctly.
   { domain: "canr.msu.edu", sourceKey: "msu-grapes" },
   { domain: "www.canr.msu.edu", sourceKey: "msu-grapes" },
+  // PNW Pest Management Handbooks. The whole host is the handbooks, but it covers every PNW crop
+  // (2,107 plant-disease + 1,768 insect + 544 weed pages), so the config's allowPrefixes are what
+  // keep the crawl on grapes — not the host gate.
+  { domain: "pnwhandbooks.org", sourceKey: "pnw-handbooks" },
+  { domain: "www.pnwhandbooks.org", sourceKey: "pnw-handbooks" },
 ];
 
 /**
