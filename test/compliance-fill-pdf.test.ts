@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, ParseSpeeds } from "pdf-lib";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fillTtbPdf } from "@/lib/compliance/fill-pdf";
@@ -22,6 +22,13 @@ const snapshot: ComputedSnapshot = {
   needsAbvLotIds: [],
 };
 
+// Parsing the 3.1 MB fillable form is genuinely slow (two parses + a save in the round-trip test), so
+// these two cases carry an explicit timeout well above vitest's 5s default — under full-suite parallel
+// load the round-trip has been observed at >5s and timed out. `ParseSpeeds.Fastest` on the test's own
+// loads is a pure speed knob (it only changes event-loop yielding, never what is parsed) — the
+// assertions below are unchanged; they still compare every mapped field against the snapshot.
+const PDF_TEST_TIMEOUT_MS = 30_000;
+
 describe("fillTtbPdf (Unit 10) — round-trip", () => {
   it("fills the form and the re-read values equal the snapshot", async () => {
     const { bytes, unmappedCells } = await fillTtbPdf({
@@ -38,7 +45,7 @@ describe("fillTtbPdf (Unit 10) — round-trip", () => {
     expect(unmappedCells).toEqual([]); // every snapshot cell had a mapped field
 
     // Re-read the filled AcroForm.
-    const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, parseSpeed: ParseSpeeds.Fastest });
     const form = doc.getForm();
     expect(form.getTextField("a1.13").getText()).toBe("105.67"); // §A bottled
     expect(form.getTextField("a2.2").getText()).toBe("105.67"); // §B bottled (== A13, ftn 3)
@@ -46,17 +53,17 @@ describe("fillTtbPdf (Unit 10) — round-trip", () => {
     expect(form.getTextField("YEAR").getText()).toBe("2026");
     expect(form.getTextField("EIN").getText()).toBe("12-3456789");
     expect(form.getTextField("REMARKS").getText()).toBe("Test remarks.");
-  });
+  }, PDF_TEST_TIMEOUT_MS);
 });
 
 // Sanity: the committed fillable PDF exists and is a real AcroForm.
 describe("fillable PDF asset", () => {
   it("loads with the expected grid fields", async () => {
     const bytes = readFileSync(join(process.cwd(), "docs/ttb-5120-17/TTB-5120.17-fillable.pdf"));
-    const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, parseSpeed: ParseSpeeds.Fastest });
     const names = doc.getForm().getFields().map((f) => f.getName());
     expect(names).toContain("a1.13");
     expect(names).toContain("a2.2");
     expect(names).toContain("YEAR");
-  });
+  }, PDF_TEST_TIMEOUT_MS);
 });

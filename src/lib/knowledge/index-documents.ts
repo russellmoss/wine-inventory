@@ -7,14 +7,29 @@
 import crypto from "node:crypto";
 import { runAsSystem } from "@/lib/tenant/system";
 import { embedTexts, KB_EMBEDDING_MODEL, KB_EMBEDDING_DIM } from "./embed";
-import { chunkMarkdown } from "./chunk";
+import { chunkMarkdown, findDroppedNumericTokens } from "./chunk";
 import { extractDocument } from "./extract";
-import { applySectionFilter, deriveIndexHash, shouldApplySectionFilter } from "./sections";
+import { applySectionFilter, deriveIndexHash, resolveSectionFilter } from "./sections";
+import { assessProductTable } from "./boundary/product-table-core";
+import { boundaryModeFor } from "./boundary/enforcing";
 import type { DetectedType } from "./crawl/fetcher";
 
 export interface IndexResult {
   chunks: number;
-  skipped: "unchanged" | "low-confidence" | "empty" | "duplicate" | false;
+  /**
+   * SKB Unit 2 — "product-table" joins the existing values. It is a RETURNED FIELD and never an
+   * exception, deliberately: the monthly re-crawl's tombstone pass reads a throw out of this path as
+   * "the page was removed" and would mark a whole source's corpus slice `withdrawn` on it. Same rule
+   * `crawl/challenge.ts` already follows for WAF detection.
+   *
+   * Plan 100 Unit 3b — "numeric-loss" joins them for exactly the same reason, and under exactly the
+   * same rule: a document whose extracted text carries a decimal that survives into none of its
+   * chunks is refused, as a returned value rather than a throw.
+   */
+  // NOTE: kept on one line. test/knowledge-boundary-gate.test.ts asserts this union's SOURCE TEXT
+  // matches /skipped:\s*"unchanged"[\s\S]*?\|\s*"product-table"/ — a structural guard that the gate
+  // signals by return value rather than by throwing. Wrapping the union breaks that guard.
+  skipped: "unchanged" | "low-confidence" | "empty" | "duplicate" | "product-table" | "numeric-loss" | false;
 }
 
 function chunkId(documentId: string, revision: number, ordinal: number, text: string): string {
@@ -71,20 +86,80 @@ export async function indexDocument(input: {
   const doc = await runAsSystem((db) =>
     db.knowledgeDocument.findUnique({
       where: { id: input.documentId },
-      select: { sourceId: true, activeRevision: true, indexedContentHash: true },
+      select: {
+        sourceId: true,
+        activeRevision: true,
+        indexedContentHash: true,
+        // SKB Unit 2 — the boundary gate resolves the source key from the ROW, not from
+        // `input.sourceKey`. Two callers (crawl-ets, crawl-ives) legitimately omit the optional input,
+        // and a gate a caller can bypass by forgetting an argument is not a gate.
+        source: { select: { key: true } },
+      },
     }),
   );
   if (!doc) throw new Error(`indexDocument: document ${input.documentId} not found`);
+
+  // ── KB-1: the tabular/prose boundary gate (SKB Unit 2) ──
+  //
+  // Runs BEFORE the idempotency short-circuit, not after. If it ran after, a source moved onto the
+  // enforcing list would keep its previously-indexed tier-C chunks live and retrievable forever: the
+  // stored hash still matches, chunks still exist, and the function returns "unchanged" without the
+  // detector ever seeing the bytes. Closing D3 has to actually purge, and this is the line that makes
+  // a deletion from the report-only census take effect on the next crawl. The cost is one regex pass
+  // over bytes already in memory, against a network fetch that has already happened.
+  //
+  // Also before extraction, per council C2: `extract/pdf.ts` emits no pipe tables and no headings, so
+  // post-extraction text destroys the row-repetition signal on exactly the documents that matter.
+  const boundaryMode = boundaryModeFor(doc.source?.key);
+  const boundary = assessProductTable(
+    input.contentType === "html"
+      ? { kind: "html", html: input.bytes.toString("utf8") }
+      : { kind: "text", text: input.bytes.toString("utf8") },
+  );
+  if (boundaryMode === "enforce" && boundary.verdict !== "prose") {
+    // `uncertain` skips here and is ADMITTED for a report-only source — the failure direction is
+    // source-dependent because only here is anything actually being gated (council C2).
+    console.log(
+      `  [boundary] ${input.url} — SKIPPED as ${boundary.verdict} (rows=${boundary.rowCount}; ${boundary.signals.join(", ") || "no signals"})`,
+    );
+    // Clear any chunks a previous, pre-enforcement crawl left behind, so the skip is a real removal
+    // rather than a decision that only applies to future content. Same locking discipline as the
+    // all-sections-dropped branch below: the document row is taken FOR UPDATE inside one tx so a
+    // concurrent indexer cannot flip in a new revision while these are deleted. `indexedContentHash`
+    // is deliberately left alone — it describes the last content that was actually indexed, and this
+    // content was not.
+    await runAsSystem(async (db) => {
+      await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "activeRevision" FROM "knowledge_document" WHERE "id" = ${input.documentId} FOR UPDATE`;
+        await tx.knowledgeChunk.deleteMany({ where: { documentId: input.documentId } });
+      }, { timeout: 60_000 });
+    });
+    return { chunks: 0, skipped: "product-table" };
+  }
+  if (boundary.verdict !== "prose") {
+    // Report-only: admitted and counted. This is the number D3's close-out decides against, and
+    // `verify:kb-boundary` is what totals it across the corpus.
+    console.log(
+      `  [boundary] ${input.url} — ${boundary.verdict} on a REPORT-ONLY source (rows=${boundary.rowCount}); admitted`,
+    );
+  }
 
   // Plan 084 — section filtering applies to HTML only (PDFs carry no anchors). The hash the index
   // stores folds in SECTION_FILTER_VERSION, so bumping a drop pattern forces a real re-index instead
   // of short-circuiting to "unchanged" forever. Computed WITHOUT running the filter, so the cheap
   // idempotency check below still short-circuits before any parsing.
-  const sectionFilterApplies = shouldApplySectionFilter(input.contentType, input.sourceKey);
+  const sectionFilter = resolveSectionFilter(input.contentType, input.sourceKey);
+  const sectionFilterApplies = sectionFilter !== null;
   // Plan 090 Unit 8 — PDFs additionally fold in PDF_EXTRACT_VERSION, so an extractor improvement
   // actually reaches documents whose bytes have not changed. Without it Units 4-7 would have shipped
   // in code and changed nothing in the corpus, silently.
-  const indexHash = deriveIndexHash(input.contentHash, sectionFilterApplies, input.contentType === "pdf");
+  // Plan 100 Unit 1b — and CHUNKER_VERSION, for the same reason, on every document rather than a
+  // subset. `input.contentHash` is the RAW fetched bytes and must stay that way; see IndexHashInput.
+  const indexHash = deriveIndexHash({
+    rawContentHash: input.contentHash,
+    isPdf: input.contentType === "pdf",
+    filter: sectionFilter,
+  });
 
   // idempotency: same content already indexed with the current model -> no-op
   if (doc.indexedContentHash === indexHash) {
@@ -126,7 +201,7 @@ export async function indexDocument(input: {
   // by the time we have markdown the section boundaries are gone.
   let bytes = input.bytes;
   if (sectionFilterApplies) {
-    const filtered = applySectionFilter(input.bytes.toString("utf8"));
+    const filtered = applySectionFilter(input.bytes.toString("utf8"), sectionFilter!.strategy);
     if (filtered.html === null) {
       // Sections existed and every one was an announcement.
       //
@@ -184,7 +259,26 @@ export async function indexDocument(input: {
   const chunks = chunkMarkdown(extracted.markdown, extracted.title);
   if (chunks.length === 0) return { chunks: 0, skipped: "empty" };
 
-  const metadata = buildDocumentMetadata(extracted);
+  // Plan 100 Unit 3b — the standing numeric-integrity guard, checked BEFORE we spend an embedding
+  // call and long before anything reaches retrieval.
+  //
+  // Unit 1 fixed the one splitter that was eating decimals. This catches the next one. The failure
+  // mode is invisible by construction: a corrupted rate usually stays agronomically plausible, so
+  // nothing downstream can tell that "5 lb ai/A" used to say "0.5 lb ai/A" — and the citation makes
+  // the wrong number look checked. 5 lb/A of sulfur is a normal spray; 5 lb/A of a Group 3 DMI is
+  // catastrophic and illegal.
+  //
+  // Fails CLOSED (a typed skip, never a throw). A throw here would surface in the crawl's fetch/index
+  // error path, and the re-crawl tombstone pass reads certain failures as "the page was removed" —
+  // one bad document must not be able to tombstone a source.
+  const droppedNumbers = findDroppedNumericTokens(extracted.markdown, chunks.map((c) => c.text));
+  if (droppedNumbers.length > 0) {
+    console.error(
+      `[kb] NUMERIC LOSS — refusing to index ${input.url}: ${droppedNumbers.length} token(s) ` +
+        `present in the extracted text are absent from every chunk: ${droppedNumbers.slice(0, 10).join(", ")}`,
+    );
+    return { chunks: 0, skipped: "numeric-loss" };
+  }
 
   // Embed OUTSIDE the transaction (network call — never hold a DB tx across it), then validate each
   // embedding to a pgvector literal before opening the tx.

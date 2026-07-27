@@ -1,5 +1,6 @@
 import "server-only";
 import { isTenantAdminLike, type AppUser } from "@/lib/access";
+import type { UnitPrefs } from "@/lib/units/display";
 
 /**
  * The assistant's tool registry — the single source of truth for what the
@@ -26,6 +27,13 @@ export type ToolContext = {
    * accept a wall-clock date/time resolve it in this zone; absent or bogus, it falls back to UTC.
    */
   timeZone?: string;
+  /**
+   * Plan 098: the tenant's ALREADY-RESOLVED display-unit preferences (the route resolves them
+   * beside the timezone so the loop stays DB-free). Tools that emit human-readable quantities
+   * format with these; optional so intermediate states and DB-free tests stay constructible —
+   * absent means "unconfigured" and readers fall back exactly as before the setting existed.
+   */
+  units?: UnitPrefs;
 };
 
 export type AssistantTool = {
@@ -48,6 +56,13 @@ import { queryMeasurementsTool } from "./tools/query-measurements";
 import { queryOperationsTool } from "./tools/query-operations";
 import { estimatePackagingNeedsTool } from "./tools/estimate-packaging-needs";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
+import { queryNdviStatsTool } from "./tools/query-ndvi-stats";
+import { queryClimateTool } from "./tools/query-climate";
+import { querySprayDecisionTool } from "./tools/query-spray-decision";
+import { compareNdviDatesTool } from "./tools/compare-ndvi-dates";
+import { processNdviTool } from "./tools/process-ndvi";
+import { soilSummaryTool } from "./tools/soil-summary";
+import { describePlantingStructureTool } from "./tools/describe-planting-structure";
 import { queryFieldReportsTool } from "./tools/query-field-reports";
 import { getFieldReportFormTool } from "./tools/get-field-report-form";
 import { saveFieldReportTool } from "./tools/save-field-report";
@@ -118,6 +133,7 @@ import { queryMaterialsTool } from "./tools/query-materials";
 import { createCustomUnitTool } from "./tools/create-custom-unit";
 import { queryCustomUnitsTool } from "./tools/query-custom-units";
 import { createVendorTool } from "./tools/create-vendor";
+import { createGrowerTool } from "./tools/create-grower";
 import { mergeVendorsTool } from "./tools/merge-vendors";
 import { queryVendorsTool } from "./tools/query-vendors";
 import { ingestDocumentsTool } from "./tools/ingest-documents";
@@ -127,6 +143,7 @@ import { reverseIntakeTool } from "./tools/reverse-intake";
 const ALL_TOOLS: AssistantTool[] = [
   searchKnowledgeBaseTool,
   queryBrixTool,
+  compareNdviDatesTool,
   queryYieldTool,
   queryRecentHarvestsTool,
   queryTransfersTool,
@@ -137,6 +154,12 @@ const ALL_TOOLS: AssistantTool[] = [
   queryVendorsTool,
   estimatePackagingNeedsTool,
   queryVineyardStatusTool,
+  queryNdviStatsTool,
+  soilSummaryTool,
+  queryClimateTool,
+  querySprayDecisionTool,
+  processNdviTool,
+  describePlantingStructureTool,
   queryFieldReportsTool,
   getFieldReportFormTool,
   saveFieldReportTool,
@@ -191,6 +214,7 @@ const ALL_TOOLS: AssistantTool[] = [
   createCustomUnitTool,
   queryCustomUnitsTool,
   createVendorTool,
+  createGrowerTool,
   mergeVendorsTool,
   ingestDocumentsTool,
   queryRecentIntakesTool,

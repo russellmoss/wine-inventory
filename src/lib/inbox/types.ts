@@ -1,7 +1,7 @@
 // Plan 068 — Inbox payload/DTO types. Client-safe (no prisma import), so client components can use them.
 
 export type InboxCategory = "WORK_ORDER" | "TICKET" | "DIRECT_MESSAGE" | "SYSTEM";
-export type InboxKind = "TICKET_REPLY" | "TICKET_STATUS" | "WO_ASSIGNED" | "WO_STATUS" | "DIRECT_MESSAGE";
+export type InboxKind = "TICKET_REPLY" | "TICKET_STATUS" | "WO_ASSIGNED" | "WO_STATUS" | "DIRECT_MESSAGE" | "WEATHER_ALERT";
 
 /** Who acted (for self-suppression + provenance). Optional — system events have no actor. */
 export type NotificationActor = { actorUserId?: string | null; actorEmail?: string | null };

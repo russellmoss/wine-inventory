@@ -5,6 +5,7 @@ import { listFieldInputs, addFieldInput } from "@/lib/fieldnotes/input-actions";
 import { buildPrepopulationDefaults } from "@/lib/fieldnotes/prepopulate";
 import { todayISODateUTC, isValidReportDate } from "@/lib/fieldnotes/week";
 import { type BlockStatus, type InputApplication, type WeatherData, type CreateFieldNoteInput } from "@/lib/fieldnotes/types";
+import type { ShootLengthBand } from "@/lib/phenology/observation-types";
 import { generateBriefing } from "@/lib/fieldnotes/ai";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
@@ -30,9 +31,32 @@ type NewInput = { type: "SPRAY" | "FERTILIZER"; name: string };
 const TITLE = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
 const blockName = (label: string) => (/block/i.test(label) ? label : `Block ${label}`);
 
+/** Bands read as a RANGE on the card, never as a number — the grower measured a bucket, not a value. */
+const SHOOT_BAND_TEXT: Record<ShootLengthBand, string> = {
+  LT_10: "under 10 cm",
+  CM_10_30: "10–30 cm",
+  CM_30_60: "30–60 cm",
+  GT_60: "over 60 cm",
+};
+
+/** A scouting value on the confirmation card. NOT_ASSESSED says so in words — never as "none". */
+const SCOUT_TEXT = (v: string) =>
+  v === "NOT_ASSESSED" ? "not assessed (nobody looked)" : v.toLowerCase();
+
+/** Is this field actually being set? `undefined` = untouched; `false`, `0`, and `"NONE"` are EDITS. */
+const isSet = <T,>(v: T | undefined | null): v is T => v !== undefined && v !== null;
+
 /** Human-readable summary of the per-block edits the model is making (lead with
- * the actual change, e.g. "Block 3 → Veraison 50%"), keyed by block label or id. */
-function summarizeBlockEdits(
+ * the actual change, e.g. "Block 3 → Veraison 50%"), keyed by block label or id.
+ *
+ * ⚠️ Every check here is `isSet(...)`, never plain truthiness (council C2). The old
+ * `if (partial.canopyDensity)` form dropped boolean `false` and numeric `0`, so a grower who
+ * cleared a flag saw "no field changes" on the confirmation card while a write was pending —
+ * the write happened and the preview denied it. String enums like "NONE" are truthy and always
+ * survived, so the hazard was exactly the falsy-but-meaningful shapes; S4 adds two more of them
+ * (`hedgedThisWeek: false`, `shootLengthCm: 0`) and fixes the pre-existing
+ * `diseasePestSpotted: false` case in the same pass. */
+export function summarizeBlockEdits(
   edits: Record<string, Partial<BlockStatus>>,
   blocks: { id: string; label: string }[],
 ): string[] {
@@ -42,16 +66,28 @@ function summarizeBlockEdits(
   for (const [key, partial] of Object.entries(edits ?? {})) {
     const label = idToLabel.get(key) ?? labelSet.get(key.toLowerCase().trim()) ?? key;
     const parts: string[] = [];
-    if (partial.phenoStage !== undefined && partial.phenoStage !== null) {
+    if (isSet(partial.phenoStage)) {
       const pct = partial.phenoStagePct != null ? ` ${partial.phenoStagePct}%` : "";
       parts.push(`${TITLE(partial.phenoStage)}${pct}`);
     }
-    if (partial.canopyDensity) parts.push(`canopy ${partial.canopyDensity.toLowerCase()}`);
-    if (partial.waterStress) parts.push(`water stress ${partial.waterStress.toLowerCase()}`);
-    if (partial.weedPressure) parts.push(`weeds ${partial.weedPressure.toLowerCase()}`);
-    if (partial.shootTip) parts.push(`shoot tips ${partial.shootTip.toLowerCase()}`);
+    if (isSet(partial.canopyDensity)) parts.push(`canopy ${partial.canopyDensity.toLowerCase()}`);
+    if (isSet(partial.waterStress)) parts.push(`water stress ${partial.waterStress.toLowerCase()}`);
+    if (isSet(partial.weedPressure)) parts.push(`weeds ${partial.weedPressure.toLowerCase()}`);
+    if (isSet(partial.shootTip)) parts.push(`shoot tips ${partial.shootTip.toLowerCase()}`);
     if (partial.leafConditions && partial.leafConditions.length) parts.push(`leaf: ${partial.leafConditions.join(", ").toLowerCase()}`);
-    if (partial.diseasePestSpotted) parts.push("disease/pest spotted");
+    // Pre-existing bug, fixed here: clearing a disease flag to `false` used to preview as nothing.
+    if (partial.diseasePestSpotted !== undefined) {
+      parts.push(partial.diseasePestSpotted ? "disease/pest spotted" : "disease/pest cleared");
+    }
+    // ── S4 ──────────────────────────────────────────────────────────────────────────────────
+    if (isSet(partial.shootLengthCm)) parts.push(`shoot length ${partial.shootLengthCm} cm`);
+    if (isSet(partial.shootLengthBand)) parts.push(`shoot length ${SHOOT_BAND_TEXT[partial.shootLengthBand]}`);
+    if (partial.hedgedThisWeek !== undefined) {
+      parts.push(partial.hedgedThisWeek === null ? "hedging not assessed" : partial.hedgedThisWeek ? "hedged this week" : "not hedged this week");
+    }
+    if (isSet(partial.fruitZoneLeafRemoval)) parts.push(`fruit-zone leaf removal ${partial.fruitZoneLeafRemoval.toLowerCase()}`);
+    if (isSet(partial.clusterDamage)) parts.push(`cluster damage ${SCOUT_TEXT(partial.clusterDamage)}`);
+    if (isSet(partial.vinegarFlyPressure)) parts.push(`vinegar-fly pressure ${SCOUT_TEXT(partial.vinegarFlyPressure)}`);
     if (parts.length) out.push(`${blockName(label)} → ${parts.join(", ")}`);
   }
   return out;

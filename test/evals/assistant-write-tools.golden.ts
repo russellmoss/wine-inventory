@@ -750,6 +750,18 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     note: "MERGE duplicate vendors (Plan 072); 'keep' is the survivor, 'remove' is the loser — distinct from create_vendor",
   },
   {
+    utterance: "Add a grower called Bien Nacido Vineyard, contact Nick, 805-555-1000",
+    tool: "create_grower",
+    args: { name: "Bien Nacido Vineyard", contactName: "Nick", phone: "805-555-1000" },
+    note: "CREATE a grower (Plan 095) — the farm that GROWS/SELLS the fruit; name required. Distinct from create_vendor (a supplier you buy from).",
+  },
+  {
+    utterance: "Set up a new fruit grower, Sunny Slope Ranch, email grapes@sunnyslope.com",
+    tool: "create_grower",
+    args: { name: "Sunny Slope Ranch", email: "grapes@sunnyslope.com" },
+    note: "grower, not a vendor/supplier and not the wine's owner — a third-party grower is auto-linked as a vendor by the tool, but the TOOL is create_grower",
+  },
+  {
     utterance: "Add a unit called drum that's 200 kg",
     tool: "create_custom_unit",
     args: { name: "drum", dimension: "mass", amount: 200, referenceUnit: "kg" },
@@ -760,5 +772,18 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     tool: "create_custom_unit",
     args: { name: "roll", dimension: "count", amount: 500 },
     note: "a COUNT custom unit; amount is base items per package, no reference unit",
+  },
+  // VI-P2 — process (fetch + compute) a NEW satellite NDVI scene. A WRITE (spends quota) vs the query read.
+  {
+    utterance: "Run NDVI for Estate Vineyard around June 15",
+    tool: "process_ndvi",
+    args: { vineyard: "Estate Vineyard", date: "2026-06-15" },
+    note: "fetch + compute a new scene = a write; reading existing NDVI is query_ndvi_stats",
+  },
+  {
+    utterance: "Get the latest satellite vigour for the Home Block",
+    tool: "process_ndvi",
+    args: { vineyard: "Home Block" },
+    note: "no date → defaults to today, the search widens to find a clear scene",
   },
 ];

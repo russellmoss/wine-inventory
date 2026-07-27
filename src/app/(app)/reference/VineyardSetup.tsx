@@ -24,6 +24,7 @@ import {
 } from "@/lib/vineyard/units";
 import type { SerializedBlock, SerializedDetail } from "@/lib/vineyard/data";
 import { BlockDetails } from "./BlockDetails";
+import { FinishSetupSection } from "./FinishSetupSection";
 
 type VarietyOption = { id: string; name: string; color: string | null };
 
@@ -33,6 +34,8 @@ export interface VineyardSetupProps {
   blocks: SerializedBlock[];
   varietyOptions: VarietyOption[];
   unit: Unit;
+  /** Plan 098: the persisted-override tri-state ("auto" = follow the winery) — what the detail save stores. */
+  unitOverride?: Unit | "auto";
   /** When true, the per-block "Draw / edit shape" button drives the shared map's draw mode. */
   drawEnabled?: boolean;
   /** The block currently in draw mode (owned by VineyardModal), or null. */
@@ -106,6 +109,7 @@ export function VineyardSetup({
   blocks,
   varietyOptions,
   unit,
+  unitOverride = "auto",
   drawEnabled = false,
   activeBlockId = null,
   onDraw,
@@ -215,6 +219,7 @@ export function VineyardSetup({
           e.preventDefault();
           const fd = new FormData(e.currentTarget);
           fd.set("unit", unit);
+          fd.set("unitOverride", unitOverride);
           run(() => upsertVineyardDetail(vineyardId, fd));
         }}
         style={{ marginBottom: 24 }}
@@ -505,6 +510,8 @@ export function VineyardSetup({
           })}
         </div>
       )}
+
+      <FinishSetupSection vineyardId={vineyardId} hasBlocksWithPolygons={blocks.some((b) => b.polygon != null)} />
     </div>
   );
 }

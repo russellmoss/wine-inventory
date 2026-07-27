@@ -23,6 +23,10 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run verify:raw-sql
+      # TENANT-3: a runAsTenant/runWithTenantContext callback must never hand back a bare LAZY
+      # PrismaPromise — it would be evaluated after the ALS scope exits (under the OUTER tenant when
+      # one is live). Pure static AST scan, no DB.
+      - run: npm run verify:tenant-callbacks
       - run: npm run verify:feedback
       - run: npm run verify:feedback-idempotency
       - run: npm run verify:feedback-security

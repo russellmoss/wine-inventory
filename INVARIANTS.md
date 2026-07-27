@@ -324,3 +324,81 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   host↔AP (distinct BWN) → title + symmetric transfer-in-bond (council C1). Compliance keys off BOND, not
   ownerId, but an AP owner's bond wins in `deriveBond`. Owner-scope RLS is plan 092, not this invariant.
   Guarded by `npm run verify:owner-model` (16 assertions, Demo tenant, no RLS).
+
+## Vineyard Intelligence — soil (P4)
+
+> Machine-readable note: [[SOIL-1-no-blended-properties]].
+
+- **No blended block soil properties (SOIL-1, guarded — `verify:soil`).** A block's `BlockSoilSnapshot`
+  invents NO property value: area share (%) is the ONLY value we aggregate. Every soil property (pH,
+  drainage, AWC, restrictive depth) stays PER-MAP-UNIT, cited to its `mukey` at the level NRCS publishes it
+  (labelled via `*Basis`). No block-level averaged pH / drainage / AWC / restrictive depth exists anywhere —
+  pH is logarithmic, drainage categorical, and averaged restrictive depth is actively dangerous (the shallow
+  half is where the vines die). We inherit NRCS's own published roll-ups (e.g. `muaggatt.drclassdcd`) but
+  labelled as such, never re-aggregated. Non-soil map units (Water/Pits/Rock outcrop) are classified
+  explicitly and never presented as a soil (spike NEW-1). This is NOT a lint (the design says so); the guard
+  proves the positive shape and this note + review checklist enforce the absence. `npm run verify:soil`.
+
+## Spray Intelligence — the application record (S3a)
+
+> Machine-readable notes: [[SPRAY-1-append-only-correction-as-event]] · [[SPRAY-2-facts-as-of-snapshot]] ·
+> [[SPRAY-3-gap-renders-unknown]] · [[SPRAY-4-planned-harvest-audited]] · [[SPRAY-5-dried-before-rain-derived]] ·
+> [[SPRAY-7-clean-scout-never-closes]].
+> SPRAY-1..5 guarded by `npm run verify:spray-record`; SPRAY-6 by `npm run verify:product-facts`; SPRAY-7 by `npm run verify:latent-infection`.
+
+- **Spray history is append-only, corrected as an event (SPRAY-1, critical, database).** A Postgres
+  `BEFORE UPDATE` trigger refuses any content change on all six append-only tables (per-table
+  bookkeeping allowlists only: `status`+`supersededByApplicationId` on the header, `effectiveTo`+`status`
+  on the harvest event, the derived `driedBeforeRain*` on the block line, NOTHING on the override).
+  A correction appends a full new revision; `UNIQUE(tenantId, supersedesApplicationId)` makes it
+  at-most-once, and a VOID is a SUCCESSOR ROW so the same unique kills the void race (council C2).
+  DELETE requires the `app.allow_spray_purge` GUC on a non-app_rls connection (C15) — QA teardown only.
+- **Decisions replay under facts-as-of-then (SPRAY-2, critical, core).** Each material line freezes a
+  facts snapshot with `factsRevision`+`factsAsOf`. A correction COPIES the snapshot verbatim and
+  re-resolves ONLY a line whose product identity changed (KD-14 — council G1 reversed the original
+  re-resolve design; do not "fix" it back).
+- **A gap renders as UNKNOWN, never clear (SPRAY-3, critical, database).** DB CHECKs make
+  `snapshotResistanceGroups=[] ∧ resistanceGroupsKnown=true` impossible and force both knownness flags
+  for `factsCompleteness=KNOWN` (council C7). `rotationContribution` keys off knownness, never array
+  length; an unconfirmed legacy field-note spray BLOCKS a rotation-OK claim.
+- **The planned harvest date is an audited event stream (SPRAY-4, high, database).** Closed-interval
+  versions (Shape D), one open row per (block, vintage, passLabel) by partial unique, zero open rows =
+  no planned date; point-in-time reads; the stream IS the outbox — S7a consumes
+  `plannedHarvestChangesSince(cursor)` as a watermark (council C4). Split picks coexist (G4); PHI reads
+  the EARLIEST open date.
+- **A clean scouting pass never closes a latent infection event (SPRAY-7, critical, app-code).**
+  An open event closes by its resolution rule or by an attributed human append — never by the ABSENCE
+  of symptoms, because during the latent period there is by definition nothing to see. Fedele et al.
+  2020 scored a Botrytis model at 65% against field assessment but >87% against post-harvest assays of
+  SYMPTOMLESS berries. `evaluateResolution` accepts `scoutedCleanOn` and deliberately ignores it;
+  `closeInfectionEvent` exposes no parameter that would let a clean scout close an event. Same family
+  as SPRAY-3 and PEST-1 (absence of evidence rendering as a clearance), applied to TIME rather than
+  coverage. Companion rule (S5a KD-4): `infectiousExpectedAt` takes the SHORTEST plausible latent
+  period and the expiry the LONGEST — opposite ends of one interval, each erring toward "the pathogen
+  is active", never averaged. NOTE: S5a ships this ledger WITHOUT a powdery risk index; the Unit 0
+  probe failed its pre-committed gate at every site and the index moved to S5b behind S1.
+- **driedBeforeRain is derived, never self-reported (SPRAY-5, high, core).** Computed from the block's
+  own finish time + hourly precip through an injected port, or UNKNOWN; the human correction is an
+  attributed append-only override row. A null block `finishedAt` yields REI/residual UNKNOWN and never
+  borrows the header timestamp (G2/C14 — worker safety, not data quality).
+
+## Knowledge base — the corpus/relational boundary (SKB)
+
+> Machine-readable note: [[KB-1-product-table-is-not-corpus]]. Guarded by `npm run verify:kb-boundary`.
+
+- **A product→fact table is never corpus content (KB-1, critical, pure-code).** The corpus/relational
+  line is **tabular vs prose**, not mentions-FRAC vs does-not. A table or matrix keyed by product or
+  active ingredient (product × FRAC group, × efficacy, × rate, × REI/PHI) must never be indexed for an
+  enforcing source; disease biology and advisory prose that names FRAC groups as context while deferring
+  rates to the label both pass. The failure it prevents is a corpus table quoted as authoritative while
+  `pesticide_resistance_assignment` says `GAP` — a coverage gap rendering as a confident answer from the
+  WRONG ENGINE (runbook §3.6, [[PEST-1-gap-is-not-a-clearance]] from the other side).
+  **Three mechanics are load-bearing and none is optional.** The detector reads **raw HTML / PDF
+  pre-chunk lines, never post-extraction text** (`extract/pdf.ts` emits no pipe tables and no headings,
+  so extracted text disarms it on exactly the documents that matter). The gate is **inline in
+  `index-documents.ts`, before both extraction and the idempotency short-circuit**, and signals by
+  **returned field, never a throw** — a throw there is read by the re-crawl tombstone pass as "the page
+  was removed" and would mass-tombstone a source. And `uncertain` **skips for an enforcing source**
+  (fail closed) while being **admitted and counted for a report-only one**, where nothing is gated.
+  Enforcement is the DEFAULT; the 25 pre-SKB sources are a frozen report-only census whose deletion is
+  how the grandfather clause closes.

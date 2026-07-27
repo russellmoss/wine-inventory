@@ -24,6 +24,14 @@
       "schedule": "0 14 * * *"
     },
     {
+      "path": "/api/cron/ndvi-poll",
+      "schedule": "20 15 * * *"
+    },
+    {
+      "path": "/api/cron/soil-sweep",
+      "schedule": "40 15 * * *"
+    },
+    {
       "path": "/api/cron/commerce7-inventory",
       "schedule": "15 14 * * *"
     },
@@ -38,6 +46,14 @@
     {
       "path": "/api/cron/feedback-automation-sweep",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/cron/weather-poll",
+      "schedule": "40 15 * * *"
+    },
+    {
+      "path": "/api/cron/forecast-poll",
+      "schedule": "10 15 * * *"
     }
   ]
 }

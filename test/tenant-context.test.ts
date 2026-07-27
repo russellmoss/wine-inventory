@@ -55,11 +55,23 @@ describe("global-model denylist (K3)", () => {
         // Plan 079: the knowledge-base CORPUS is global reference data (the subscription table is NOT).
         "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument",
         "KnowledgeUrlObservation", "KnowledgeChunk",
+        // Spray S2: the pesticide registration/resistance master is global reference data
+        // (entitlement is a service-layer check in src/lib/pesticide/lookup.ts, not RLS).
+        "PesticideDataRevision", "PesticideProduct", "PesticideActiveIngredient",
+        "PesticideProductIngredient", "PesticideSiteRegistration", "PesticideStateRegistration",
+        "PesticideUseRestriction", "PesticideResistanceAssignment",
+        // Spray S2b: the curated product-facts master is global reference data too. The
+        // grower-supplied override (TenantProductFacts) is TENANT-SCOPED and must NOT appear here.
+        "PesticideProductFacts", "PesticideProductReiCondition", "PesticideProductPhiCondition",
+        "PesticideSeparationRule", "PesticideProductCondition",
+        // S2b Unit 7b — the DPR pest vocabulary.
+        "PesticidePestCategory", "PesticideProductPest",
       ].sort(),
     );
-    for (const m of ["User", "Session", "Organization", "Member", "Invitation", "FxRate", "KnowledgeChunk"]) expect(isGlobalModel(m)).toBe(true);
-    // the subscription table is tenant-scoped, NOT global
-    for (const m of ["Lot", "Vessel", "AppSettings", "AuditLog", "KnowledgeSourceSubscription"]) expect(isGlobalModel(m)).toBe(false);
+    for (const m of ["User", "Session", "Organization", "Member", "Invitation", "FxRate", "KnowledgeChunk", "PesticideProduct", "PesticideProductFacts"]) expect(isGlobalModel(m)).toBe(true);
+    // the subscription table is tenant-scoped, NOT global — and so is S2b's grower-supplied override:
+    // listing TenantProductFacts as global would silently disable its RLS isolation (rule §3.11).
+    for (const m of ["Lot", "Vessel", "AppSettings", "AuditLog", "KnowledgeSourceSubscription", "TenantProductFacts"]) expect(isGlobalModel(m)).toBe(false);
   });
 });
 

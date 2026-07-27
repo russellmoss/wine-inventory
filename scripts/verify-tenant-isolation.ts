@@ -20,12 +20,17 @@ const A = "org_demo_winery";
 const B = "org_isolation_test_b";
 
 // GLOBAL_MODELS (mirror of src/lib/tenant/models.ts): the Better Auth core + org-plugin tables, the
-// Plan-073 FxRate reference cache, and the Plan-079 knowledge-base CORPUS tables are the ONLY non-tenant
-// tables — every other model must be RLS-isolated. These globals have no tenantId (identical for every
-// tenant); they're excluded from the RLS coverage guard below exactly like the auth globals. The
-// knowledge-base SUBSCRIPTION table (KnowledgeSourceSubscription) IS tenant-scoped and is NOT listed here.
+// Plan-073 FxRate reference cache, the Plan-079 knowledge-base CORPUS tables, and the Spray-S2
+// pesticide registration/resistance master are the ONLY non-tenant tables — every other model must be
+// RLS-isolated. These globals have no tenantId (identical for every tenant); they're excluded from the
+// RLS coverage guard below exactly like the auth globals. The knowledge-base SUBSCRIPTION table
+// (KnowledgeSourceSubscription) IS tenant-scoped and is NOT listed here; pesticide entitlement is a
+// SERVICE-layer check in src/lib/pesticide/lookup.ts, not RLS.
 // Inlined so this exit-proof script stays self-contained.
-const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation", "FxRate", "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument", "KnowledgeUrlObservation", "KnowledgeChunk"]);
+// S2b adds the curated product-facts master as global reference too; TenantProductFacts (the
+// grower-supplied override) is TENANT-SCOPED and is NOT listed — the RLS coverage guard must demand
+// RLS on it.
+const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation", "FxRate", "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument", "KnowledgeUrlObservation", "KnowledgeChunk", "PesticideDataRevision", "PesticideProduct", "PesticideActiveIngredient", "PesticideProductIngredient", "PesticideSiteRegistration", "PesticideStateRegistration", "PesticideUseRestriction", "PesticideResistanceAssignment", "PesticideProductFacts", "PesticideProductReiCondition", "PesticideProductPhiCondition", "PesticideSeparationRule", "PesticideProductCondition", "PesticidePestCategory", "PesticideProductPest"]);
 
 const OWNER_URL = process.env.DATABASE_URL_UNPOOLED;
 const APP_URL = process.env.DATABASE_URL_APP;
@@ -202,8 +207,59 @@ async function main() {
   await owner.vineyard.upsert({ where: { id: "iso_vy_b" }, update: {}, create: { id: "iso_vy_b", name: "ISO VY B", tenantId: B } });
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_a" }, update: {}, create: { id: "iso_blk_a", vineyardId: "iso_vy_a", tenantId: A, updatedAt: now } });
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_b" }, update: {}, create: { id: "iso_blk_b", vineyardId: "iso_vy_b", tenantId: B, updatedAt: now } });
+  // S5a latent-infection ledger. Append-only: app_rls holds SELECT+INSERT only (council C5), so an
+  // UPDATE fails with 42501 rather than a trigger message. Deeper behaviour (idempotency, KD-4
+  // bounds, the clean-scout refusal) is proven by `npm run verify:latent-infection`.
+  const lieBase = { pathogen: "POWDERY_MILDEW" as const, hostOrgan: "LEAF" as const, status: "OPEN" as const, resolutionKind: "UNKNOWN" as const, infectionOccurredOn: new Date("2026-05-01T00:00:00Z"), symptomProjectionKind: "UNKNOWN" as const, infectiousProjectionKind: "UNKNOWN" as const, evidenceSource: "GROWER_REPORT" as const, requestHash: "0", enteredByEmail: "iso@test" };
+  await owner.latentInfectionEvent.upsert({ where: { id: "iso_lie_a" }, update: {}, create: { ...lieBase, id: "iso_lie_a", tenantId: A, logicalEventId: "iso_lie_stream_a", seq: 1, blockId: "iso_blk_a", commandId: "iso_lie_cmd_a" } });
+  await owner.latentInfectionEvent.upsert({ where: { id: "iso_lie_b" }, update: {}, create: { ...lieBase, id: "iso_lie_b", tenantId: B, logicalEventId: "iso_lie_stream_b", seq: 1, blockId: "iso_blk_b", commandId: "iso_lie_cmd_b" } });
+  // D9 vineyard MEMBERSHIP set. `user_vineyard` is tenant-scoped + RLS-forced even though `user`
+  // itself is GLOBAL — the seam that silently emptied AppUser.vineyardIds. One membership per tenant.
+  await owner.userVineyard.upsert({ where: { id: "iso_uv_a" }, update: {}, create: { id: "iso_uv_a", tenantId: A, userId: "iso_um_user_a", vineyardId: "iso_vy_a" } });
+  await owner.userVineyard.upsert({ where: { id: "iso_uv_b" }, update: {}, create: { id: "iso_uv_b", tenantId: B, userId: "iso_um_user_b", vineyardId: "iso_vy_b" } });
+  // S4: a variety per tenant carrying the DURABLE cluster-compactness default (D12). The block
+  // columns (trellisSystem / clusterCompactness) ride the existing vineyard_block fixtures.
+  await owner.variety.upsert({ where: { id: "iso_var_a" }, update: { clusterCompactness: "TIGHT" }, create: { id: "iso_var_a", name: "ISO VAR A", clusterCompactness: "TIGHT", tenantId: A } });
+  await owner.variety.upsert({ where: { id: "iso_var_b" }, update: { clusterCompactness: "LOOSE" }, create: { id: "iso_var_b", name: "ISO VAR B", clusterCompactness: "LOOSE", tenantId: B } });
+  await owner.vineyardBlock.update({ where: { id: "iso_blk_a" }, data: { varietyId: "iso_var_a", trellisSystem: "VSP", clusterCompactness: "MODERATE" } });
+  await owner.vineyardBlock.update({ where: { id: "iso_blk_b" }, data: { varietyId: "iso_var_b", trellisSystem: "SPRAWL", clusterCompactness: "LOOSE" } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_a" }, update: {}, create: { id: "iso_brix_a", blockId: "iso_blk_a", vineyardId: "iso_vy_a", brixValue: "22.5", createdByEmail: "iso@test", tenantId: A } });
   await owner.brixLog.upsert({ where: { id: "iso_brix_b" }, update: {}, create: { id: "iso_brix_b", blockId: "iso_blk_b", vineyardId: "iso_vy_b", brixValue: "23.5", createdByEmail: "iso@test", tenantId: B } });
+  // S3a: spray record fixtures (header + block line per tenant). Append-only tables — cleanup
+  // below runs in a purge-GUC transaction (owner role) or the DELETE trigger refuses it.
+  await owner.sprayApplication.upsert({ where: { id: "iso_spray_a" }, update: {}, create: { id: "iso_spray_a", tenantId: A, vineyardId: "iso_vy_a", applicatorName: "Iso A", applicationMethod: "AIRBLAST", startedAt: now, enteredByEmail: "iso@test" } });
+  await owner.sprayApplication.upsert({ where: { id: "iso_spray_b" }, update: {}, create: { id: "iso_spray_b", tenantId: B, vineyardId: "iso_vy_b", applicatorName: "Iso B", applicationMethod: "AIRBLAST", startedAt: now, enteredByEmail: "iso@test" } });
+  await owner.sprayBlockLine.upsert({ where: { id: "iso_sbl_a" }, update: {}, create: { id: "iso_sbl_a", tenantId: A, applicationId: "iso_spray_a", blockId: "iso_blk_a", blockLabelSnapshot: "Iso Block A", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } });
+  await owner.sprayBlockLine.upsert({ where: { id: "iso_sbl_b" }, update: {}, create: { id: "iso_sbl_b", tenantId: B, applicationId: "iso_spray_b", blockId: "iso_blk_b", blockLabelSnapshot: "Iso Block B", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } });
+  // VI-P1: a planting area per tenant (analysis mask parent). geometry/fingerprint/anchor are opaque here.
+  const isoGeom = { type: "Polygon", coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] };
+  const isoAnchor = { epsg: 32617, originX: 0, originY: 0 };
+  await owner.vineyardPlantingArea.upsert({ where: { id: "iso_pa_a" }, update: {}, create: { id: "iso_pa_a", vineyardId: "iso_vy_a", name: "ISO PA A", geometry: isoGeom, geometryFingerprint: "iso-a", canonicalAnchor: isoAnchor, source: "DRAW", tenantId: A, updatedAt: now } });
+  await owner.vineyardPlantingArea.upsert({ where: { id: "iso_pa_b" }, update: {}, create: { id: "iso_pa_b", vineyardId: "iso_vy_b", name: "ISO PA B", geometry: isoGeom, geometryFingerprint: "iso-b", canonicalAnchor: isoAnchor, source: "DRAW", tenantId: B, updatedAt: now } });
+  await owner.vineyardGeometryVersion.upsert({ where: { id: "iso_gv_a" }, update: {}, create: { id: "iso_gv_a", subjectType: "PLANTING_AREA", subjectId: "iso_pa_a", version: 1, geometry: isoGeom, fingerprint: "iso-a", canonicalAnchor: isoAnchor, tenantId: A } });
+  await owner.vineyardGeometryVersion.upsert({ where: { id: "iso_gv_b" }, update: {}, create: { id: "iso_gv_b", subjectType: "PLANTING_AREA", subjectId: "iso_pa_b", version: 1, geometry: isoGeom, fingerprint: "iso-b", canonicalAnchor: isoAnchor, tenantId: B } });
+  // VI-P2: a spatial scene → dataset → block metric chain + a job + a usage counter per tenant. The lineage
+  // FKs (dataset→scene, metric→dataset, metric→block) are composite (tenantId, refId) → (tenantId, id) (K11).
+  const isoBounds = { type: "bbox", coordinates: [0, 0, 1, 1] };
+  await owner.spatialScene.upsert({ where: { id: "iso_scene_a" }, update: {}, create: { id: "iso_scene_a", tenantId: A, vineyardId: "iso_vy_a", provider: "CDSE", collection: "sentinel-2-l2a", providerSceneId: "ISO-SCENE-A", requestedDateTarget: now, acquiredAt: now, bounds: isoBounds, sceneCloudCover: "5.000", processingBaseline: "05.11", processingLevel: "L2A", selectionReason: "iso", attribution: "Copernicus" } });
+  await owner.spatialScene.upsert({ where: { id: "iso_scene_b" }, update: {}, create: { id: "iso_scene_b", tenantId: B, vineyardId: "iso_vy_b", provider: "CDSE", collection: "sentinel-2-l2a", providerSceneId: "ISO-SCENE-B", requestedDateTarget: now, acquiredAt: now, bounds: isoBounds, sceneCloudCover: "5.000", processingBaseline: "05.11", processingLevel: "L2A", selectionReason: "iso", attribution: "Copernicus" } });
+  await owner.spatialDataset.upsert({ where: { id: "iso_ds_a" }, update: {}, create: { id: "iso_ds_a", tenantId: A, vineyardId: "iso_vy_a", sceneId: "iso_scene_a", datasetIdentity: "iso-identity-a", algorithmVersion: "ndvi-1", status: "READY", updatedAt: now } });
+  await owner.spatialDataset.upsert({ where: { id: "iso_ds_b" }, update: {}, create: { id: "iso_ds_b", tenantId: B, vineyardId: "iso_vy_b", sceneId: "iso_scene_b", datasetIdentity: "iso-identity-b", algorithmVersion: "ndvi-1", status: "READY", updatedAt: now } });
+  await owner.spatialAnalysisJob.upsert({ where: { id: "iso_job_a" }, update: {}, create: { id: "iso_job_a", tenantId: A, vineyardId: "iso_vy_a", idempotencyKey: "iso-job-a", params: {} } });
+  await owner.spatialAnalysisJob.upsert({ where: { id: "iso_job_b" }, update: {}, create: { id: "iso_job_b", tenantId: B, vineyardId: "iso_vy_b", idempotencyKey: "iso-job-b", params: {} } });
+  await owner.blockSpatialMetric.upsert({ where: { id: "iso_bsm_a" }, update: {}, create: { id: "iso_bsm_a", tenantId: A, blockId: "iso_blk_a", datasetId: "iso_ds_a", vineyardId: "iso_vy_a", acquiredAt: now, mean: "0.55000", intersectingPixelCount: 100, validPixelCount: 90, effectivePixelCount: "88.5000", validFraction: "0.900000", coveredAreaM2: "8850.00", mixedPixelShare: "0.100000", qualityFlags: [], geometryVersion: 1, geometryFingerprint: "iso-a" } });
+  await owner.blockSpatialMetric.upsert({ where: { id: "iso_bsm_b" }, update: {}, create: { id: "iso_bsm_b", tenantId: B, blockId: "iso_blk_b", datasetId: "iso_ds_b", vineyardId: "iso_vy_b", acquiredAt: now, mean: "0.55000", intersectingPixelCount: 100, validPixelCount: 90, effectivePixelCount: "88.5000", validFraction: "0.900000", coveredAreaM2: "8850.00", mixedPixelShare: "0.100000", qualityFlags: [], geometryVersion: 1, geometryFingerprint: "iso-b" } });
+  await owner.cdseUsageCounter.upsert({ where: { tenantId_yearMonth: { tenantId: A, yearMonth: "2026-07" } }, update: {}, create: { tenantId: A, yearMonth: "2026-07", requestCount: 3, processingUnits: "2.6760", blobEgressBytes: BigInt(730000), updatedAt: now } });
+  await owner.cdseUsageCounter.upsert({ where: { tenantId_yearMonth: { tenantId: B, yearMonth: "2026-07" } }, update: {}, create: { tenantId: B, yearMonth: "2026-07", requestCount: 3, processingUnits: "2.6760", blobEgressBytes: BigInt(730000), updatedAt: now } });
+  // VI-P4: a block_soil_snapshot per tenant (composite (tenantId, blockId) → vineyard_block FK, K11).
+  const isoSoilComponents = [{ mukey: "1407835", muname: "Mardin channery silt loam", class: "soil", areaPct: 1, areaSqM: 100, comppct: 85, drainageClass: "Moderately well drained", drainageBasis: "map-unit dominant condition", awc: null, awcUnit: null, ph: 6.6, phBasis: "topmost mineral horizon", restrictiveDepthCm: null }];
+  await owner.blockSoilSnapshot.upsert({ where: { id: "iso_soil_a" }, update: {}, create: { id: "iso_soil_a", tenantId: A, blockId: "iso_blk_a", vineyardId: "iso_vy_a", polygonFingerprint: "iso-a", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "100.00", components: isoSoilComponents, processingVersion: "soil-1", attribution: "NRCS SSURGO" } });
+  await owner.blockSoilSnapshot.upsert({ where: { id: "iso_soil_b" }, update: {}, create: { id: "iso_soil_b", tenantId: B, blockId: "iso_blk_b", vineyardId: "iso_vy_b", polygonFingerprint: "iso-b", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "100.00", components: isoSoilComponents, processingVersion: "soil-1", attribution: "NRCS SSURGO" } });
+  // VI-P3: a display derivative + a saved style per tenant (both tenant-scoped, RLS-isolated).
+  await owner.spatialDatasetDerivative.upsert({ where: { id: "iso_sdd_a" }, update: {}, create: { id: "iso_sdd_a", tenantId: A, datasetId: "iso_ds_a", vineyardId: "iso_vy_a", kind: "DISPLAY_NDVI", recipeVersion: 1, status: "READY", updatedAt: now } });
+  await owner.spatialDatasetDerivative.upsert({ where: { id: "iso_sdd_b" }, update: {}, create: { id: "iso_sdd_b", tenantId: B, datasetId: "iso_ds_b", vineyardId: "iso_vy_b", kind: "DISPLAY_NDVI", recipeVersion: 1, status: "READY", updatedAt: now } });
+  await owner.spatialStyle.upsert({ where: { id: "iso_style_a" }, update: {}, create: { id: "iso_style_a", tenantId: A, scope: "SYSTEM", name: "iso-a", mode: "VINEYARD_SCENE", paletteId: "vigor-classic", updatedAt: now } });
+  await owner.spatialStyle.upsert({ where: { id: "iso_style_b" }, update: {}, create: { id: "iso_style_b", tenantId: B, scope: "SYSTEM", name: "iso-b", mode: "VINEYARD_SCENE", paletteId: "vigor-classic", updatedAt: now } });
   // Phase 15: an accounting_connection (the token table) per tenant, plus a cost_export_event in A
   // (composite-FK target for the delivery-uniqueness check). DISCONNECTED + null tokens satisfies the
   // SEC-S5 CHECK; null realmId keeps the one-realm partial-unique out of the way.
@@ -234,6 +290,10 @@ async function main() {
   // suppliers/PII, and a contact/material/lot whose vendor spans tenants (composite (tenantId, vendorId) FK).
   await owner.vendor.upsert({ where: { id: "iso_vendor_b" }, update: {}, create: { id: "iso_vendor_b", tenantId: B, name: "ISO Vendor B", updatedAt: now } });
   await owner.vendorContact.upsert({ where: { id: "iso_vc_b" }, update: {}, create: { id: "iso_vc_b", tenantId: B, vendorId: "iso_vendor_b", name: "ISO Contact B", updatedAt: now } });
+  // Plan 095: a grower + a grower_contact in tenant B. Same isolation risk as vendors — a cross-tenant read of
+  // a winery's growers/PII, and a contact whose grower spans tenants (composite (tenantId, growerId) FK, K11).
+  await owner.grower.upsert({ where: { id: "iso_grower_b" }, update: {}, create: { id: "iso_grower_b", tenantId: B, name: "ISO Grower B", updatedAt: now } });
+  await owner.growerContact.upsert({ where: { id: "iso_gc_b" }, update: {}, create: { id: "iso_gc_b", tenantId: B, growerId: "iso_grower_b", name: "ISO Grower Contact B", updatedAt: now } });
   // Plan 075: a tenant-authored custom_unit in tenant B. Isolation risk is a cross-tenant read of a winery's
   // unit registry (a custom unit feeds cost math, so a leak could mis-price the other tenant's intake).
   await owner.customUnit.upsert({ where: { id: "iso_cu_b" }, update: {}, create: { id: "iso_cu_b", tenantId: B, name: "ISO Drum B", normalizedName: "iso drum b", dimension: "mass", perCanonical: "200000", updatedAt: now } });
@@ -588,6 +648,95 @@ async function main() {
     const brixASeesB = await asTenant(A, (db) => db.$queryRaw<{ blockId: string }[]>`SELECT "blockId" FROM "brix_log" WHERE "vineyardId" = 'iso_vy_b'`);
     check("brix_log raw read as A CANNOT see B's vineyard rows", brixASeesB.length === 0, `saw ${brixASeesB.length}`);
 
+    // 5c-VI. VI-P1: vineyard_planting_area + vineyard_geometry_version isolation, and the block→planting
+    // composite (tenantId, plantingAreaId) FK (K11) rejecting a cross-tenant parent reference.
+    check("tenant A sees its own vineyard_planting_area", (await asTenant(A, (db) => db.vineyardPlantingArea.findFirst({ where: { id: "iso_pa_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's vineyard_planting_area (RLS)", (await asTenant(A, (db) => db.vineyardPlantingArea.findFirst({ where: { id: "iso_pa_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's vineyard_geometry_version (RLS)", (await asTenant(A, (db) => db.vineyardGeometryVersion.findFirst({ where: { id: "iso_gv_b" } }))) === null);
+    let paInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.vineyardPlantingArea.create({ data: { id: "iso_pa_x", vineyardId: "iso_vy_a", name: "ISO PA X", geometry: {}, geometryFingerprint: "x", canonicalAnchor: {}, source: "DRAW", tenantId: B, updatedAt: new Date() } }));
+    } catch { paInsertRaised = true; }
+    check("foreign-tenant vineyard_planting_area INSERT raises (WITH CHECK)", paInsertRaised);
+    let paFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.vineyardBlock.update({ where: { id: "iso_blk_a" }, data: { plantingAreaId: "iso_pa_b" } }));
+    } catch { paFkRaised = true; }
+    check("block cross-tenant plantingArea reference rejected (composite FK, K11)", paFkRaised);
+
+    // 5c-S4. Spray Intelligence S4: the durable canopy-profile columns are additive on two tables
+    // that were ALREADY tenant-scoped and RLS-forced, so the AGENTS.md U7 checklist entry for
+    // vineyard_block and variety is "covered by the existing policies". These cases prove that —
+    // a new column on an RLS-forced table inherits the policy and does not open a read path.
+    const s4BlockA = await asTenant(A, (db) => db.vineyardBlock.findFirst({ where: { id: "iso_blk_a" }, select: { trellisSystem: true, clusterCompactness: true } }));
+    check("tenant A reads its own block trellis/compactness (S4)", s4BlockA?.trellisSystem === "VSP" && s4BlockA?.clusterCompactness === "MODERATE", `saw ${JSON.stringify(s4BlockA)}`);
+    check("tenant A CANNOT read tenant B's block canopy profile (RLS, S4)", (await asTenant(A, (db) => db.vineyardBlock.findFirst({ where: { id: "iso_blk_b" }, select: { trellisSystem: true } }))) === null);
+    check("tenant A sees its own variety clusterCompactness (S4/D12)", (await asTenant(A, (db) => db.variety.findFirst({ where: { id: "iso_var_a" }, select: { clusterCompactness: true } })))?.clusterCompactness === "TIGHT");
+    check("tenant A CANNOT see tenant B's variety default (RLS, S4/D12)", (await asTenant(A, (db) => db.variety.findFirst({ where: { id: "iso_var_b" } }))) === null);
+    let s4VarietyInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.variety.create({ data: { id: "iso_var_x", name: "ISO VAR X", clusterCompactness: "TIGHT", tenantId: B } }));
+    } catch { s4VarietyInsertRaised = true; }
+    check("foreign-tenant variety INSERT raises (WITH CHECK, S4)", s4VarietyInsertRaised);
+    // Exactly one OPEN geometry version per subject (partial unique, council C3/S2).
+    let openVersionRaised = false;
+    try {
+      await asTenant(A, (db) => db.vineyardGeometryVersion.create({ data: { id: "iso_gv_dup", subjectType: "PLANTING_AREA", subjectId: "iso_pa_a", version: 2, geometry: {}, fingerprint: "dup", canonicalAnchor: {}, tenantId: A } }));
+    } catch { openVersionRaised = true; }
+    check("second OPEN geometry version for a subject rejected (partial unique)", openVersionRaised);
+
+    // 5c-VI-P2. NDVI core tables: RLS isolation on all five, WITH CHECK on a foreign INSERT, and the
+    // metric→dataset composite (tenantId, datasetId) FK (K11) rejecting a cross-tenant lineage reference.
+    check("tenant A sees its own spatial_scene", (await asTenant(A, (db) => db.spatialScene.findFirst({ where: { id: "iso_scene_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's spatial_scene (RLS)", (await asTenant(A, (db) => db.spatialScene.findFirst({ where: { id: "iso_scene_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's spatial_dataset (RLS)", (await asTenant(A, (db) => db.spatialDataset.findFirst({ where: { id: "iso_ds_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's spatial_analysis_job (RLS)", (await asTenant(A, (db) => db.spatialAnalysisJob.findFirst({ where: { id: "iso_job_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's block_spatial_metric (RLS)", (await asTenant(A, (db) => db.blockSpatialMetric.findFirst({ where: { id: "iso_bsm_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's cdse_usage_counter (RLS)", (await asTenant(A, (db) => db.cdseUsageCounter.findFirst({ where: { tenantId: B, yearMonth: "2026-07" } }))) === null);
+    check("tenant A CANNOT see tenant B's spatial_dataset_derivative (RLS)", (await asTenant(A, (db) => db.spatialDatasetDerivative.findFirst({ where: { id: "iso_sdd_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's spatial_style (RLS)", (await asTenant(A, (db) => db.spatialStyle.findFirst({ where: { id: "iso_style_b" } }))) === null);
+    let sceneInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.spatialScene.create({ data: { id: "iso_scene_x", tenantId: B, vineyardId: "iso_vy_a", provider: "CDSE", collection: "sentinel-2-l2a", providerSceneId: "ISO-SCENE-X", requestedDateTarget: new Date(), acquiredAt: new Date(), bounds: {}, sceneCloudCover: "1.000", processingBaseline: "05.11", processingLevel: "L2A", selectionReason: "x", attribution: "Copernicus" } }));
+    } catch { sceneInsertRaised = true; }
+    check("foreign-tenant spatial_scene INSERT raises (WITH CHECK)", sceneInsertRaised);
+    let metricFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.blockSpatialMetric.create({ data: { id: "iso_bsm_x", tenantId: A, blockId: "iso_blk_a", datasetId: "iso_ds_b", vineyardId: "iso_vy_a", acquiredAt: new Date(), intersectingPixelCount: 1, validPixelCount: 1, effectivePixelCount: "1.0000", validFraction: "1.000000", coveredAreaM2: "1.00", mixedPixelShare: "0.000000", qualityFlags: [], geometryVersion: 1, geometryFingerprint: "x" } }));
+    } catch { metricFkRaised = true; }
+    check("metric cross-tenant dataset reference rejected (composite FK, K11)", metricFkRaised);
+
+    // 5c-VI-P4. block_soil_snapshot: RLS isolation, WITH CHECK on a foreign INSERT, and the composite
+    // (tenantId, blockId) FK (K11) rejecting a cross-tenant block reference.
+    check("tenant A sees its own block_soil_snapshot", (await asTenant(A, (db) => db.blockSoilSnapshot.findFirst({ where: { id: "iso_soil_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's block_soil_snapshot (RLS)", (await asTenant(A, (db) => db.blockSoilSnapshot.findFirst({ where: { id: "iso_soil_b" } }))) === null);
+    let soilInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.blockSoilSnapshot.create({ data: { id: "iso_soil_x", tenantId: B, blockId: "iso_blk_a", vineyardId: "iso_vy_a", polygonFingerprint: "x", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "1.00", components: [], processingVersion: "soil-1" } }));
+    } catch { soilInsertRaised = true; }
+    check("foreign-tenant block_soil_snapshot INSERT raises (WITH CHECK)", soilInsertRaised);
+    let soilBlockFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.blockSoilSnapshot.create({ data: { id: "iso_soil_fk", tenantId: A, blockId: "iso_blk_b", vineyardId: "iso_vy_a", polygonFingerprint: "x", geometryVersion: 1, coveredPct: "1.000000", coverageState: "covered", blockAreaSqM: "1.00", components: [], processingVersion: "soil-1" } }));
+    } catch { soilBlockFkRaised = true; }
+    check("soil cross-tenant block reference rejected (composite FK, K11)", soilBlockFkRaised);
+
+    // 5c-S3a. spray_application + spray_block_line: RLS isolation, WITH CHECK on a foreign INSERT,
+    // and the composite (tenantId, blockId) FK (K11) rejecting a cross-tenant block reference.
+    check("tenant A sees its own spray_application", (await asTenant(A, (db) => db.sprayApplication.findFirst({ where: { id: "iso_spray_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's spray_application (RLS)", (await asTenant(A, (db) => db.sprayApplication.findFirst({ where: { id: "iso_spray_b" } }))) === null);
+    check("tenant A CANNOT see tenant B's spray_block_line (RLS)", (await asTenant(A, (db) => db.sprayBlockLine.findFirst({ where: { id: "iso_sbl_b" } }))) === null);
+    let sprayInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.sprayApplication.create({ data: { id: "iso_spray_x", tenantId: B, vineyardId: "iso_vy_a", applicatorName: "Iso X", applicationMethod: "AIRBLAST", startedAt: new Date(), enteredByEmail: "iso@test" } }));
+    } catch { sprayInsertRaised = true; }
+    check("foreign-tenant spray_application INSERT raises (WITH CHECK)", sprayInsertRaised);
+    let sprayBlockFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.sprayBlockLine.create({ data: { id: "iso_sbl_fk", tenantId: A, applicationId: "iso_spray_a", blockId: "iso_blk_b", blockLabelSnapshot: "X", treatedAreaHa: "1.00000000", treatedAreaSource: "OPERATOR_ENTERED", rateBasis: "UNKNOWN" } }));
+    } catch { sprayBlockFkRaised = true; }
+    check("spray_block_line cross-tenant block reference rejected (composite FK, K11)", sprayBlockFkRaised);
+
     // 5d. Phase 15: accounting_connection (the ENCRYPTED-TOKEN table) is tenant-isolated through the
     // pooled endpoint. This is the one that matters most — a leak here is a cross-tenant token read.
     const aSeesConnB = await asTenant(A, (db) => db.accountingConnection.findFirst({ where: { id: "iso_acct_conn_b" } }));
@@ -694,6 +843,21 @@ async function main() {
       await asTenant(A, (db) => db.vendorContact.create({ data: { id: "iso_vc_fk", tenantId: A, vendorId: "iso_vendor_b", name: "ISO VC FK", updatedAt: new Date() } }));
     } catch { vcFkRaised = true; }
     check("vendor_contact cross-tenant vendor reference rejected (composite FK, K11)", vcFkRaised);
+    // Plan 095: grower + grower_contact isolation + cross-tenant grower FK rejects.
+    const aSeesGrowerB = await asTenant(A, (db) => db.grower.findFirst({ where: { id: "iso_grower_b" } }));
+    check("tenant A CANNOT see tenant B's grower (RLS)", aSeesGrowerB === null);
+    const aSeesGcB = await asTenant(A, (db) => db.growerContact.findFirst({ where: { id: "iso_gc_b" } }));
+    check("tenant A CANNOT see tenant B's grower_contact (RLS)", aSeesGcB === null);
+    let growerInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.grower.create({ data: { id: "iso_grower_x", tenantId: B, name: "ISO Grower X", updatedAt: new Date() } }));
+    } catch { growerInsertRaised = true; }
+    check("foreign-tenant grower INSERT raises (WITH CHECK)", growerInsertRaised);
+    let gcFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.growerContact.create({ data: { id: "iso_gc_fk", tenantId: A, growerId: "iso_grower_b", name: "ISO GC FK", updatedAt: new Date() } }));
+    } catch { gcFkRaised = true; }
+    check("grower_contact cross-tenant grower reference rejected (composite FK, K11)", gcFkRaised);
     // Plan 075: vendor_import_candidate isolation + cross-tenant suggested-vendor FK reject.
     const aSeesVicB = await asTenant(A, (db) => db.vendorImportCandidate.findFirst({ where: { id: "iso_vic_b" } }));
     check("tenant A CANNOT see tenant B's vendor_import_candidate (RLS)", aSeesVicB === null);
@@ -853,6 +1017,35 @@ async function main() {
     const umListA = (await owner.user.findMany({ where: { memberships: { some: { organizationId: A } } }, select: { id: true } })).map((u) => u.id);
     check("user mgmt: A's user list excludes B's user", umListA.includes("iso_um_user_a") && !umListA.includes("iso_um_user_b"));
 
+    // 5m. D9 vineyard memberships — the GLOBAL-parent / RLS-CHILD seam.
+    // `user` is GLOBAL, so the tenant extension passes a `prisma.user.*` query straight through and
+    // NEVER sets `app.tenant_id`. `user_vineyard` is tenant-scoped + FORCE RLS. So a nested
+    // `vineyardMemberships` relation on a user read is evaluated with no tenant GUC and fails closed
+    // to [] — silently, for every user. That emptied `AppUser.vineyardIds` and locked managers out of
+    // field notes, the vineyard-scoped assistant tools and the /lots lens the moment the runtime
+    // switched from the owner role to app_rls. The first check PINS the pass-through behaviour (so
+    // nobody "fixes" it by re-adding the nested select); the second proves the separate tenant-scoped
+    // read that `loadVineyardMembershipIds` (src/lib/dal.ts) actually performs.
+    const nestedMemberships = await app.user.findUnique({
+      where: { id: "iso_um_user_a" },
+      select: { vineyardMemberships: { select: { vineyardId: true } } },
+    });
+    check(
+      "D9: nested vineyardMemberships off the GLOBAL user model reads EMPTY (no tenant GUC) — dal.ts must NOT select it",
+      nestedMemberships !== null && nestedMemberships.vineyardMemberships.length === 0,
+    );
+    const scopedMemberships = await asTenant(A, (db) => db.userVineyard.findMany({ where: { userId: "iso_um_user_a" }, select: { vineyardId: true } }));
+    check(
+      "D9: the SAME membership is visible via a tenant-scoped user_vineyard read (the dal.ts fix)",
+      scopedMemberships.length === 1 && scopedMemberships[0].vineyardId === "iso_vy_a",
+    );
+    check("tenant A CANNOT see tenant B's user_vineyard (RLS)", (await asTenant(A, (db) => db.userVineyard.findFirst({ where: { id: "iso_uv_b" } }))) === null);
+    let uvInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.userVineyard.create({ data: { id: "iso_uv_x", tenantId: B, userId: "iso_um_user_b", vineyardId: "iso_vy_b" } }));
+    } catch { uvInsertRaised = true; }
+    check("foreign-tenant user_vineyard INSERT raises (WITH CHECK)", uvInsertRaised);
+
     // 6. Positive control: same-tenant op line on A's own lot succeeds.
     let sameTenantOk = false;
     try {
@@ -865,6 +1058,29 @@ async function main() {
       });
       sameTenantOk = true;
     } catch (e) { sameTenantOk = false; console.error(e); }
+    // 5c-S5a. latent_infection_event: RLS, WITH CHECK, the composite block FK, and append-only.
+    check("tenant A sees its own latent_infection_event", (await asTenant(A, (db) => db.latentInfectionEvent.findFirst({ where: { id: "iso_lie_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's latent_infection_event (RLS)", (await asTenant(A, (db) => db.latentInfectionEvent.findFirst({ where: { id: "iso_lie_b" } }))) === null);
+    let lieInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.latentInfectionEvent.create({ data: { ...lieBase, id: "iso_lie_x", tenantId: B, logicalEventId: "iso_lie_stream_x", seq: 1, blockId: "iso_blk_a", commandId: "iso_lie_cmd_x" } }));
+    } catch { lieInsertRaised = true; }
+    check("foreign-tenant latent_infection_event INSERT raises (WITH CHECK)", lieInsertRaised);
+    let lieFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.latentInfectionEvent.create({ data: { ...lieBase, id: "iso_lie_fk", tenantId: A, logicalEventId: "iso_lie_stream_fk", seq: 1, blockId: "iso_blk_b", commandId: "iso_lie_cmd_fk" } }));
+    } catch { lieFkRaised = true; }
+    check("latent_infection_event cross-tenant block reference rejected (composite FK, K11)", lieFkRaised);
+    let lieUpdateRaised = false;
+    try {
+      await asTenant(A, (db) => db.latentInfectionEvent.update({ where: { id: "iso_lie_a" }, data: { resolutionNote: "hacked" } }));
+    } catch { lieUpdateRaised = true; }
+    check("latent_infection_event UPDATE refused (app_rls holds no UPDATE grant, council C5)", lieUpdateRaised);
+    let lieDeleteRaised = false;
+    try {
+      await asTenant(A, (db) => db.latentInfectionEvent.delete({ where: { id: "iso_lie_a" } }));
+    } catch { lieDeleteRaised = true; }
+    check("latent_infection_event DELETE refused (no DELETE grant + trigger)", lieDeleteRaised);
     check("same-tenant op line succeeds (positive control)", sameTenantOk);
   } finally {
     // ── Teardown (owner). ──
@@ -914,6 +1130,9 @@ async function main() {
     // Plan 069: vendor children (contacts, the FK-test material) before the vendors (ON DELETE RESTRICT).
     await owner.vendorImportCandidate.deleteMany({ where: { id: { in: ["iso_vic_b", "iso_vic_x", "iso_vic_fk"] } } });
     await owner.vendorContact.deleteMany({ where: { id: { in: ["iso_vc_b", "iso_vc_fk"] } } });
+    // Plan 095: grower children (contacts) before growers.
+    await owner.growerContact.deleteMany({ where: { id: { in: ["iso_gc_b", "iso_gc_fk"] } } });
+    await owner.grower.deleteMany({ where: { id: { in: ["iso_grower_b", "iso_grower_x"] } } });
     await owner.customUnit.deleteMany({ where: { id: { in: ["iso_cu_b", "iso_cu_x"] } } });
     await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_vfk" } });
     await owner.vendor.deleteMany({ where: { id: { in: ["iso_vendor_b", "iso_vendor_x"] } } });
@@ -943,7 +1162,33 @@ async function main() {
     await owner.location.deleteMany({ where: { id: { in: ["iso_loc_a", "iso_loc_b"] } } });
     await owner.cellarMaterial.deleteMany({ where: { id: "iso_mat_b" } });
     await owner.brixLog.deleteMany({ where: { id: { in: ["iso_brix_a", "iso_brix_b"] } } });
+    // VI-P2: metrics → jobs → datasets → scenes → counters (counters FK org RESTRICT; the rest also cascade
+    // off the vineyard delete below, but delete explicitly, child→parent, before blocks/vineyards drop).
+    await owner.blockSpatialMetric.deleteMany({ where: { id: { in: ["iso_bsm_a", "iso_bsm_b", "iso_bsm_x"] } } });
+    await owner.spatialStyle.deleteMany({ where: { id: { in: ["iso_style_a", "iso_style_b"] } } });
+    await owner.spatialDatasetDerivative.deleteMany({ where: { id: { in: ["iso_sdd_a", "iso_sdd_b"] } } });
+    await owner.spatialAnalysisJob.deleteMany({ where: { id: { in: ["iso_job_a", "iso_job_b"] } } });
+    await owner.spatialDataset.deleteMany({ where: { id: { in: ["iso_ds_a", "iso_ds_b"] } } });
+    await owner.spatialScene.deleteMany({ where: { id: { in: ["iso_scene_a", "iso_scene_b", "iso_scene_x"] } } });
+    await owner.cdseUsageCounter.deleteMany({ where: { yearMonth: "2026-07", tenantId: { in: [A, B] } } });
+    // S3a: spray rows are append-only — DELETE requires the purge GUC on a non-app_rls connection
+    // (council C15), so the teardown runs inside one owner transaction with the flag set.
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.allow_spray_purge', 'on', true)`;
+      await tx.latentInfectionEvent.deleteMany({ where: { id: { in: ["iso_lie_a", "iso_lie_b", "iso_lie_x", "iso_lie_fk"] } } });
+      await tx.sprayBlockLine.deleteMany({ where: { id: { in: ["iso_sbl_a", "iso_sbl_b", "iso_sbl_fk"] } } });
+      await tx.sprayApplication.deleteMany({ where: { id: { in: ["iso_spray_a", "iso_spray_b", "iso_spray_x"] } } });
+    });
     await owner.vineyardBlock.deleteMany({ where: { id: { in: ["iso_blk_a", "iso_blk_b"] } } });
+    // S4: varieties are referenced by the blocks above (SetNull) — drop after them.
+    await owner.variety.deleteMany({ where: { id: { in: ["iso_var_a", "iso_var_b", "iso_var_x"] } } });
+    // VI-P1: geometry_version FK's organization (RESTRICT), so delete before the org drop; planting areas
+    // after their blocks (block→planting is RESTRICT) and before the vineyard (which would cascade them).
+    await owner.vineyardGeometryVersion.deleteMany({ where: { id: { in: ["iso_gv_a", "iso_gv_b", "iso_gv_dup"] } } });
+    await owner.vineyardPlantingArea.deleteMany({ where: { id: { in: ["iso_pa_a", "iso_pa_b", "iso_pa_x"] } } });
+    // D9: user_vineyard FK's organization (RESTRICT) → drop explicitly before the org, not just via
+    // the vineyard/user CASCADEs.
+    await owner.userVineyard.deleteMany({ where: { id: { in: ["iso_uv_a", "iso_uv_b", "iso_uv_x"] } } });
     await owner.vineyard.deleteMany({ where: { id: { in: ["iso_vy_a", "iso_vy_b"] } } });
     await owner.lot.deleteMany({ where: { id: { in: ["iso_lot_a", "iso_lot_b", "iso_lot_x"] } } });
     // Phase 2: bonds are FK'd to organization → delete before org B drops.

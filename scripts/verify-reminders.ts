@@ -85,8 +85,9 @@ async function main() {
   // ── 2. A FILED report drops its period (S5) ───────────────────────────────
   const target = opsOpen[0];
   const periodEnd = target.periodEnd;
-  await runAsTenant(TENANT, () =>
-    prisma.complianceReport.create({
+  // TENANT-3: await INSIDE the callback (lazy PrismaPromise — see src/lib/tenant/context.ts).
+  await runAsTenant(TENANT, async () =>
+    await prisma.complianceReport.create({
       data: {
         formType: OPS_FORM, status: "FILED", cadence: "MONTHLY", version: "ORIGINAL",
         periodStart: target.periodStart, periodEnd, computed: {}, onHandEnd: {}, overrides: {}, generatedAt: now,
@@ -132,13 +133,23 @@ async function main() {
       update: {}, // a real sweep would see status === "SENT" and skip before touching this
     });
   });
-  const logs = await runAsTenant(TENANT, () => prisma.complianceReminderLog.findMany({ where: { periodKey: anyOps.periodKey } }));
+  const logs = await runAsTenant(TENANT, async () =>
+    await prisma.complianceReminderLog.findMany({ where: { periodKey: anyOps.periodKey } }),
+  );
   assert(logs.length === 1, "exactly one send-log row for the (period, mark, user) key — no duplicate");
   assert(logs[0].status === "SENT", "the row stays SENT across the re-run (never re-sent)");
 
   // ── 6. Badge + .ics ───────────────────────────────────────────────────────
-  const badge = await runAsTenant(TENANT, () => openDeadlineBadge(TENANT, asOf));
-  assert(badge.count === afterFile.length, `badge count (${badge.count}) matches open-deadline count`);
+  const badge = await runAsTenant(TENANT, async () => await openDeadlineBadge(TENANT, asOf));
+  // The badge deliberately uses a NARROWER window (horizonDays 30) than `afterFile` above (60), so it
+  // must be compared against its OWN window — the old `=== afterFile.length` assertion compared a
+  // 30-day count to a 60-day one. It never fired: this script crashed at the step-2 create (the
+  // lazy-PrismaPromise tenant bug, TENANT-3) long before reaching here.
+  const badgeWindow = await runAsTenant(TENANT, async () =>
+    await openDeadlinesForTenant(TENANT, asOf, { horizonDays: 30 }),
+  );
+  assert(badge.count === badgeWindow.length, `badge count (${badge.count}) matches its own 30-day open-deadline count`);
+  assert(badge.urgent === badgeWindow.some((d) => d.tone === "danger"), "badge urgency mirrors a danger-toned deadline");
   const ics = buildIcs(afterFile, { tenantId: TENANT, calName: "verify", dtStampIso: now.toISOString() });
   const vevents = (ics.match(/BEGIN:VEVENT/g) ?? []).length;
   assert(vevents === afterFile.length, `.ics has one VEVENT per deadline (${vevents})`);

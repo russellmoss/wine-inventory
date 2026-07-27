@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { formatVolume, type VolumeUnit } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Phase 9.1: a searchable, tank/barrel-filterable MULTI-select for vessels on the new-WO form. Selecting
 // several vessels fans out to one task per vessel at submit. Pure client component (fuzzy substring search
@@ -8,7 +10,7 @@ import React from "react";
 
 export type VesselOption = { id: string; label: string; kind?: string | null; volumeL?: number | null };
 
-const fmtVol = (v?: number | null) => (v && v > 0 ? `${Number(v).toLocaleString()} L` : "empty");
+const fmtVol = (v: number | null | undefined, unit: VolumeUnit) => (v && v > 0 ? formatVolume(v, unit) : "empty");
 
 const box: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "var(--surface)" };
 const chip: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, padding: "2px 8px", borderRadius: 999, background: "var(--wine-primary)", color: "var(--surface-raised)" };
@@ -26,6 +28,7 @@ export function VesselMultiSelect({
   onChange: (ids: string[]) => void;
   multiHint?: string | null;
 }) {
+  const vol = useUnitPrefs().volume;
   const [q, setQ] = React.useState("");
   const [kind, setKind] = React.useState<"ALL" | "TANK" | "BARREL">("ALL");
 
@@ -76,7 +79,7 @@ export function VesselMultiSelect({
             <label key={o.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, padding: "5px 4px", cursor: "pointer", minHeight: 32 }}>
               <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggle(o.id)} style={{ width: 16, height: 16 }} />
               <span>{o.label}</span>
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>{fmtVol(o.volumeL)}</span>
+              <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>{fmtVol(o.volumeL, vol)}</span>
             </label>
           ))
         )}

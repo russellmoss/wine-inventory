@@ -51,12 +51,90 @@ export const INTERNAL = {
       "(change a lot's owner) has its own tool + core (change_ownership → changeOwnershipCore).",
     coveredBy: "/setup/clients admin screen (create/rename/deactivate)",
   },
-  "src/lib/grower/grower-core.ts": {
+  // Plan 095: grower-core is NO LONGER internal — it now has a first-class assistant tool (create_grower →
+  // createGrowerAction → createGrowerWithSync → createGrowerCore). The ticket (#489) made growers a
+  // conversational capability like vendors, so the core is reachable and needs no exemption.
+  "src/lib/plantingArea/migration-core.ts": {
     owner: "russellmoss",
     reason:
-      "Plan 093: managing Growers is reference-data admin (desk-with-coffee GUI), like vendors — not a chat " +
-      "capability. Growers are READ by the assistant (they ride entities/query) but authored in Setup.",
-    coveredBy: "/setup/growers admin screen (create/rename/deactivate)",
+      "VI-P1: migration-by-union is a one-time, REVIEWED, all-or-nothing setup step — the grower eyeballs " +
+      "each proposed parent over satellite imagery ('did we bridge a road?') before confirming. That review " +
+      "is a map-and-click flow, not a natural-language capability (coalescence 'desk-with-coffee → GUI'). The " +
+      "conversational surface for planting structure (READ) is covered by describe_planting_structure.",
+    coveredBy: "planting-setup migration review UI + describe_planting_structure (read)",
+  },
+  "src/lib/weather/ingest-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "VI-P8: fetching/refreshing a vineyard's weather series from the live providers is a cron + button " +
+      "REFRESH mechanism (the daily weather-poll sweep and a manual 'refresh weather' action), not a " +
+      "winemaker natural-language capability — you don't converse to trigger a background fetch. The " +
+      "grower-facing weather CAPABILITY (ask about GDD vs last year, frost, Winkler, the season) has its own " +
+      "read tool + core (query_climate → composeClimateSummaryCore).",
+    coveredBy: "query_climate → composeClimateSummaryCore (read); weather-poll cron + refresh action (write)",
+  },
+  "src/lib/weather/alert-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "VI-P8: frost/heat crossing detection runs inside the daily weather SWEEP and pushes a thin inbox alert " +
+      "— a background notification mechanism, not a conversational surface (you don't chat to get an alert). " +
+      "The grower-facing frost/heat CAPABILITY (ask about frost risk / heat days / the vulnerable window) is " +
+      "answered by query_climate → composeClimateSummaryCore.",
+    coveredBy: "query_climate → composeClimateSummaryCore (frost/heat read); weather sweep (alert emit)",
+  },
+  "src/lib/weather/forecast-ingest-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "Plan 096: fetching/replacing a vineyard's 7-day forecast is the 6-hourly forecast-poll cron + the " +
+      "strip's on-view refresh — a background REFRESH mechanism, exactly like its observation twin " +
+      "(ingest-core, INTERNAL above); you don't converse to trigger a fetch. The grower-facing forecast " +
+      "CAPABILITY (ask for the week's outlook) is query_climate → composeForecastViewCore.",
+    coveredBy: "query_climate → composeForecastViewCore (read); forecast-poll cron + refreshVineyardForecast (write)",
+  },
+  // ── Spray Intelligence S3a (D2, Russell-default: honest INTERNAL with a NAMED RETIREMENT
+  // CONDITION, no new tier). The program ships ONE composite read tool (query_spray_decision,
+  // thin in S5a, hard-refusing decisions until S7a/S9) and ONE write tool
+  // (record_spray_application, S11) — rule §3.15. RETIREMENT: when S11 lands its write tool,
+  // these five entries MUST be deleted so verify:ai-native proves reachability; the S11 runbook
+  // gate carries that obligation. ──
+  "src/lib/spray/record-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "S3a: recording a spray pass IS a genuine winemaker capability, but the program's single write tool " +
+      "(record_spray_application) lands in S11 by design (rule §3.15 — one write tool for the whole program, " +
+      "on the signed-proposal path). RETIRE THIS ENTRY when S11 ships; the S11 gate names it.",
+    coveredBy: "record_spray_application (S11) + query_spray_decision (S5a→S9)",
+  },
+  "src/lib/spray/correction-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "S3a: correction/void of a spray record rides the same S11 write tool (a correction is a write with a " +
+      "confirmation card). RETIRE with the record-core entry when S11 ships.",
+    coveredBy: "record_spray_application (S11) + query_spray_decision (S5a→S9)",
+  },
+  "src/lib/spray/drying-override-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "S3a: the attributed driedBeforeRain override + derived recompute — the recompute is a background " +
+      "mechanism (S1's sweep will drive it); the override write joins the S11 tool. RETIRE the override half " +
+      "when S11 ships.",
+    coveredBy: "record_spray_application (S11); S1 recompute sweep (mechanism)",
+  },
+  "src/lib/harvest/planned-harvest-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "S3a: setting/retracting a planned harvest date is a capability the S11 write tool covers; the " +
+      "reads (current/as-of/changesSince) are consumed by S7a's PHI engine and surfaced through " +
+      "query_spray_decision. RETIRE when S11 ships.",
+    coveredBy: "record_spray_application (S11) + query_spray_decision (S5a→S9)",
+  },
+  "src/lib/spray/legacy-mapping-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "S3a: confirming a legacy name→product mapping is a human review gate (rule §3.2 — never " +
+      "LLM-auto-applied), driven from a review list in the PR-3 surface; the conversational surface for " +
+      "legacy sprays is the S5a→S9 read tool. RETIRE alongside the S11 entries.",
+    coveredBy: "query_spray_decision (S5a→S9, read); PR-3 mapping review surface (write)",
   },
 };
 
@@ -66,12 +144,13 @@ export const GAP_ALLOWLIST = {
   // deferred fast-follow alongside the U1 rendered surfaces (manual-QA-only; see PHASE-2-REPORT).
   "src/lib/compliance/return-to-bond-core.ts": { owner: "russellmoss", reason: "RETURN_TO_BOND assistant tool deferred to the Phase-2 UX/assistant fast-follow; core proven by verify:taxpaid" },
   "src/lib/compliance/tax-class-event-core.ts": { owner: "russellmoss", reason: "change-tax-class assistant tool deferred to the Phase-2 UX/assistant fast-follow; core proven by verify:taxclass" },
-  // Plan 093: owner-core + grower-core RATCHETED OUT of the gap list — they're now GUI-covered (INTERNAL,
-  // /setup/clients + /setup/growers). Back to the pre-093 baseline of 2 deferred gaps.
+  // Plan 093: owner-core RATCHETED OUT of the gap list — it's now GUI-covered (INTERNAL, /setup/clients).
+  // Plan 095: grower-core now has a real tool (create_grower) — reachable, no exemption needed.
 };
 
 // The ratchet ceiling for GAP_ALLOWLIST ONLY (INTERNAL is exempt). Set to the
 // number of deferred real gaps; only ever DECREMENT as you wire tools.
-// Plan 093 fully ratcheted back to the pre-093 baseline (2): weigh-tag-core wired (log_weigh_tag),
-// owner-core + grower-core reclassified INTERNAL (GUI-covered, /setup/clients + /setup/growers).
+// Plan 093 ratcheted to baseline (2): weigh-tag-core wired (log_weigh_tag), owner-core reclassified INTERNAL.
+// Plan 095: grower-core moved from INTERNAL to reachable (create_grower tool) — INTERNAL is uncounted, so
+// MAX_ALLOWED is unchanged.
 export const MAX_ALLOWED = 2;

@@ -13,6 +13,8 @@ import {
   deactivateGroupAction,
   previewGroupApplyAction,
 } from "@/lib/cellar/actions";
+import { formatVolume, volumeInputToLiters, volumeUnitLabel } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Group actions on /bulk (Phase 3, Unit 9, D13). Target a saved group OR an ad-hoc
 // multi-select, pick an op, and fan it out — one op per member sharing a batchId. The
@@ -65,6 +67,7 @@ export function GroupActions({
   varietyNames: string[];
   vineyardNames: string[];
 }) {
+  const vol = useUnitPrefs().volume;
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
@@ -365,14 +368,17 @@ export function GroupActions({
                 </option>
                 {vessels.filter((v) => v.totalL > 0).map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.label} ({v.totalL} L)
+                    {v.label} ({formatVolume(v.totalL, vol)})
                   </option>
                 ))}
               </select>
             ) : null}
 
             {needsAmount ? (
-              <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Litres" style={{ ...fieldStyle, width: 96 }} aria-label="Litres" />
+              <span style={{ position: "relative", display: "inline-flex", width: 110 }}>
+                <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Amount" style={{ ...fieldStyle, width: "100%", paddingRight: 34 }} aria-label={`Amount (${volumeUnitLabel(vol)})`} />
+                <span aria-hidden style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 12, color: "var(--text-muted)" }}>{volumeUnitLabel(vol)}</span>
+              </span>
             ) : null}
 
             <Button variant="secondary" size="sm" disabled={pending || targetCount === 0} onClick={previewRun} style={{ minHeight: 44 }}>
@@ -443,6 +449,7 @@ function VesselSection({
 }
 
 function VesselChip({ v, on, onToggle }: { v: GroupVessel; on: boolean; onToggle: () => void }) {
+  const vol = useUnitPrefs().volume;
   const empty = !(v.totalL > 0);
   const shownLots = v.lotCodes.slice(0, 2);
   const extra = v.lotCodes.length - shownLots.length;
@@ -469,7 +476,7 @@ function VesselChip({ v, on, onToggle }: { v: GroupVessel; on: boolean; onToggle
     >
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontWeight: 500 }}>{v.label}</span>
-        <span style={{ color: empty ? "var(--text-muted)" : "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>· {v.totalL} L</span>
+        <span style={{ color: empty ? "var(--text-muted)" : "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>· {formatVolume(v.totalL, vol)}</span>
       </span>
       {v.lotCodes.length > 0 ? (
         <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>

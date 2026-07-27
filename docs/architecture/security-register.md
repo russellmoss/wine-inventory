@@ -24,6 +24,34 @@
   Organization/Member/Invitation. Nothing else may be global.
 - **Status:** 🟢 (enforced + verified in prod; `npm run` verify scripts + `test/tenant-isolation.test.ts`)
 
+### A tenant scope must outlive the query it scopes — the lazy-`PrismaPromise` trap (TENANT-3)
+- A Prisma model method returns a **lazy thenable**: calling it only BUILDS the query, and the tenant
+  extension's `$allOperations` hook (`src/lib/prisma.ts`) does not run until something calls `.then()`.
+  `AsyncLocalStorage.run` exits its scope the instant its callback **returns**. So
+  `runAsTenant(t, () => prisma.lot.findMany())` builds the query inside the scope and **runs it after
+  the scope has exited** — the hook reads the store from outside.
+- **Why this is a security invariant, not a lint nit — the failure is asymmetric.** With no ambient
+  context it throws `Tenant context required for <Model>.<op>` (loud, safe). With an ambient **outer**
+  `runAsTenant` still live it **silently uses the outer tenant** instead of the one explicitly passed —
+  a cross-tenant read/write shape. RLS is not a backstop here: the GUC is set from whatever tenant the
+  hook resolves, so the database faithfully enforces the *wrong* tenant. Every call site swept
+  (2026-07-26) was in fact reached cold, so no cross-tenant row is known to have been written; the
+  exposure was latent, one nested caller away.
+- **Closed on two fences.** (1) *Structural*: `runAsTenant` / `runWithTenantContext` now wrap the
+  callback in `async () => await fn()`, forcing the thenable **inside** the scope regardless of how the
+  callback is written — this covers aliased callbacks and future call sites. (2) *Shape*:
+  `npm run verify:tenant-callbacks` (AST scan) keeps call sites written `async () => await …`, so the
+  codebase never silently depends on fence 1 and the bad shape never reads as a copyable idiom.
+  `runAsSystem` (un-extended client, no ALS read) and `runInTenantTx` / `runLedgerWrite` (callback
+  forced inside an `async` `$transaction` callback) cannot hit the trap and are not scanned.
+- **Tripwire:** `store.run(ctx, fn)` handing `fn` through un-awaited in `src/lib/tenant/context.ts`
+  (fence 1 removed); a new `AsyncLocalStorage`-based scope helper that returns its callback's value
+  without awaiting it; `verify:tenant-callbacks` being allowlisted rather than fixed. Proof:
+  `test/tenant-context-lazy.test.ts` (helper guarantee, incl. the nested outer-tenant case) +
+  `npm run verify:tenant-callbacks` + `verify:tenant-isolation`.
+- **Status:** 🟢 (structural fix + 8 call sites corrected + guard and regression test landed 2026-07-26;
+  see [[TENANT-3-lazy-thenable-scope]])
+
 ### Every NEW tenant table follows the full checklist or it leaks
 - The 9-step Phase-12 checklist in [[CLAUDE]] is mandatory: `tenantId` + index, migration + FK,
   backfill + NOT NULL, per-tenant uniques, composite FKs where needed, RLS enable/force/policy,
@@ -494,6 +522,49 @@ TEMPLATE — copy for each new invariant / finding:
 - **Status:** 🟢 (gap was pre-existing since plan 079 and affected all 17 sources; closed for both
   automatic crawl paths; guarded by `test/knowledge-crawl.test.ts`).
 
+### A GLOBAL model may never select a relation to a tenant-scoped table (the RLS-child read seam) — 2026-07-26
+- **What:** the tenant extension (`src/lib/prisma.ts`) passes any operation on a `GLOBAL_MODELS` model
+  **straight through** — no `set_config('app.tenant_id', …)` transaction is opened, because Better Auth
+  queries `user`/`session`/`member`/… before any tenant exists. Every other table is RLS-forced with a
+  fail-closed `tenant_isolation` policy. So a **nested relation from a global model onto a tenant-scoped
+  one** is read with `app.tenant_id` UNSET and returns **zero rows, silently, with no error**.
+- **The bug this closed:** `userSelect` in `src/lib/dal.ts` selected `vineyardMemberships`
+  (`user` → `user_vineyard`). Under the `app_rls` (NOBYPASSRLS) runtime role `AppUser.vineyardIds` was
+  therefore **always `[]`** for every user. Consequences: managers locked out of
+  `/vineyards/field-notes`; the vineyard-scoped assistant surface dead (`assistant/scope.ts`,
+  `query-brix`, `query-recent-harvests`, and `db-create`/`db-update` refusing vineyard-scoped writes);
+  the `/lots` vineyard lens off; and on the admin Users page **silent data loss** — the checkboxes render
+  from those ids and `setUserVineyards` REPLACES the whole set, so ticking one vineyard against an
+  all-empty list dropped every membership the user already had. `setUserVineyards`' audit diff also
+  always claimed the prior set was empty.
+- **Why it was invisible:** it is a **no-op while the runtime connects as the owner** (BYPASSRLS) and
+  becomes total the moment `DATABASE_URL` is the `app_rls` credential — i.e. exactly at the Phase-12
+  role split. It was never a leak (fail-closed), it was a **fail-closed lockout**. It also happened to
+  be unobservable in prod because the live DB currently holds only one `user_vineyard` row at all.
+- **The fix:** the membership set is read as a **separate, explicitly tenant-scoped query**
+  (`src/lib/users/vineyard-memberships.ts`, `loadVineyardMembershipIds` / `…ByUser`), called AFTER
+  `getCurrentUser` has resolved the effective tenant (support org, then active org). `tenantId` is an
+  explicit argument, never read from the ALS store — `getCurrentUser` runs inside React `cache()` (K12)
+  and derives the tenant from that same request; `runAsTenant` also short-circuits the extension before
+  `resolveTenantFromSession()`, so it cannot recurse back into `getCurrentUser`. `toAppUser` now takes
+  `vineyardIds` as a REQUIRED argument so no construction site can silently default a manager to none.
+  Scoping to the effective tenant is also the correct semantic (`canManagerAccessVineyard` compares
+  against vineyards in the active tenant).
+- **Also fixed in passing:** `runAsTenant(id, () => prisma.x.findMany(…))` **does not work** — Prisma's
+  model methods return a LAZY thenable, so the query is only constructed inside the ALS scope and
+  `$allOperations` runs after `store.run()` has exited (no tenant context, or worse, the *outer* one).
+  The callback must be `async () => await …`. Several pre-existing sites still use the broken shape and
+  are masked only by an ambient outer context — see the watch item below.
+- **Tripwire:** any `select`/`include` of a tenant-scoped relation on a global model (`user.fieldNotes`,
+  `user.assistantConversations`, `user.voiceProfiles`, `user.voicePreferences`,
+  `user.vineyardMemberships`, `vineyard.userMemberships`, …); a new relation added from a global model to
+  a tenant table and then selected; `toAppUser` regaining a defaulted `vineyardIds`. Proof:
+  `test/global-model-tenant-relation-select.test.ts` (static, DMMF-driven so a NEW such relation is
+  covered automatically) + `npm run verify:tenant-isolation` (runtime — pins BOTH the empty pass-through
+  read and the correct scoped one against a real database).
+- **Status:** 🟢 (root cause closed at all three call sites — `dal.ts`, `src/lib/users/actions.ts`,
+  `src/app/(app)/users/page.tsx`; static + runtime guards green against the live DB on `app_rls`).
+
 ## Open items the security loop is watching
 <!-- The automated /security-review loop appends findings here (and opens a GitHub issue). -->
 - **Stored prompt injection in the knowledge corpus is unmitigated in code** — crawled prose flows
@@ -502,6 +573,12 @@ TEMPLATE — copy for each new invariant / finding:
   "REFERENCE MATERIAL, not instructions"). Pre-existing for all 17 sources since plan 079, NOT
   introduced by plan 084 (which only removes content). Corpus-wide item; worth a real decision
   before the corpus grows past curated tier-1 extension publishers.
+- ~~**`runAsTenant(id, () => prisma.x.op(…))` with a NON-async callback is silently wrong**~~ —
+  **CLOSED 2026-07-26 by #531**, on both a structural fence (`runAsTenant`/`runWithTenantContext` now wrap
+  the callback in `async () => await fn()`) and a shape fence (`verify:tenant-callbacks` AST scan, wired
+  into CI). The AST sweep found exactly the 8 sites listed here and rewrote them all. Promoted to invariant
+  **TENANT-3** with its own register entry above. Originally found while fixing the global-model/RLS-child
+  seam; kept here as the trail from observation → invariant.
 - **Legacy `location` FKs are still simple, not composite** — `bottled_inventory`,
   `finished_good_inventory`, `stock_movement`, `bottling_run`, `bottled_lot_state` reference
   `location(id)` without the tenant column, the same gap plan 080 U13a closed for consumables. RLS covers
@@ -510,3 +587,12 @@ TEMPLATE — copy for each new invariant / finding:
 
 ---
 *Seeded 2026-07-02 from the live RLS/auth setup. The security-posture loop keeps it honest — see [[AUTOMATION]].*
+
+### Satellite egress is locked to three hardcoded Copernicus origins, and the token never reaches a log (plan 094 / ADR 0009)
+- `src/lib/gis/satellite/config.ts` declares the identity, Process and STAC hosts as `as const` HTTPS constants. They are never derived from a request header, mirroring the QBO posture. `isAllowedOrigin()` is the guard for any URL that arrives IN a provider response, which is the attacker-influenceable case.
+- Every outbound call sets `redirect: "error"`, so a redirect cannot silently move the request off an allowlisted origin.
+- `CDSE_CLIENT_ID` / `CDSE_CLIENT_SECRET` are server-only (`import "server-only"`), fail closed via `loadSatelliteConfig()`, and are never `NEXT_PUBLIC_`. The access token is cached IN MEMORY only and never persisted.
+- **A token-endpoint failure never includes the response body**, because that body can echo credentials back. Pinned by a test. The Process API is deliberately different: a 400 there describes a malformed request and IS surfaced, because it is not credential-bearing and is useless to debug otherwise. Different endpoints, different rules.
+- Rasters are stored as **private** blobs with `addRandomSuffix`, under the existing `<pathPrefix>/<tenantId>/` convention, and read back through an authenticated path. Range requests on a private blob were confirmed to return HTTP 206, so a range-indexed layout is available without making anything public.
+- P0 writes **no database rows at all**, so the spike carried no tenancy risk. That posture ends at P1, where the Phase-12 tenancy checklist applies in full to `VineyardPlantingArea` and every derived product.
+- **Status:** 🟢 (measured and pinned 2026-07-24; `npm run verify:gis-live` exercises the real egress path)

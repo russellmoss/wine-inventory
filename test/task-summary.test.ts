@@ -47,6 +47,21 @@ describe("buildTaskSummary — SO₂ addition", () => {
     expect(rowVal(s.rows, "Total to weigh out")).toMatch(/^≈ /);
   });
 
+  it("plan 098: an LB tenant sees the secondary weigh-out readout on gram totals only", () => {
+    const imperial = buildTaskSummary(
+      { kind: "OPERATION", opType: "FINING", title: "Fine", plannedPayload: { vesselId: "v_t4", materialId: "m_bento", amount: 40, doseUnit: "g/hL" } },
+      pickers,
+      { weight: "LB" },
+    );
+    expect(rowVal(imperial.rows, "Total to weigh out")).toMatch(/\(\d[\d.,]*\s(lb|oz)\)/);
+    const metric = buildTaskSummary(
+      { kind: "OPERATION", opType: "FINING", title: "Fine", plannedPayload: { vesselId: "v_t4", materialId: "m_bento", amount: 40, doseUnit: "g/hL" } },
+      pickers,
+      { weight: "KG" },
+    );
+    expect(rowVal(metric.rows, "Total to weigh out")).not.toMatch(/lb\)/);
+  });
+
   it("does not compute a solution line for a non-SO₂ material even if a percent leaks in", () => {
     const s = buildTaskSummary(
       { kind: "OPERATION", opType: "FINING", title: "Fine", plannedPayload: { vesselId: "v_t4", materialId: "m_bento", amount: 40, doseUnit: "g/hL", solutionPercentKmbs: 10 } },

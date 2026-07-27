@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AssistantEvent } from "@/lib/assistant/assistant-events";
+import { DEFAULT_IMPERIAL_PREFS } from "@/lib/units/display";
 
 // Plan 081 U3 — the FIRST tests runAssistant has ever had.
 //
@@ -85,6 +86,9 @@ async function run(turns: ScriptedTurn[]) {
     user: USER,
     messages: [{ role: "user", content: "hello" }],
     send: (e) => events.push(e),
+    // Plan 098 (council C4): the units opt rides the DB-free seam — resolved by the route, never
+    // read inside the loop. Constructing it here pins that the loop stays database-free.
+    units: DEFAULT_IMPERIAL_PREFS,
     createStream: scripted.factory,
   });
   return { events, result, scripted };

@@ -18,6 +18,11 @@
  * winemaking/viticulture sources, identical for every tenant (no tenantId, no RLS). Per-winery control is
  * the tenant-scoped `KnowledgeSourceSubscription` (RLS), which is NOT listed here. Keep this in sync with
  * the verify-tenant-isolation.ts mirror or the RLS-coverage guard will demand RLS on these globals.
+ *
+ * Spray S2: the pesticide registration/resistance master is global reference data too (US EPA + CA DPR
+ * registrations and resistance codes are identical for every tenant — no tenantId, no RLS). Entitlement
+ * is enforced in the SERVICE layer (src/lib/pesticide/lookup.ts checks the `epa-pesticide` subscription
+ * and fails closed) — NOT here. Mirrors: verify-tenant-isolation.ts + test/tenant-context.test.ts.
  */
 export const GLOBAL_MODELS: ReadonlySet<string> = new Set([
   "User",
@@ -36,6 +41,26 @@ export const GLOBAL_MODELS: ReadonlySet<string> = new Set([
   "KnowledgeDocument",
   "KnowledgeUrlObservation",
   "KnowledgeChunk",
+  // Spray S2 — pesticide registration/resistance master (global reference; entitlement in lookup.ts)
+  "PesticideDataRevision",
+  "PesticideProduct",
+  "PesticideActiveIngredient",
+  "PesticideProductIngredient",
+  "PesticideSiteRegistration",
+  "PesticideStateRegistration",
+  "PesticideUseRestriction",
+  "PesticideResistanceAssignment",
+  // Spray S2b — the curated product-facts master (global reference; same posture as S2). The
+  // grower-supplied override `TenantProductFacts` is TENANT-SCOPED and RLS'd — it is deliberately
+  // NOT listed here, and adding it would silently disable its isolation.
+  "PesticideProductFacts",
+  "PesticideProductReiCondition",
+  "PesticideProductPhiCondition",
+  "PesticideSeparationRule",
+  "PesticideProductCondition",
+  // S2b Unit 7b — the DPR pest vocabulary (41 coarse categories + the product mapping).
+  "PesticidePestCategory",
+  "PesticideProductPest",
 ]);
 
 export function isGlobalModel(model: string | undefined): boolean {

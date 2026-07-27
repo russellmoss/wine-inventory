@@ -1,0 +1,302 @@
+{
+  "measuredAt": "2026-07-26T20:01:04.868Z",
+  "branchId": "br-fragrant-unit-at08020n",
+  "branchHost": "ep-odd-fog-aty1qpiv-pooler.c-9.us-east-1.aws.neon.tech",
+  "connectedAs": "app_rls",
+  "scales": {
+    "1 vineyard-year": {
+      "name": "1 vineyard-year",
+      "vineyards": 1,
+      "hours": 8760,
+      "vineyardYears": 1,
+      "insertMs": 660,
+      "rowsInserted": 8760,
+      "size": {
+        "total": 4096000,
+        "heap": 1548288,
+        "indexes": 2523136,
+        "toast": 8192,
+        "rows": 8760,
+        "deadRows": 0
+      },
+      "bytesPerRow": 467.57990867579906,
+      "bytesPerVineyardYear": 4096000
+    },
+    "10 vineyard-years": {
+      "name": "10 vineyard-years",
+      "vineyards": 10,
+      "hours": 8760,
+      "vineyardYears": 10,
+      "insertMs": 2296,
+      "rowsInserted": 87600,
+      "size": {
+        "total": 56983552,
+        "heap": 15196160,
+        "indexes": 41762816,
+        "toast": 8192,
+        "rows": 87600,
+        "deadRows": 0
+      },
+      "bytesPerRow": 650.4971689497717,
+      "bytesPerVineyardYear": 5698355.2
+    },
+    "5-year projection (15 vineyards × 5 y)": {
+      "name": "5-year projection (15 vineyards × 5 y)",
+      "vineyards": 15,
+      "hours": 43800,
+      "vineyardYears": 75,
+      "insertMs": 18631,
+      "rowsInserted": 657000,
+      "size": {
+        "total": 433094656,
+        "heap": 113950720,
+        "indexes": 319094784,
+        "toast": 8192,
+        "rows": 657000,
+        "deadRows": 0
+      },
+      "bytesPerRow": 659.2003896499239,
+      "bytesPerVineyardYear": 5774595.413333333
+    }
+  },
+  "lifecycles": {
+    "OBSERVED": {
+      "pattern": "append-only, one bulk load",
+      "rows": 8760,
+      "loadMs": 201,
+      "size": {
+        "total": 4096000,
+        "heap": 1548288,
+        "indexes": 2523136,
+        "toast": 8192,
+        "rows": 8760,
+        "deadRows": 0
+      },
+      "bytesPerRow": 467.57990867579906,
+      "bloatBytes": 0,
+      "deadRows": 0
+    },
+    "FORECAST": {
+      "pattern": "12 × (delete horizon → insert 15 vineyards × 168 h × 4 issuances ≈ 10,080 rows), VACUUM only at the end",
+      "cycles": 12,
+      "cycleMsMedian": 291,
+      "sizeAfterFirstCycle": {
+        "total": 5750784,
+        "heap": 1761280,
+        "indexes": 3964928,
+        "toast": 8192,
+        "rows": 10080,
+        "deadRows": 0
+      },
+      "sizeAfterChurn": {
+        "total": 26615808,
+        "heap": 21012480,
+        "indexes": 5578752,
+        "toast": 8192,
+        "rows": 10080,
+        "deadRows": 0
+      },
+      "sizeAfterVacuum": {
+        "total": 26624000,
+        "heap": 21020672,
+        "indexes": 5578752,
+        "toast": 8192,
+        "rows": 10080,
+        "deadRows": 0
+      },
+      "sizeAfterVacuumFull": {
+        "total": 4210688,
+        "heap": 1761280,
+        "indexes": 2449408,
+        "toast": 8192,
+        "rows": 10080,
+        "deadRows": 0
+      },
+      "steadyStateBytes": 5750784,
+      "bloatBytes": 20865024,
+      "bloatRatio": 4.628205128205129,
+      "recoverableByVacuumFullBytes": 22405120,
+      "deadRowsAtPeak": 0,
+      "liveRowsPerCycle": 10080
+    },
+    "REANALYSIS": {
+      "pattern": "bulk load, then a full-table revision pass (a reanalysis is revisable — see Unit 2 §1)",
+      "rows": 8760,
+      "revisionMs": 316,
+      "sizeBefore": {
+        "total": 4161536,
+        "heap": 1613824,
+        "indexes": 2523136,
+        "toast": 8192,
+        "rows": 8760,
+        "deadRows": 0
+      },
+      "sizeAfterRevision": {
+        "total": 8224768,
+        "heap": 3211264,
+        "indexes": 4988928,
+        "toast": 8192,
+        "rows": 8760,
+        "deadRows": 0
+      },
+      "sizeAfterVacuum": {
+        "total": 8224768,
+        "heap": 3211264,
+        "indexes": 4988928,
+        "toast": 8192,
+        "rows": 8760,
+        "deadRows": 0
+      },
+      "bloatBytes": 0
+    }
+  },
+  "physicalDesigns": {
+    "a_single_table": {
+      "label": "Arm A — single table, composite index (tenancy invariants fixed)",
+      "size": {
+        "total": 438878208,
+        "heap": 115703808,
+        "indexes": 323125248,
+        "toast": 8192,
+        "rows": 667080,
+        "deadRows": 0
+      },
+      "reads": {
+        "s5b_blackrot_wetrun": {
+          "label": "S5b black rot — contiguous wet-run scan for one vineyard over a date range, OBSERVED ONLY",
+          "p95Ms": 265.6,
+          "medianMs": 154.9,
+          "plan": "Result  (cost=0.42..8166.16 rows=5179 width=26) (actual time=0.035..3.593 rows=5136 loops=1)\n  One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n  Buffers: shared hit=1711\n  ->  Index Scan using s0_weather_hourly_a_single_table_read_idx on s0_weather_hourly_a_single_table  (cost=0.42..8166.16 rows=5179 width=26) (actual time=0.029..2.799 rows=5136 loops=1)\n        Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"seriesKind\" = 'OBSERVED'::text) AND (\"validTime\" >= '2021-04-01 00:00:00+00'::timestamp with time zone) AND (\"validTime\" < '2021-11-01 00:00:00+00'::timestamp with time zone))\n        Buffers: shared hit=1711\nPlanning Time: 0.125 ms\nExecution Time: 3.873 ms"
+        },
+        "s5b_downy_night": {
+          "label": "S5b downy secondary — night-hour filter on temperature and RH over a range",
+          "p95Ms": 42.3,
+          "medianMs": 36.2,
+          "plan": "Result  (cost=0.42..8256.79 rows=1 width=20) (actual time=0.096..3.168 rows=349 loops=1)\n  One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n  Buffers: shared hit=1711\n  ->  Index Scan using s0_weather_hourly_a_single_table_read_idx on s0_weather_hourly_a_single_table  (cost=0.42..8256.79 rows=1 width=20) (actual time=0.093..3.129 rows=349 loops=1)\n        Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"seriesKind\" = 'OBSERVED'::text) AND (\"validTime\" >= '2021-04-01 00:00:00+00'::timestamp with time zone) AND (\"validTime\" < '2021-11-01 00:00:00+00'::timestamp with time zone))\n        Filter: ((\"tempC\" >= '10'::numeric) AND (\"tempC\" <= '27'::numeric) AND (\"rhPct\" >= '85'::numeric) AND ((EXTRACT(hour FROM \"validTime\") < '9'::numeric) OR (EXTRACT(hour FROM \"validTime\") > '19'::numeric)))\n        Rows Removed by Filter: 4787\n        Buffers: shared hit=1711\nPlanning Time: 0.156 ms\nExecution Time: 3.207 ms"
+        },
+        "s6_residual": {
+          "label": "S6 residual — open-ended range from an arbitrary application timestamp to now, summing precip and integrating temperature",
+          "p95Ms": 105.8,
+          "medianMs": 50.2,
+          "plan": "Aggregate  (cost=18150.06..18150.07 rows=1 width=72) (actual time=32.368..32.370 rows=1 loops=1)\n  Buffers: shared hit=13248\n  ->  Result  (cost=2927.01..17849.77 rows=40038 width=9) (actual time=4.351..26.733 rows=39840 loops=1)\n        One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n        Buffers: shared hit=13248\n        ->  Bitmap Heap Scan on s0_weather_hourly_a_single_table  (cost=2927.01..17849.77 rows=40038 width=9) (actual time=4.344..20.482 rows=39840 loops=1)\n              Recheck Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"seriesKind\" = 'OBSERVED'::text) AND (\"validTime\" >= '2021-06-15 00:00:00+00'::timestamp with time zone))\n              Heap Blocks: exact=12651\n              Buffers: shared hit=13248\n              ->  Bitmap Index Scan on s0_weather_hourly_a_single_table_read_idx  (cost=0.00..2917.00 rows=40038 width=0) (actual time=2.827..2.828 rows=39840 loops=1)\n                    Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"seriesKind\" = 'OBSERVED'::text) AND (\"validTime\" >= '2021-06-15 00:00:00+00'::timestamp with time zone))\n                    Buffers: shared hit=597\nPlanning Time: 0.118 ms\nExecution Time: 32.602 ms"
+        },
+        "s7b_forward_forecast": {
+          "label": "S7b — forward forecast hours from now, LATEST ISSUANCE ONLY",
+          "p95Ms": 39.2,
+          "medianMs": 21.1,
+          "plan": "Unique  (cost=2.26..1259.78 rows=673 width=31) (actual time=0.063..0.063 rows=0 loops=1)\n  Buffers: shared hit=3\n  ->  Incremental Sort  (cost=2.26..1258.09 rows=678 width=31) (actual time=0.062..0.063 rows=0 loops=1)\n        Sort Key: \"validTime\", \"providerIssuedAt\" DESC\n        Presorted Key: \"validTime\"\n        Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB\n        Buffers: shared hit=3\n        ->  Result  (cost=0.42..1227.75 rows=678 width=31) (actual time=0.058..0.058 rows=0 loops=1)\n              One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n              Buffers: shared hit=3\n              ->  Index Scan using s0_weather_hourly_a_single_table_read_idx on s0_weather_hourly_a_single_table  (cost=0.42..1227.75 rows=678 width=31) (actual time=0.053..0.053 rows=0 loops=1)\n                    Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"seriesKind\" = 'FORECAST'::text) AND (\"validTime\" >= '2021-03-01 00:00:00+00'::timestamp with time zone))\n                    Buffers: shared hit=3\nPlanning Time: 0.135 ms\nExecution Time: 0.093 ms"
+        },
+        "replay_bitemporal": {
+          "label": "REPLAY — the inputs to a decision made at time D, keyed on ingestedAt (the genuine bitemporal read, NOT an issuedAt <= D approximation)",
+          "p95Ms": 42.2,
+          "medianMs": 33.6,
+          "plan": "Unique  (cost=3649.05..3649.97 rows=184 width=34) (actual time=2.961..2.993 rows=168 loops=1)\n  Buffers: shared hit=713\n  ->  Sort  (cost=3649.05..3649.51 rows=184 width=34) (actual time=2.959..2.968 rows=168 loops=1)\n        Sort Key: \"validTime\", \"ingestedAt\" DESC\n        Sort Method: quicksort  Memory: 34kB\n        Buffers: shared hit=713\n        ->  Result  (cost=0.42..3642.13 rows=184 width=34) (actual time=0.223..2.913 rows=168 loops=1)\n              One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n              Buffers: shared hit=713\n              ->  Index Scan using s0_weather_hourly_a_single_table_read_idx on s0_weather_hourly_a_single_table  (cost=0.42..3642.13 rows=184 width=34) (actual time=0.219..2.888 rows=168 loops=1)\n                    Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"validTime\" >= '2021-06-01 00:00:00+00'::timestamp with time zone) AND (\"validTime\" < '2021-06-08 00:00:00+00'::timestamp with time zone))\n                    Filter: (\"ingestedAt\" <= now())\n                    Buffers: shared hit=713\nPlanning Time: 0.130 ms\nExecution Time: 3.036 ms"
+        },
+        "c3_contract_read": {
+          "label": "The C3 CONTRACT read — a historical read that must EXCLUDE forecast rows. A performance question wearing a correctness question's clothes",
+          "p95Ms": 31.6,
+          "medianMs": 27.8,
+          "plan": "Aggregate  (cost=3393.89..3393.90 rows=1 width=8) (actual time=4.226..4.227 rows=1 loops=1)\n  Buffers: shared hit=663\n  ->  Result  (cost=0.42..3380.94 rows=5179 width=0) (actual time=0.151..3.908 rows=5136 loops=1)\n        One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n        Buffers: shared hit=663\n        ->  Index Only Scan using s0_weather_hourly_a_single_table_read_idx on s0_weather_hourly_a_single_table  (cost=0.42..3380.94 rows=5179 width=0) (actual time=0.147..3.454 rows=5136 loops=1)\n              Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"validTime\" >= '2021-04-01 00:00:00+00'::timestamp with time zone) AND (\"validTime\" < '2021-11-01 00:00:00+00'::timestamp with time zone))\n              Filter: (\"seriesKind\" <> 'FORECAST'::text)\n              Heap Fetches: 0\n              Buffers: shared hit=663\nPlanning Time: 0.117 ms\nExecution Time: 4.276 ms"
+        }
+      }
+    },
+    "b_partial_indexes": {
+      "label": "Arm B — partial indexes per series kind",
+      "size": {
+        "total": 428048384,
+        "heap": 115703808,
+        "indexes": 312295424,
+        "toast": 8192,
+        "rows": 667080,
+        "deadRows": 0
+      },
+      "reads": {
+        "s5b_blackrot_wetrun": {
+          "label": "S5b black rot — contiguous wet-run scan for one vineyard over a date range, OBSERVED ONLY",
+          "p95Ms": 151.6,
+          "medianMs": 142.8,
+          "plan": "Result  (cost=0.42..8149.90 rows=5204 width=26) (actual time=0.027..3.266 rows=5136 loops=1)\n  One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n  Buffers: shared hit=1701\n  ->  Index Scan using s0_weather_hourly_b_partial_indexes_obs_idx on s0_weather_hourly_b_partial_indexes  (cost=0.42..8149.90 rows=5204 width=26) (actual time=0.023..2.467 rows=5136 loops=1)\n        Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"validTime\" >= '2021-04-01 00:00:00+00'::timestamp with time zone) AND (\"validTime\" < '2021-11-01 00:00:00+00'::timestamp with time zone))\n        Buffers: shared hit=1701\nPlanning:\n  Buffers: shared hit=1\nPlanning Time: 0.143 ms\nExecution Time: 3.508 ms"
+        },
+        "s5b_downy_night": {
+          "label": "S5b downy secondary — night-hour filter on temperature and RH over a range",
+          "p95Ms": 43.9,
+          "medianMs": 35.9,
+          "plan": "Result  (cost=0.42..8240.97 rows=1 width=20) (actual time=0.087..3.497 rows=349 loops=1)\n  One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n  Buffers: shared hit=1701\n  ->  Index Scan using s0_weather_hourly_b_partial_indexes_obs_idx on s0_weather_hourly_b_partial_indexes  (cost=0.42..8240.97 rows=1 width=20) (actual time=0.084..3.457 rows=349 loops=1)\n        Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"validTime\" >= '2021-04-01 00:00:00+00'::timestamp with time zone) AND (\"validTime\" < '2021-11-01 00:00:00+00'::timestamp with time zone))\n        Filter: ((\"tempC\" >= '10'::numeric) AND (\"tempC\" <= '27'::numeric) AND (\"rhPct\" >= '85'::numeric) AND ((EXTRACT(hour FROM \"validTime\") < '9'::numeric) OR (EXTRACT(hour FROM \"validTime\") > '19'::numeric)))\n        Rows Removed by Filter: 4787\n        Buffers: shared hit=1701\nPlanning:\n  Buffers: shared hit=1\nPlanning Time: 0.191 ms\nExecution Time: 3.540 ms"
+        },
+        "s6_residual": {
+          "label": "S6 residual — open-ended range from an arbitrary application timestamp to now, summing precip and integrating temperature",
+          "p95Ms": 111.4,
+          "medianMs": 48.6,
+          "plan": "Aggregate  (cost=17727.42..17727.43 rows=1 width=72) (actual time=34.450..34.451 rows=1 loops=1)\n  Buffers: shared hit=13164\n  ->  Result  (cost=2511.57..17429.09 rows=39776 width=9) (actual time=4.164..28.814 rows=39840 loops=1)\n        One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n        Buffers: shared hit=13164\n        ->  Bitmap Heap Scan on s0_weather_hourly_b_partial_indexes  (cost=2511.57..17429.09 rows=39776 width=9) (actual time=4.157..21.600 rows=39840 loops=1)\n              Recheck Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"validTime\" >= '2021-06-15 00:00:00+00'::timestamp with time zone) AND (\"seriesKind\" = 'OBSERVED'::text))\n              Heap Blocks: exact=12651\n              Buffers: shared hit=13164\n              ->  Bitmap Index Scan on s0_weather_hourly_b_partial_indexes_obs_idx  (cost=0.00..2501.62 rows=39776 width=0) (actual time=2.807..2.807 rows=39840 loops=1)\n                    Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"validTime\" >= '2021-06-15 00:00:00+00'::timestamp with time zone))\n                    Buffers: shared hit=513\nPlanning:\n  Buffers: shared hit=1\nPlanning Time: 0.165 ms\nExecution Time: 34.741 ms"
+        },
+        "s7b_forward_forecast": {
+          "label": "S7b — forward forecast hours from now, LATEST ISSUANCE ONLY",
+          "p95Ms": 28.5,
+          "medianMs": 20.6,
+          "plan": "Unique  (cost=2.07..1202.65 rows=658 width=31) (actual time=0.051..0.051 rows=0 loops=1)\n  Buffers: shared hit=2\n  ->  Incremental Sort  (cost=2.07..1200.99 rows=663 width=31) (actual time=0.050..0.051 rows=0 loops=1)\n        Sort Key: \"validTime\", \"providerIssuedAt\" DESC\n        Presorted Key: \"validTime\"\n        Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB\n        Buffers: shared hit=2\n        ->  Result  (cost=0.29..1171.33 rows=663 width=31) (actual time=0.046..0.046 rows=0 loops=1)\n              One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n              Buffers: shared hit=2\n              ->  Index Scan using s0_weather_hourly_b_partial_indexes_fc_idx on s0_weather_hourly_b_partial_indexes  (cost=0.29..1171.33 rows=663 width=31) (actual time=0.043..0.043 rows=0 loops=1)\n                    Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"validTime\" >= '2021-03-01 00:00:00+00'::timestamp with time zone))\n                    Buffers: shared hit=2\nPlanning:\n  Buffers: shared hit=1\nPlanning Time: 0.176 ms\nExecution Time: 0.076 ms"
+        },
+        "replay_bitemporal": {
+          "label": "REPLAY — the inputs to a decision made at time D, keyed on ingestedAt (the genuine bitemporal read, NOT an issuedAt <= D approximation)",
+          "p95Ms": 184.4,
+          "medianMs": 52.8,
+          "plan": "Unique  (cost=4351.18..4352.03 rows=170 width=34) (actual time=24.158..24.195 rows=168 loops=1)\n  Buffers: shared hit=896\n  ->  Sort  (cost=4351.18..4351.60 rows=170 width=34) (actual time=24.155..24.164 rows=168 loops=1)\n        Sort Key: \"validTime\", \"ingestedAt\" DESC\n        Sort Method: quicksort  Memory: 34kB\n        Buffers: shared hit=896\n        ->  Result  (cost=0.55..4344.88 rows=170 width=34) (actual time=0.282..24.117 rows=168 loops=1)\n              One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n              Buffers: shared hit=896\n              ->  Index Scan using s0_weather_hourly_b_partial_indexes_identity_key on s0_weather_hourly_b_partial_indexes  (cost=0.55..4344.88 rows=170 width=34) (actual time=0.276..24.089 rows=168 loops=1)\n                    Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"validTime\" >= '2021-06-01 00:00:00+00'::timestamp with time zone) AND (\"validTime\" < '2021-06-08 00:00:00+00'::timestamp with time zone))\n                    Filter: (\"ingestedAt\" <= now())\n                    Buffers: shared hit=896\nPlanning:\n  Buffers: shared hit=1\nPlanning Time: 9.436 ms\nExecution Time: 24.264 ms"
+        },
+        "c3_contract_read": {
+          "label": "The C3 CONTRACT read — a historical read that must EXCLUDE forecast rows. A performance question wearing a correctness question's clothes",
+          "p95Ms": 26.5,
+          "medianMs": 24.8,
+          "plan": "Aggregate  (cost=4121.71..4121.72 rows=1 width=8) (actual time=4.918..4.919 rows=1 loops=1)\n  Buffers: shared hit=847\n  ->  Result  (cost=0.55..4108.70 rows=5204 width=0) (actual time=0.185..4.604 rows=5136 loops=1)\n        One-Time Filter: (current_setting('app.tenant_id'::text, true) = 'org_demo_winery'::text)\n        Buffers: shared hit=847\n        ->  Index Only Scan using s0_weather_hourly_b_partial_indexes_identity_key on s0_weather_hourly_b_partial_indexes  (cost=0.55..4108.70 rows=5204 width=0) (actual time=0.181..4.129 rows=5136 loops=1)\n              Index Cond: ((\"tenantId\" = 'org_demo_winery'::text) AND (\"vineyardId\" = 'vy_000001'::text) AND (\"validTime\" >= '2021-04-01 00:00:00+00'::timestamp with time zone) AND (\"validTime\" < '2021-11-01 00:00:00+00'::timestamp with time zone))\n              Filter: (\"seriesKind\" <> 'FORECAST'::text)\n              Heap Fetches: 0\n              Buffers: shared hit=847\nPlanning:\n  Buffers: shared hit=1\nPlanning Time: 0.149 ms\nExecution Time: 4.949 ms"
+        }
+      }
+    }
+  },
+  "reads": {},
+  "sideResult": {
+    "note": "NON-DECISIONABLE (council C10). Costed as an input to a future tenancy-rules conversation. S0 draws no conclusion from it and it appears in no gate.",
+    "withInvariants": {
+      "total": 56983552,
+      "heap": 15196160,
+      "indexes": 41762816,
+      "toast": 8192,
+      "rows": 87600,
+      "deadRows": 0
+    },
+    "withoutTextPkAndCompositeGuard": {
+      "total": 19226624,
+      "heap": 12394496,
+      "indexes": 6807552,
+      "toast": 8192,
+      "rows": 87600,
+      "deadRows": 0
+    },
+    "savedBytes": 37756928,
+    "savedPct": 66.25934445083381
+  },
+  "upsertWasIdempotent": true,
+  "writePath": {
+    "bulkInsert8760": 203,
+    "upsertOnConflict": 390,
+    "pruneOneSeason": 45,
+    "vacuumAfterPrune": 78
+  },
+  "evaluations": [
+    {
+      "criterionId": "C6",
+      "observed": 5774595.413333333,
+      "ceiling": 26214400,
+      "floor": null,
+      "note": "OBSERVED, append-only, at the 5-year projection",
+      "verdict": "PASS",
+      "breach": null
+    },
+    {
+      "criterionId": "C7",
+      "observed": 265.6,
+      "ceiling": 250,
+      "floor": null,
+      "note": "worst shape: s5b_blackrot_wetrun (Arm A)",
+      "verdict": "FAIL",
+      "breach": "above_ceiling"
+    }
+  ]
+}

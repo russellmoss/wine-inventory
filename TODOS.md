@@ -2,44 +2,209 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
-## Chunk breadcrumbs carry the page `<title>`, site suffix and all
+## `verify:kb-boundary`'s FAIL doesn't distinguish a real leak from a working gate
 
-**What:** every chunk's `sectionPath` is prefixed with the raw HTML `<title>`, so the embedded text
-of an IVES chunk begins:
+Found 2026-07-27 crawling `pnw-handbooks` (plan 100, first-ever enforcing source). Two documents
+verdicted `product-table` on live re-fetch (a PPE-equipment table page and a cultivar
+disease-susceptibility table page) and the script reported both as a **FAIL** — *"the inline gate
+should have made this impossible, so it LEAKED."* Direct query showed **zero stored chunks** for
+both: the ingest-time gate refused them correctly, and there is nothing retrievable. Not a leak.
+
+The script's "flagged on an enforcing source = leak" assumption doesn't hold for a document that is
+`status: active` with **0 chunks** — that is exactly what a working gate produces (the crawler
+persists the document row before `indexDocument` runs; the gate then clears/never-writes its
+chunks, but the row stays `active`). The auditor should either check chunk count before calling
+something a leak, or the shipped gate should flip a refused document to `status: "withdrawn"`
+instead of leaving it `active` with no content. Either fix removes a false alarm that currently
+requires manual SQL to distinguish from a real corpus leak.
+
+## Deferred from plan 100 PR A (council-raised, deliberately out of scope)
+
+Four real defects found while fixing the chunker text-loss bug. None is a data-corruption risk on
+its own, which is why they were not bundled into a fix whose whole value was a tight parity control.
+
+1. **Sentence boundaries are not domain-aware** (council C1, Gemini). The rule — split at `.`
+   followed by whitespace — is unchanged by the plan-100 fix, and it shatters `approx.`, `var.`,
+   `spp.`, `cv.`, `subsp.`, `Dr.`, `BBCH 12.`, and European decimal formatting (`1.500,00`) used by
+   the French, German, Spanish and Catalan sources. Gemini wanted this fixed inside Unit 1; Codex
+   said explicitly not to touch sentence detection in an integrity fix, and Codex won on sequencing:
+   character *deletion* changes a number's value, whereas a misplaced *boundary* only splits a
+   sentence across two chunks that already carry 75 tokens of overlap. Fix separately, with its own
+   before/after retrieval measurement. Minimum shape: negative-lookahead on digits
+   (`(?<!\d)\.(?!\d)`) plus an explicit agronomic/taxonomic abbreviation list.
+
+2. **No user path to report a dangerous citation** (council design question, Gemini). `/developer`
+   → `bug_reports` exists, but nothing connects a suspect citation in an assistant answer to it.
+   This is the only human backstop against corruption that looks plausible — and plan 100 proved
+   the corruption is usually plausible (5 lb/A of sulfur is a normal spray; 5 lb/A of a Group 3 DMI
+   is catastrophic and illegal). Worth a "report this citation" affordance on the citation chip.
+
+3. **Raw HTML leaks into chunk text — 925 chunks / 476 documents corpus-wide.** Trigger: any
+   `<table>` containing a `colspan` attribute anywhere makes Defuddle abandon markdown conversion
+   and emit the whole table as raw `<table>…</table>` HTML, which the chunker then stores verbatim.
+   `ifv-france` is dominant at **753 chunks across 380 documents, roughly 55% of that source**;
+   also `uc-ipm` (83), `ives-technical-reviews` (26), `awri` (26 `<td>` + 5 `<iframe>`),
+   `osu-extension` (10 + 3). This directly undermines `chunk.ts`'s own stated design goal of
+   preserving dose-table structure. Upstream-library problem, much larger blast radius, own plan.
+
+4. **`extract/index.ts:61` decodes every document as UTF-8 unconditionally** — no HTTP
+   `Content-Type` charset param and no `<meta charset>` sniffing. Latent, not currently triggered:
+   the one `osu-extension` mojibake (`Temperature (В°C)`) is baked into OSU's own bytes upstream,
+   and the single `awri` case is an unrelated PDF font-encoding failure in `extract/pdf.ts`. But a
+   future source served as genuine windows-1252 would be silently mangled by us.
+
+## 🔴 EM 8413 is in the corpus with corrupted pesticide rates (LIVE, safety-relevant)
+
+Found 2026-07-26 during PNW-handbook recon. `osu-extension` document
+`https://extension.oregonstate.edu/catalog/em-8413-pest-management-guide-wine-grapes-oregon`,
+47 chunks, `status = active`, retrievable today. Four independent defects, all reproduced by
+re-fetching the live page and running `extract/html.ts` on it:
+
+1. ~~**Rate corruption — the serious one.**~~ ✅ **ROOT-CAUSED AND FIXED (plan 100 PR A, 2026-07-27).**
+   The guess recorded here — "almost certainly the markdown converter reading a line-initial `0.` as
+   an ordered-list marker" — was **wrong**. Defuddle is innocent. The culprit was
+   `splitBySentences` in `chunk.ts`, whose `String.match(/g)` scan *skipped* spans it could not
+   match. Corpus-wide, not EM-8413-specific: **~630 of 3,299 documents measured corrupted.** See the
+   plan's Unit 3 result.
+2. **The actual rate tables never arrived.** Tables 2, 3 and 7 are **Airtable `<iframe>` embeds**;
+   only the bare `<iframe src="https://airtable.com/embed/…">` tag is in chunk text (chunks 4, 14).
+3. **Raw HTML leaked into chunk text.** Defuddle left 2 `<table>` blocks unconverted, so chunks 7–9
+   and 16–23 are strings of `<td headers="table-cell-413816-4-0 …">3</td><td …>12 hr</td>`. Also
+   mojibake: `Temperature (В°C)` (UTF-8 degree sign decoded as cp1252).
+4. **`publishedAt` = 2014-12-18** while chunk 0 links
+   `…/pest-management-guide-for-wine-grapes-in-oregon-**2026**.pdf`. This guide is revised annually;
+   freshness scoring believes it is 12 years old, which is exactly backwards for a safety document.
+
+The substance lives in that PDF, and `/sites/…*.pdf` already passes `crawl-osu-extension.ts`'s
+`isContentPath`. It was never fetched because `discover()` only reads links from the two wine hubs
+and the sitemap — never from a `/catalog/` page body. Fetching the PDF instead of (or as well as)
+the catalog page is most of the fix.
+
+⚠️ Note the interaction with **KB-1**: most of what is missing here (Tables 3/4/7/8 — product ×
+rate × REI/PHI × FRAC group) is **tier C and must NOT be repaired into the corpus**. The right
+outcome is probably *withdraw the tabular chunks, keep the prose* (resistance strategy, sprayer
+calibration, safe-use, certification bodies), not *ingest the tables properly*.
+
+## PNW Handbooks (`pnwhandbooks.org`) — 71 grape pages, blocked on the KB-1 scope call
+
+Full recon in `NOW.md` tangent 0. Short version: robots and licensing posture are **identical to the
+`osu-extension` source we already run** (`Allow: /`, `Crawl-delay: 10`, `use=reference`,
+`ai-train=no`; our UA is not on the named blocklist). One flat 4,999-loc sitemap. 71 pages in scope
+under four exact prefixes; `grape-vitis-spp-` must be an **exact prefix**, because a naive
+`/grape|vine/` match also takes 4 `oregon-grape-berberis-aquifolium-*` pages (*Mahonia*, an
+ornamental shrub, not a grapevine) plus 23 other false positives. Extraction is clean.
+
+Blocked on:
+- ~~**KB-1 / `src/lib/knowledge/boundary/` is not on main**~~ ✅ **UNBLOCKED — SKB PR 1 merged as
+  #538 (2026-07-27).** The gate, `verify:kb-boundary`, `allowPaths` and the legality refusal are all
+  on main now. ⚠️ But read the PDF-blindness entry above first: for a PDF source the gate provides
+  **no protection at all**, so treat an "enforcing" PDF source as ungated.
+- **A new `sectionFilter` strategy** — and per the council it must be **block-level within a
+  section**, not section-level, so the FRAC resistance-management prose survives. See plan 100 Unit 7. The tier-A/tier-C boundary runs *inside* each page:
+  `Cause` / `Symptoms` / `Cultural control` / `Biology and life history` are exactly the biology
+  prose the corpus wants, and `Chemical control` is a bulleted product list carrying rate + PHI +
+  FRAC/IRAC group + REI. Measured product-signal line density: `/pesticide-safety` 0 %, insect 22 %,
+  disease 30 %, `/weed/…/vineyard-grape` **46 % and effectively 100 % tier C**. PNW splits on body
+  headings, so the existing `"anchor-heading"` strategy does not fit as-is.
+
+`/pesticide-safety` (16 pages, 0 % product signal — WPS, PPE, spills, container disposal, pollinator
+protection, buffer zones) is the one slice with **no boundary question at all** and could ship first.
+
+## 🔴 KB-1's product-table gate is structurally BLIND to PDFs (found 2026-07-27, plan 099)
+
+**What:** `index-documents.ts` hands the detector raw bytes — `{ kind: "text", text: input.bytes.toString("utf8") }`
+for anything non-HTML. For HTML that is readable markup and the detector works as designed. **For a PDF
+those bytes are Flate-compressed content streams**, so the detector inspects binary noise.
+
+**Measured** on Cornell's 2025 NY/PA Grape Guide preview, whose pages 22-24 are textbook tier C
+(Common Name × Trade Name × Formulation × WSSA Group × Days to Harvest × REI × EPA Reg. Number):
+
+| Input | verdict | rows | signals |
+|---|---|---|---|
+| raw bytes as utf8 (**what the pipeline does**) | `prose` | 1 | `flat-run:1, flat-unqualified` |
+| extracted markdown (what it never sees) | `prose` | 0 | 7 header hits: trade-name, restricted-entry, days-to-harvest, rate-per-acre, formulation, active-ingredient, relative-effectiveness |
+
+Only 40% of the raw byte-string is printable ASCII, and `"Trade Name"`, `"EPA Reg"`, `"REI"` and
+`"carfentrazone"` are all **absent** from it. So an enforcing source ships a full pesticide rate table
+into the corpus with verdict `prose`.
+
+**Why the second row matters too.** Even given clean extracted text the verdict is still `prose`: the
+structured arm counts repeated rows, and `extract/pdf.ts` emits no pipe tables, so `rowCount` is 0 and
+the seven header signals alone do not carry the verdict. Council C2's reasoning ("post-extraction text
+destroys the row-repetition signal, so run pre-extraction") is right about HTML and does not transfer —
+for PDFs pre-extraction bytes are *less* legible than post-extraction text, not more.
+
+**Why this is not fixed here:** it is SKB's phase and its D3 close-out, it is a safety detector, and the
+fix is a design question (decompress and inspect? build the arm on `extractTextItems` geometry? let
+header-signal density carry a verdict when the row arm cannot run?) that deserves its own plan, not a
+drive-by in a source PR.
+
+**Consequence to hold until then:** for any PDF source, the boundary gate provides **no protection**,
+whatever `boundaryModeFor` says. `verify:kb-boundary`'s per-source counts are a floor on HTML and
+approximately zero-information on PDFs. Treat an "enforcing" PDF source as ungated.
+
+**Where:** `src/lib/knowledge/index-documents.ts` (the `{ kind: "text" }` call site),
+`src/lib/knowledge/boundary/product-table-core.ts` (the structured arm).
+
+## 🟡 Chunk breadcrumbs: CODE FIXED (plan 099), CORPUS PENDING a re-index
+
+**Status 2026-07-27.** The duplication half of this is fixed in `src/lib/knowledge/chunk.ts`. What
+remains is (a) re-indexing the existing corpus so the fix actually reaches stored chunks, and (b) one
+smaller piece of the original defect.
+
+**What was wrong:** every chunk's `sectionPath` began with the document title, then repeated it as the
+first heading. On IVES HTML the title arrived with the publisher's site suffix and literal tabs:
 
 ```
 Understanding Esca: watch out for the grafting type!
 			| IVES Technical Reviews, vine and wine > Understanding Esca: watch out for the grafting type! …
 ```
 
-The article title appears **twice**, once with the publisher's site suffix and literal tabs/newlines.
-That string is part of what gets embedded and part of what the assistant sees, on every chunk.
+Plan 099 found the same failure on PDFs, and measured it: Cornell's Grape Guide extracted cleanly
+(56 real headings, confidence gate passed) and still produced **11 distinct breadcrumbs across 77
+chunks, 75 of them truncated**, because the 68-char title plus the 63-char cover-title H1 consumed 134
+of the 140-char budget and the cap then truncated the *tail* — deleting every real heading and leaving
+`… > 3…`.
 
-**Why it matters:** `sectionPath` is not cosmetic — it is concatenated into the chunk text before
-embedding, so the noise is inside the vector. At ~14 chunks/article it is a few hundred characters of
-repeated boilerplate per chunk. It also lands in the citation UI. Related in kind to the known
-breadcrumb defect where headingless PDFs take a page-one slab as their breadcrumb.
+**What is fixed:** `crumbKey` / `restatesRoot` drop a heading that restates the root title (a leading
+year is not identity, so "2025 X Guidelines" and "X Guidelines" are one string); segment whitespace is
+collapsed, which kills the literal tabs; and `capBreadcrumbSegments` now elides from the **middle**,
+keeping the root and the leaf, because the leaf is the segment worth embedding.
 
-**Why it was NOT fixed with IVES (PR #465):** chunking runs inside `indexDocument`, *before* the
-crawl script re-applies the feed's clean `dc:title`. Fixing it there would mean either reordering the
-index pipeline or special-casing one source — and this is **generic behaviour affecting all 24
-sources**, not an IVES quirk. Patching around it in `crawl-ives.ts` would have been the wrong layer
-and would have hidden the general problem behind one source looking fine.
+**What is NOT fixed — the ` | <publisher>` suffix.** The root title still carries it (once now, not
+twice). It cannot be stripped safely in `chunk.ts`: that layer does not know the source's publisher, so
+any rule would be a guess against titles that legitimately contain `|` or `–`. Doing it properly means
+normalising the title where the publisher IS known — `index-documents.ts` `buildDocumentMetadata`, or
+the extractors.
 
-**Shape of the fix (unverified):** normalise the title before it becomes a breadcrumb — collapse
-whitespace, strip a trailing ` | <publisher>` / ` - <publisher>` suffix, and drop the leading title
-segment when it merely repeats the first heading. Pure and unit-testable.
+**⚠️ The corpus still holds the old breadcrumbs, and NOTHING heals on its own.** The breadcrumb is
+baked into stored chunk text and its vector, so fixing the code does not fix the corpus.
 
-**⚠️ Re-embedding required.** The breadcrumb is baked into stored chunk text and its vector, so
-fixing the code does **not** fix the corpus — the same trap as the `vessel_component` incremental
-fold. Existing chunks need `reset:knowledge-source` + a re-crawl per source, or they keep the old
-breadcrumbs forever (`indexDocument` early-returns on an unchanged content hash).
+An earlier draft of this entry claimed PDFs would self-heal on their next crawl via the
+`PDF_EXTRACT_VERSION` bump. **That was wrong**, caught in review, and the reasoning is worth keeping
+because it is the same trap plan 090 hit:
 
-**Measure before and after:** `npm run verify:kb-register` against
-`docs/kb-register-baseline.json` — this changes embedded text corpus-wide, so it can move retrieval.
+- `PDF_EXTRACT_VERSION` `"1"` → `"2"` is **necessary but not sufficient**. It only changes the *hash*.
+  It does nothing unless `indexDocument` is actually reached with fresh bytes.
+- **The monthly sweep never reaches it.** `crawlWithFollowing` issues a conditional GET and returns
+  early on a 304, before `onDocument` fires. It has no `ignoreValidators` option at all.
+- **And most PDFs are not in the sweep anyway** — 16 of 26 sources are `autoCrawl: false` and routed to
+  `curated`, which is essentially the whole PDF corpus. `scripts/crawl-curated.ts` does not pass
+  `ignoreValidators` either, so a manual curated re-run also no-ops on unchanged bytes.
+- HTML is unhealable for a second, independent reason: a doc with no section filter hashes on the bare
+  `contentHash`, so even a forced re-fetch produces the same index hash.
 
-**Where:** `src/lib/knowledge/chunk.ts`, `src/lib/knowledge/index-documents.ts`,
-`src/lib/knowledge/extract/`.
+**So there is one lever, and it is deliberate:** `npm run reindex:knowledge -- --sources=<keys>`, which
+passes `ignoreValidators: true` precisely for this (see the header comment in
+`scripts/reindex-knowledge-corpus.ts`, which documents the 304 trap by name). Per-source alternative:
+`reset:knowledge-source` + re-crawl.
+
+**Cost is why it is deferred:** ~23.5k chunks re-embedded through Voyage. Run it as its own campaign,
+and **capture `verify:kb-register` and `kb:snapshot --repeat 3` baselines before and after together** —
+this changes embedded text corpus-wide, so it can move retrieval. Do not fold it into an unrelated PR.
+
+**Where:** `src/lib/knowledge/chunk.ts` (fixed), `src/lib/knowledge/index-documents.ts` (publisher
+suffix), `src/lib/knowledge/extract/pdf-structure.ts` (`PDF_EXTRACT_VERSION`).
 
 ## Knowledge-corpus prompt-injection posture (all 17 sources, pre-existing)
 
@@ -480,3 +645,22 @@ old modal masked by trapping focus. Raised by Gemini in the plan-089 council rev
 **Context:** the confirm path is security-relevant — a Confirm hotkey must go through the same
 signed-token / single-use nonce flow as a tap, never a shortcut around it.
 **Depends on:** plan 089 shipping first.
+
+## Per-worktree Prisma generated-client output path (raised by S2, program-level)
+
+**What:** Give each worktree its own `generator client { output = ... }` path so parallel lanes stop
+sharing one generated Prisma client.
+
+**Why:** the current instruction — "run `npx prisma generate` immediately before any `tsc` / `verify`
+/ `dev` in any worktree" — is a **ritual, not isolation**. A sibling lane can regenerate the shared
+client between our `tsc` and our `vitest`, and the second command then runs against a client that
+does not match the schema it was checked against. Observed repeatedly across the VI and spray lanes
+(see the "isolated-worktree prisma client goes STALE" notes in auto-memory).
+
+**Pros:** removes a whole class of phantom type errors and "works on the second run" flakiness that
+currently costs minutes per lane, per command.
+**Cons:** touches `prisma/schema.prisma` (the single most contended file in the repo) plus every
+script and import that resolves `@prisma/client`, and would collide with all three sibling spray
+lanes if attempted mid-wave.
+**Context:** S2 council finding C11, accepted as a known limitation for that lane rather than fixed
+unilaterally. **Do this between waves, not inside one**, and land it alone.

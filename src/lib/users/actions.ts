@@ -12,6 +12,7 @@ import {
   type AssignableRole,
 } from "@/lib/access";
 import { tenantUserWhere } from "@/lib/users/scope";
+import { loadVineyardMembershipIds } from "@/lib/users/vineyard-memberships";
 import { ensureDeveloperHomeMembership } from "@/lib/users/ensure-developer-membership";
 import { hashPassword } from "@/lib/password";
 import { writeAudit, summarize, diff } from "@/lib/audit";
@@ -53,6 +54,11 @@ function cleanRole(raw: unknown): AssignableRole {
  * actor's org first, else an admin at winery A could reset/ban/re-role winery B's users. Throws
  * "User not found." (NOT "forbidden") so a caller can't probe which user ids exist in other tenants.
  * The select is a superset covering every caller's needs.
+ *
+ * NOTE: the D9 vineyard membership set is deliberately NOT selected here. `user` is a GLOBAL model,
+ * so the tenant extension passes this query through without setting `app.tenant_id`, and a nested
+ * relation onto the RLS-forced `user_vineyard` would read back EMPTY under the `app_rls` runtime
+ * role. Callers that need it use `loadVineyardMembershipIds` (see the long note in `src/lib/dal.ts`).
  */
 async function requireTenantUser(userId: string, tenantId: string) {
   const user = await prisma.user.findFirst({
@@ -63,7 +69,6 @@ async function requireTenantUser(userId: string, tenantId: string) {
       name: true,
       role: true,
       banned: true,
-      vineyardMemberships: { select: { vineyardId: true } },
     },
   });
   if (!user) throw new ActionError("User not found.");
@@ -167,7 +172,10 @@ export const setUserVineyards = adminAction(async ({ actor }, userId: string, vi
     const found = await prisma.vineyard.count({ where: { id: { in: want } } });
     if (found !== want.length) throw new ActionError("One or more vineyards not found.");
   }
-  const before = user.vineyardMemberships.map((m) => m.vineyardId).sort();
+  // The BEFORE set for the audit diff — a separate tenant-scoped read (see dal.ts). Loading it off
+  // the user row read back empty under app_rls, which made every diff claim the user previously had
+  // no vineyards.
+  const before = (await loadVineyardMembershipIds(userId, actor.tenantId)).sort();
   const after = [...want].sort();
 
   await runInTenantTx(async (tx) => {

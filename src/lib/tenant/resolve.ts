@@ -4,9 +4,15 @@ import { getTenantContext } from "@/lib/tenant/context";
  * Resolve the tenant from the VERIFIED session when no ALS context is set (K9). Server actions,
  * the ledger, and scripts set the ALS context explicitly (fast path); RSC page reads / API routes /
  * data-loaders don't, so we lazily resolve from getCurrentUser().activeOrganizationId here.
- * Dynamic import breaks the prisma <-> dal/auth static cycle. getCurrentUser reads only global
- * (denylisted) tables, so this can't recurse. Returns undefined outside a request scope (e.g. a
- * script that forgot runAsTenant) -> the caller throws (fail-closed).
+ * Dynamic import breaks the prisma <-> dal/auth static cycle. Returns undefined outside a request
+ * scope (e.g. a script that forgot runAsTenant) -> the caller throws (fail-closed).
+ *
+ * ⚠️ NO-RECURSION CONTRACT. `getCurrentUser` must never reach this function, or it would await
+ * itself. Its `user` read is on a GLOBAL (denylisted) model, which the extension passes straight
+ * through without resolving a tenant. Its ONE tenant-scoped read — the D9 vineyard membership set
+ * (`src/lib/users/vineyard-memberships.ts`) — is wrapped in `runAsTenant` with an EXPLICIT tenantId,
+ * so the extension short-circuits on the ALS context and never gets here. Any new tenant-scoped read
+ * added to `getCurrentUser` must do the same.
  *
  * This is the single source of truth for session-based tenant resolution, shared by the Prisma
  * extension (src/lib/prisma.ts) and the raw-read tx wrapper (src/lib/tenant/tx.ts) so the two can

@@ -40,6 +40,9 @@ import {
 } from "@/lib/map/google-tiles";
 import { loadWaybackReleases, type WaybackRelease } from "@/lib/map/wayback";
 import { wireAttributionRefresh } from "@/lib/map/attribution-refresh";
+import { isVineyardPolygon, type PolygonGeometry as GisPolygonGeometry } from "@/lib/gis/geometry";
+import type { MapOverlay } from "@/lib/gis/overlay";
+import { leafletBounds } from "@/lib/gis/render";
 
 const ESRI_IMAGERY_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -164,25 +167,26 @@ export interface SatelliteMapProps {
     manager?: string | null;
     elevationM?: number | null;
   };
+  /**
+   * VI-P1 governed layer-stack (brief §13.1). Additional vector overlays (planting-area boundaries,
+   * later raster/soil layers) rendered ABOVE the block layer, in array order. Additive: existing
+   * `blocks`/`editable` behaviour is untouched. The `kind: "raster"` arm is wired in P3.
+   */
+  overlays?: MapOverlay[];
+  /** Click handler for a vector-overlay feature (e.g. a soil map unit) — receives the feature's
+   *  properties (which carry an identifying `mukey`). Enables click-to-inspect without forking the map. */
+  onOverlayFeatureClick?: (properties: Record<string, unknown>) => void;
 }
 
-/** Minimal GeoJSON Polygon shape (a linear ring of [lng, lat] positions). */
-type PolygonGeometry = { type: "Polygon"; coordinates: number[][][] };
-
-function isPolygonGeometry(g: unknown): g is PolygonGeometry {
-  if (!g || typeof g !== "object") return false;
-  const geo = g as { type?: unknown; coordinates?: unknown };
-  if (geo.type !== "Polygon" || !Array.isArray(geo.coordinates)) return false;
-  const ring = geo.coordinates[0];
-  if (!Array.isArray(ring) || ring.length < 4) return false;
-  return ring.every(
-    (pt) =>
-      Array.isArray(pt) &&
-      pt.length >= 2 &&
-      Number.isFinite(pt[0]) &&
-      Number.isFinite(pt[1]),
-  );
-}
+/**
+ * Polygon shape + guard now come from the canonical, unit-tested module in `@/lib/gis/geometry`
+ * rather than a private copy here. That module is pure (no Leaflet, no DOM, no `server-only`), so it
+ * imports cleanly into this client component. The local guard used to inspect only the outer ring;
+ * `isVineyardPolygon` covers MultiPolygon too, which the brief's geometry model requires.
+ */
+type PolygonGeometry = GisPolygonGeometry;
+const isPolygonGeometry = (g: unknown): g is PolygonGeometry =>
+  isVineyardPolygon(g) && g.type === "Polygon";
 
 /** Warm wine location pin — a divIcon so we never depend on Leaflet's (404-prone) marker assets. */
 function makePinIcon(): L.DivIcon {
@@ -291,6 +295,8 @@ export function SatelliteMap({
   onCancelDraw,
   exportName,
   vineyardMeta,
+  overlays,
+  onOverlayFeatureClick,
 }: SatelliteMapProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   // The relative wrapper around the map AND its HTML overlays (key, controls).
@@ -299,6 +305,13 @@ export function SatelliteMap({
   const frameRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<L.Map | null>(null);
   const overlayRef = React.useRef<L.FeatureGroup | null>(null);
+  // Keep the overlay-click callback in a ref so the layer-stack effect depends only on `overlays`
+  // (the callback identity from a parent can change every render without repainting the polygons).
+  const overlayClickRef = React.useRef(onOverlayFeatureClick);
+  React.useEffect(() => {
+    overlayClickRef.current = onOverlayFeatureClick;
+  }, [onOverlayFeatureClick]);
+  const layerStackRef = React.useRef<L.FeatureGroup | null>(null); // VI-P1 governed overlays (planting boundaries, …)
   const markerRef = React.useRef<L.Marker | null>(null);
   const baseLayerRef = React.useRef<L.TileLayer | null>(null);
   const waybackLayerRef = React.useRef<L.TileLayer | null>(null);
@@ -526,6 +539,59 @@ export function SatelliteMap({
     }
     map.invalidateSize();
   }, [blocks, unit, lat, lng, editable]);
+
+  // VI-P1/P3: governed layer-stack overlays (planting-area boundaries + the P3 NDVI raster). Rendered ABOVE
+  // the block layer, in array order, into a dedicated FeatureGroup. Additive — never touches the block or
+  // editable effects. `kind:"vector"` paints a GeoJSON layer; `kind:"raster"` paints an L.imageOverlay from
+  // the already-WARPED (north-up 3857) PNG, so its WGS84 bbox is exact and it registers on the basemap.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (layerStackRef.current) {
+      layerStackRef.current.remove();
+      layerStackRef.current = null;
+    }
+    if (!overlays || overlays.length === 0) return;
+    const group = L.featureGroup();
+    const rasters: { layer: L.ImageOverlay; resampling: string }[] = [];
+    for (const ov of overlays) {
+      if (ov.kind === "vector") {
+        const gj = L.geoJSON(ov.data as unknown as GeoJSON.GeoJsonObject, {
+          style: {
+            color: ov.style.color,
+            weight: ov.style.weight ?? 2,
+            fillColor: ov.style.fillColor ?? ov.style.color,
+            fillOpacity: ov.style.fillOpacity ?? 0.1,
+            dashArray: ov.style.dashArray,
+          },
+          onEachFeature: (feature, layer) => {
+            if (!overlayClickRef.current) return;
+            const props = (feature?.properties ?? {}) as Record<string, unknown>;
+            layer.on("click", () => overlayClickRef.current?.(props));
+          },
+        }).addTo(group);
+        // A permanent map-unit-symbol label (e.g. "MdB") centered on the overlay, token-styled via CSS.
+        // A center-direction permanent tooltip anchors itself at the layer's centroid automatically.
+        if (ov.label) gj.bindTooltip(ov.label, { permanent: true, direction: "center", className: "soil-unit-label", opacity: 1 });
+      } else if (ov.kind === "raster" && ov.imageUrl) {
+        // The PNG is painted over its exact WGS84 bbox (warp already removed the UTM/3857 misregistration).
+        const img = L.imageOverlay(ov.imageUrl, leafletBounds(ov.bounds), {
+          opacity: ov.opacity,
+          interactive: false,
+        }).addTo(group);
+        rasters.push({ layer: img, resampling: ov.resampling });
+      }
+    }
+    group.addTo(map);
+    group.bringToFront();
+    // Q1: bilinear (browser-smooth) is the default; the nearest toggle shows the honest source pixels. The
+    // image element only exists AFTER the layer is added to the map (onAdd), so set the rendering hint here.
+    for (const { layer, resampling } of rasters) {
+      const el = layer.getElement();
+      if (el) el.style.imageRendering = resampling === "nearest" ? "pixelated" : "auto";
+    }
+    layerStackRef.current = group;
+  }, [overlays]);
 
   // Geoman edit setup: snapping, a token-styled toolbar (edit + drag only —
   // drawing is per-block via the buttons below, removal is the block's Clear

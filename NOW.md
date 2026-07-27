@@ -7,11 +7,448 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**SPRAY INTELLIGENCE — Wave 1 LANDING: S0 complete · S2 built · S3a SHIPPED · S4 built.
+S3a's record cores are MERGED (2026-07-26) -> Wave 2 (S7a · S8 · S6 · S7b) can start.**
+
+🟩 **S0 (lane A — the weather-lane spike): COMPLETE. Gate answered, and S1 is NARROWED.**
+[report](docs/spray_assistant/phases/S0-report.md) · [QA](docs/spray_assistant/qa/S0-qa-report.md) ·
+ADR [0011](docs/architecture/decisions/0011-hourly-weather-retention-and-replay.md) (retention/replay) +
+[0012](docs/architecture/decisions/0012-leaf-wetness-estimator-bands-and-refusal.md) (LWD bands/refusal).
+No production code, as scoped. 11 units, 100 committed fixtures (566,400 site-hours), 28 goldens,
+800 fixture assertions, 7 defects found and fixed.
+
+⛔ **The two-arm gate DID NOT PASS and the pre-committed no-go TRIGGERED — the deliverable is the
+narrowing.** Arm B (input validation, the arm council C1 added because Arm A can pass on correlated
+error) splits **by regime, cleanly and physically**: dew-point-depression MAE vs station is
+**1.22 °C Stoney Hill / 1.72 °C Monticello VA** but **3.18 °C Russian River / 5.07 °C Madera**, against
+a 1.85 °C tolerance = half CART's own 3.7 °C node. Both failures are regimes that are **sub-grid at
+25 km** (marine-layer boundary, irrigated valley floor). **Two live Demo sites are in the failing set.**
+→ **Build S1 for eastern sites on fixed-model reanalysis; California needs station-blending first.**
+
+⚠️ **Five findings that change other lanes — do NOT re-derive:**
+1. **The irreversibility is in FORECAST, not OBSERVED** — the reverse of the plan's premise. Observed
+   hourly IS backfillable (NCEI ISD + keyless IEM ASOS, past 2005) and the NWS live window is **7 days**,
+   not 1–2. What's unrecoverable is *what the forecast said when a grower acted on it*. Also: **REANALYSIS
+   is revisable**, so a stored copy can drift from the live archive — a replay hazard nobody had named.
+2. **Archive model choice moves 50.6% of infection-event classifications** (`era5` vs Open-Meteo
+   `default`). "Best match" is unusable for anything replayed. **ERA5-Land carries NO wind at any site** —
+   and wind is a **hard input to the S7b legality gate**, not just a CART input.
+3. **Brief §7's pathogen table is materially wrong → S5b's scope GROWS.** Botrytis (Broome 1995) and
+   phomopsis (Erincik 2003) ARE LWD × temperature models. ⚠️ Both papers are **paywalled**, so S0 could
+   only run coarsened renderings that carried **no gate weight** — S5b must obtain them.
+4. **Madera inverted its own purpose**: lowest refusal rate in the set (0.6%) and the worst inputs
+   (5.07 °C). Confidence keyed on input **availability** reports its highest value exactly where the
+   answer is least trustworthy → the band must carry **provider-vs-station agreement**.
+5. **S4 must collect a per-block `canopyManagement` OBSERVATION with a timestamp** (not a static
+   attribute — an August decision must ask what the canopy was in July). Liftable paragraph in
+   [s0-lwd-estimator-decision.md](docs/spray_assistant/phases/s0-lwd-estimator-decision.md) §4.
+
+⚠️ **Two things still Russell's**: (a) accept the two-zone canopy model (S0 recommends yes — cheap now,
+expensive to retrofit, and the one-zone version is anatomically wrong); (b) **how long must a lot's
+residue flag stay explicable?** — the one input to ADR 0011 that is inferred rather than stated.
+
+🟩 **S3a (lane C — spray record + planned harvest): SHIPPED.** PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) merged; PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) **browser-QA'd GREEN** same day (2 findings — area provenance + correction datetime shift — found, fixed `d11c38d8`, re-proven). QA report: `docs/spray_assistant/qa/S3a-qa-report.md`.
+
+🟩 **S2 (registration + resistance master): ALL 12 UNITS BUILT, 3 PRs.**
+[PR-1 #522 MERGED](https://github.com/russellmoss/wine-inventory/pull/522) (schema slice, 8 GLOBAL
+models + the CHECKs/partial-uniques that make the safety rules uninsertable) ·
+[PR-2 #525](https://github.com/russellmoss/wine-inventory/pull/525) **CI green, awaiting merge**
+(reg-number gate, APPRIL parse+ingest, lookup service, CA DPR layer, restrictions, source toggle) ·
+**PR-3 open** (resistance derivation + coverage report, monthly re-derivation, `verify:pesticide` +
+8 boundary guards + PEST-1/PEST-2 invariants).
+**Live data in prod tables:** 2,420 active grape registrations · 833 CA-registered on grapes ·
+361 AIs with **zero unclassified** (35 CODED / 1 NO_CODE_EXISTS / 325 GAP; fungicide-scoped 153 →
+35/1/117). Golden proofs: Switch **9+12** (never 9 alone), Pristine 7+11, captan M 04/MULTI,
+Gavel + Fusilade both CA-registered on `GRAPES, WINE`.
+⚠️ **Zampro resolves GAP, not 45/40** — plan 086's measured free-source miss, now VISIBLE in the
+coverage report rather than silently wrong. Closing it is a Cornell purchase decision;
+`biologicalsShareOfGap: 59` is the number to decide against.
+⚠️ **The plan's grape regex had a hole** — `/\bGrapes?\b(?!fruit)/` matches "Grape-Ivy" (hyphen is a
+word boundary). Fixed + tested. ⚠️ **`exceljs` cannot read the APPRIL dump at all** (fails on the
+zip's data-descriptor entries) → unzip-entry + SAX is the primary path (366k rows, ~15 s, ~134 MB).
+Cross-lane: the composite `factsAsOf` shape is FROZEN in
+[S2-S3a-factsAsOf-contract.md](docs/spray_assistant/phases/S2-S3a-factsAsOf-contract.md) — **S3a
+consumes it, does not re-derive it.**
+QA: [S2-qa-report.md](docs/spray_assistant/qa/S2-qa-report.md) — one row deferred (the settings-card
+click-through needs the main checkout + a user login).
+
+🟩 **S4 (lane D — phenology + growth): SHIPPED. Merged, live on Vercel, browser QA GREEN.**
+[plan v2](docs/spray_assistant/phases/S4-phenology-growth-model-plan.md) ·
+[council](docs/spray_assistant/phases/S4-council-feedback.md) ·
+[QA report](docs/spray_assistant/qa/S4-qa-report.md) ·
+[phase report](docs/spray_assistant/phases/S4-report.md).
+**PR 1 (schema slice) = [#521](https://github.com/russellmoss/wine-inventory/pull/521), MERGED**,
+migrations live in the DB. **PR 2 (Units 3–10, the feature)** on
+`claude/s4-phenology-feature-e9b928`. 135 new tests; full suite 4386 pass / 0 fail; `verify:phenology`
+24/24; `verify:tenant-isolation`, `verify:naming` (before AND after), `verify:ai-native` (no new tool,
+no allowlist entry) all green. Lane boundary held **mechanically** — zero files touched under
+`src/lib/{weather,spray,pesticide}`, and the two weather regression tests pass byte-unmodified.
+The five council findings that had to survive the build all did: the **STAGNANT leaf-expansion tail**
+(a stagnant tip still dilutes at day 7 — v1 would have reported a diluted canopy as fully protected),
+**biofix-anchored GDD** (two Bhutan goldens: a February bud break, and accumulation past Oct 31),
+**bands never yield a point rate** (range or unknown; the ≥10 cm answer stays exact),
+**`undefined` ≠ `false` ≠ `0`** through all five projections (which also fixed a *pre-existing*
+`diseasePestSpotted: false` bug), and **`NOT_ASSESSED` ≠ `NONE` ≠ `null`** as a contract test.
+
+✅ **The QA gate closed.** The blocker was not the RLS theory it was first written up as: `field-notes/page.tsx` was the only one of the four vineyard pages gating on a raw `role === "admin"` instead of `isTenantAdminLike` (which already treats a developer as admin-like), so a developer got the admin view on harvest/maps/weather but the manager empty state on field notes. One-line fix in [#529](https://github.com/russellmoss/wine-inventory/pull/529). Browser QA then ran clean: the stage gate fires in all three states (no stage / FRUIT_SET / VERAISON), `shootLengthCm: 0` + `hedgedThisWeek: false` + `clusterDamage: NOT_ASSESSED` all survived UI → action → DB, read-back renders the gap and the clean result as two different sentences in two different tones, bulk-apply refused to copy damage, and mobile 375×812 has no overflow with every control ≥36 px.
+
+📉 **Recorded because it is unflattering, not despite it:** the rolling-4-week scouting coverage —
+S5b's sour-rot gate input — is **0/0**. No live block reached `FRUIT_SET` in the window, so the
+denominator is EMPTY. **That is "not yet measurable", NOT 0 % and NOT a failed gate**; runbook §9 S5b
+now says so explicitly. Re-run `npm run verify:phenology` when S5b is planned.
+
+🏛️ **COUNCIL RE-SHAPED THE PROGRAM** — [RUNBOOK-council-feedback.md](docs/spray_assistant/RUNBOOK-council-feedback.md)
+(Codex structure/data-layer + Gemini domain/liability; 10 CRITICAL, 11 SHOULD-FIX, 1 pushed back).
+Three genuine defects in the first draft: **(1)** no phase produced the rainfast/mobility/PHI/REI
+facts that S6+S7 gates REQUIRE → **new S2b product-facts master** (curated top-60 AIs = 86.5% of
+occurrences, free sources; Russell chose curated over buying CDMS/Agrian); **(2)** the dependency
+graph was WRONG — S7 secretly needed hourly weather (sulfur×temp, copper×slow-dry) and phenology
+(fruit-present), S5 needed S4 (3-10 rule wants shoots ≥10cm) → **split S7→S7a/S7b and S5→S5a/S5b**;
+**(3)** one hourly table conflated OBSERVED/FORECAST/REANALYSIS → `seriesKind` + a contract test that
+a forecast row can never satisfy a historical read. ⚡ **Russell's call: front-load the deterministic
+engine** — Wave 2 now ships legality+rotation (S7a) + the lot-residue moat (S8) + daily powdery
+(S5a) with **ZERO dependency on hourly weather**; speculative modeling moves to Wave 3.
+⛔ **Best catch (Gemini C8), previously missed entirely: PHI is not a one-time gate.** Plan Oct-10
+pick → spray 14-day-PHI Sept 20 (legal) → pull pick to Sept 30 = **retroactive violation, fruit
+unsellable, system silent**. Any harvest-date mutation must re-evaluate the trailing PHI window.
+⛔ **C6, promoted to CRITICAL: rule "gap→unknown→refuse" + a US-only registry BRICKS the live Bhutan
+tenant.** Non-US manual product-facts path is now standing rule §3.9 (same mechanism serves the US
+tenant-override case). Other folded: adjuvants invisible to interlocks (captan+organosilicone);
+`driedBeforeRain` must be DERIVED not self-reported; protection output is CATEGORICAL not a % (false
+precision); wind speed+**direction** distinct columns (CA PUR); facts-as-of snapshot on every spray
+(else a monthly refresh silently rewrites past decisions); entitlement moves tool→service layer
+(S9/S10 are server components, they'd bypass it); LWD blind to canopy architecture + needs a grower
+"calibrate wetness" override; **sour rot CUT** (needs berry-wound + vinegar-fly telemetry we don't
+collect → new rule §3.7 "a model may not depend on data the system does not collect"). Export MRLs →
+Later, documented. QA safety cases 17→**23**.
+New program folder `docs/spray_assistant/` (mirrors `docs/GIS/`):
+[SPRAY_ASSISTANT_RUNBOOK.md](docs/spray_assistant/SPRAY_ASSISTANT_RUNBOOK.md) (phases, waves, gates,
+ledger) · [discovery brief](docs/spray_assistant/spray-decision-discovery-brief.md) (domain +
+honesty + math contracts) · [data-sources design](docs/spray_assistant/spray-data-sources-design.md) ·
+[qa/QA-PROTOCOL.md](docs/spray_assistant/qa/QA-PROTOCOL.md) (**standing in-browser gate after EVERY
+phase, 15 program-wide safety cases**) · `phases/README.md` (artifact naming + lifecycle).
+
+Goal: a grower talks to the assistant about a spray decision and gets an **inspectable decision
+record** — risk, current protection, hard stops, legal windows, application window, and what we
+don't know. S0–S11 + SKB in 5 waves, **4 file-disjoint parallel lanes in Wave 1 and 4 in Wave 2**.
+
+📋 **Spray RECORD + PLAN are in scope and are the spine — S3a/S3b, Wave 1 lane C** (Russell asked
+2026-07-26). S6/S7/S8 and half of S9 all read the record, so **S3a lands as its own PR and opens
+Wave 2; S3b (season program) follows and blocks nothing.** Field inventory transcribed from the real
+`docs/spray orders/Spray work order template.xlsx` into brief §17.3 — it is **header + 3 line
+tables** (header / materials+REI+PHI / mixing order / per-block acres+times+tanks), and the
+**header-line split is load-bearing**: Phase 20 needs "enter once, attribute to N blocks", the
+residual model needs per-block facts, compliance keys off the pass. ⚠️ **A plan is intent, NEVER
+evidence** — a planned application must never deplete a residual, satisfy a rotation, start a PHI
+clock, or enter a compliance record; enforce by TYPE separation, not a boolean (a flag gets read
+wrong silently). ⚠️ **ROADMAP Phase 20's note that the template "omits REI + applicator license" is
+half wrong** — REI (F7) and PHI (G7) ARE there; only applicator license (+ target pest, weather at
+application) is missing. Phase 20 keeps cost/equipment (tractor, rig, gear, tanks/gal, labor, PUR)
+and becomes an authoring surface over S3a's row, never a second table.
+
+⛔ **Three findings that shape everything — do NOT re-derive:**
+1. **We have NO humidity, NO dew point, NO hourly data, NO leaf wetness.** `VineyardClimateDaily`'s
+   `rhMaxPct`/`rhMinPct` are plumbed end-to-end and **every provider writes null** (all 5 declare
+   `capabilities:["tmax","tmin","precip"]`; gridMET-via-ACIS grid 21 has no `rmax`/`rmin`). Every
+   pathogen model except temperature-only Gubler-Thomas is currently unbuildable. **S0/S1 is the unlock.**
+2. **The cheap win:** `forecast-nws.ts` ALREADY calls `/gridpoints/{o}/{x},{y}` for QPF — that same
+   response carries **hourly `relativeHumidity`, `dewpoint`, `temperature`** (verified live). One
+   parse away from the CART leaf-wetness inputs. Open-Meteo `hourly=` covers non-US + ERA5-Land history.
+3. **Structured label values (rates/PHI/REI) are NOT freely machine-readable** — PPLS gives metadata
+   + a PDF link; CDMS/Agrian sell the structured layer. Registration + resistance ARE free (EPA
+   APPRIL + CA DPR + UC IPM derivation). This is why plan 086 deferred label extraction, correctly.
+
+🔗 **Absorbs [plan 086](docs/plans/2026-07-20-086-feat-us-pesticide-registration-plan.md)** (→ S2 + seeds S3)
+and **supersedes VI runbook P9** (weather disease → S5); S0 resolves P9's own "spike an hourly source"
+decision gate. Adjacent-not-absorbed: ROADMAP Phase 20 owns the spray *work order*; S3 owns the *record*
+it will write — draw that line in S3's plan so we don't build two tables.
+
+<details><summary>✅ PLAN 097 — HOURLY forecast modal (SHIPPED + LIVE #520, 2026-07-26)</summary>
+
+**PLAN 097 — HOURLY forecast modal: SHIPPED + LIVE ([#520](https://github.com/russellmoss/wine-inventory/pull/520) → `4bae9ab6`, deploy success, 2026-07-26).**
+Tap a day card → modal graphing that day's hourly temp line + rain bars (NATIVE interval width —
+OM per-hour, NWS 3/6h QPF buckets), frost/heat threshold reference lines (crossing hour visible +
+in words: "reaches 95 °F around 4 PM"), site-local hours, now-marker, °F/°C per vineyard.
+`vineyard_forecast_hourly` (isolation 148 tables) replaced in the same ingest tx; assistant
+answers "what time will it freeze tonight?" (crossingTimes). ⚠️ **The modal SELF-HEALS missing
+hourly rows** (refresh-once-on-open — Russell's live find on Stoney Hill; a fresh daily forecast
+never trips the on-view refresh). Plan `docs/plans/2026-07-26-097-…` (completed). Live proofs:
+Madera "reaches 95 °F ~4 PM"; Stoney Hill 1.66 in incl. a real past-midnight bucket; Paro monsoon
+rain 13:00–20:00.
+</details>
+
+<details><summary>✅ PLAN 096 — Weather forecast + rainfall: ALL 5 PHASES SHIPPED + LIVE IN PROD (2026-07-26)</summary>
+
+**PLAN 096 — Weather forecast + rainfall time-series: ALL 5 PHASES SHIPPED + LIVE IN PROD (2026-07-26, deploy `bcd70e29` success).**
+PRs [#514](https://github.com/russellmoss/wine-inventory/pull/514) (P0 foundations) ·
+[#515](https://github.com/russellmoss/wine-inventory/pull/515) (P1 rainfall) ·
+[#516](https://github.com/russellmoss/wine-inventory/pull/516) (P2 forecast) ·
+[#517](https://github.com/russellmoss/wine-inventory/pull/517) (P3 warnings+notifications) ·
+[#518](https://github.com/russellmoss/wine-inventory/pull/518) (P4 observability+goldens) ·
+[#519](https://github.com/russellmoss/wine-inventory/pull/519) (**deploy fix: the `10 */6` cron
+failed EVERY prod deploy from #516 — Vercel Hobby rejects sub-daily crons at DEPLOY time, invisible
+to CI/local build; forecast cron is DAILY 15:10 UTC, on-view refresh >6h carries intra-day
+freshness; restore 6-hourly only on Pro**). Plan `docs/plans/2026-07-26-096-…` (completed) ·
+council `council-feedback-096-…` (Codex+Gemini, 13 folded, 1 refuted). **The forecast strip sits at
+the TOP of /vineyards/weather** (Russell: most actionable info first). 7-day NWS (US) / Open-Meteo
+(Bhutan, elevation-downscaled to the true site), tiered frost/heat badges + claim-first digest
+notifications to all members + all-clears, official NWS banner verbatim, rainfall bars+cumulative
+with a 30d/7d/custom range that works in January (year-round ingest, 13,152 rows seeded).
+⚠️ Standing gotchas: ONE site-local "today" (site-time-core — never re-add a UTC today);
+delete-horizon-then-insert is what "replace" means for forecasts; ai-native's coverage doc goes
+stale on ANY core-export change (`verify:ai-native -- --write` before push — it failed #517's CI once).
+</details>
+
+<details><summary>✅ Vineyard Intelligence P3 — NDVI DISPLAY (SHIPPED + LIVE #498, 2026-07-26)</summary>
+
+All 11 units, reviewed (4 specialists) + fixed. Plan `docs/GIS/phases/phase-3-ndvi-display-plan.md` (completed) · report
+`phase-3-report.md`. ⚠️ **The P3 plan + council files were LOST (never saved) — reconstructed from memory at build time.**
+</details>
+
+<details><summary>✅ Vineyard Intelligence P3 — NDVI display (viz half) — SHIPPED + LIVE 2026-07-26 (#498)</summary>
+
+Schema (`SpatialDatasetDerivative` + `SpatialStyle`, RLS applied to live DB, `verify:tenant-isolation` 141 tables) ·
+`warp.ts` UTM→north-up-3857 (council #1, **sub-pixel registration test is the merge gate**) · `resolveDomain` +
+min-spread clamp (#4) · NDVI value histogram · Int16×10000/−32768 derivative cache (#6, idempotent claim-first) ·
+serving route (zero-dep `node:zlib` PNG + ETag/must-revalidate #7) · `SatelliteMap` raster arm · map UI (6 modes,
+palette, legend+badges) · locked-domain side-by-side comparison + saved styles · `compare_ndvi_dates` tool.
+- **Proven:** registration gate (synthetic + real fixture), `verify:ndvi-display` 20/20, `verify:ndvi`/`ai-native`
+  green, 103 gis tests, tsc+eslint clean. Browser-QA'd Demo Winery (`qa_ndvi_display_vy`): overlay registers on
+  block outlines, modes re-domain live, nearest→pixelated, styles apply, 2-date locked comparison renders.
+- ⚠️ **Gotchas:** (1) UTM raster on a 3857 basemap misregisters ~10 m — **WARP first**, only the registration test
+  catches it; (2) `SpatialStyle` SYSTEM uniqueness needs PARTIAL indexes (Postgres NULL ≠ NULL); (3) `@vercel/blob`
+  now needs `allowOverwrite:true` for deterministic-key idempotent writes (latent P2 bug, fixed); (4) Leaflet
+  `imageOverlay.getElement()` is null before onAdd — set `image-rendering` AFTER `addTo(map)`.
+- **Deferred (documented):** pixel B−A diff MAP (per-block delta ships via the tool); analytical 3×3 stored
+  smoothing; polygon-exact display clip (v1 = estate AOI masked to valid pixels); TENANT-scope styles.
+</details>
+
+**⚡ P4 soil (Wave 1 lane B) — ✅ BUILT + LIVE-QA'd on `feat/vi-p4-soil`, PR #502 MERGING (2026-07-26).**
+All 9 units committed (8 feat commits + planning). Migration `20260725140000_soil_snapshot` **applied to prod**
+(additive, Bhutan untouched). Gates: tsc 0, **vitest 4024/0**, **`verify:soil` 23/23** (e2e DB, injected SDA),
+`verify:tenant-isolation` (+soil RLS), `verify:invariants` 39/39 (SOIL-1), `verify:ai-native`, `verify:naming` 25/25.
+**Live browser QA PASSED** (in-app pane, Demo): pulled a real Finger Lakes block through the UI → live NRCS →
+6 soil cards (Mardin 39% pH 6.6, Volusia 26%, Valois 18%…) + "Other (4 slivers <1%)" with Water folded+retained,
+100% covered, survey NY123; DB read-back matched (9 comps, geodesic areaSqM 912,832). Plan:
+[phase-4-soil-documentation-plan.md](docs/GIS/phases/phase-4-soil-documentation-plan.md) · council (11 findings folded):
+[phase-4-council-feedback.md](docs/GIS/phases/phase-4-council-feedback.md).
+✅ **SOIL MAP OVERLAY ADDED (2026-07-26)** — the deferred Wave-4 item, de-risked by a live geom spike (clipped
+`STIntersection.Reduce.STAsText` = ~10 KB/block). Best-effort 3rd SDA call stores block-clipped display
+geometry (`displayGeometry` column, migration `20260726120000`); pure WKT→GeoJSON + per-map-unit **colored
+vector overlays via P1's `overlays` prop (ZERO SatelliteMap-internals change)**; **"Soil layer" toggle + color
+legend on `/vineyards/maps`**. Live browser QA: toggling painted **18 soil polygons inside the block** (paths 1→19),
+Water in a distinct blue, legend "39% Mardin / 26% Volusia / …". `verify:soil` 24/24 (+geometry stored, EMPTY
+dropped); 30 overlay unit tests. ⚠️ QA fixture "QA-Soil Overlay Vineyard" left in Demo for viewing — clean up after.
+
+▶️ **PR OPEN → [#502](https://github.com/russellmoss/wine-inventory/pull/502)** (soil docs + map overlay + click-panel + labels). Merged `main` (P3 #498) in. Post-merge + follow-on gates green (vitest **4060/0**, verify:soil 25/25, invariants/ai-native/tenant-isolation).
+✅ **SOIL AUTO-PULLED FOR EVERY US VINEYARD BLOCK (2026-07-26).** Soil was on-demand only → most US vineyards
+were empty. Now a `runSoilSweep` (idempotent `pullBlockSoil` per block: cached no-op/non-US skip/missing pull,
+capped per run) + daily cron `/api/cron/soil-sweep` (CRON_SECRET, mirrors ndvi-poll) + `npm run backfill:soil`.
+Backfill ran: **all 13 Demo US blocks now have soil** (WV Oregon, Oakville, RRR…); Bhutan's 5 skipped (non-US).
+✅ **TWO MAP PAGES FOLDED INTO ONE "Map Explorer" at `/vineyards/maps` (2026-07-26).** The old NDVI console
+(`/vineyards/ndvi`) + block-summary map merged into a single layer-stack explorer: blocks + NDVI + soil,
+toggle + reorder + click-inspect. **The map now renders even with no NDVI scene** (NDVI is one optional layer)
+so a soil-only vineyard still gets a map. `/vineyards/ndvi` → permanent redirect (links/bookmarks/assistant
+navigate keep working); single nav entry; old `MapsClient` modal retired (block details + soil cards still on
+`/reference`). Live QA: /maps=explorer, /ndvi redirects, RRR shows NDVI+soil, no-scene vineyard shows map+soil.
+✅ **SOIL LAYER ON THE NDVI MAP (2026-07-26)** — `NdviMapPanel` now stacks NDVI + soil via a `MapLayerControl`
+(per-layer visibility toggle + up/down reorder, top-of-map-first) → ordered `overlays` painted bottom→top.
+**Live QA on Russian River Ranch: NDVI raster + soil polygons render together** (labels FaD/HtC/GdE), toggle
+each on/off, reorder flips the stack (verified NDVI↔Soil top swap), click a polygon → tabbed panel. The user's
+"don't see it" was because soil was only on `/vineyards/maps`, not the `/vineyards/ndvi` page — now fixed there.
+✅ **CLICK-TO-INSPECT + LABELS ADDED** — click a soil polygon → tabbed detail panel (Overview/Chemistry/Physical/Source via `Tabs`); map-unit symbol (`musym`, e.g. "MdB") fetched+stored per unit and painted centered in each polygon (permanent center tooltip). `SatelliteMap` extended additively (`onOverlayFeatureClick` + overlay `label`) — no fork. **Live QA: labels render (62B/68B/152B/77B… centered in polygons); click-panel is code+unit-test verified** but the flaky in-app pane unmounts the modal between JS calls so the live click screenshot couldn't be captured (user can click it). ⚠️ QA fixture "QA-Soil Overlay Vineyard" + dev server left up for viewing — clean up after.
+⚠️ Shares `prisma/schema.prisma` + the shared prisma CLIENT
+with the parallel P3/P8 lanes — **`prisma generate` gets clobbered by their generates; regenerate right before any
+tsc/verify/dev-server run.** P3 display migrations (`..._ndvi_display_*`) are already in prod but not on this branch (fine).
+
+<details><summary>✅ VI P8 — Weather & Climate spine — SHIPPED + LIVE to main (#500–#511, 2026-07-26)</summary>
+
+`docs/GIS/phases/phase-8-weather-climate-spine-plan.md` (BUILT) · report `phase-8-report.md`. **All merged + live in prod.**
+**Migration `20260725150000_weather_schema` is APPLIED to prod**
+(bumped past the parallel P3 `ndvi_display` + P4 `soil_snapshot` slices already in the DB).
+
+**Post-spine follow-ons shipped (all live):**
+- **Station/source selector + clickable Leaflet station map** (#504) — grower picks which station reports.
+- **Winkler long-term normal (10/20-yr selectable) + WSU-style cumulative GDD chart** (#505–#508) — °F, base 50°F,
+  April–Oct, 5 comparison lines (longterm/cool/hot/last/current), interactive crosshair scrub + zoom (±/pinch/drag-pan).
+- **#509 — "No tenant context" fix**: server actions now wrap ingest in `runAsTenant()` (`requireTenant()` helper);
+  dataless-primary fallback in `read-core` + `selectPrimaryCore` skips completeness-0 stations (Madera read 0 → fixed).
+- **#510 — non-US vineyards (Bhutan) get weather**: `resolveVineyardCentroid` fallback chain adds the grower's **GPS pin**
+  (`VineyardDetail.gpsLat/gpsLng`); `backfill-core` uses **NASA POWER** (global, keyless) where gridMET has no coverage.
+  Manually primed 7 of 8 Bhutan vineyards (Gelephu has no pin yet).
+- **#511 — durable sweep auto-prime**: the daily cron (`/api/cron/weather-poll`, 15:40 UTC) now enumerates ALL active
+  vineyards and primes any located-but-empty one (current season + 20yr backfill + `weatherAutoRefresh` on), capped 30/run.
+  ➡️ **Gelephu will self-populate on the next cron run once its GPS pin lands** — no manual step needed.
+
+**Proven with REAL live data** (Russian River Ranch + Bhutan) + a deterministic fixture gate:
+- 3 tenant tables (fact-table `vineyard_climate_daily` + 1:1 `vineyard_weather_config` + daily-keyed
+  `weather_provider_usage`); 6-provider registry (gridMET-via-ACIS, RCC-ACIS station, NASA POWER, USGS EPQS
+  LIVE; Daymet+CDO fixture-tested); ingest (344 rows/4.7s, obs-shift visible); `query_climate` tool (R9
+  freshness fallback + operating-tz-beats-viewer both proven live); grower card (browser-rendered real data:
+  GDD 656.5, Winkler I, GST 18.42 Warm, **3-source spread 499–656**).
+- Gates: `verify:weather` 12/12, `verify:tenant-isolation` ✓, `verify:ai-native` ✓, 46 weather unit tests, +4 goldens.
+- ⚠️ **Isolated worktree Prisma client** (copied @prisma into worktree + generated) so DB/dev-server work here
+  never touched the P4 session's main-checkout client. `.env` copied into worktree (gitignored).
+
+**Follow-ons (small):** alert INBOX EMIT stubbed (detection done); explicit weather case in
+`verify-tenant-isolation.ts`; gridMET RH needs a direct adapter (4B); doc weave (brief §13/§14 + runbook
+ledger); **merge the code PR after P3/P4 slices settle** (Unit 1 migration already in prod).
+</details>
+
+<details><summary>✅ Vineyard Intelligence P2 — NDVI core (data half) — SHIPPED + LIVE IN PROD 2026-07-25</summary>
+
+All 11 units merged: schema slice **[#495](https://github.com/russellmoss/wine-inventory/pull/495)** + feature units
+**[#496](https://github.com/russellmoss/wine-inventory/pull/496)** (squash-merged to main; prod deploy `B6D8Lm9H` success).
+Plan `docs/GIS/phases/phase-2-ndvi-core-plan.md` (completed) · report `phase-2-report.md`.
+
+- 5 tenant-scoped tables (`spatial_scene`/`spatial_dataset`/`spatial_analysis_job`/`block_spatial_metric`/`cdse_usage_counter`)
+  + `vineyard.ndviAutoAdd`; `geotiff.js` decoder (bit-exact vs P0 tifffile); C1 idempotent-materialization outbox;
+  block metrics (mask gate + Y-FLIP + 0.5 floor); sweep+cron (DARK auto-add); quota; `process_ndvi`/`query_ndvi_stats`
+  assistant tools; thin console `/vineyards/ndvi`.
+- **PROVEN via `verify:ndvi` (DB e2e) + TWO browser-QA passes** (Claude-in-Chrome, Demo login): per-block NDVI means land
+  in the DB (0.591/0.768/0.670; live Oakville 0.443 in UTM 10N), full provenance, C1 idempotency, WITHHELD/low-coverage.
+- ⚠️ **NEW gotchas (see [[vineyard-intelligence-p2-plan]]):** (1) CDSE non-square pixels → `buildProcessRequest` snaps UTM
+  bbox to 10 m; (2) the Y-FLIP (`rasterRow = H-1-gridRow`); (3) the adopt path must persist COMPLETED to the JOB ROW,
+  not just return it (browser QA caught the IN_FLIGHT leak — `verify:ndvi` now asserts the row); (4) console all-access =
+  `isTenantAdminLike` (admin OR developer), not `role==="admin"`; (5) scripts driving the adapter need `--conditions=react-server`.
+</details>
+
+<details><summary>Grower module → Vendor parity (plan 095, #489) — SHIPPED (PR #493, live in prod)</summary>
+
+<details><summary>Grower module → Vendor parity (plan 095, #489) — SHIPPED (PR #493, live in prod)</summary>
+
+Third-party growers auto-link to a QBO-synced Vendor, estate growers don't. Schema + 2 migrations, write core,
+`create_grower` tool, `/setup/growers` UI, isolation cases. ⚠️ Deploy was blocked ~20h by a PRE-EXISTING
+`.vercelignore` bug (shipped `scripts/` not `test/`) — see [[vercelignore-scripts-test-build-break]]. **CI green ≠
+Vercel build green when `.vercelignore` strips files.**
+</details>
+
+<details><summary>Vineyard Intelligence P0 — GO verdict (done, unshipped)</summary>
+
+**P0 COMPLETE — VERDICT: GO on the no-worker architecture.** All 16 units on
+`spike/vi-p0-no-worker` (pushed, **no PR yet**). Runbook §7 ledger flipped to 🟩.
+[ADR 0009](docs/architecture/decisions/0009-vineyard-intelligence-no-worker-architecture.md) ·
+[phase report](docs/GIS/phases/phase-0-report.md). 3891 tests green.
+
+At realistic scale (~50 ha, 20 blocks): **390 ms** compute, **451 MB** peak RSS, against
+pre-committed limits of 5000 ms / 512 MB. Clipping sub-quadratic in vertices (10×→5.3×), nearly flat
+in blocks (10×→1.5×). Coverage validated **cell-by-cell** vs `exactextract` (292 cells, max 2.95e-8,
+every non-zero diff explained by the ORACLE's float32). Live scene: 342×342 px, 767 KB, 2153 ms,
+0.892 PU, 80.8% valid, block NDVI means 0.281–0.709.
+
+⛔ **Five things not to re-derive** (all now corrected in runbook rule §2.13 itself):
+1. **`harmonizeValues` is BACKWARDS.** Baseline guard is `units:"REFLECTANCE"`; the flag only clamps
+   negatives, and clamping fabricates `NDVI = 1.0`. Pin it **false**.
+2. **Baseline is NOT in the Process API** — needs a CDSE **STAC** `processing:version` call.
+3. **`resx:10` under CRS84 = 10 DEGREES** → "3504.23 m/px exceeds 1500". Needs a METRIC CRS.
+4. **SCL must be `DN`**, in a `units` ARRAY parallel to `bands`. Two input objects → "Dataset with
+   id: 1 not found".
+5. **Weighted type-7 quantiles IGNORE their weights** (median 50.5 for `[1×9, 100×1]`). Pinned the
+   midpoint form instead.
+
+⚠️ **Constraint is MEMORY, not time** — 451/512 MB. Scale-register tripwire at 400 MB or ~2M px.
+⚠️ Free tier binds on **REQUESTS** (10k/mo), not PU → one estate-wide raster, clipped N ways.
+Dev-only Python tools: `pip install exactextract numpy tifffile`. Runtime deps 22→23 (`proj4` only).
+
+▶️ **NEXT:** `/review` then `/ship` the P0 branch (16 units, no PR yet). Then Wave 1 opens:
+**P1 planting geometry ⚡ P4 soil cards ⚡ POF offline** — P4 and POF never depended on this verdict.
+
+✅ **P1 SHIPPED TO PR — [#494](https://github.com/russellmoss/wine-inventory/pull/494) open (branch merged w/ main, CI running). Runbook §7 → 🟪 QA.**
+[phase-1 plan](docs/GIS/phases/phase-1-planting-geometry-plan.md) · [council](docs/GIS/phases/phase-1-council-feedback.md) ·
+[phase report](docs/GIS/phases/phase-1-report.md). tsc 0, **172 GIS/assistant tests green**,
+**`verify:planting-geometry` 13/13** on the real Demo tenant (create→blade-split zero-lost-area→IoU
+version→migration byte-identical), `verify:tenant-isolation` + `verify:ai-native` green. Additive migration
+`20260724120000_planting_geometry` APPLIED to prod (new tables + nullable cols; Bhutan untouched).
+✅ **Browser QA PASSED** (2026-07-24, via Claude-in-Chrome on the user's real browser — the in-app browser
+refuses the HTTP localhost origin here). Russian River Ranch: migration proposed **2 separate plantings**
+(not bridged), confirmed all-or-nothing → 2 DERIVED areas + yellow boundary overlay + migrated badge;
+assistant answered structure Q&A. ⚠️ **RRR is now migrated in Demo (real QA write)** — revert available. ⚠️ **`next dev` regenerated a STALE Prisma client** (dropped
+the new models, tsc 0→60) — stop the dev server before `prisma generate`; regen after adding models.
+⚠️ **Standing P2 obligation:** warn-only topology means P2 must RE-VALIDATE the mask before NDVI stats.
+Council changed two architecture calls before any code:
+1. **Boolean geometry kernel = `jsts`, NOT `polyclip-ts`.** Recentring to UTM fixes OUR arithmetic but NOT
+   the martinez family's internal coincident-edge failure P0 rejected — it's a precision-model problem, not
+   a coordinate-scale one. JSTS `GeometryPrecisionReducer` + `OverlayNG` + native line-splitter.
+2. **Split = true line-split ("blade"), NOT buffer-and-corridor.** Corridor-difference destroyed the shared
+   row-middle boundary and minted a permanent gap = unassigned area. Blade produces adjacent blocks sharing a
+   mathematically identical edge, zero lost area.
+Russell's four decisions: **JSTS** · **IoU-gated versioning** (IoU>0.98 = trace correction in place, no stale
+cascade; ≤0.98 = new version + mark stale) · **all-or-nothing per-vineyard migration** (`Vineyard.plantingMigratedAt`
+gate) · **warn-only topology** (chose the non-recommended option — saves never blocked; **consequence: P2 must
+re-validate the mask before computing stats**, carried to the P2 plan + registers).
+Also folded: pinned+persisted canonicalization anchor in the fingerprint (else the same shape hashes two ways);
+version-bump concurrency = subject row-lock + partial-unique on the open row + stale-write guard; migration
+pre-flight topology (never silently heal overlaps, strict <1 m grouping so it can't bridge a road); area shown
+as "Productive area" (spacing) primary + "Boundary footprint" (geodesic) secondary.
+▶️ **NEXT:** browser-QA `/vineyards/planting-setup` on Demo (user logs in), then `/review` + `/ship` the branch (schema-slice commit can be its own PR). P2 (NDVI core) unblocks once P1 lands.
+
+<details><summary>Planning + council + repo cleanup (done)</summary>
+
+**Vineyard Intelligence P0 — plan 094 WRITTEN + COUNCIL-REVIEWED, not yet built.**
+Plan: [2026-07-24-094-…](docs/plans/2026-07-24-094-spike-vineyard-intelligence-p0-plan.md) (16 units).
+Council: [council-feedback-094](docs/plans/council-feedback-094-vineyard-intelligence-p0.md).
+P0 is the Wave-0 solo gate — `P1←P0`, `P2←P0+P1` — proving or killing the **no-worker** architecture.
+
+Both reviewers **confirmed** the load-bearing claim (fractional coverage is polygon ∩ *convex* rect,
+so hand-rolled Sutherland–Hodgman is exact, zero deps) and both said the first draft's *instrument*
+would have blessed a wrong architecture. Six structural fixes folded in; Russell chose all three
+recommended options (add `proj4` for the spike · estate-wide fetch · prove the canvas paint in P0).
+
+⛔ **Five things not to re-derive:**
+1. **`harmonizeValues` does the OPPOSITE of what runbook §2.13 says.** In REFLECTANCE units the BOA
+   offset is applied *regardless*; the flag only clamps negatives to zero → clamped `B04=0` yields a
+   fabricated `NDVI = 1.0`. Real guard = pin `units: "REFLECTANCE"` + `harmonizeValues: **false**`.
+   **Runbook §2.13 + §5 need correcting (Unit 15).**
+2. **The processing baseline is NOT in the Process API response.** `inputMetadata.serviceVersion` is
+   Sentinel Hub's service version, not the ESA baseline. Use the CDSE **STAC** `processing:version`.
+3. **Free tier binds on REQUESTS (10k/mo), not PU** — a 50 ha request is ~0.038 PU. Per-block fetching
+   burns 50 requests per look; **one estate-wide raster = 1 request**. Hence the fetch-shape decision.
+4. **S-H exactness has a ULP precondition.** Clipping must *assign* the exact edge scalar
+   (`intersect.x = pixel_max_x`), never lerp it — else U-shape bridges stop cancelling and area leaks
+   **silently**. And Unit 1 must *reject* self-touching/self-intersecting rings: signed area is
+   algebraic, not geometric, for those.
+5. **`polyclip-ts` is the WRONG fallback** (was in the first draft). `setPrecision` is process-global
+   with never-reset snap trees, 3–5× slower when set, and a *larger* epsilon can make failures worse.
+   Fallback is **`jsts`** (real `PrecisionModel` + snap-rounding).
+
+✅ **Unit 0 credentials CLEARED + verified live (2026-07-24).** CDSE `client_credentials` grant works
+(~0.6–1.2 s); 📌 **`expires_in = 1800 s` (30 min)**, confirmed against the JWT `exp − iat` — CDSE does
+not document this, so it is a measured fact, and Unit 10's 120 s skew is 6.7% of it.
+`BLOB_READ_WRITE_TOKEN` already existed in Vercel (store connected 9 d ago) and was pulled into local
+`.env` append-only after a `.env.bak-<ts>` backup (47 → 48 vars). 🎯 **The research's one UNVERIFIED
+item is now CONFIRMED: private blob + `Range` → HTTP 206** (put 464 ms, ranged GET 4 B in 327 ms, probe
+deleted) — so a range-indexed raster layout on Blob is viable and Unit 12 shrinks to latency only.
+
+✅ **Unit 0 fully CLEARED (2026-07-24).** Three commits on `claude/vineyard-intelligence-phase-defad5`,
+**not yet pushed / no PR**:
+`931595b0` docs/GIS tracked · `eb09ecf8` plan 094 + council · `7a5647ea` proj4.
+`npm ci` restored this worktree (688 pkgs; leaflet/@geoman-io/@turf/polyclip-ts/@types/geojson were in
+the lockfile but absent from disk). `proj4@2.20.9` + `@types/proj4` added — round-trip error **0.00 mm
+(UTM 18N) / 1.46e-6 mm (UTM 46N)**, and recentring headroom measured at **ULP 1.57e-10 m @ 705 km
+easting vs ~2.2e-14 m recentred** (the ~4 digits Unit 2 claims). `tsc --noEmit` clean;
+**3,660 tests green**, 0 failures.
+
+⚠️ **`docs/GIS/` was committed to THIS BRANCH, not `main`** — the main checkout is in **DETACHED HEAD**
+at `6082be2a` (a commit there would dangle), and `main` is checked out in the
+`virginia-fruit-ipm-knowledge-8ba0f8` worktree. The detached HEAD is pre-existing and worth fixing.
+Also: `.env.bak-20260724-081051` holds secrets — gitignored, delete when comfortable.
+
+▶️ **NEXT:** push + PR the three commits, then `/work` the plan. P4 (soil) and POF (offline) do **not**
+depend on P0's verdict and can start anytime.
+
+</details>
+
+</details>
+
+<details><summary>Previous objective — /bug-triage merged-sweep fix (done, live on main)</summary>
+
 **`/bug-triage` re-offered SHIPPED code as new work — FIXED and LIVE on `main` ([PR #478](https://github.com/russellmoss/wine-inventory/pull/478), squash `0b649b74`).**
 New **Merged Sweep** phase + boilerplate-plan-issue detection. `.claude/workflows/` is outside the
-auto-fix fence, so #478 took an owner merge rather than the automation. Details under ✅ Done recently.
+auto-fix fence, so #478 took an owner merge rather than the automation.
 ⚠️ **A worktree only picks this up on a fresh checkout** — sibling worktrees still carry the OLD
 `bug-triage.js`. Run `/bug-triage` from a checkout at `origin/main`.
+
+</details>
 
 <details><summary>Previous objective — PLAN 091 voice pronunciation (done, in prod)</summary>
 
@@ -44,7 +481,79 @@ per-tenant rules mean moving lexicon application into the speak route only.
 
 </details>
 
+🟩 **S5a (lane C — powdery index + latent-infection ledger): LEDGER BUILT AND VERIFIED; the index is
+a NO-GO.** [phase report](docs/spray_assistant/phases/S5a-report.md)
+[probe report](docs/spray_assistant/phases/S5a-diurnal-fidelity-probe.md) ·
+[plan v2](docs/spray_assistant/phases/S5a-powdery-index-latent-ledger-plan.md) ·
+[council](docs/spray_assistant/phases/S5a-council-feedback.md)
+
+⛔ **The pre-committed no-go TRIGGERED again — all 8 sites failed.** Gubler-Thomas point deltas were
+scored from Felber et al. 2018 reconstructions against **genuine station hourly METAR** (IEM ASOS,
+6 seasons/site, Wilson CIs), not ERA5 — council C2's methodological fix. The failure is **structural,
+not tuning**, on four independent lines: a sawtooth control performs as well as the calibrated model;
+our sites violate its shape assumptions *far less* than the sites it was calibrated on (0.2–1.4% vs
+Felber's own 27%); consecutive-hours-in-band MAE is **2.2–3.4 h against a rule thresholded at 6 h**;
+and Savalkar's monthly-station-statistics mitigation lifted no station-oracle site (it made Stoney
+Hill *worse*) because that >75% error reduction was for a smooth accumulator and this is a
+narrow-window threshold counter — plan §1.2 confirmed by measurement.
+
+**The error runs in the crop-loss direction:** G1 unsafe-miss breaches its 2% bar at six of eight
+sites, worst **13.6% at Madera** — the same site S0 flagged for reporting its highest confidence on
+its worst inputs. **Unlike ADR 0012 there is no regime split to narrow to:** the best oracle in the
+fleet (Russian River, 3.7 km) scored *worse* than a 9.8 km one.
+
+→ **S5a ships the LEDGER ONLY. The powdery index moves to S5b behind S1, which is now load-bearing
+for powdery mildew and not only for leaf wetness.** Units 3–4 (`diurnal-core`, `powdery-core`) do
+not ship as a risk engine.
+
+✅ **The ledger is BUILT, migrated to prod, and verified.** Units 1, 2, 5, 6, 7, 8, 9, 10, 11 all
+landed: `latent_infection_event` (append-only, RLS, 7 CHECKs), the resolution rules, the read seam,
+`query_spray_decision` **thin + hard-refusing** (first `SPRAY_CONTRIBUTORS` entry), 26 unit tests,
+and **`verify:latent-infection` — 43 assertions green against the live DB**. `verify:invariants`
+49/49, `verify:tenant-isolation` green incl. 6 new cases, `verify:ai-native` green, build green.
+
+⚠️ **The append-only trap, worth remembering repo-wide:** `GRANT SELECT, INSERT` does NOT make a
+table append-only — `ALTER DEFAULT PRIVILEGES` already granted `app_rls` full DML on every new
+table, so a narrow GRANT changes nothing. It needs an explicit **`REVOKE UPDATE, DELETE, TRUNCATE`**.
+Caught only by test-applying the migration to a disposable Neon branch; `prisma validate` checks the
+Prisma schema, not the SQL. See [[append-only-needs-revoke-not-grant]].
+
+✅ **Bhutan's 8–9 °C weather gap — ESCALATED FROM S5a AND NOW FIXED (PR #536).** It was elevation,
+and it was resolvable. NASA POWER publishes the elevation of the grid cell it answers with
+(`geometry.coordinates[2]`) and the adapter was discarding it: **Bajo's cell sits at 3,038 m against
+a vineyard at 1,229 m.** Re-sampling ERA5 at POWER's own cell elevation collapsed the bias from
+**−9.71 °C to +1.80 °C** across all 8 sites at a 4.7–6.1 °C/km lapse rate. Two parts, because either
+alone would be wrong: an **ERA5 archive provider passing `elevation=`** (POWER rows are deliberately
+NOT lapse-corrected at ingest — that would put a derived number in a column contracted as "the
+SINGLE source of this row"), plus **`source-fidelity-core`**, which WITHHOLDS hard-boundary
+classifications when the source's own reported elevation is >300 m off the site, while still
+rendering the raw series, GDD and GST. Winkler classes are ~278 °C-days wide — 1 °C moves the label,
+so there is no "approximately right" region. Live: Bajo Region I "too cool" + fabricated April
+frosts → **Region V "very hot", 0 frosts**; three sites that read identically are now distinct.
+`nasa_power` rows kept as a second source, so it is reversible. **The guard proved itself
+mid-backfill** — Open-Meteo 429'd on Paro, ingest fell back to POWER, and the card withheld Paro's
+classifications instead of showing the old wrong ones.
+⚠️ **This does NOT reopen S5a's index NO-GO** — Bhutan was `consistency_only` tier, the gate is
+per-site and never averaged, and the six US sites failed independently against genuine station METAR.
+🪝 **Left alone, found in passing:** Gortshalu / Lingmethang / Norzinthang have NO forecast rows at
+all (`vineyard_forecast_daily` empty for them). Separate issue.
+
+
 ## 🔭 Also in flight
+
+**SPRAY INTELLIGENCE S3a (lane C) — plan written + council-reconciled, READY FOR `/work`
+(2026-07-26).** Branch `claude/s3a-spray-application-record-2572f2`. The spray application record
+(header + material / mixing-order / block lines) + planned harvest date as an audited event stream.
+**Blocks Wave 2** (S7a, S8, S6, S7b, S9). Plan:
+[phases/S3a-spray-record-plan.md](docs/spray_assistant/phases/S3a-spray-record-plan.md) · council:
+[phases/S3a-council-feedback.md](docs/spray_assistant/phases/S3a-council-feedback.md).
+3 PRs: schema slice first → domain cores (**this is what unblocks Wave 2**; the UI is NOT on the
+critical path) → minimal surface + QA. Council reversed one decision: **a correction COPIES the
+facts snapshot, never re-resolves it** (re-resolving would repaint a July spray with November's
+registration data — rule §3.8). Open for Russell: D1 canonical-metric storage for a US regulatory
+record · D2 assistant allowlist tier · D3 the 24 h segment-gap threshold.
+⚠️ Three sibling lanes are planning concurrently — `prisma/schema.prisma` and the runbook ledger are
+shared; schema slices serialize.
 
 **PLAN 090 — UNITS 1-10 DONE (18 commits, NOT pushed). RE-INDEX COMPLETE (606 docs), DIFF JUDGED.**
 Plan: [2026-07-22-090-…](docs/plans/2026-07-22-090-fix-kb-rag-retrieval-quality-plan.md).
@@ -164,7 +673,11 @@ both flags + re-seed.
 
 ## 🔭 Also in flight
 
-**PLAN 086 — US pesticide registration + resistance-group coverage. PLANNED, not started.**
+**PLAN 086 — US pesticide registration + resistance-group coverage. ABSORBED INTO SPRAY INTELLIGENCE
+(2026-07-26) — do not work it standalone.** Units 1–3, 5–7, 9, 11 → **S2**; Unit 10 (spray record) seeds
+**S3**; Unit 8 (assistant tool) → **S11** so the program ships ONE composite tool, not two. Its Key
+Decisions, measured Unit-4 de-risk, and Risks tables carry over verbatim — read it before planning S2/S3.
+See [SPRAY_ASSISTANT_RUNBOOK.md](docs/spray_assistant/SPRAY_ASSISTANT_RUNBOOK.md) §2.
 Plan: [2026-07-20-086-…](docs/plans/2026-07-20-086-feat-us-pesticide-registration-plan.md) (Deep, 11 units).
 Numbered 086 because this session's 085 collided with the MSU plan above — `ls docs/plans/` was
 checked and came back clean, but their file was still branch-only. **The check is only sound against
@@ -231,7 +744,120 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
-0. ✅ **POPPED — UC IPM knowledge source + corpus dates + stale-guidance warning. MERGED (#405,
+0. ✅ **POPPED 2026-07-27 — all three PRs MERGED, PNW Handbooks is chunked + embedded + LIVE FOR
+   EVERY TENANT.** [#544](https://github.com/russellmoss/wine-inventory/pull/544) (chunker fix) +
+   [#545](https://github.com/russellmoss/wine-inventory/pull/545) (PNW source, staged dark) +
+   [#547](https://github.com/russellmoss/wine-inventory/pull/547) (`defaultEnabled` flip, its own
+   commit per convention — never enabled in the PR that adds a source) all merged to main.
+   **59 documents / 142 chunks live**, KB-1-audited clean (2 table-shaped pages correctly refused at
+   ingest, 0 stored chunks, confirmed not a leak). Both Unit 11 gates passed: displacement 0/120
+   slots changed (`verify:kb-register`), cross-region 0/40 PNW passages leaked into Bhutan on
+   generic queries pre-flip. Russell's call: flip globally. Note the flip needed TWO steps, not
+   one — `defaultEnabled` lives on the `KnowledgeSource` DB row, so the config edit alone changed
+   nothing until `seed:knowledge-sources` ran; re-verified post-seed that Bhutan now surfaces PNW
+   passages (3/40 on the same 5 generic queries), in line with how every other US-specific source
+   (UC IPM, WSU, OSU Extension) already behaves there. Both eval artifacts (`kb-eval/snapshot.json`,
+   `kb-register-baseline.json`) checked for drift and left untouched — 0 diff, since both run
+   against Demo Winery, which already had PNW enabled before the global flip.
+   Branches/worktrees pruned: `kb-chunker-text-integrity`, `pnw-handbooks-kb-source`,
+   `pnw-handbooks-default-enable` all gone (local + remote) after their squash-merges; the original
+   `grape-kb-ingestion-a530f9` worktree registration had already been unregistered (its directory is
+   this session's tracked cwd, left alone).
+   ⚠️ **Merging #544 has a cost side effect, now live**: `CHUNKER_VERSION` is folded into
+   `deriveIndexHash` unconditionally, so the monthly sweep progressively re-indexes (and re-embeds)
+   every document it re-fetches. That is the repair mechanism working as designed, but it is real
+   embedding spend — a dedicated campaign for the ~630 confirmed-corrupted documents (specifically
+   the ones the monthly sweep won't reach: `autoCrawl:false` sources, robots-blocked re-fetches)
+   is still NOT run and needs its own go-ahead.
+   🔴 **~630 of 3,299 corpus documents are corrupted — about one in five.** Measured read-only by
+   re-fetch + byte diff (Unit 3): heuristic candidates 44/64 confirmed (69%), random NON-candidates
+   **16/90 confirmed (18.2%, 95% CI ±8.1pp)** → ~590 more across the 3,235 unflagged, CI ~330–850.
+   **The heuristic had ~7% recall**, so the stale set is effectively the whole corpus — which
+   retires the plan's original "re-index only the confirmed" scoping and vindicates council C3.
+   Confirmed in 13 of 14 candidate sources: `uc-ipm` herbicide table `0.5 → 5`, `awri` `15.5 → 5`,
+   `cornell-grapes` Wilcox guide `4.0 → 0`, `wsu` VEEN `0.0005 → 0005`.
+   Shipped: `splitIntoSentences` (lossless scanner, boundary rule deliberately unchanged);
+   `findDroppedNumericTokens` wired into `indexDocument` as a fail-closed `skipped:"numeric-loss"`;
+   `deriveIndexHash` moved to a payload object with **`CHUNKER_VERSION` folded in unconditionally**
+   (so the monthly sweep now progressively repairs every document it re-fetches) and
+   `rawContentHash` documented as RAW bytes, never filtered HTML. 19 new tests, full suite
+   **395 files / 4,696 tests / 0 failures**, tsc clean, lint 0 errors.
+   ⚠️ **NOT run: the repair campaign** (~630 docs re-fetched + re-embedded = real spend + a live
+   corpus mutation). Needs Russell's go-ahead. Also still open: PR B + PR C, both blocked on the
+   SKB/KB-1 merge.
+   Prior state: **RECON + PLAN + COUNCIL DONE; 5 design questions answered by Russell 2026-07-27
+   ("accept all recommendations").**
+   [plan 099](docs/plans/2026-07-26-100-fix-kb-text-integrity-and-pnw-handbooks-plan.md) (12 units,
+   4 PRs) · [council](docs/plans/council-feedback-100-kb-text-integrity-pnw-handbooks.md).
+   🔴 **The headline is no longer the ingestion — it is a LIVE silent text-loss bug in our own
+   chunker.** `splitBySentences` (`src/lib/knowledge/chunk.ts:115`) uses `String.match(/g)` with a
+   regex that cannot match a decimal point, and `match(/g)` **SKIPS** unmatched spans instead of
+   failing: `"abc. 0.5 def"` → `["abc. ", "5 def"]`. The `0.` is deleted with no error.
+   `tailForOverlap` (:131) shares the regex, so overlap tails carry the loss too. Fires on any block
+   over `MAX_TOKENS` (700) that force-splits. Live result in EM 8413: `0.5–1 lb ai` indexed as
+   `5–1 lb ai` — **a citable 10× dose error in a pesticide guide.** Root-caused from first
+   principles; Defuddle is exonerated. Council's Gemini arm made the severity point sharply: a
+   corrupted rate is often *agronomically plausible* (5 lb/A of sulfur is normal; 5 lb/A of a Group 3
+   DMI is catastrophic and illegal), so nobody catches it — the citation makes it look authoritative.
+   🔴 **Second architectural find: the KB-1 gate reads the WHOLE raw page** (`index-documents.ts:106`)
+   while the section filter does not run until :190 — so an enforcing gate drops a PNW disease page
+   **wholesale, biology and all**, before the filter can strip `Chemical control`. Council's Codex arm
+   gave a better fix than the plan's (keep the gate where it is; make the filter a **pure projection**
+   feeding it; one centralized clear path) **and** caught that the idempotency hash must stay a
+   fingerprint of the **raw** bytes — hashing filtered HTML makes changes inside dropped sections
+   invisible forever.
+   🔴 **Third: Gemini changed a design decision.** Stripping the whole `Chemical control` section
+   discards the fungicide **resistance-management prose** (FRAC 3/11 resistance documented in OR/WA;
+   alternate groups; ≤2 sprays per group) — tier B, and the best content on the page. The cut must be
+   **block-level within** the section: keep the `<p>` preambles, drop the `<ul>`/`<table>` product rows.
+   Same applies to `Biological`/`Cultural control`, which also name products.
+   Also corrected: the cross-region test was designed backwards — MMR contaminates **generic** queries,
+   not regional ones, because `mmrSelect(…, 0.7)` actively rewards dissimilarity.
+   Original recon (measured, do not re-litigate):
+   • **EM 8413 IS ALREADY IN THE CORPUS AND IT IS A DEFECT, NOT A WIN.** `osu-extension` doc
+   `/catalog/em-8413-…`, 47 chunks. Its rate tables are **Airtable `<iframe>` embeds** (3) — the
+   substance never arrived, only the empty tag got indexed (chunks 4, 14). 2 raw `<table>` blobs
+   survived Defuddle unconverted → chunks 7–9 + 16–23 are raw `<td headers="table-cell-413816-…">`
+   garbage. **Numeric corruption in a pesticide-rate document**: `0.5–1 lb ai` indexed as `5–1 lb ai`,
+   `0.5 lb ai` → `5 lb ai`, `0.5 inch` → `5 inch` (leading `0.` eaten, markdown ordered-list read).
+   That is a citable 10× dose error. Mojibake `Temperature (В°C)`. `publishedAt` = **2014-12-18** while
+   the page links the **2026** PDF → freshness scoring believes an annually-revised safety document is
+   12 years old. The real content is the PDF
+   (`/sites/extd8/files/documents/donnelja/pest-management-guide-for-wine-grapes-in-oregon-2026.pdf`),
+   which `crawl-osu-extension.ts` never discovers (it reads links from the 2 hubs + sitemap, never from
+   a catalog page body).
+   • **PNW Handbooks (`pnwhandbooks.org`) is NOT in the registry and is technically an easy add.**
+   robots `*` = `Allow: /`, `Crawl-delay: 10`, Content-Signal `search=yes, ai-train=no, use=reference`
+   — **identical posture to the `osu-extension` source already in the registry** (OSU hosts both). Our
+   UA is NOT on the named blocklist (ClaudeBot/GPTBot/CCBot are). One flat sitemap, 4,999 locs, clean.
+   **71 pages in scope**: 27 `/plantdisease/host-disease/grape-vitis-spp-` (== the user's list exactly)
+   + 1 cultivar table + 17 `/insect/small-fruit/grape` + 9 `/weed/…/vineyard-grape` + 16
+   `/pesticide-safety`. ⚠️ **Exact-prefix `grape-vitis-spp-` is load-bearing**: a naive `/grape|vine/`
+   regex also takes 4 `oregon-grape-berberis-aquifolium-*` pages (*Mahonia*, an ornamental shrub — NOT
+   a grapevine), `ivy-boston-grape`, 3 tree-fruit `*-grape-mealybug`, `puncturevine`,
+   `blackberry-vines`, `garlic-wild-allium-vineale`, `cucurbit-vine`, `potato-vine-kill` — 27 false
+   positives. Extraction is excellent (Defuddle: 3,836 clean words on powdery mildew, no `<table>` at
+   all). Per-page `Last-Modified` exists but is **Varnish-generated (all "today") → useless**; content
+   hash is the seam. Metadata `published` is the Drupal node-create date (2015) — same freshness lie as
+   EM 8413.
+   • ⛔ **THE BLOCKER: this collides head-on with the KB-1 tier-C rule Russell set 2026-07-26**
+   (TABULAR product→fact = never in the corpus). Measured product-signal line density: `/pesticide-safety`
+   **0%** (pure PPE/WPS/spill/pollinator prose — unambiguously safe and valuable); insect pages **22%**;
+   disease pages **30%**; `/weed/…/vineyard-grape` **46% and effectively 100% tier C** (`dichlobenil
+   (Casoron 4G) / Rate 4 to 6 lb ai/A / Site of action Group 20 / Chemical family Nitrile`) — and the
+   weed pages are the part the user asked for by name. **The boundary runs THROUGH the middle of every
+   disease and insect page, not between pages**: `Chemical control` is a bulleted product list carrying
+   rate + PHI + FRAC group + REI (`Abound at 10 to 15.5 fl oz/A … Group 11 fungicide. 4-hr reentry.`).
+   So this needs a **`sectionFilter`, like `vt-enology-notes` — and PNW splits on body headings, not
+   `<a name>` anchors, so the existing `"anchor-heading"` strategy does NOT fit.**
+   • ⛔ **And the KB-1 gate is NOT ON MAIN** — `src/lib/knowledge/boundary/` lives only on the unmerged
+   `claude/skb-knowledge-sources-plan-bd36b7` (9 commits). Ingesting PNW first puts 71 pages of
+   product/rate/REI text in with **no gate at all**, and per the SKB build log the gate must run
+   **before** the idempotency short-circuit or already-indexed tier-C chunks stay retrievable forever.
+   → **Russell decides the scope before any build.** Recommended order: land SKB/KB-1 → fix EM 8413 →
+   then PNW prose-only. Full write-up in `TODOS.md`.
+
+1. ✅ **POPPED — UC IPM knowledge source + corpus dates + stale-guidance warning. MERGED (#405,
    `77edb7a8`), branch deleted.** Source #19 `uc-ipm` (ipm.ucanr.edu grape PMGs): 87 docs / 667 chunks,
    `autoCrawl: true` so the monthly sweep takes it with no workflow edit. robots.txt ALLOWS
    `/agriculture/grape/` — no bypass used or needed. What it uncovered, in order of importance:
@@ -548,9 +1174,238 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 - **Plan 062 U2/U5 liquid SO₂-solution booking** — feature gap, not the money bug. Do NOT
   `/work` plan 062 as written; it would double-apply 0.576. → TODOS.
 - **Break Mode: Sentry server-side scrubbing** — ⚠️ blocker before any real-tenant use. → TODOS.
+- **VI Release 4 — Weather & Climate (runbook phases P8 climate spine + P9 disease; NOT "Phase 4" — that's
+  soil/P4)** — design brief `docs/GIS/vineyard-weather-climate-design.md` + **4A plan written**
+  `docs/GIS/phases/phase-8-weather-climate-spine-plan.md` (12 units) + woven into the brief (Release 4,
+  §13.7, §14) and runbook (P8/P9, ledger). Gridded terrain-aware point value (gridMET live / Daymet history
+  / POWER global) beside nearest station + elevation delta; **no worker/blob**; spread-not-blend;
+  one-estimate-per-vineyard; `query_climate` timezone-correct. **Council-reviewed + owner-decided**
+  (`docs/GIS/phases/phase-8-council-feedback.md`; revisions R1–R16 folded — daily-fact-table-authoritative
+  schema, obs-time tz normalized at ingest, per-source-with-completeness aggregates, hemisphere/SeasonYear,
+  primary-source-model, vulnerable-window frost, vineyard-root card). **Do AFTER P3 ships** (independent, can
+  parallel). Next: register CDO token + run the ~45-min point-API spike (de-risks the providers), then `/work`.
 
 ## ✅ Done recently
 
+- **✅ Cornell NY/PA Grape Guide is LIVE in the KB (2026-07-27) + the breadcrumb defect it exposed.
+  Plan 099, [#543](https://github.com/russellmoss/wine-inventory/pull/543) MERGED (`64db4cd9`),
+  crawled, measured, `defaultEnabled:true` for all tenants.**
+  Owner asked to ingest the [2025 Grape Guide preview PDF](https://cropandpestguides.cce.cornell.edu/Preview/2025/2025_Grape_Guide_Preview.pdf).
+  **Three blockers were surfaced and the owner decided to proceed anyway (2026-07-27):** plan 087 lists
+  that host as "paid. Do not crawl." (the *unreachable* half of that note is stale — it serves 200); the
+  preview is a 25-page sampler of a 166-page **paid** book spanning all 8 chapters, so pages 22-24 are
+  tier-C product × rate × REI/PHI tables; and it carries "© 2025 Cornell University. All rights reserved."
+  with no grant. Decision: ingest, **paraphrase + cite rather than reproduce, withdraw on request** — the
+  same posture `vt-enology-notes` already runs under. Posture is recorded in the source's `license` string
+  so takedown is `active:false` + `reset:knowledge-source`.
+  **The bigger half was a corpus-wide defect this forced out.** The guide extracts *cleanly* (56 headings,
+  confidence gate passes) yet collapsed to **11 distinct breadcrumbs across 77 chunks, 75 truncated** — the
+  68-char title plus a 63-char cover-title H1 ate 134 of the 140-char budget and the cap truncated the
+  *tail*, deleting every real heading. Fixed in `chunk.ts` (drop a heading restating the root; elide the
+  MIDDLE, never the leaf) → **46 distinct breadcrumbs, 19/77 elided, 0 over cap.** Closes the long-open
+  `TODOS.md` breadcrumb entry for the duplication half. ⚠️ **NOTHING self-heals** — review killed the
+  claim that PDFs would: `PDF_EXTRACT_VERSION` → `"2"` changes only the index hash, but the sweep 304s
+  before `indexDocument` runs, 16 of 26 sources are `autoCrawl:false` and not in the sweep at all, and
+  `crawl:curated` doesn't pass `ignoreValidators`. **`reindex:knowledge` is the only lever**, deferred
+  (~23.5k chunks of Voyage spend) and tripwired. Also corrected `scale-register.md`: the KB entry claimed
+  🟢 while its own ~10k-chunk tripwire had been crossed at ~23.5k.
+  ✅ **Unit 6 COMPLETE — LIVE for all tenants 2026-07-27.** 1 doc / **82 chunks** / 46 distinct
+  breadcrumbs; `publishedAt` 2025-04-30; displacement **1/120 slots (1%)** vs a 25% gate;
+  `verify:knowledge-base` 21/21, `kb-subscriptions`, `kb-register`, `kb-boundary` all green.
+  🔻 **THE GATE FIRED, AND IT WAS RIGHT.** The FIRST crawl produced a **corrupt** document and was
+  thrown away — only 10/20 active ingredients and **6/24 trade names** survived, and chapter 8 stored a
+  table *header* plus `... EPA Reg. 5TG 3, 21 1 year 12 hr 62719-175` where the PDF says
+  `^Snapshot **2.5TG** …`. A rate table that looks authoritative and is wrong. Source was hard-closed
+  (`active:false`) — no tenant ever had it on. **Cause: it ran one commit before [#544 / plan 100 PR A]**,
+  where `splitBySentences`'s `String.match(/g)` silently DELETED spans it couldn't match (`0.5`→`5`),
+  firing on any block over `MAX_TOKENS` — i.e. exactly a 3-page pesticide table. Re-crawled on the fixed
+  chunker (`CHUNKER_VERSION` 2 + `reset:knowledge-source`): **20/20 AIs, 24/24 trade names, 10/10
+  decimals, 8/8 EPA reg numbers, 5/5 page-22 rows verbatim**, zero corruption signatures.
+  ⚠️ **`verify:kb-boundary` says `product-table 0` for this source and that is NOT safety evidence** —
+  it is the PDF blindness in `TODOS.md`. The numeric spot check cleared this document, not the gate.
+  🔑 **Both crawls printed `documents:1, errors:0`.** Only comparing stored cells against the PDF told
+  them apart. A version bump plus a green run proves nothing about content.
+- **🟩 SKB PR 1 + Unit 5 BUILT (2026-07-27) — the boundary is now REAL, so the source units are
+  unblocked.** Branch `claude/skb-knowledge-sources-plan-bd36b7`, 3 commits, **not yet PR'd**.
+  Plan: [SKB-knowledge-sources-plan.md](docs/spray_assistant/phases/SKB-knowledge-sources-plan.md).
+  Units **1, 2, 3, 5 of 11**. 82 new tests, full suite green, `tsc` clean, `verify:invariants` 49/49.
+  - **KB-1 invariant + detector + INLINE gate** (`src/lib/knowledge/boundary/`). A product→fact table
+    never reaches the corpus for an enforcing source. Three mechanics, none optional: the detector reads
+    **raw HTML / PDF pre-chunk lines, never post-extraction text**; the gate is inline in
+    `index-documents.ts` **before extraction AND before the idempotency short-circuit**, signalling by
+    **returned field, never a throw** (a throw there is read by the re-crawl tombstone pass as "page
+    removed" and would mass-tombstone a source); and `uncertain` **skips for enforcing, is admitted and
+    counted for report-only**. Enforcement is the DEFAULT — the 25 incumbents are a frozen report-only
+    census whose **deletion** is how D3's grandfather clause closes.
+  - **The legality refusal** — `search_knowledge_base` stops advertising "compliance" and refuses the
+    **verdict, not the query**: a handler-level classifier prepends a non-certification preamble while
+    still surfacing the retrieved agronomic context. 12 NEGATIVE classifier cases + a negative golden,
+    because a caveat that fires on everything is caveat fatigue.
+  - **`allowPaths`** — exact-path allowlist with the canonicalization contract tested per clause.
+  - ✅ **QA'd 2026-07-27** — [report](docs/spray_assistant/qa/SKB-qa-report.md). Full suite 396 files /
+    4,733 tests green, `tsc` clean, lint 0 errors, all pure guards green. **4 defects found, 3 of them
+    invisible to the unit tests:** the detector vs 10 REAL pages went 6/10 → 8/10 (markup density beat
+    the table header window — VT's **29-row** GrapePestEfficacy table read as PROSE); and
+    `verify:kb-boundary`'s first-ever run found **`virginia-fruit`: 69 docs, 260 chunks,
+    `defaultEnabled=true`, NO config entry, silently ENFORCING**. Live browser QA (port 3005, never
+    :3000) proved the captan case refuses the verdict, keeps the cited context, and issues neither a
+    clearance nor a self-authored prohibition; the biology negative control draws no caveat.
+  - 🔴 **Unit 7 needs REWRITING before it is built:** `virginia-fruit` IS `virginiafruit.ento.vt.edu`
+    — already partly in the corpus and already `defaultEnabled=true`. It is a RECONCILIATION, not a
+    greenfield add, and the plan's staged dark rollout does not describe the real starting state.
+  - 🔴 **UC IPM carries tier-C content TODAY** (verified by hand: a `Common name | Amount per acre |
+    R.E.I. | P.H.I. | MODE-OF-ACTION GROUP` table). **D3 census floor = 19** flagged docs, and that is
+    a severe under-count — the chunk-text arm scores uc-ipm at 0 while a live fetch finds a 21-row table.
+  - ⚠️ **Plan assumption that did NOT hold: `knowledge_blob.blobUrl` is NULL corpus-wide**, so
+    `verify:kb-boundary` cannot re-read stored bytes. Enforcing sources are audited by **live re-fetch**
+    (the correct seam); the report-only census reads chunk text and is reported as an **approximate
+    FLOOR**, worst on PDFs. Units 4 and 6–11 remain — all of them need `.env`, live crawls, or an
+    operator-gated network probe.
+- 🔴→🟩 **Bhutan weather elevation bias FOUND AND FIXED (2026-07-26, branch
+  `claude/weather-elevation-fidelity`, PR #536)** — a LIVE-tenant data-quality defect surfaced by the S5a
+  Unit 0 probe. NASA POWER answers with its ~50 km cell's MEAN elevation, **1.0–1.8 km above** each Bhutan
+  vineyard, so the series ran **4.8–9.7 °C cold**: the card showed **Winkler Region I at Region V sites**,
+  Jones "Too cool" at a subtropical valley, **frost events on nights that were ~12 °C**, and Bajo (1,230 m)
+  identical to Ser Bhum (2,773 m). Fix = an elevation-downscaled ERA5 archive provider (the same
+  `elevation=` correction the FORECAST path already had) + `source-fidelity-core`, which **withholds the
+  hard-boundary classifications** when the source's own reported elevation is >300 m off the site (§3.6)
+  rather than mislabelling them. Migration applied + all 8 vineyards re-ingested on the live tenant;
+  observed and forecast now agree to the decimal. POWER rows kept as a second source (reversible).
+  Report: `docs/analysis/bhutan-nasa-power-elevation-bias.md`.
+- **/bulk composition-editor phantom ADJUST fixed (2026-07-26, PR #534):** `updateComponentVolume`
+  targeted the lot-tuple total while the editor displayed the component PROJECTION — on a blend (Demo T5,
+  2026-SY-2: 6995 L tuple vs 6370 L Syrah share) saving the untouched value drew 625 L. Now: untouched
+  save = no-op, blend-share edits refused with guidance, single-origin edits unchanged. Pure plan fn +
+  regression test (`src/lib/bulk/component-adjust.ts`). Server-side only — composes with plan 098's
+  unit-input work (merged #533).
+- **Plan 098 tenant unit preferences BUILT (2026-07-26, branch `claude/tenant-unit-preferences-78472c`;
+  merged to main as #533)** —
+  all 12 units done: 7 nullable AppSettings unit columns (Migration A) + the audited hoist-if-uniform
+  Migration B (Demo hoisted IMPERIAL; Bhutan's disagreeing weather/geometry values preserved — zero
+  behavior change, both migrations APPLIED to the live DB); `src/lib/units/display.ts` is the ONE
+  display-unit authority (weather/units-core + phenology/units are re-export shims); settings card +
+  UnitsProvider; weather/vineyard/cellar/harvest/ferment display sweeps; volume INPUTS with inline
+  adornment + dirty-check round-trip; assistant threads units through route → runAssistant →
+  ToolContext → query_climate display strings (the Oregon-forecast °C bug fixed). Full vitest green,
+  verify:naming/invariants/ai-native green. **Remaining: interactive browser QA on Demo Winery
+  (needs the user's pane login) + /review + /ship.**
+
+- **🔴 RELEASE BLOCKER FOUND + FIXED (2026-07-26): `AppUser.vineyardIds` was ALWAYS `[]` under
+  `app_rls`.** Surfaced during S4 browser QA (it blocked the pass) but pre-existing and unrelated to S4.
+  **[PR #530](https://github.com/russellmoss/wine-inventory/pull/530)** (branch
+  `claude/relaxed-bardeen-5cfae9`). Complementary to #529, NOT superseded by it — see the S4 entry below.
+  **Root cause — the GLOBAL-parent / RLS-child read seam:** `userSelect` in `src/lib/dal.ts` selected
+  `vineyardMemberships`. `User` is a GLOBAL model, so the tenant extension passes `prisma.user.*`
+  **straight through** and never opens its `set_config('app.tenant_id', …)` tx; `user_vineyard` is
+  RLS-FORCED, so the nested join was evaluated with **no tenant GUC** and fail-closed to zero rows —
+  silently, no error. Reproduced deterministically against the live DB (`app_rls` `rolbypassrls=false`:
+  nested read `[]`, same read with the GUC set returns the row).
+  **Blast radius (every non-admin manager):** field notes unreachable; the vineyard-scoped assistant
+  dead (`assistant/scope.ts`, `query-brix`, `query-recent-harvests`, `db-create`/`db-update`); `/lots`
+  lens off; and on `/users` **silent DATA LOSS** — checkboxes render from those ids and
+  `setUserVineyards` REPLACES the set, so ticking one vineyard dropped every existing membership.
+  ⚠️ **Local `DATABASE_URL` is ALREADY `app_rls`** (owner URL kept as `DATABASE_URL_OWNER_POOLED_BACKUP`).
+  **Vercel's `DATABASE_URL` is UNCONFIRMED — Russell must check.** If prod still connects as
+  `neondb_owner` (BYPASSRLS) this was latent and would have become total at the app_rls cutover.
+  **Fix:** membership set moved to `src/lib/users/vineyard-memberships.ts`
+  (`loadVineyardMembershipIds` / `…ByUser`), read AFTER `getCurrentUser` resolves the effective tenant
+  (support org → active org), with `tenantId` as an EXPLICIT arg (K12-safe, can't recurse via
+  `resolveTenantFromSession`). `toAppUser` now REQUIRES `vineyardIds`. All 3 call sites fixed
+  (`dal.ts`, `users/actions.ts`, `(app)/users/page.tsx`).
+  **Guards:** `test/global-model-tenant-relation-select.test.ts` (static, DMMF-driven — proven
+  non-vacuous by reintroducing the bug) + 4 new `verify:tenant-isolation` checks that pin BOTH the empty
+  pass-through read and the correct scoped one. tsc/eslint clean, `verify:tenant-isolation` ALL PASSED.
+  ⛔ **Trap found in passing — do NOT re-derive:** `runAsTenant(id, () => prisma.x.op(…))` with a
+  NON-async arrow **does not work**. Prisma returns a LAZY thenable, so `$allOperations` runs after
+  `store.run()` has exited → "Tenant context required", or worse, silently the OUTER tenant. Must be
+  `async () => await …`. ~6 pre-existing sites still have the broken shape (masked today) — logged in
+  the security register's watch list + a task chip.
+  ℹ️ The DB holds exactly **ONE** `user_vineyard` row (`awerth@gmail.com` → Demo Winery) — the row the
+  QA report attributed to `russellmoss87@gmail.com` (id `50d97614-…`) is **not there**.
+
+- **TENANT-3 — the lazy-`PrismaPromise` tenancy bug class: SWEPT + CLOSED STRUCTURALLY**
+  (branch `claude/silly-goldwasser-d2aedf`, 2026-07-26). `runAsTenant(t, () => prisma.x.op())` with a
+  **non-async** arrow BUILDS the query inside the ALS scope and **runs it after the scope exits** —
+  the tenant extension's hook then reads the store from outside. With no ambient context it throws;
+  with an ambient **outer** `runAsTenant` live it silently uses the **outer** tenant. AST sweep found
+  exactly **8** sites (the 8 known ones — no others). Fixed on two fences: (1) *structural* —
+  `runAsTenant`/`runWithTenantContext` now wrap the callback in `async () => await fn()`, so the
+  thenable is forced inside the scope however the callback is written; (2) *shape* — all 8 call sites
+  rewritten `async () => await …`, guarded by a new AST scan `npm run verify:tenant-callbacks` (wired
+  into CI). Pinned by `test/tenant-context-lazy.test.ts` (9 cases incl. the nested outer-tenant one;
+  4 fail if the wrapper is removed). Registered as invariant **TENANT-3** + a security-register entry.
+  🔎 **`npm run verify:reminders` was RED on `main` because of this** — it died at the step-2
+  `ComplianceReport.create`. Now green end-to-end (15 assertions) for the first time; that unmasked a
+  second, unrelated bug in the script itself (the badge assertion compared a **30**-day count to a
+  **60**-day one), also fixed. Gates: tsc 0, eslint 0 errors, **vitest 4482/0**,
+  `verify:tenant-isolation` / `raw-sql` / `invariants` (45/45) / `tripwires` / `parity` / `ai-native` /
+  `work-orders` / `feedback` / `naming` all green.
+  🔻 **TWO CORRECTIONS to what #531 originally claimed — believe these, not the PR description.**
+  (1) #531 said `src/lib/users/vineyard-memberships.ts` and the security-register section
+  "GLOBAL model may never select a relation to a tenant-scoped table" existed on no branch. **Wrong.**
+  They are on **[#530](https://github.com/russellmoss/wine-inventory/pull/530)** (`claude/relaxed-bardeen-5cfae9`),
+  which was still OPEN — the sweep searched local refs before that branch carried the work. #530 is the
+  real fix for the sibling bug (CI green: `check` + `tenant-isolation` + `review`).
+  (2) #531 then re-graded the GLOBAL-model/RLS-child seam to LOW-MED, following #529's note. **Also
+  wrong** — #530 browser-proved it side by side on `/users` (unfixed server: Aaron Werth `[]`; fixed:
+  `["WV Oregon"]`). #529's `isTenantAdminLike` gate is a real fix but only routes **admin-like** roles
+  away; a genuine `role:"user"` manager still gets `vineyardIds: []`, and #529 never touches `/users`,
+  where the checkboxes render from those ids and `setUserVineyards` REPLACES the set — **a silent
+  membership WIPE**. Invisible while the runtime connects as owner (BYPASSRLS); **total the moment
+  `DATABASE_URL` is `app_rls`.** So it IS an app_rls-activation blocker. See
+  [[global-model-rls-child-read-seam]]. ✅ `main` has since been merged INTO #530 (TENANT-3 + both
+  corrections included), so the `NOW.md` / `security-register.md` overlap is resolved.
+- **Spray Intelligence S3a — record + planned harvest: SHIPPED (2026-07-26). PR1 [#523](https://github.com/russellmoss/wine-inventory/pull/523) + PR2 [#524](https://github.com/russellmoss/wine-inventory/pull/524) MERGED → WAVE 2 UNBLOCKED (S7a, S8, S6, S7b start against the merged cores); PR3 [#527](https://github.com/russellmoss/wine-inventory/pull/527) browser-QA'd GREEN.**
+  Seven append-only tables (DB triggers + at-most-once correction incl. VOID), facts-as-of
+  snapshots (copied verbatim on correction — KD-14), knownness CHECKs (SPRAY-3), planned-harvest
+  event stream with the `plannedHarvestChangesSince` watermark, legacy field-note seam.
+  `verify:spray-record` = 14/14 on Demo. In-browser QA caught 2 real bugs, both fixed in-phase
+  (`d11c38d8`): untouched prefill area provenance, and the correction-prefill UTC→datetime-local
+  shift (+4 h on every instant). QA report `docs/spray_assistant/qa/S3a-qa-report.md`;
+  ADR 0010 (facts-as-of replay); S7a/S2b/S6 constraints written into runbook §9.
+
+- **Spray S2 — registration + resistance master BUILT (all 12 units, 2026-07-26).** PR-1
+  [#522](https://github.com/russellmoss/wine-inventory/pull/522) merged (schema slice landed alone
+  and first, as planned, so the three sibling lanes serialize behind it); PR-2
+  [#525](https://github.com/russellmoss/wine-inventory/pull/525) CI green; PR-3 open. Live in the
+  prod tables: 2,420 active grape registrations, 833 CA-registered, 361 AIs bucketed with zero
+  unclassified, `verify:pesticide` 31/31, `verify:invariants` 42/42, 4,330 unit tests green.
+
+- **S4 (Spray Intelligence lane D) — phenology precision + the growth-dilution model: SHIPPED.**
+  [#521](https://github.com/russellmoss/wine-inventory/pull/521) schema slice ·
+  [#526](https://github.com/russellmoss/wine-inventory/pull/526) the feature ·
+  [#529](https://github.com/russellmoss/wine-inventory/pull/529) QA close-out — all merged and live. Six new weekly
+  block observations through all five projections, a biofix-anchored GDD phenology interpolator, a
+  growth-dilution model with a post-stagnation leaf-expansion tail, a provenance-carrying read DTO,
+  pure honesty labels, the authoring UI, the assistant payload, and `verify:phenology`. 135 new
+  tests. Two *pre-existing* bugs fixed in passing: falsy values (`false`/`0`) silently dropped from
+  the write-confirmation card, and `markRemainingHealthy`'s `JSON.stringify` comparison that adding
+  any `BlockStatus` key would have broken. **Browser QA GREEN**: the scouting stage gate fires in
+  all three states, `shootLengthCm: 0` / `hedgedThisWeek: false` / `clusterDamage: NOT_ASSESSED`
+  all survived UI → action → DB, and read-back renders a gap and a checked-clean as two different
+  sentences. The blocker turned out to be a one-line `isTenantAdminLike` gate on the field-notes
+  page (#529) — that fix is correct and is what unblocked this QA.
+  ⚠️ **CORRECTION to this entry's original "not the RLS theory / re-graded LOW-MED" call: that
+  re-grade was wrong.** #529 only routes ADMIN-LIKE roles away from the manager branch; a genuine
+  `role: "user"` manager still reads `vineyardIds: []`, and #529 does not touch `/users`, where the
+  silent membership WIPE lives. The RLS seam is real, measured, and fixed separately in **PR #530**
+  (see the entry above) — the two changes are complementary, not alternatives.
+
+- **CI flake killed: `test/compliance-fill-pdf.test.ts` vs. the 5s vitest default** — **MERGED to
+  `main`** ([PR #492](https://github.com/russellmoss/wine-inventory/pull/492), squash `896fec40`;
+  branch + worktree deleted). The TTB round-trip parses the 3.1 MB
+  fillable AcroForm twice + saves once; it ran ~4.2s standalone and timed out at 5380ms under
+  full-suite load. Root cause of the slowness: **pdf-lib's default `parseSpeed` is `Slow`** (yield to
+  the event loop every 10 objects — a browser default), ~350ms per parse of this form.
+  Fix = `parseSpeed: ParseSpeeds.Medium` in `fill-pdf.ts` (prod gets the speedup too, still yields)
+  + `Fastest` on the test's own loads + an explicit **30s** per-test timeout. Assertions untouched.
+  ✅ Verified neutral: all **621** field names/values round-trip identically at every parse speed
+  (the residual ~4-byte jitter inside a compressed object stream happens run-to-run at a FIXED speed
+  too — pre-existing, not from this change). Round-trip 1032→413ms standalone, **1139ms under full
+  parallel load** (was 5380ms); full suite 312 files / 3660 tests green; tsc + eslint clean.
+  ⚠️ `npm run verify:ttb` was NOT run (it needs `.env`/DB and the worktree had none). CI's `check` +
+  `tenant-isolation` were green and the unit round-trip asserts the same field mapping, so this is a
+  belt-and-braces gap only — run it from the MAIN checkout next time `fill-pdf.ts` is touched.
 - **`/bug-triage` re-offered PRODUCTION CODE as new work — FIXED, LIVE on `main` ([PR #478](https://github.com/russellmoss/wine-inventory/pull/478), squash `0b649b74`).**
   Ticket `cmrwdgt2u…` ("assistant should read a vessel's/lot's operation history") was ranked the
   run's ONE actionable plan-ready item, pointing at plan issue #466 — a day AFTER the work shipped in
@@ -871,7 +1726,32 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-23 — **`/bug-triage` reconcile blind spot closed and LIVE on `main` (PR #478,
+_Last updated: 2026-07-27 — **Plan 100 SHIPPED IN FULL, all three PRs merged** ([#544](https://github.com/russellmoss/wine-inventory/pull/544) chunker fix, [#545](https://github.com/russellmoss/wine-inventory/pull/545) PNW Handbooks source, [#547](https://github.com/russellmoss/wine-inventory/pull/547) `defaultEnabled` flip — Russell's call, live for every tenant): the chunker was silently DELETING text (`splitBySentences` used `String.match(/g)`, which skips spans it cannot match, so `0.5 lb ai` indexed as `5 lb ai`). Fixed, with a lossless scanner + a standing ingest-time numeric-integrity guard + `CHUNKER_VERSION` folded unconditionally into `deriveIndexHash`. Measured read-only: **~630 of 3,299 corpus documents corrupted, about 1 in 5** (candidates 44/64; random non-candidates 16/90 = 18.2%) — the monthly sweep now progressively repairs what it re-fetches; a dedicated repair campaign for the rest is NOT run and needs a go-ahead. PNW Handbooks is live for all tenants: 59 documents / 142 chunks, KB-1-clean. Task branches pruned (local + remote). Correction to the note below: **SKB PR 1 has since MERGED as #538**, so the KB-1 gate is on main. Also this date: **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness. Bhutan's daily series may be 8–9 °C off vs ERA5 — escalated as its own investigation.** Also this date: plan 098 tenant unit preferences built (all 12 units; QA + ship pending); S2b product-facts FOUNDATION merged + live (#535), phase still open. And: **SKB PR 1 + Unit 5 BUILT AND QA'd on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
+inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
+added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
+record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
+area provenance, correction UTC→datetime-local shift). S2 (registration + resistance) BUILT — schema slice
+merged (#522), Units 2-11 green (#525), 2,420 grape registrations + 361 AIs live with zero unclassified.
+S4 (phenology + growth) SHIPPED — #521 + #526 + #529 merged and live, 135 new tests, browser QA GREEN (the
+S4 blocker was a one-line isTenantAdminLike gate on the field-notes page); scouting coverage 0/0 = NOT YET
+MEASURABLE, recorded as-is.** ⛔ **Do NOT read #529 as clearing the GLOBAL-model/RLS-child seam — that
+re-grade was WRONG. It only routes admin-like roles; a real `role:"user"` manager still gets
+`vineyardIds: []` and `/users` silently WIPES memberships the moment `DATABASE_URL` is `app_rls`.
+[#530](https://github.com/russellmoss/wine-inventory/pull/530) is the fix — CI green (`check` +
+`tenant-isolation` + `review`), `main` merged in, browser-QA'd on Demo, ready to land. ⚠️ Still open for
+Russell: is Vercel's production `DATABASE_URL` `app_rls` or still `neondb_owner`? That decides whether
+this was already live in prod or latent (the Vercel env page is blocked to the agent, prod needs a
+login, and Neon telemetry is unavailable in this region).** Prior: **detour resolved and LIVE on `main`: the `compliance-fill-pdf` CI flake is
+fixed** (PR #492, squash `896fec40`; branch + worktree deleted). pdf-lib's default `parseSpeed` is `Slow`;
+`Medium` in `fill-pdf.ts` + `Fastest` + a 30s timeout in the test take the round-trip from 5380ms-under-
+load to 1139ms with assertions untouched. `verify:ttb` never ran (no DB in a worktree); CI was green.
+Objective unchanged →
+**Vineyard Intelligence P0 planned + council-reviewed (plan 094, 16 units).**
+Both reviewers confirmed the convex-window/Sutherland–Hodgman reframe and both rejected the first draft's
+instrument; six fixes folded in. Three corrections not to re-derive: `harmonizeValues` is backwards in
+runbook §2.13, the processing baseline needs a STAC call, and the free tier binds on requests not PU.
+Blocked on Unit 0 — `docs/GIS/` is untracked, and there are no CDSE credentials or blob token in `.env`.
+Prior: **`/bug-triage` reconcile blind spot closed and LIVE on `main` (PR #478,
 squash `0b649b74`).** Triage ranked a ticket as the run's one actionable item a day after the work shipped in a
 hand-built PR #468: nothing stamped the PR on the ticket, Reconcile needs a PR on the ticket, and the
 PR sweep lists only OPEN PRs. New **Merged Sweep** scans merged PRs for a feedback id in the body,

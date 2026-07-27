@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-22T18:25:20.312Z",
+  "capturedAt": "2026-07-27T11:45:41.359Z",
   "entries": [
     {
       "query": "What is a good pre-infection fungicide I can use for downy mildew?",
@@ -91,6 +91,16 @@
       "results": [
         {
           "rank": 1,
+          "publisher": "Cornell Cooperative Extension — NY/PA Pest Management Guidelines for Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://cropandpestguides.cce.cornell.edu/Preview/2025/2025_Grape_Guide_Preview.pdf",
+          "sectionPath": "2025 New York and Pennsylvania Pest Management Guidelines for Grapes > 3 Vineyard Disease Management > 3.2 Fungicide Information",
+          "publishedAt": "2025-04-30",
+          "dateSource": "published",
+          "textHash": "9e2daa0d18e6"
+        },
+        {
+          "rank": 2,
           "publisher": "Cornell Fruit Resources: Grapes",
           "tier": 1,
           "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2016/12/GRAPE-DISEASE-CONTROL-2018-Bryan-Hed-Penn-State-29u9gz7.pdf",
@@ -100,7 +110,7 @@
           "textHash": "4448d1b3cd7d"
         },
         {
-          "rank": 2,
+          "rank": 3,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
@@ -110,7 +120,7 @@
           "textHash": "84e11cbe4687"
         },
         {
-          "rank": 3,
+          "rank": 4,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
@@ -120,7 +130,7 @@
           "textHash": "6f11c22c9ef4"
         },
         {
-          "rank": 4,
+          "rank": 5,
           "publisher": "Wine Australia",
           "tier": 1,
           "canonicalUrl": "https://www.wineaustralia.com/getmedia/664857fa-048b-499d-ba17-2a16a8cd240f/201012-Powdery-Mildew-QA?ext=.pdf",
@@ -130,7 +140,7 @@
           "textHash": "ac9d2e216581"
         },
         {
-          "rank": 5,
+          "rank": 6,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
@@ -140,7 +150,7 @@
           "textHash": "397cb377aae1"
         },
         {
-          "rank": 6,
+          "rank": 7,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
@@ -150,7 +160,7 @@
           "textHash": "745f5ccb119e"
         },
         {
-          "rank": 7,
+          "rank": 8,
           "publisher": "Cornell Fruit Resources: Grapes",
           "tier": 1,
           "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
@@ -158,16 +168,6 @@
           "publishedAt": "2021-04-13",
           "dateSource": "published",
           "textHash": "3b643d959516"
-        },
-        {
-          "rank": 8,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/08/s1482.pdf",
-          "sectionPath": "Strobilurin resistance to powdery mildew in a vineyard > Strobilurin resistance to powdery > The strobilurin group of fungicides has been…",
-          "publishedAt": "2018-08-14",
-          "dateSource": "published",
-          "textHash": "06d366e168ad"
         }
       ]
     },
@@ -254,7 +254,9 @@
           "dateSource": "published",
           "textHash": "a259f9a407b1"
         }
-      ]
+      ],
+      "unstable": true,
+      "observedProfiles": 2
     },
     {
       "query": "What is the most effective way to sanitize barrels against Brett?",
@@ -654,23 +656,13 @@
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-wine-with-activated-carbon.pdf",
-          "sectionPath": "Fact Sheet > What is activated carbon and how can it be used to mitigate smoke taint?",
-          "publishedAt": "2024-11-28",
-          "dateSource": "published",
-          "textHash": "91267527c1d8"
-        },
-        {
-          "rank": 7,
-          "publisher": "AWRI",
-          "tier": 1,
-          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-wine-with-activated-carbon.pdf",
           "sectionPath": "Fact Sheet > Treating smoke-affected wine with activated carbon > Assessing performance",
           "publishedAt": "2024-11-28",
           "dateSource": "published",
           "textHash": "402448abda94"
         },
         {
-          "rank": 8,
+          "rank": 7,
           "publisher": "AWRI",
           "tier": 1,
           "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-grape-juice-with-activated-carbon.pdf",
@@ -678,6 +670,16 @@
           "publishedAt": "2024-11-28",
           "dateSource": "published",
           "textHash": "9afb6f9e55d9"
+        },
+        {
+          "rank": 8,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2021/02/Treating-smoke-affected-wine-with-activated-carbon.pdf",
+          "sectionPath": "Fact Sheet > What is activated carbon and how can it be used to mitigate smoke taint?",
+          "publishedAt": "2024-11-28",
+          "dateSource": "published",
+          "textHash": "91267527c1d8"
         }
       ]
     },
@@ -926,13 +928,13 @@
         },
         {
           "rank": 8,
-          "publisher": "OSU Extension (Oregon State University)",
+          "publisher": "PNW Pest Management Handbooks (OSU / WSU / UI Extension)",
           "tier": 1,
-          "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-8985-field-monitoring-leafroll-virus-mealybug-pacific-northwest-vineyards",
-          "sectionPath": "Field Monitoring for Leafroll Virus and Mealybug in Pacific Northwest Vineyards > Additional information",
-          "publishedAt": "2014-12-18",
-          "dateSource": "published",
-          "textHash": "683eaf68fc34"
+          "canonicalUrl": "https://pnwhandbooks.org/insect/small-fruit/grape/grape-mealybug",
+          "sectionPath": "",
+          "publishedAt": "2026-04-30",
+          "dateSource": "last-modified",
+          "textHash": "6a84c84d4315"
         }
       ]
     },
@@ -1124,10 +1126,10 @@
           "publisher": "ETS Laboratories",
           "tier": 2,
           "canonicalUrl": "https://www.etslabs.com/publications/publication/22",
-          "sectionPath": "Screening for TCA and other Haloanisoles > Analyzing levels of haloanisoles > Testing cellared Wine",
+          "sectionPath": "Screening for TCA and other Haloanisoles > Analyzing levels of haloanisoles > Analyzing Bottled Wine",
           "publishedAt": "2025-09-01",
           "dateSource": "published",
-          "textHash": "091dfd18f000"
+          "textHash": "f0dc51b7ec2e"
         },
         {
           "rank": 3,
@@ -1143,21 +1145,21 @@
           "rank": 4,
           "publisher": "ETS Laboratories",
           "tier": 2,
-          "canonicalUrl": "https://www.etslabs.com/publications/publication/22",
-          "sectionPath": "Screening for TCA and other Haloanisoles > Analyzing levels of haloanisoles > Analyzing Bottled Wine",
-          "publishedAt": "2025-09-01",
-          "dateSource": "published",
-          "textHash": "f0dc51b7ec2e"
-        },
-        {
-          "rank": 5,
-          "publisher": "ETS Laboratories",
-          "tier": 2,
           "canonicalUrl": "https://www.etslabs.com/publications/publication/46",
           "sectionPath": "FAQ: Haloanisole Analysis > How can haloanisoles analysis in wine point to a source of contamination?",
           "publishedAt": "2025-09-01",
           "dateSource": "published",
           "textHash": "6978f76140ab"
+        },
+        {
+          "rank": 5,
+          "publisher": "ETS Laboratories",
+          "tier": 2,
+          "canonicalUrl": "https://www.etslabs.com/publications/publication/22",
+          "sectionPath": "Screening for TCA and other Haloanisoles > Analyzing levels of haloanisoles > Testing cellared Wine",
+          "publishedAt": "2025-09-01",
+          "dateSource": "published",
+          "textHash": "091dfd18f000"
         },
         {
           "rank": 6,
@@ -1171,6 +1173,16 @@
         },
         {
           "rank": 7,
+          "publisher": "IVES Technical Reviews",
+          "tier": 1,
+          "canonicalUrl": "https://ives-technicalreviews.eu/article/view/2585",
+          "sectionPath": "Haloanisoles and new barrels: highlighting the role played by molds\n\t\t\t\t\t\t\t| IVES Technical Reviews, vine and wine > Results of the first phase",
+          "publishedAt": "2019-10-13",
+          "dateSource": "published",
+          "textHash": "bbfae6c78e8e"
+        },
+        {
+          "rank": 8,
           "publisher": "ETS Laboratories",
           "tier": 2,
           "canonicalUrl": "https://www.etslabs.com/publications/publication/46",
@@ -1178,18 +1190,10 @@
           "publishedAt": "2025-09-01",
           "dateSource": "published",
           "textHash": "9cbfa16da564"
-        },
-        {
-          "rank": 8,
-          "publisher": "ETS Laboratories",
-          "tier": 2,
-          "canonicalUrl": "https://www.etslabs.com/publications/publication/46",
-          "sectionPath": "FAQ: Haloanisole Analysis > At what levels do haloanisoles have a sensory impact?",
-          "publishedAt": "2025-09-01",
-          "dateSource": "published",
-          "textHash": "d3a77e5586cd"
         }
-      ]
+      ],
+      "unstable": true,
+      "observedProfiles": 2
     },
     {
       "query": "What fungicide program controls Phomopsis and black rot in an eastern US vineyard?",

@@ -25,6 +25,33 @@ export type FleetCase = {
 };
 
 export const ASSISTANT_FLEET: FleetCase[] = [
+  // ── S5a fleet discrimination. The confusables are query_climate (weather/GDD/frost) and
+  // search_knowledge_base (label + extension guidance). Disease STATE on a block is neither.
+  {
+    utterance: "What infections are incubating on my blocks?",
+    tool: "query_spray_decision",
+    kind: "read",
+    note: "block disease STATE, not weather — must not reach for query_climate",
+  },
+  {
+    utterance: "Should I spray sulfur tomorrow?",
+    tool: "query_spray_decision",
+    kind: "read",
+    note: "a spray DECISION must reach the read tool that refuses it, never a write tool (SAFE-12)",
+  },
+  {
+    utterance: "Is it going to rain this week at Oakville?",
+    tool: "query_climate",
+    kind: "read",
+    note: "the confusable in the other direction — forecast stays with query_climate, not spray decision",
+  },
+  {
+    utterance: "What does the label say about the re-entry interval for sulfur?",
+    tool: "search_knowledge_base",
+    kind: "read",
+    note: "label/extension guidance is the knowledge base; query_spray_decision cannot answer REI and says so",
+  },
+
   {
     utterance: "What is in tank 5?",
     tool: "query_cellar_contents",

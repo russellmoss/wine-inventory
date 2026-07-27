@@ -209,8 +209,31 @@ TEMPLATE — copy this block for each new decision:
   backfill; MMR/RRF over a huge candidate set costs CPU if `k` isn't bounded.
 - **Tripwire:** vector queries trending into tens of ms; chunk counts crossing ~10k; a re-embed job
   scanning the whole corpus on every run instead of the changed subset; retrieval `LIMIT k` unbounded.
-- **Status:** 🟢 (global shared corpus; exact scan at winery+AWRI scale; HNSW is a documented later add;
-  guarded by `verify:knowledge-base` + `verify:tenant-isolation`; see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]]).
+- **Status:** 🟡 **the chunk-count tripwire above has been CROSSED** — the corpus is ~23.5k chunks
+  against a stated "fine until hundreds–low-thousands" and a "~10k" tripwire, so every dense query is
+  now a sequential scan over the whole corpus. Nothing is broken (latency has not been measured as a
+  user-visible problem), but the 🟢 was stale and is corrected here rather than left to look deliberate.
+  HNSW (`vector_cosine_ops`, built after data load) is the documented remedy and remains unbuilt.
+  Guarded by `verify:knowledge-base` + `verify:tenant-isolation`;
+  see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]].
+
+### Breadcrumb text is baked into every stored chunk and its vector (plan 099)
+- **Choice:** `chunk.ts` prepends the section breadcrumb into each chunk's `text`, which is what gets
+  embedded AND what backs the generated `search_vector`. That makes a breadcrumb bug a *data* bug, not a
+  rendering bug: fixing the code does not fix the corpus.
+- **Fine until:** the breadcrumb logic is stable. Plan 099 changed it (root/heading de-duplication,
+  middle elision) to fix Cornell's Grape Guide collapsing to 11 breadcrumbs across 77 chunks.
+- **What breaks at scale:** re-indexing to apply a breadcrumb change is O(corpus) Voyage spend
+  (~23.5k chunks). **Nothing self-heals.** A version bump (`PDF_EXTRACT_VERSION`) changes only the index
+  hash; it is necessary but not sufficient, because the monthly sweep 304s and returns before
+  `onDocument` fires, 16 of 26 sources are `autoCrawl:false` and not in the sweep at all, and
+  `crawl:curated` does not pass `ignoreValidators`. HTML has a second independent blocker: no section
+  filter means the bare `contentHash` is the index hash. So the corpus carries two breadcrumb formats
+  until someone runs `reindex:knowledge` on purpose.
+- **Tripwire:** a third breadcrumb format landing before the second is reconciled; anyone folding a
+  corpus-wide re-index into an unrelated PR; **anyone claiming a version bump alone will propagate a
+  extractor/chunker change** — it will not, and the run will look green.
+- **Status:** 🟡 (code fixed, corpus split; deferred campaign tracked in `TODOS.md` §"Chunk breadcrumbs").
 
 ### Section-level content filtering strips in place; it does NOT create per-anchor documents (plan 084)
 - **Choice:** when a source mixes technical and non-technical content inside ONE url (VT Enology Notes
@@ -291,3 +314,34 @@ TEMPLATE — copy this block for each new decision:
 
 ---
 *Seeded 2026-07-02 from known Phase 12 (multi-tenancy) + Phase 8a (cost) context. Grow it every phase.*
+
+### Vineyard Intelligence raster math runs in-process, with no geospatial worker (plan 094 / ADR 0009)
+- **Choice:** Sentinel Hub returns a small estate-wide raster; fractional coverage, zonal statistics, NDVI, colour and the RGBA transform all run as pure TypeScript in a normal request. No queue, no GDAL worker, no COG pyramid, no tile server, no PostGIS.
+- **Fine until:** a ~50 ha estate with 20 blocks costs **390 ms** of compute and **451 MB** peak RSS. Clipping is sub-quadratic in vertices (10x vertices -> 5.3x) and nearly flat in block count (10x blocks -> 1.5x), because one raster is fetched and clipped N ways.
+- **What breaks:** **memory before time.** Peak RSS of 451 MB against a 512 MB function limit is the tightest measured number, driven by the 500 ha / 1.17M-pixel stress case rather than realistic scale. A genuinely large estate, or several concurrent requests in one instance, hits the memory ceiling long before the wall clock.
+- **Mitigation (DONE):** estate-wide fetch rather than per-block (also the quota-correct shape — the free tier binds on 10,000 REQUESTS/month, not processing units); per-ring bbox prefilter in `src/lib/gis/coverage.ts` so a high-vertex block is not clipped against the whole raster; float32 rasters rather than float64 on the wire.
+- **Tripwire:** peak RSS above **400 MB** at realistic scale, OR any estate whose raster exceeds ~2M pixels. Either means the next step is streaming the raster in tiles rather than holding it whole — and the pure math modules move unchanged, which is why rule 2.4 exists.
+- **Also measured, in a real browser (Unit 13):** the raster -> RGBA -> canvas -> Leaflet paint blocks the main thread for **151 ms** at estate scale and **2098 ms** at 500 ha. Running it in a browser rather than jsdom found a 6x bug (a per-pixel array allocation in the palette lookup, now a LUT). At 500 ha, ~60% of the block is `percentileDomain` allocating one object per sample - a typed-array quantile path is the cheapest fix, and moving the transform to a Web Worker is the next one, which the pure modules already permit.
+- **Status:** 🟢 fine for now (measured 2026-07-24; `npm run verify:gis-measure` re-runs the sweep, `docs/GIS/phases/p0-render.md` records the paint)
+
+### Tenant display-unit preferences resolve per request, with ONE pure display authority (plan 098)
+- **Choice:** unit preferences live as seven nullable TEXT columns on `AppSettings` (master system +
+  per-dimension overrides), resolved by ONE pure resolver (`resolveUnitPrefs`, src/lib/units/display.ts —
+  the app-wide conversion/formatting authority; weather/units-core and phenology/units are shims). Reads
+  are per-request server-side (layout → `UnitsProvider` context; assistant route → `runAssistant` opt so
+  the loop stays DB-free), never cached (K12-safe). Per-vineyard weather/geometry columns became nullable
+  OVERRIDES; a one-shot audited hoist-if-uniform migrated the uniform tenant (Demo) to a master and
+  preserved every disagreeing value (Bhutan). Canonical storage stays metric; dosing rates, TTB gallons,
+  spray-legal, audit prose never convert. Weather family follows the coarse MASTER; non-weather
+  temperature/precip surfaces follow their dimension (documented grain split).
+- **Fine until:** always — the resolver is O(1) over one 7-column row; the layout already batched a
+  settings read, so this added one `findFirst` per app-shell render and one per assistant turn.
+- **What breaks at scale:** nothing structural; the only drift risk is a NEW display surface hardcoding a
+  unit instead of routing through display.ts (the U8 sweep's grep gate is the review-time defense), or an
+  entry path accepting a non-default unit without converting at the push boundary (the ferment °F lesson —
+  the analyte registry validates but does NOT normalize at write).
+- **Tripwire:** any inline `× 1.8`, `/ 25.4`, `× 3.785` outside src/lib/units/display.ts; a reader of
+  AppSettings unit columns other than resolveUnitPrefs; a `runAssistant` caller doing a settings read
+  inside the loop.
+- **Status:** 🟢 (shipped plan 098; 4,654-test suite + goldens pin the resolver contract and the
+  imperial-tenant assistant payload; live-QAed on Demo Winery).

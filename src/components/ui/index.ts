@@ -34,6 +34,8 @@ export { ExportCsvButton } from "./ExportCsvButton";
 export type { ExportCsvButtonProps, CsvColumn } from "./ExportCsvButton";
 export { MapLegend } from "./MapLegend";
 export type { MapLegendProps } from "./MapLegend";
+export { MapLayerControl } from "./MapLayerControl";
+export type { LayerRow } from "./MapLayerControl";
 export { BrixChart } from "./BrixChart";
 export type { BrixChartProps, BrixChartSeries, BrixChartMarker } from "./BrixChart";
 export { AnalyteTrendChart } from "./AnalyteTrendChart";

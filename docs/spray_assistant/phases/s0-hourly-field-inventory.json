@@ -1,0 +1,4984 @@
+{
+  "probedAt": "2026-07-26T19:26:40.356Z",
+  "attribution": "Weather data by Open-Meteo.com (CC BY 4.0). ERA5/ERA5-Land © Copernicus Climate Change Service.",
+  "grids": {
+    "stoney_hill": {
+      "gridId": "PHI",
+      "gridX": 53,
+      "gridY": 96,
+      "stationsUrl": "https://api.weather.gov/gridpoints/PHI/53,96/stations"
+    },
+    "russian_river": {
+      "gridId": "MTR",
+      "gridX": 76,
+      "gridY": 140,
+      "stationsUrl": "https://api.weather.gov/gridpoints/MTR/76,140/stations"
+    },
+    "madera": {
+      "gridId": "HNX",
+      "gridX": 46,
+      "gridY": 106,
+      "stationsUrl": "https://api.weather.gov/gridpoints/HNX/46,106/stations"
+    },
+    "paro": null,
+    "monticello_va": {
+      "gridId": "LWX",
+      "gridX": 51,
+      "gridY": 26,
+      "stationsUrl": "https://api.weather.gov/gridpoints/LWX/51,26/stations"
+    }
+  },
+  "stations": {
+    "stoney_hill": {
+      "stationId": "KDYL",
+      "distanceM": 9806.828535530405,
+      "stationElevM": 120.0912,
+      "qcVocab": [
+        "V",
+        "Z"
+      ],
+      "obsPer24h": 308
+    },
+    "russian_river": {
+      "stationId": "KSTS",
+      "distanceM": 3277.6758240660574,
+      "stationElevM": 38.1,
+      "qcVocab": [
+        "V",
+        "Z"
+      ],
+      "obsPer24h": 314
+    },
+    "madera": {
+      "stationId": "KMAE",
+      "distanceM": 17381.860924463625,
+      "stationElevM": 74.9808,
+      "qcVocab": [
+        "V",
+        "Z"
+      ],
+      "obsPer24h": 195
+    },
+    "monticello_va": {
+      "stationId": "KCHO",
+      "distanceM": 13231.929683475362,
+      "stationElevM": 195.072,
+      "qcVocab": [
+        "V",
+        "Z"
+      ],
+      "obsPer24h": 312
+    }
+  },
+  "reports": [
+    {
+      "providerKey": "nws:gridpoints-raw",
+      "endpoint": "https://api.weather.gov/gridpoints/PHI/53,96",
+      "kind": "FORECAST",
+      "siteKey": "stoney_hill",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "148 slots, widths 1/2/3/4h"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "95 slots, widths 1/2/3/4/5/7/8/9h"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "149 slots, widths 1/2/3/5/10h"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "68 slots, widths 1/2/3/4/5/6/7/8/11/13h"
+        },
+        {
+          "field": "windDirection",
+          "present": true,
+          "units": "wmoUnit:degree_(angle)",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "91 slots, widths 1/2/3/4/5/8/9/12/13h"
+        },
+        {
+          "field": "windGust",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "91 slots, widths 1/2/3/4/5/6/8/13h"
+        },
+        {
+          "field": "skyCover",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "85 slots, widths 1/2/4/6/12h"
+        },
+        {
+          "field": "quantitativePrecipitation",
+          "present": true,
+          "units": "wmoUnit:mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 2,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "14 slots, widths 2/6h"
+        },
+        {
+          "field": "probabilityOfPrecipitation",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "49 slots, widths 1/2/4/6/14h"
+        },
+        {
+          "field": "apparentTemperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "149 slots, widths 1/2/3/4h"
+        }
+      ],
+      "retainedHorizonH": 179,
+      "intervalWidthsH": {
+        "temperature": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "dewpoint": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          7,
+          8,
+          9
+        ],
+        "relativeHumidity": [
+          1,
+          2,
+          3,
+          5,
+          10
+        ],
+        "windSpeed": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          11,
+          13
+        ],
+        "windDirection": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          8,
+          9,
+          12,
+          13
+        ],
+        "windGust": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8,
+          13
+        ],
+        "skyCover": [
+          1,
+          2,
+          4,
+          6,
+          12
+        ],
+        "quantitativePrecipitation": [
+          2,
+          6
+        ],
+        "probabilityOfPrecipitation": [
+          1,
+          2,
+          4,
+          6,
+          14
+        ],
+        "apparentTemperature": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "providerIssuedAt": "2026-07-26T10:58:48+00:00",
+      "note": "updateTime=2026-07-26T10:58:48+00:00 · property start spread 0 min"
+    },
+    {
+      "providerKey": "nws:forecast-hourly",
+      "endpoint": "https://api.weather.gov/gridpoints/PHI/53,96/forecast/hourly?units=si",
+      "kind": "FORECAST",
+      "siteKey": "stoney_hill",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": null,
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": null,
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "probabilityOfPrecipitation",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        }
+      ],
+      "retainedHorizonH": 156,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": "2026-07-26T10:58:48+00:00",
+      "note": "156 one-hour periods"
+    },
+    {
+      "providerKey": "nws:station-observations",
+      "endpoint": "https://api.weather.gov/stations/KDYL/observations?start=2026-07-25T19%3A26%3A44Z&end=2026-07-26T19%3A26%3A44Z",
+      "kind": "OBSERVED",
+      "siteKey": "stoney_hill",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.07792207792207792,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "308/308 non-null"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0.012987012987012991,
+          "nativeIntervalH": 0.07792207792207792,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "304/308 non-null"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0.012987012987012991,
+          "nativeIntervalH": 0.07792207792207792,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "304/308 non-null"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0.012987012987012991,
+          "nativeIntervalH": 0.07792207792207792,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "304/308 non-null"
+        },
+        {
+          "field": "windDirection",
+          "present": true,
+          "units": "wmoUnit:degree_(angle)",
+          "nullDensity": 0.03246753246753242,
+          "nativeIntervalH": 0.07792207792207792,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "298/308 non-null"
+        },
+        {
+          "field": "precipitationLastHour",
+          "present": false,
+          "units": null,
+          "nullDensity": 1,
+          "nativeIntervalH": 0.07792207792207792,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "0/308 non-null"
+        },
+        {
+          "field": "barometricPressure",
+          "present": true,
+          "units": "wmoUnit:Pa",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.07792207792207792,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "308/308 non-null"
+        }
+      ],
+      "retainedHorizonH": -168,
+      "intervalWidthsH": {
+        "observation": [
+          0.078
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "KDYL @ 9.8km · Δelev 44m · 308 obs/24h (~5min) · QC=[V|Z]"
+    },
+    {
+      "providerKey": "nws:gridpoints-raw",
+      "endpoint": "https://api.weather.gov/gridpoints/MTR/76,140",
+      "kind": "FORECAST",
+      "siteKey": "russian_river",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "161 slots, widths 1/2/3/4h"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "91 slots, widths 1/2/3/4/5/7/8/10h"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "163 slots, widths 1/2/3h"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "68 slots, widths 1/2/3/4/6h"
+        },
+        {
+          "field": "windDirection",
+          "present": true,
+          "units": "wmoUnit:degree_(angle)",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "72 slots, widths 1/2/3/4/6/9h"
+        },
+        {
+          "field": "windGust",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "70 slots, widths 1/2/3/5/6h"
+        },
+        {
+          "field": "skyCover",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "63 slots, widths 1/2/3/6h"
+        },
+        {
+          "field": "quantitativePrecipitation",
+          "present": true,
+          "units": "wmoUnit:mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 6,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "31 slots, widths 6h"
+        },
+        {
+          "field": "probabilityOfPrecipitation",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 186,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "1 slots, widths 186h"
+        },
+        {
+          "field": "apparentTemperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "163 slots, widths 1/2/3/4h"
+        }
+      ],
+      "retainedHorizonH": 179,
+      "intervalWidthsH": {
+        "temperature": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "dewpoint": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          7,
+          8,
+          10
+        ],
+        "relativeHumidity": [
+          1,
+          2,
+          3
+        ],
+        "windSpeed": [
+          1,
+          2,
+          3,
+          4,
+          6
+        ],
+        "windDirection": [
+          1,
+          2,
+          3,
+          4,
+          6,
+          9
+        ],
+        "windGust": [
+          1,
+          2,
+          3,
+          5,
+          6
+        ],
+        "skyCover": [
+          1,
+          2,
+          3,
+          6
+        ],
+        "quantitativePrecipitation": [
+          6
+        ],
+        "probabilityOfPrecipitation": [
+          186
+        ],
+        "apparentTemperature": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "providerIssuedAt": "2026-07-26T18:26:38+00:00",
+      "note": "updateTime=2026-07-26T18:26:38+00:00 · property start spread 0 min"
+    },
+    {
+      "providerKey": "nws:forecast-hourly",
+      "endpoint": "https://api.weather.gov/gridpoints/MTR/76,140/forecast/hourly?units=si",
+      "kind": "FORECAST",
+      "siteKey": "russian_river",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": null,
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": null,
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "probabilityOfPrecipitation",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        }
+      ],
+      "retainedHorizonH": 156,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": "2026-07-26T18:26:38+00:00",
+      "note": "156 one-hour periods"
+    },
+    {
+      "providerKey": "nws:station-observations",
+      "endpoint": "https://api.weather.gov/stations/KSTS/observations?start=2026-07-25T19%3A26%3A49Z&end=2026-07-26T19%3A26%3A49Z",
+      "kind": "OBSERVED",
+      "siteKey": "russian_river",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.07643312101910828,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "314/314 non-null"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.07643312101910828,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "314/314 non-null"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.07643312101910828,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "314/314 non-null"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0.022292993630573243,
+          "nativeIntervalH": 0.07643312101910828,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "307/314 non-null"
+        },
+        {
+          "field": "windDirection",
+          "present": true,
+          "units": "wmoUnit:degree_(angle)",
+          "nullDensity": 0.02547770700636942,
+          "nativeIntervalH": 0.07643312101910828,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "306/314 non-null"
+        },
+        {
+          "field": "precipitationLastHour",
+          "present": false,
+          "units": null,
+          "nullDensity": 1,
+          "nativeIntervalH": 0.07643312101910828,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "0/314 non-null"
+        },
+        {
+          "field": "barometricPressure",
+          "present": true,
+          "units": "wmoUnit:Pa",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.07643312101910828,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "314/314 non-null"
+        }
+      ],
+      "retainedHorizonH": -168,
+      "intervalWidthsH": {
+        "observation": [
+          0.076
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "KSTS @ 3.3km · Δelev 20m · 314 obs/24h (~5min) · QC=[V|Z]"
+    },
+    {
+      "providerKey": "nws:gridpoints-raw",
+      "endpoint": "https://api.weather.gov/gridpoints/HNX/46,106",
+      "kind": "FORECAST",
+      "siteKey": "madera",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "169 slots, widths 1/2/3h"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "91 slots, widths 1/2/3/4/5/6/8/11h"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "169 slots, widths 1/2/3h"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "45 slots, widths 1/2/3/4/5/6/8/9h"
+        },
+        {
+          "field": "windDirection",
+          "present": true,
+          "units": "wmoUnit:degree_(angle)",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "36 slots, widths 1/2/3/4/5/6/7/9/11/12/15h"
+        },
+        {
+          "field": "windGust",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "54 slots, widths 1/2/3/4/5/6/9h"
+        },
+        {
+          "field": "skyCover",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "64 slots, widths 1/2/3/6h"
+        },
+        {
+          "field": "quantitativePrecipitation",
+          "present": true,
+          "units": "wmoUnit:mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 6,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "31 slots, widths 6h"
+        },
+        {
+          "field": "probabilityOfPrecipitation",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 186,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "1 slots, widths 186h"
+        },
+        {
+          "field": "apparentTemperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "165 slots, widths 1/2/3h"
+        }
+      ],
+      "retainedHorizonH": 179,
+      "intervalWidthsH": {
+        "temperature": [
+          1,
+          2,
+          3
+        ],
+        "dewpoint": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8,
+          11
+        ],
+        "relativeHumidity": [
+          1,
+          2,
+          3
+        ],
+        "windSpeed": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8,
+          9
+        ],
+        "windDirection": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          9,
+          11,
+          12,
+          15
+        ],
+        "windGust": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          9
+        ],
+        "skyCover": [
+          1,
+          2,
+          3,
+          6
+        ],
+        "quantitativePrecipitation": [
+          6
+        ],
+        "probabilityOfPrecipitation": [
+          186
+        ],
+        "apparentTemperature": [
+          1,
+          2,
+          3
+        ]
+      },
+      "providerIssuedAt": "2026-07-26T18:56:29+00:00",
+      "note": "updateTime=2026-07-26T18:56:29+00:00 · property start spread 0 min"
+    },
+    {
+      "providerKey": "nws:forecast-hourly",
+      "endpoint": "https://api.weather.gov/gridpoints/HNX/46,106/forecast/hourly?units=si",
+      "kind": "FORECAST",
+      "siteKey": "madera",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": null,
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": null,
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "probabilityOfPrecipitation",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        }
+      ],
+      "retainedHorizonH": 156,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": "2026-07-26T18:56:29+00:00",
+      "note": "156 one-hour periods"
+    },
+    {
+      "providerKey": "nws:station-observations",
+      "endpoint": "https://api.weather.gov/stations/KMAE/observations?start=2026-07-25T19%3A26%3A55Z&end=2026-07-26T19%3A26%3A55Z",
+      "kind": "OBSERVED",
+      "siteKey": "madera",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.12307692307692308,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "195/195 non-null"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0.01025641025641022,
+          "nativeIntervalH": 0.12307692307692308,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "193/195 non-null"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0.01025641025641022,
+          "nativeIntervalH": 0.12307692307692308,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "193/195 non-null"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0.06666666666666665,
+          "nativeIntervalH": 0.12307692307692308,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "182/195 non-null"
+        },
+        {
+          "field": "windDirection",
+          "present": true,
+          "units": "wmoUnit:degree_(angle)",
+          "nullDensity": 0.06666666666666665,
+          "nativeIntervalH": 0.12307692307692308,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "182/195 non-null"
+        },
+        {
+          "field": "precipitationLastHour",
+          "present": false,
+          "units": null,
+          "nullDensity": 1,
+          "nativeIntervalH": 0.12307692307692308,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "0/195 non-null"
+        },
+        {
+          "field": "barometricPressure",
+          "present": true,
+          "units": "wmoUnit:Pa",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.12307692307692308,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "195/195 non-null"
+        }
+      ],
+      "retainedHorizonH": -168,
+      "intervalWidthsH": {
+        "observation": [
+          0.123
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "KMAE @ 17.4km · Δelev -7m · 195 obs/24h (~7min) · QC=[V|Z]"
+    },
+    {
+      "providerKey": "nws:gridpoints-raw",
+      "endpoint": "https://api.weather.gov/gridpoints/LWX/51,26",
+      "kind": "FORECAST",
+      "siteKey": "monticello_va",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "146 slots, widths 1/2/3/4/7h"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "67 slots, widths 1/2/3/4/5/6/8/11/12/15h"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "131 slots, widths 1/2/3/4/5/8h"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "82 slots, widths 1/2/3/4/5/6/7/8/9/10h"
+        },
+        {
+          "field": "windDirection",
+          "present": true,
+          "units": "wmoUnit:degree_(angle)",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "110 slots, widths 1/2/3/4/5/6/9h"
+        },
+        {
+          "field": "windGust",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "102 slots, widths 1/2/3/4/5/6/10h"
+        },
+        {
+          "field": "skyCover",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "94 slots, widths 1/2/3/6/12h"
+        },
+        {
+          "field": "quantitativePrecipitation",
+          "present": true,
+          "units": "wmoUnit:mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 6,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "14 slots, widths 6h"
+        },
+        {
+          "field": "probabilityOfPrecipitation",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 3,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "34 slots, widths 3/6/12h"
+        },
+        {
+          "field": "apparentTemperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "143 slots, widths 1/2/3/4/7h"
+        }
+      ],
+      "retainedHorizonH": 179,
+      "intervalWidthsH": {
+        "temperature": [
+          1,
+          2,
+          3,
+          4,
+          7
+        ],
+        "dewpoint": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          8,
+          11,
+          12,
+          15
+        ],
+        "relativeHumidity": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          8
+        ],
+        "windSpeed": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "windDirection": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          9
+        ],
+        "windGust": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          10
+        ],
+        "skyCover": [
+          1,
+          2,
+          3,
+          6,
+          12
+        ],
+        "quantitativePrecipitation": [
+          6
+        ],
+        "probabilityOfPrecipitation": [
+          3,
+          6,
+          12
+        ],
+        "apparentTemperature": [
+          1,
+          2,
+          3,
+          4,
+          7
+        ]
+      },
+      "providerIssuedAt": "2026-07-26T18:23:20+00:00",
+      "note": "updateTime=2026-07-26T18:23:20+00:00 · property start spread 0 min"
+    },
+    {
+      "providerKey": "nws:forecast-hourly",
+      "endpoint": "https://api.weather.gov/gridpoints/LWX/51,26/forecast/hourly?units=si",
+      "kind": "FORECAST",
+      "siteKey": "monticello_va",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": null,
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": null,
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        },
+        {
+          "field": "probabilityOfPrecipitation",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": true,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "156/156 non-null"
+        }
+      ],
+      "retainedHorizonH": 156,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": "2026-07-26T18:23:20+00:00",
+      "note": "156 one-hour periods"
+    },
+    {
+      "providerKey": "nws:station-observations",
+      "endpoint": "https://api.weather.gov/stations/KCHO/observations?start=2026-07-25T19%3A27%3A00Z&end=2026-07-26T19%3A27%3A00Z",
+      "kind": "OBSERVED",
+      "siteKey": "monticello_va",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.07692307692307693,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "312/312 non-null"
+        },
+        {
+          "field": "dewpoint",
+          "present": true,
+          "units": "wmoUnit:degC",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.07692307692307693,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "312/312 non-null"
+        },
+        {
+          "field": "relativeHumidity",
+          "present": true,
+          "units": "wmoUnit:percent",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.07692307692307693,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "312/312 non-null"
+        },
+        {
+          "field": "windSpeed",
+          "present": true,
+          "units": "wmoUnit:km_h-1",
+          "nullDensity": 0.0032051282051281937,
+          "nativeIntervalH": 0.07692307692307693,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "311/312 non-null"
+        },
+        {
+          "field": "windDirection",
+          "present": true,
+          "units": "wmoUnit:degree_(angle)",
+          "nullDensity": 0.0064102564102563875,
+          "nativeIntervalH": 0.07692307692307693,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "310/312 non-null"
+        },
+        {
+          "field": "precipitationLastHour",
+          "present": false,
+          "units": null,
+          "nullDensity": 1,
+          "nativeIntervalH": 0.07692307692307693,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "0/312 non-null"
+        },
+        {
+          "field": "barometricPressure",
+          "present": true,
+          "units": "wmoUnit:Pa",
+          "nullDensity": 0,
+          "nativeIntervalH": 0.07692307692307693,
+          "kind": "OBSERVED",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "312/312 non-null"
+        }
+      ],
+      "retainedHorizonH": -168,
+      "intervalWidthsH": {
+        "observation": [
+          0.077
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "KCHO @ 13.2km · Δelev 15m · 312 obs/24h (~5min) · QC=[V|Z]"
+    },
+    {
+      "providerKey": "open_meteo:forecast-default",
+      "endpoint": "https://api.open-meteo.com/v1/forecast?latitude=40.328822&longitude=-75.007183&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&forecast_days=7",
+      "kind": "FORECAST",
+      "siteKey": "stoney_hill",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": 168,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=80m · gen 0.45609474182128906ms"
+    },
+    {
+      "providerKey": "open_meteo:forecast-default",
+      "endpoint": "https://api.open-meteo.com/v1/forecast?latitude=38.5058&longitude=-122.8536&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&forecast_days=7",
+      "kind": "FORECAST",
+      "siteKey": "russian_river",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": 168,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=48m · gen 1.398324966430664ms"
+    },
+    {
+      "providerKey": "open_meteo:forecast-default",
+      "endpoint": "https://api.open-meteo.com/v1/forecast?latitude=36.857887&longitude=-119.99701&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&forecast_days=7",
+      "kind": "FORECAST",
+      "siteKey": "madera",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": 168,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=83m · gen 2.9369592666625977ms"
+    },
+    {
+      "providerKey": "open_meteo:forecast-default",
+      "endpoint": "https://api.open-meteo.com/v1/forecast?latitude=27.396872&longitude=89.421769&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&forecast_days=7",
+      "kind": "FORECAST",
+      "siteKey": "paro",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": 168,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=2302m · gen 8.032083511352539ms"
+    },
+    {
+      "providerKey": "open_meteo:forecast-default",
+      "endpoint": "https://api.open-meteo.com/v1/forecast?latitude=38.02&longitude=-78.48&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&forecast_days=7",
+      "kind": "FORECAST",
+      "siteKey": "monticello_va",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "FORECAST",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": false,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": 168,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=140m · gen 47.99807071685791ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5_land",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=40.328822&longitude=-75.007183&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5_land",
+      "kind": "REANALYSIS",
+      "siteKey": "stoney_hill",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": false,
+          "units": "km/h",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "precipitation",
+          "present": false,
+          "units": "mm",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "cloud_cover",
+          "present": false,
+          "units": "%",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": false,
+          "units": "W/m²",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=80m · gen 2.056121826171875ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5_land",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=38.5058&longitude=-122.8536&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5_land",
+      "kind": "REANALYSIS",
+      "siteKey": "russian_river",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": false,
+          "units": "km/h",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "precipitation",
+          "present": false,
+          "units": "mm",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "cloud_cover",
+          "present": false,
+          "units": "%",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": false,
+          "units": "W/m²",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=48m · gen 7.352352142333984ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5_land",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=36.857887&longitude=-119.99701&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5_land",
+      "kind": "REANALYSIS",
+      "siteKey": "madera",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": false,
+          "units": "km/h",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "precipitation",
+          "present": false,
+          "units": "mm",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "cloud_cover",
+          "present": false,
+          "units": "%",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": false,
+          "units": "W/m²",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=83m · gen 97.3273515701294ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5_land",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=27.396872&longitude=89.421769&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5_land",
+      "kind": "REANALYSIS",
+      "siteKey": "paro",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": false,
+          "units": "km/h",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "precipitation",
+          "present": false,
+          "units": "mm",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "cloud_cover",
+          "present": false,
+          "units": "%",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": false,
+          "units": "W/m²",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=2302m · gen 2.297043800354004ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5_land",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=38.02&longitude=-78.48&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5_land",
+      "kind": "REANALYSIS",
+      "siteKey": "monticello_va",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": false,
+          "units": "km/h",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "precipitation",
+          "present": false,
+          "units": "mm",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "cloud_cover",
+          "present": false,
+          "units": "%",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": false,
+          "units": "W/m²",
+          "nullDensity": 1,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "ALL NULL (168 slots)"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=140m · gen 105.1100492477417ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=40.328822&longitude=-75.007183&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5",
+      "kind": "REANALYSIS",
+      "siteKey": "stoney_hill",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=80m · gen 10.422825813293457ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=38.5058&longitude=-122.8536&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5",
+      "kind": "REANALYSIS",
+      "siteKey": "russian_river",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=48m · gen 126.9751787185669ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=36.857887&longitude=-119.99701&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5",
+      "kind": "REANALYSIS",
+      "siteKey": "madera",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=83m · gen 14.455437660217285ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=27.396872&longitude=89.421769&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5",
+      "kind": "REANALYSIS",
+      "siteKey": "paro",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=2302m · gen 35.70914268493652ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=38.02&longitude=-78.48&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5",
+      "kind": "REANALYSIS",
+      "siteKey": "monticello_va",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=140m · gen 7.127881050109863ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5_seamless",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=40.328822&longitude=-75.007183&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5_seamless",
+      "kind": "REANALYSIS",
+      "siteKey": "stoney_hill",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=80m · gen 0.20694732666015625ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5_seamless",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=38.5058&longitude=-122.8536&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5_seamless",
+      "kind": "REANALYSIS",
+      "siteKey": "russian_river",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=48m · gen 5.786538124084473ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5_seamless",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=36.857887&longitude=-119.99701&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5_seamless",
+      "kind": "REANALYSIS",
+      "siteKey": "madera",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=83m · gen 17.396211624145508ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5_seamless",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=27.396872&longitude=89.421769&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5_seamless",
+      "kind": "REANALYSIS",
+      "siteKey": "paro",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=2302m · gen 0.8622407913208008ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-era5_seamless",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=38.02&longitude=-78.48&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07&models=era5_seamless",
+      "kind": "REANALYSIS",
+      "siteKey": "monticello_va",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=140m · gen 104.25639152526855ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-default",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=40.328822&longitude=-75.007183&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07",
+      "kind": "REANALYSIS",
+      "siteKey": "stoney_hill",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=80m · gen 24.877548217773438ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-default",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=38.5058&longitude=-122.8536&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07",
+      "kind": "REANALYSIS",
+      "siteKey": "russian_river",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=48m · gen 109.49420928955078ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-default",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=36.857887&longitude=-119.99701&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07",
+      "kind": "REANALYSIS",
+      "siteKey": "madera",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=83m · gen 25.335192680358887ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-default",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=27.396872&longitude=89.421769&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07",
+      "kind": "REANALYSIS",
+      "siteKey": "paro",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=2302m · gen 27.693510055541992ms"
+    },
+    {
+      "providerKey": "open_meteo:archive-default",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive?latitude=38.02&longitude=-78.48&hourly=temperature_2m%2Crelative_humidity_2m%2Cdew_point_2m%2Cwind_speed_10m%2Cprecipitation%2Ccloud_cover%2Cshortwave_radiation&timezone=UTC&start_date=2024-06-01&end_date=2024-06-07",
+      "kind": "REANALYSIS",
+      "siteKey": "monticello_va",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "temperature_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "relative_humidity_2m",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "dew_point_2m",
+          "present": true,
+          "units": "°C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "wind_speed_10m",
+          "present": true,
+          "units": "km/h",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "precipitation",
+          "present": true,
+          "units": "mm",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "cloud_cover",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        },
+        {
+          "field": "shortwave_radiation",
+          "present": true,
+          "units": "W/m²",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "168 hourly slots · elevation=140m · gen 11.590242385864258ms"
+    },
+    {
+      "providerKey": "nasa_power:hourly",
+      "endpoint": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M%2CRH2M%2CT2MDEW%2CWS2M%2CPRECTOTCORR%2CALLSKY_SFC_SW_DWN&community=AG&longitude=-75.007183&latitude=40.328822&start=20240601&end=20240607&format=JSON&time-standard=UTC",
+      "kind": "REANALYSIS",
+      "siteKey": "stoney_hill",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "T2M",
+          "present": true,
+          "units": "C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "RH2M",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "T2MDEW",
+          "present": true,
+          "units": "C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "WS2M",
+          "present": true,
+          "units": "m/s",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "PRECTOTCORR",
+          "present": true,
+          "units": "mm/day",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "ALLSKY_SFC_SW_DWN",
+          "present": true,
+          "units": "MJ/hr",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "wind is WS2M (2 m), NOT 10 m — a different quantity from every other provider here"
+    },
+    {
+      "providerKey": "nasa_power:hourly",
+      "endpoint": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M%2CRH2M%2CT2MDEW%2CWS2M%2CPRECTOTCORR%2CALLSKY_SFC_SW_DWN&community=AG&longitude=-122.8536&latitude=38.5058&start=20240601&end=20240607&format=JSON&time-standard=UTC",
+      "kind": "REANALYSIS",
+      "siteKey": "russian_river",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "T2M",
+          "present": true,
+          "units": "C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "RH2M",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "T2MDEW",
+          "present": true,
+          "units": "C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "WS2M",
+          "present": true,
+          "units": "m/s",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "PRECTOTCORR",
+          "present": true,
+          "units": "mm/day",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "ALLSKY_SFC_SW_DWN",
+          "present": true,
+          "units": "MJ/hr",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "wind is WS2M (2 m), NOT 10 m — a different quantity from every other provider here"
+    },
+    {
+      "providerKey": "nasa_power:hourly",
+      "endpoint": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M%2CRH2M%2CT2MDEW%2CWS2M%2CPRECTOTCORR%2CALLSKY_SFC_SW_DWN&community=AG&longitude=-119.99701&latitude=36.857887&start=20240601&end=20240607&format=JSON&time-standard=UTC",
+      "kind": "REANALYSIS",
+      "siteKey": "madera",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "T2M",
+          "present": true,
+          "units": "C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "RH2M",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "T2MDEW",
+          "present": true,
+          "units": "C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "WS2M",
+          "present": true,
+          "units": "m/s",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "PRECTOTCORR",
+          "present": true,
+          "units": "mm/day",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "ALLSKY_SFC_SW_DWN",
+          "present": true,
+          "units": "MJ/hr",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "wind is WS2M (2 m), NOT 10 m — a different quantity from every other provider here"
+    },
+    {
+      "providerKey": "nasa_power:hourly",
+      "endpoint": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M%2CRH2M%2CT2MDEW%2CWS2M%2CPRECTOTCORR%2CALLSKY_SFC_SW_DWN&community=AG&longitude=89.421769&latitude=27.396872&start=20240601&end=20240607&format=JSON&time-standard=UTC",
+      "kind": "REANALYSIS",
+      "siteKey": "paro",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "T2M",
+          "present": true,
+          "units": "C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "RH2M",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "T2MDEW",
+          "present": true,
+          "units": "C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "WS2M",
+          "present": true,
+          "units": "m/s",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "PRECTOTCORR",
+          "present": true,
+          "units": "mm/day",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "ALLSKY_SFC_SW_DWN",
+          "present": true,
+          "units": "MJ/hr",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "wind is WS2M (2 m), NOT 10 m — a different quantity from every other provider here"
+    },
+    {
+      "providerKey": "nasa_power:hourly",
+      "endpoint": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M%2CRH2M%2CT2MDEW%2CWS2M%2CPRECTOTCORR%2CALLSKY_SFC_SW_DWN&community=AG&longitude=-78.48&latitude=38.02&start=20240601&end=20240607&format=JSON&time-standard=UTC",
+      "kind": "REANALYSIS",
+      "siteKey": "monticello_va",
+      "ok": true,
+      "httpStatus": 200,
+      "fields": [
+        {
+          "field": "T2M",
+          "present": true,
+          "units": "C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "RH2M",
+          "present": true,
+          "units": "%",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "T2MDEW",
+          "present": true,
+          "units": "C",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "WS2M",
+          "present": true,
+          "units": "m/s",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "PRECTOTCORR",
+          "present": true,
+          "units": "mm/day",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        },
+        {
+          "field": "ALLSKY_SFC_SW_DWN",
+          "present": true,
+          "units": "MJ/hr",
+          "nullDensity": 0,
+          "nativeIntervalH": 1,
+          "kind": "REANALYSIS",
+          "hasValidTime": true,
+          "hasProviderIssuedAt": false,
+          "ingestedAtSynthesizable": true,
+          "refetchable": true,
+          "note": "168/168 (fill=-999 excluded)"
+        }
+      ],
+      "retainedHorizonH": null,
+      "intervalWidthsH": {
+        "all": [
+          1
+        ]
+      },
+      "providerIssuedAt": null,
+      "note": "wind is WS2M (2 m), NOT 10 m — a different quantity from every other provider here"
+    }
+  ],
+  "cadence": {
+    "site": "stoney_hill",
+    "samples": [
+      {
+        "at": "2026-07-26T19:27:56.558Z",
+        "updateTime": "2026-07-26T10:58:48+00:00"
+      },
+      {
+        "at": "2026-07-26T19:32:56.696Z",
+        "updateTime": "2026-07-26T10:58:48+00:00"
+      },
+      {
+        "at": "2026-07-26T19:37:56.844Z",
+        "updateTime": "2026-07-26T10:58:48+00:00"
+      },
+      {
+        "at": "2026-07-26T19:42:57.031Z",
+        "updateTime": "2026-07-26T10:58:48+00:00"
+      },
+      {
+        "at": "2026-07-26T19:47:57.136Z",
+        "updateTime": "2026-07-26T10:58:48+00:00"
+      },
+      {
+        "at": "2026-07-26T19:52:57.413Z",
+        "updateTime": "2026-07-26T10:58:48+00:00"
+      },
+      {
+        "at": "2026-07-26T19:57:57.521Z",
+        "updateTime": "2026-07-26T10:58:48+00:00"
+      }
+    ],
+    "distinctIssuances": [
+      "2026-07-26T10:58:48+00:00"
+    ],
+    "gapsMin": [],
+    "windowMin": 30.01605
+  },
+  "updateTimeEvidence": {
+    "site": "stoney_hill",
+    "startSpreadMin": 0,
+    "updateTime": "2026-07-26T10:58:48+00:00"
+  },
+  "era5LandWindAllNull": true,
+  "designClaimFailures": [],
+  "rollupRule": {
+    "version": 1,
+    "declaredIn": "S0 Unit 2, before any Unit 5 measurement (council C8)",
+    "binDefinition": "[HH:00, HH+1:00) UTC, half-open",
+    "inclusionWindow": "obs timestamp floored to the hour; obs at minute >= 45 roll into the following hour",
+    "stateVariableRollup": "nearest-to-bin-centre single observation, never a mean",
+    "precipitationRollup": "last non-null hourly-accumulation report in the bin (NOT summed — the field is already an hour accumulation)",
+    "gapHandling": "a bin with no admissible observation is MISSING; never interpolated, never defaulted to zero",
+    "qcAdmissible": [
+      "V",
+      "Z"
+    ],
+    "qcNote": "Z (preliminary) is admitted but tagged; Unit 5 reports the V/Z split so the reader can discount accordingly",
+    "isdQcAdmissible": [
+      "0",
+      "1",
+      "4",
+      "5",
+      "9"
+    ],
+    "dstHandling": "align in UTC; convert to site-local via the IANA zone only at the estimator's night-window boundary"
+  }
+}

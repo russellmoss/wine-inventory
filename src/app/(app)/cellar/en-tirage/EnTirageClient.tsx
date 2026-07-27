@@ -8,6 +8,8 @@ import { riddlingAction, disgorgeAndFinishAction } from "@/lib/sparkling/actions
 import { reverseOperationAction } from "@/lib/ledger/actions";
 import { tirageSugarForPressure, dosageSugarGpl, finalRS, classifyStyle, nearStyleBandEdge } from "@/lib/sparkling/sugar";
 import type { WorklistRow, TirageCandidate, FinishedSparklingRow } from "@/lib/sparkling/worklist-data";
+import { formatVolume, volumeInputToLiters, volumeInputValue, volumeUnitLabel } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 const num = { fontVariantNumeric: "tabular-nums" } as React.CSSProperties;
 const UNDO_LABEL: Record<string, string> = { TIRAGE: "tirage → tank", RIDDLING: "riddling", DISGORGEMENT: "disgorgement", DOSAGE: "dosage" };
@@ -211,6 +213,7 @@ export function EnTirageClient({
 function TirageModal({ open, onClose, candidates, locations, materials, pending, run }: {
   open: boolean; onClose: () => void; candidates: TirageCandidate[]; locations: { id: string; name: string }[]; materials: { id: string; name: string }[]; pending: boolean; run: (fn: () => Promise<string>) => void;
 }) {
+  const vol = useUnitPrefs().volume;
   const [lotId, setLotId] = React.useState(candidates[0]?.lotId ?? "");
   // Per-tank selection + draw for the chosen cuvée: vesselId → { checked, draw }.
   const [tankSel, setTankSel] = React.useState<Record<string, { checked: boolean; draw: string }>>({});
@@ -224,9 +227,15 @@ function TirageModal({ open, onClose, candidates, locations, materials, pending,
   const cand = candidates.find((c) => c.lotId === lotId);
   const suggestedSugar = pressureAtm ? tirageSugarForPressure(Number(pressureAtm)) : null;
   // Default: every tank of the cuvée checked, drawing its full volume.
-  const tankOf = (vesselId: string, volumeL: number) => tankSel[vesselId] ?? { checked: true, draw: String(volumeL) };
-  const chosen = (cand?.tanks ?? []).map((t) => ({ ...t, ...tankOf(t.vesselId, t.volumeL) }));
-  const totalDraw = Math.round(chosen.filter((t) => t.checked).reduce((a, t) => a + (Number(t.draw) || 0), 0) * 100) / 100;
+  // Plan 098 review fix: draw entry is in the winery display unit with a per-tank dirty check —
+  // an untouched full-draw submits the tank's exact stored litres (council C5/SF2).
+  const tankOf = (vesselId: string, volumeL: number) => tankSel[vesselId] ?? { checked: true, draw: volumeInputValue(volumeL, vol) };
+  const chosen = (cand?.tanks ?? []).map((t) => {
+    const row = tankOf(t.vesselId, t.volumeL);
+    const drawLiters = volumeInputToLiters(row.draw, vol, { display: volumeInputValue(t.volumeL, vol), liters: t.volumeL }) ?? 0;
+    return { ...t, ...row, drawLiters };
+  });
+  const totalDraw = Math.round(chosen.filter((t) => t.checked).reduce((a, t) => a + (t.drawLiters || 0), 0) * 100) / 100;
   const fillL = (Number(nominalFillMl) || 750) / 1000;
   const suggestedBottles = fillL > 0 ? Math.floor(totalDraw / fillL) : 0;
   const bottles = bottleCount ? Number(bottleCount) : suggestedBottles;
@@ -257,7 +266,7 @@ function TirageModal({ open, onClose, candidates, locations, materials, pending,
         <label style={{ fontSize: 13, color: "var(--text-secondary)" }}>Cuvée
           <select value={lotId} onChange={(e) => switchLot(e.target.value)} style={selStyle}>
             {candidates.map((c) => (
-              <option key={c.lotId} value={c.lotId}>{c.lotCode}{c.vintage ? ` · ${c.vintage}` : " · NV"} · {c.totalL} L across {c.tanks.length} tank{c.tanks.length > 1 ? "s" : ""}</option>
+              <option key={c.lotId} value={c.lotId}>{c.lotCode}{c.vintage ? ` · ${c.vintage}` : " · NV"} · {formatVolume(c.totalL, vol)} across {c.tanks.length} tank{c.tanks.length > 1 ? "s" : ""}</option>
             ))}
           </select>
         </label>
@@ -273,11 +282,14 @@ function TirageModal({ open, onClose, candidates, locations, materials, pending,
                     <label style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", cursor: "pointer" }}>
                       <input type="checkbox" checked={row.checked} onChange={(e) => setTank(t.vesselId, { checked: e.target.checked }, t.volumeL)} style={{ width: 18, height: 18 }} />
                       <span style={{ fontWeight: 500 }}>{t.vesselCode}</span>
-                      <span style={{ ...num, color: "var(--text-muted)", fontSize: 13 }}>holds {t.volumeL} L</span>
+                      <span style={{ ...num, color: "var(--text-muted)", fontSize: 13 }}>holds {formatVolume(t.volumeL, vol)}</span>
                     </label>
-                    <input type="number" value={row.draw} disabled={!row.checked} onChange={(e) => setTank(t.vesselId, { draw: e.target.value }, t.volumeL)}
-                      aria-label={`Draw from ${t.vesselCode}`}
-                      style={{ ...selStyle, width: 110, marginTop: 0, opacity: row.checked ? 1 : 0.5 }} />
+                    <span style={{ position: "relative", display: "inline-flex", width: 110 }}>
+                      <input type="number" value={row.draw} disabled={!row.checked} onChange={(e) => setTank(t.vesselId, { draw: e.target.value }, t.volumeL)}
+                        aria-label={`Draw from ${t.vesselCode} (${volumeUnitLabel(vol)})`}
+                        style={{ ...selStyle, width: "100%", marginTop: 0, paddingRight: 34, opacity: row.checked ? 1 : 0.5 }} />
+                      <span aria-hidden style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 12, color: "var(--text-muted)" }}>{volumeUnitLabel(vol)}</span>
+                    </span>
                   </div>
                 );
               })}
@@ -321,7 +333,7 @@ function TirageModal({ open, onClose, candidates, locations, materials, pending,
 
         {cand && (
           <p style={{ ...num, fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-            {totalDraw} L from {chosen.filter((t) => t.checked).length || "?"} tank{chosen.filter((t) => t.checked).length === 1 ? "" : "s"} → {bottles} × {nominalFillMl} mL en tirage. Bulk leaves the vessel(s).
+            {formatVolume(totalDraw, vol)}{vol !== "L" ? ` (${formatVolume(totalDraw, "L")} recorded)` : ""} from {chosen.filter((t) => t.checked).length || "?"} tank{chosen.filter((t) => t.checked).length === 1 ? "" : "s"} → {bottles} × {nominalFillMl} mL en tirage. Bulk leaves the vessel(s).
           </p>
         )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -330,7 +342,7 @@ function TirageModal({ open, onClose, candidates, locations, materials, pending,
             variant="primary"
             disabled={pending || !cand || totalDraw <= 0 || bottles <= 0}
             onClick={() => run(async () => {
-              const sources = chosen.filter((t) => t.checked && Number(t.draw) > 0).map((t) => ({ vesselId: t.vesselId, drawL: Number(t.draw) }));
+              const sources = chosen.filter((t) => t.checked && t.drawLiters > 0).map((t) => ({ vesselId: t.vesselId, drawL: t.drawLiters }));
               await tirageAction({
                 lotId: cand!.lotId, sources, bottleCount: bottles,
                 nominalFillMl: Number(nominalFillMl), method, targetPressureAtm: method === "TRADITIONAL" && pressureAtm ? Number(pressureAtm) : undefined,

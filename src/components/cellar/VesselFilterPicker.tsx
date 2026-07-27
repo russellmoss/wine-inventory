@@ -2,6 +2,8 @@
 
 import React from "react";
 import { rankMaterials } from "@/lib/inventory/material-search";
+import { formatVolume } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Searchable, Tank/Barrel-filterable SINGLE-select vessel picker for the /bulk cellar action forms
 // (rack destination, topping source). Mirrors MaterialFilterPicker: current-selection summary + a
@@ -37,6 +39,7 @@ export function VesselFilterPicker({
   ariaLabel?: string;
   emptyHint?: string;
 }) {
+  const vol = useUnitPrefs().volume;
   const [q, setQ] = React.useState("");
   const [kind, setKind] = React.useState<KindFilter>("ALL");
 
@@ -50,7 +53,7 @@ export function VesselFilterPicker({
       {selected ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14 }}>
           <span style={{ fontWeight: 600 }}>{selected.label}</span>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{selected.totalL} L</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{formatVolume(selected.totalL, vol)}</span>
           <button type="button" aria-label="Clear selection" onClick={() => onChange("")} style={{ marginLeft: "auto", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 12, borderRadius: 999, padding: "2px 10px" }}>Change</button>
         </div>
       ) : null}

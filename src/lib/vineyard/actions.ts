@@ -1,13 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
+import { runAsTenant } from "@/lib/tenant/context";
+import { pullBlockSoil } from "@/lib/soil/pull-core";
 import { action, ActionError, getActionUser } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
 import { type Unit } from "@/lib/vineyard/units";
+import { validateVineyardPolygon } from "@/lib/gis/geometry";
 import {
   optStr,
   optInt,
@@ -100,36 +104,21 @@ async function assertVarietyExists(varietyId: string | null) {
 }
 
 // ── GeoJSON polygon validation (do not trust the client) ──────────────────
-
-const MAX_POLYGON_BYTES = 64 * 1024;
-const MAX_POLYGON_VERTICES = 2000;
+//
+// Delegates to the canonical validator in `@/lib/gis/geometry`, which is pure, exported and unit
+// tested. It carries the same 64 KiB / 2000-vertex limits this function used to hold privately, and
+// adds the checks the old one lacked: ring closure, winding, self-intersection, self-touching, and
+// hole containment. Those additions are a deliberate tightening — a self-touching or self-crossing
+// ring makes signed-area zonal statistics silently wrong (see `gis/coverage.ts`), so it must be
+// refused at the write boundary rather than measured later. Geoman already blocks self-intersection
+// client-side (`SatelliteMap.tsx`, `allowSelfIntersection: false`), so this is a server-side backstop.
+//
+// Validation only: the geometry is stored exactly as the client sent it. Canonical winding is applied
+// by the reader in the GIS math path, so no existing row's bytes change.
 
 function validatePolygon(geojson: unknown): void {
-  if (JSON.stringify(geojson).length > MAX_POLYGON_BYTES) {
-    throw new ActionError("That shape is too large to save.");
-  }
-  const g = geojson as { type?: unknown; coordinates?: unknown };
-  if (!g || g.type !== "Polygon" || !Array.isArray(g.coordinates)) {
-    throw new ActionError("Invalid polygon geometry.");
-  }
-  let vertices = 0;
-  for (const ring of g.coordinates) {
-    if (!Array.isArray(ring) || ring.length < 4) {
-      throw new ActionError("A polygon ring needs at least 4 points.");
-    }
-    for (const pos of ring) {
-      if (!Array.isArray(pos) || pos.length < 2) throw new ActionError("Invalid polygon point.");
-      const [lng, lat] = pos as number[];
-      if (typeof lng !== "number" || typeof lat !== "number" || !Number.isFinite(lng) || !Number.isFinite(lat)) {
-        throw new ActionError("Polygon points must be numbers.");
-      }
-      if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
-        throw new ActionError("Polygon points are out of range.");
-      }
-      vertices++;
-    }
-  }
-  if (vertices > MAX_POLYGON_VERTICES) throw new ActionError("That shape has too many points.");
+  const res = validateVineyardPolygon(geojson);
+  if (!res.ok) throw new ActionError(res.message);
 }
 
 // ── Detail upsert ─────────────────────────────────────────────────────────
@@ -146,7 +135,10 @@ export const upsertVineyardDetail = action(
     const soilType = optStr(formData.get("soilType"), 120);
     const manager = optStr(formData.get("manager"), 120);
 
-    const data = { gpsLat, gpsLng, elevationM, soilType, manager, defaultUnit: unit };
+    // Plan 098: "auto" persists NULL — geometry then follows the winery's display units. A legacy
+    // caller that sends no unitOverride keeps the pre-098 behavior (the display unit is persisted).
+    const defaultUnit = formData.get("unitOverride") === "auto" ? null : unit;
+    const data = { gpsLat, gpsLng, elevationM, soilType, manager, defaultUnit };
 
     const before = await prisma.vineyardDetail.findUnique({ where: { vineyardId } });
     await runInTenantTx(async (tx) => {
@@ -171,7 +163,7 @@ export const upsertVineyardDetail = action(
         elevationM: elevationM?.toString() ?? null,
         soilType,
         manager,
-        defaultUnit: unit,
+        defaultUnit,
       };
       await writeAudit(tx, {
         ...actor,
@@ -354,6 +346,22 @@ export const saveBlockPolygon = action(
       });
     });
     revalidatePath(PATH);
+
+    // Pull NRCS soil for this block RIGHT AWAY (VI-P4). Soil is free/keyless/static, so a US block should
+    // have soil the moment its boundary is drawn — not wait for the daily soil-sweep (that's the backstop).
+    // Runs AFTER the response so the save returns instantly; re-establishes the tenant context (after() runs
+    // outside the action's ALS) and pulls best-effort — pullBlockSoil is idempotent, gates non-US, and any
+    // failure (SDA has no SLA) is caught here and swept up later.
+    if (geojson != null) {
+      const { actorUserId, actorEmail, tenantId } = actor;
+      after(async () => {
+        try {
+          await runAsTenant(tenantId, () => pullBlockSoil({ actorUserId, actorEmail, tenantId }, blockId), { userId: actorUserId });
+        } catch {
+          // best-effort — /api/cron/soil-sweep backfills any block still missing soil
+        }
+      });
+    }
   },
 );
 

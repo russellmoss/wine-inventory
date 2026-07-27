@@ -5,6 +5,8 @@ import { Card, Badge, Metric, LocalTime } from "@/components/ui";
 import type { CostComponent } from "@prisma/client";
 import type { LotCostView } from "@/lib/cost/data";
 import { useCurrency } from "@/components/money/CurrencyProvider";
+import { formatCostPerVolume, formatVolume } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Phase 8 (Unit 15): the cost-per-bottle/L TRUST surface (D14, G7). A decomposed capitalized stack with
 // $/L and % of total, an as-of date, an incomplete-basis warning (red, never a silent number), the
@@ -25,12 +27,16 @@ const COMPONENT_LABELS: Record<CostComponent, string> = {
 
 const num = { fontVariantNumeric: "tabular-nums" } as const;
 
+
 export function CostPanel({ cost }: { cost: LotCostView }) {
   const { symbol } = useCurrency();
+  const vol = useUnitPrefs().volume;
   // Currency-aware money/perL (Phase 037): the tenant symbol prefixes every amount. perL keeps 4 max
   // fraction digits (a per-litre unit cost is small) — formatMoney's fixed 2 is for whole amounts.
   const money = (n: number): string => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const perL = (n: number | null): string => (n == null ? "—" : `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}/L`);
+  // Plan 098: the rate converts for display only (cost-per-gal = cost-per-L × 3.785…) via the ONE
+  // formatter allowed to do that math; every stored figure stays canonical $/L.
+  const perL = (n: number | null): string => formatCostPerVolume(n, vol, symbol);
   const [open, setOpen] = React.useState(false);
   const complete = cost.completeness === "KNOWN";
   const billable = cost.ownership === "CUSTOM_CRUSH_CLIENT";
@@ -62,9 +68,9 @@ export function CostPanel({ cost }: { cost: LotCostView }) {
       ) : (
         <>
           <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-end", margin: "10px 0 6px" }}>
-            <Metric size="sm" caption="Cost / litre" value={perL(cost.costPerL)} />
+            <Metric size="sm" caption={`Cost / ${vol === "GAL" ? "gallon" : vol === "HL" ? "hectolitre" : "litre"}`} value={perL(cost.costPerL)} />
             <Metric size="sm" caption="Total capitalized" value={money(cost.totalCost)} />
-            <Metric size="sm" caption="Volume" value={`${cost.volumeL.toLocaleString()} L`} />
+            <Metric size="sm" caption="Volume" value={formatVolume(cost.volumeL, vol)} />
           </div>
           {cost.asOf ? (
             <p style={{ ...num, color: "var(--text-muted)", fontSize: 12.5, margin: "0 0 12px" }}>
@@ -129,7 +135,7 @@ export function CostPanel({ cost }: { cost: LotCostView }) {
                   ))}
                   {cost.transfers.map((t, i) => (
                     <div key={`t${i}`} style={{ ...num, display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5, color: "var(--text-muted)", padding: "3px 0" }}>
-                      <span>op #{t.operationId} · transfer {t.transferredVolumeL} L</span>
+                      <span>op #{t.operationId} · transfer {formatVolume(t.transferredVolumeL, vol)}</span>
                       <span>{money(t.transferredCost)}</span>
                     </div>
                   ))}

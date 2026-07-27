@@ -1235,9 +1235,22 @@ fruit" becomes real.
 - **Reference template:** `docs/spray orders/Spray work order template.xlsx` — a real, good spray WO to
   model the spray operation on. Its fields (fold these in): vineyard, operator, start/finish + start/stop
   times, **spray vol/acre, gear setting, ground speed** (rig calibration), materials + **active
-  ingredient + PHI + application method + mixing order + amount per tank**, **blocks included + acres**
-  (the cross-block application), **est.# tanks / tanks used / gal used**, tractor. Add **REI + applicator
-  license** (the template omits them) for full compliance.
+  ingredient + REI (F7) + PHI (G7) + application method + mixing order + amount per tank**, **blocks
+  included + acres** (the cross-block application), **est.# tanks / tanks used / gal used**, tractor.
+  ⚠️ *Corrected by S3a (the earlier note here was half wrong): the template DOES carry REI (F7) and
+  PHI (G7); what it genuinely omits is **applicator license**, plus **target pest** and
+  **weather-at-application** — S3a added all three.*
+  **The S3a seam (built 2026-07-26 — S3a's record IS the row this phase's spray WO writes; never a
+  parallel table):** S3a owns the decision/compliance fields — applicator (+license, operator ID,
+  county permit), method, start/finish, coverage inputs, weather-at-application, material lines with
+  the facts snapshot, mixing order, per-block lines (area snapshot, times, computed rate, deposition).
+  Phase 20 owns cost & equipment: **spray rig / tractor / gear setting** (stored by S3a as plain
+  `String?` columns — add equipment FKs beside them and backfill), **est. tanks / tanks used / gal
+  used** (stored on `spray_block_line` — join for consumable draw-down + cost), labor/pay basis,
+  per-block cost roll-up, and PUR export (join on `spray_application.id` / `spray_block_line.id`).
+  Additive columns and joins ONLY — if this phase wants a second spray table, the seam has been
+  crossed. Also carried from S3a council review (GQ2): when block-level WO approval exists, Phase 20
+  must define whether a whole-pass correction invalidates approvals on untouched blocks.
 - **Spray & chemical records are regulatory records (decided, in scope):** a spray operation captures
   **product/chemical (EPA reg #), rate, area treated, applicator (+ license), date/time, target pest,
   and weather/wind** — enough to generate **pesticide-use reports (e.g. California PUR)**. Track each

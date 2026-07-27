@@ -6,6 +6,33 @@ export type ReadGoldenCase = {
 };
 
 export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
+  // ── S5a: the latent-infection ledger. `query_spray_decision` landed THIN and HARD-REFUSING —
+  // it reports what is incubating and refuses every actual spray decision (council C3), because
+  // legality (S7a), the composed record (S9) and weather interlocks (S7b) do not exist yet.
+  {
+    utterance: "What infections are incubating in Oakville Estate right now?",
+    tool: "query_spray_decision",
+    args: { vineyard: "Oakville Estate" },
+  },
+  {
+    utterance: "Is Block 3 a source of inoculum?",
+    tool: "query_spray_decision",
+    args: {},
+    note: "'source of inoculum' is the infectious-transition question the ledger exists to answer",
+  },
+  {
+    utterance: "What is the powdery mildew pressure at Russian River Ranch?",
+    tool: "query_spray_decision",
+    args: { vineyard: "Russian River Ranch" },
+    note: "disease-pressure phrasing routes here even though the answer is that no index exists (Unit 0 NO-GO) — the tool explains why rather than dead-ending",
+  },
+  {
+    utterance: "Should I spray sulfur tomorrow?",
+    tool: "query_spray_decision",
+    args: {},
+    note: "MUST route here and MUST refuse. The tool never recommends a spray and never fires a write (SAFE-12); the refusal names legality, REI/PHI and rotation as what is missing",
+  },
+
   {
     utterance: "What is in tank 5?",
     tool: "query_cellar_contents",
@@ -135,5 +162,132 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     utterance: "What custom units do we have?",
     tool: "query_custom_units",
     args: {},
+  },
+  {
+    utterance: "What planting areas does Russian River Ranch have?",
+    tool: "describe_planting_structure",
+    args: { vineyard: "Russian River Ranch" },
+  },
+  {
+    utterance: "Are any blocks in Home Ranch unassigned to a planting area?",
+    tool: "describe_planting_structure",
+    args: { vineyard: "Home Ranch" },
+  },
+  // VI-P2 — NDVI (satellite vigour) READS. Distinct from process_ndvi (fetch a new scene = a write).
+  {
+    utterance: "What's the NDVI for Estate Vineyard?",
+    tool: "query_ndvi_stats",
+    args: { vineyard: "Estate Vineyard" },
+    note: "reading stored vigour, not fetching a new scene",
+  },
+  {
+    utterance: "How does the canopy vigour look on the Home Block right now?",
+    tool: "query_ndvi_stats",
+    args: { vineyard: "Home Block" },
+  },
+  {
+    utterance: "Show me the satellite greenness for block 3 in Russian River Ranch",
+    tool: "query_ndvi_stats",
+    args: { vineyard: "Russian River Ranch", block: "3" },
+  },
+  // VI-P8 weather/climate — GDD-vs-last-year, warmer-than-last-year, frost-last-night, Winkler, summary.
+  {
+    utterance: "How do our GDDs compare to last year at Russian River Ranch?",
+    tool: "query_climate",
+    args: { vineyard: "Russian River Ranch" },
+  },
+  {
+    utterance: "Was last night a frost at Russian River Ranch?",
+    tool: "query_climate",
+    args: { vineyard: "Russian River Ranch" },
+    note: "frost-last-night resolves in the operating tz; the tool carries the freshness fallback",
+  },
+  {
+    utterance: "What Winkler region is Oakville Estate this year?",
+    tool: "query_climate",
+    args: { vineyard: "Oakville Estate" },
+  },
+  {
+    utterance: "Is this growing season warmer than last year?",
+    tool: "query_climate",
+    args: {},
+    note: "no vineyard named — defaults to the manager's assigned vineyard",
+  },
+  // Plan 096 — the 7-DAY FORECAST + rolling rainfall now live in the SAME domain-composite tool
+  // (query_climate carries `forecast` + `rainfallLast30Days`); forward-looking questions must not
+  // strand on the retrospective framing or drift to query_ndvi_stats.
+  {
+    utterance: "Will it frost this week at Paro?",
+    tool: "query_climate",
+    args: { vineyard: "Paro" },
+    note: "forward-looking frost = the forecast block (tiers) — R11: no rows → 'no forecast yet', never inferred",
+  },
+  {
+    utterance: "What does the weather look like this week at Russian River Ranch?",
+    tool: "query_climate",
+    args: { vineyard: "Russian River Ranch" },
+    note: "the 7-day outlook — carries issuedAt freshness and the days 6–7 lower-confidence note",
+  },
+  {
+    utterance: "Is any rain coming for Madera in the next few days?",
+    tool: "query_climate",
+    args: { vineyard: "Madera" },
+  },
+  {
+    utterance: "How much rain did we get in the last 30 days at Oakville Estate?",
+    tool: "query_climate",
+    args: { vineyard: "Oakville Estate" },
+    note: "rolling recent rainfall — answerable YEAR-ROUND since the off-season ingest (plan 096 U6)",
+  },
+  {
+    utterance: "What time will it drop below freezing tonight at Paro?",
+    tool: "query_climate",
+    args: { vineyard: "Paro" },
+    note: "plan 097 — hourly crossingTimes (vineyard-local hours) answer WHEN, not just whether; R11: no hourly rows → an honest note",
+  },
+  // Plan 098 — tenant display units. The payload's `display` strings arrive pre-formatted in the
+  // vineyard's RESOLVED system (config override → winery prefs → geo); the model uses them verbatim.
+  // The imperial-tenant and auto-inherit payload behavior is pinned deterministically in
+  // test/assistant-climate-display.test.ts (this harness asserts tool selection, not payload shape).
+  {
+    utterance: "What's the forecast for Willamette Valley this week?",
+    tool: "query_climate",
+    args: { vineyard: "Willamette Valley" },
+    note: "plan 098 imperial-tenant case — a US winery's reply must read in °F/inches from the display strings, never a °C number restated",
+  },
+  {
+    utterance: "How hot will it get at Home Ranch tomorrow?",
+    tool: "query_climate",
+    args: { vineyard: "Home Ranch" },
+    note: "plan 098 auto-inherit case — a vineyard with no unit override follows the winery's display units through the chain",
+  },
+  // VI-P3 — NDVI date COMPARISON (change over time). Distinct from a single-date read (query_ndvi_stats).
+  {
+    utterance: "How has the NDVI changed in Estate Vineyard since last month?",
+    tool: "compare_ndvi_dates",
+    args: { vineyard: "Estate Vineyard" },
+    note: "change-over-time is a comparison, not a single-date read",
+  },
+  {
+    utterance: "Compare vine vigour in Home Block between 2026-06-01 and 2026-07-01",
+    tool: "compare_ndvi_dates",
+    args: { vineyard: "Home Block", fromDate: "2026-06-01", toDate: "2026-07-01" },
+  },
+  {
+    utterance: "Is Russian River Ranch greening up compared to the last scene?",
+    tool: "compare_ndvi_dates",
+    args: { vineyard: "Russian River Ranch" },
+  },
+  // VI-P4 — NRCS soil composition READS. Distinct from NDVI (vigour) — this is the ground, not the canopy.
+  {
+    utterance: "What soil is the Home Block on?",
+    tool: "query_block_soil",
+    args: { block: "Home Block" },
+    note: "soil series / composition read, not NDVI vigour",
+  },
+  {
+    utterance: "What's the drainage and pH for the blocks in Estate Vineyard?",
+    tool: "query_block_soil",
+    args: { vineyard: "Estate Vineyard" },
   },
 ];

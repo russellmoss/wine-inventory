@@ -1,0 +1,1309 @@
+{
+  "probedAt": "2026-07-26T19:16:36Z",
+  "sites": {},
+  "armB": [
+    {
+      "site": "stoney_hill",
+      "name": "Stoney Hill",
+      "station": "KDYL",
+      "distanceKm": 9.806828535530405,
+      "source": "IEM ASOS (keyless archive)",
+      "rhPublished": true,
+      "measured": [
+        "temperature",
+        "dewPoint",
+        "wind",
+        "precipitation"
+      ],
+      "note": "Arm B site: T, Td, wind and hourly precip measured; RH published but DERIVED from T/Td"
+    },
+    {
+      "site": "russian_river",
+      "name": "Russian River Ranch",
+      "station": "KSTS",
+      "distanceKm": 3.2776758240660575,
+      "source": "IEM ASOS (keyless archive)",
+      "rhPublished": true,
+      "measured": [
+        "temperature",
+        "dewPoint",
+        "wind",
+        "precipitation"
+      ],
+      "note": "Arm B site: T, Td, wind and hourly precip measured; RH published but DERIVED from T/Td"
+    },
+    {
+      "site": "madera",
+      "name": "Madera",
+      "station": "KMAE",
+      "distanceKm": 17.381860924463624,
+      "source": "IEM ASOS (keyless archive)",
+      "rhPublished": true,
+      "measured": [
+        "temperature",
+        "dewPoint",
+        "wind",
+        "precipitation"
+      ],
+      "note": "Arm B site: T, Td, wind and hourly precip measured; RH published but DERIVED from T/Td"
+    },
+    {
+      "site": "paro",
+      "name": "Paro",
+      "station": "VQPR",
+      "distanceKm": 0.7523632553314991,
+      "source": "NCEI ISD global-hourly",
+      "rhPublished": false,
+      "measured": [
+        "temperature",
+        "dewPoint",
+        "wind"
+      ],
+      "note": "Arm B site: T, Td and wind measured; no RH column and no hourly precip at this station"
+    },
+    {
+      "site": "monticello_va",
+      "name": "Monticello AVA (Virginia) — fixture only",
+      "station": "KCHO",
+      "distanceKm": 13.231929683475363,
+      "source": "IEM ASOS (keyless archive)",
+      "rhPublished": true,
+      "measured": [
+        "temperature",
+        "dewPoint",
+        "wind",
+        "precipitation"
+      ],
+      "note": "Arm B site: T, Td, wind and hourly precip measured; RH published but DERIVED from T/Td"
+    }
+  ],
+  "nwsStations": {
+    "stoney_hill": {
+      "id": "KDYL",
+      "name": "Doylestown, Doylestown Airport",
+      "lat": 40.33016,
+      "lon": -75.12286,
+      "elevM": 120.0912,
+      "distanceM": 9806.828535530405
+    },
+    "russian_river": {
+      "id": "KSTS",
+      "name": "Santa Rosa, Santa Rosa Sonoma County Airport",
+      "lat": 38.5,
+      "lon": -122.81667,
+      "elevM": 38.1,
+      "distanceM": 3277.6758240660574
+    },
+    "madera": {
+      "id": "KMAE",
+      "name": "Madera Municipal Airport",
+      "lat": 36.9851,
+      "lon": -120.11064,
+      "elevM": 74.9808,
+      "distanceM": 17381.860924463625
+    },
+    "paro": null,
+    "monticello_va": {
+      "id": "KCHO",
+      "name": "Charlottesville-Albemarle Airport",
+      "lat": 38.13738,
+      "lon": -78.45516,
+      "elevM": 195.072,
+      "distanceM": 13231.929683475362
+    }
+  },
+  "nwsWindow": {
+    "stoney_hill": [
+      {
+        "offsetDays": 1,
+        "count": 78
+      },
+      {
+        "offsetDays": 2,
+        "count": 78
+      },
+      {
+        "offsetDays": 3,
+        "count": 78
+      },
+      {
+        "offsetDays": 4,
+        "count": 78
+      },
+      {
+        "offsetDays": 5,
+        "count": 83
+      },
+      {
+        "offsetDays": 6,
+        "count": 76
+      },
+      {
+        "offsetDays": 7,
+        "count": 5
+      },
+      {
+        "offsetDays": 10,
+        "count": 0
+      },
+      {
+        "offsetDays": 14,
+        "count": 0
+      }
+    ],
+    "russian_river": [
+      {
+        "offsetDays": 1,
+        "count": 80
+      },
+      {
+        "offsetDays": 2,
+        "count": 80
+      },
+      {
+        "offsetDays": 3,
+        "count": 79
+      },
+      {
+        "offsetDays": 4,
+        "count": 80
+      },
+      {
+        "offsetDays": 5,
+        "count": 78
+      },
+      {
+        "offsetDays": 6,
+        "count": 78
+      },
+      {
+        "offsetDays": 7,
+        "count": 3
+      },
+      {
+        "offsetDays": 10,
+        "count": 0
+      },
+      {
+        "offsetDays": 14,
+        "count": 0
+      }
+    ],
+    "madera": [
+      {
+        "offsetDays": 1,
+        "count": 58
+      },
+      {
+        "offsetDays": 2,
+        "count": 57
+      },
+      {
+        "offsetDays": 3,
+        "count": 48
+      },
+      {
+        "offsetDays": 4,
+        "count": 54
+      },
+      {
+        "offsetDays": 5,
+        "count": 59
+      },
+      {
+        "offsetDays": 6,
+        "count": 61
+      },
+      {
+        "offsetDays": 7,
+        "count": 2
+      },
+      {
+        "offsetDays": 10,
+        "count": 0
+      },
+      {
+        "offsetDays": 14,
+        "count": 0
+      }
+    ],
+    "monticello_va": [
+      {
+        "offsetDays": 1,
+        "count": 79
+      },
+      {
+        "offsetDays": 2,
+        "count": 80
+      },
+      {
+        "offsetDays": 3,
+        "count": 78
+      },
+      {
+        "offsetDays": 4,
+        "count": 78
+      },
+      {
+        "offsetDays": 5,
+        "count": 80
+      },
+      {
+        "offsetDays": 6,
+        "count": 78
+      },
+      {
+        "offsetDays": 7,
+        "count": 3
+      },
+      {
+        "offsetDays": 10,
+        "count": 0
+      },
+      {
+        "offsetDays": 14,
+        "count": 0
+      }
+    ]
+  },
+  "isdStations": {
+    "stoney_hill": [
+      {
+        "usaf": "725113",
+        "wban": "54786",
+        "id": "72511354786",
+        "name": "DOYLESTOWN AIRPORT",
+        "call": "KDYL",
+        "lat": 40.33,
+        "lon": -75.123,
+        "elevM": 120.5,
+        "begin": "20060101",
+        "end": "20250827",
+        "distanceM": 9818.452848119965
+      },
+      {
+        "usaf": "724095",
+        "wban": "14792",
+        "id": "72409514792",
+        "name": "TRENTON MERCER AIRPORT",
+        "call": "KTTN",
+        "lat": 40.277,
+        "lon": -74.816,
+        "elevM": 57.9,
+        "begin": "19730101",
+        "end": "20250827",
+        "distanceM": 17206.1598481153
+      },
+      {
+        "usaf": "724085",
+        "wban": "94732",
+        "id": "72408594732",
+        "name": "NE PHILADELPHIA AIRPORT",
+        "call": "KPNE",
+        "lat": 40.079,
+        "lon": -75.013,
+        "elevM": 32.9,
+        "begin": "19730101",
+        "end": "20250827",
+        "distanceM": 27783.369626184925
+      }
+    ],
+    "russian_river": [
+      {
+        "usaf": "724957",
+        "wban": "23213",
+        "id": "72495723213",
+        "name": "SONOMA COUNTY AIRPORT",
+        "call": "KSTS",
+        "lat": 38.504,
+        "lon": -122.811,
+        "elevM": 36.2,
+        "begin": "20000101",
+        "end": "20250827",
+        "distanceM": 3712.2920798816467
+      },
+      {
+        "usaf": "999999",
+        "wban": "93245",
+        "id": "99999993245",
+        "name": "BODEGA 6 WSW",
+        "call": "",
+        "lat": 38.321,
+        "lon": -123.075,
+        "elevM": 19.2,
+        "begin": "20080614",
+        "end": "20250828",
+        "distanceM": 28184.260437222452
+      },
+      {
+        "usaf": "A07049",
+        "wban": "00320",
+        "id": "A0704900320",
+        "name": "PETALUMA MUNICIPAL AIRPORT",
+        "call": "KO69",
+        "lat": 38.25,
+        "lon": -122.6,
+        "elevM": 27.1,
+        "begin": "20140731",
+        "end": "20250825",
+        "distanceM": 36023.948104480754
+      }
+    ],
+    "madera": [
+      {
+        "usaf": "745046",
+        "wban": "93242",
+        "id": "74504693242",
+        "name": "MADERA MUNICIPAL AIRPORT",
+        "call": "KMAE",
+        "lat": 36.985,
+        "lon": -120.111,
+        "elevM": 76.6,
+        "begin": "20060101",
+        "end": "20250827",
+        "distanceM": 17391.443901927178
+      },
+      {
+        "usaf": "723897",
+        "wban": "99999",
+        "id": "72389799999",
+        "name": "FRESNO CHANDLER EXECUTIVE",
+        "call": "KFCH",
+        "lat": 36.732,
+        "lon": -119.82,
+        "elevM": 84.7,
+        "begin": "20150717",
+        "end": "20250824",
+        "distanceM": 21080.097360245334
+      },
+      {
+        "usaf": "723890",
+        "wban": "93193",
+        "id": "72389093193",
+        "name": "FRESNO YOSEMITE INTERNATIONAL AIRPORT",
+        "call": "KFAT",
+        "lat": 36.78,
+        "lon": -119.72,
+        "elevM": 101.9,
+        "begin": "19411204",
+        "end": "20250827",
+        "distanceM": 26134.84903650613
+      }
+    ],
+    "paro": [
+      {
+        "usaf": "433990",
+        "wban": "99999",
+        "id": "43399099999",
+        "name": "PARO",
+        "call": "VQPR",
+        "lat": 27.403,
+        "lon": 89.425,
+        "elevM": 2234.8,
+        "begin": "20101206",
+        "end": "20250824",
+        "distanceM": 752.3632553314991
+      },
+      {
+        "usaf": "557730",
+        "wban": "99999",
+        "id": "55773099999",
+        "name": "PAGRI",
+        "call": "",
+        "lat": 27.733,
+        "lon": 89.083,
+        "elevM": 4300,
+        "begin": "19560820",
+        "end": "20250824",
+        "distanceM": 50120.5187237002
+      },
+      {
+        "usaf": "422990",
+        "wban": "99999",
+        "id": "42299099999",
+        "name": "GANGTOK",
+        "call": "",
+        "lat": 27.333,
+        "lon": 88.617,
+        "elevM": 1756,
+        "begin": "19740902",
+        "end": "20250824",
+        "distanceM": 79789.12772502068
+      }
+    ],
+    "monticello_va": [
+      {
+        "usaf": "999999",
+        "wban": "03759",
+        "id": "99999903759",
+        "name": "CHARLOTTESVILLE 2 SSE",
+        "call": "",
+        "lat": 37.998,
+        "lon": -78.466,
+        "elevM": 358.8,
+        "begin": "20070329",
+        "end": "20250828",
+        "distanceM": 2736.570490871458
+      },
+      {
+        "usaf": "724016",
+        "wban": "93736",
+        "id": "72401693736",
+        "name": "CHARLOTTESVILLE ALBEMARLE ARPT",
+        "call": "KCHO",
+        "lat": 38.137,
+        "lon": -78.455,
+        "elevM": 192.3,
+        "begin": "19730101",
+        "end": "20250827",
+        "distanceM": 13192.568331169494
+      },
+      {
+        "usaf": "723114",
+        "wban": "03715",
+        "id": "72311403715",
+        "name": "LOUISA CO/FREEMAN FLD ARPT",
+        "call": "KLKU",
+        "lat": 38.01,
+        "lon": -77.97,
+        "elevM": 150.3,
+        "begin": "20060101",
+        "end": "20250826",
+        "distanceM": 44692.32549555894
+      }
+    ]
+  },
+  "isdProbes": [
+    {
+      "station": {
+        "usaf": "725113",
+        "wban": "54786",
+        "id": "72511354786",
+        "name": "DOYLESTOWN AIRPORT",
+        "call": "KDYL",
+        "lat": 40.33,
+        "lon": -75.123,
+        "elevM": 120.5,
+        "begin": "20060101",
+        "end": "20250827",
+        "distanceM": 9818.452848119965
+      },
+      "year": 2024,
+      "rows": 242,
+      "tmp": 234,
+      "dew": 234,
+      "wnd": 232,
+      "precip": 196,
+      "qcCodes": [
+        "TMP:5",
+        "TMP:9",
+        "WND:5",
+        "WND:9"
+      ]
+    },
+    {
+      "station": {
+        "usaf": "724957",
+        "wban": "23213",
+        "id": "72495723213",
+        "name": "SONOMA COUNTY AIRPORT",
+        "call": "KSTS",
+        "lat": 38.504,
+        "lon": -122.811,
+        "elevM": 36.2,
+        "begin": "20000101",
+        "end": "20250827",
+        "distanceM": 3712.2920798816467
+      },
+      "year": 2024,
+      "rows": 213,
+      "tmp": 204,
+      "dew": 204,
+      "wnd": 204,
+      "precip": 200,
+      "qcCodes": [
+        "TMP:5",
+        "TMP:9",
+        "WND:5",
+        "WND:9"
+      ]
+    },
+    {
+      "station": {
+        "usaf": "745046",
+        "wban": "93242",
+        "id": "74504693242",
+        "name": "MADERA MUNICIPAL AIRPORT",
+        "call": "KMAE",
+        "lat": 36.985,
+        "lon": -120.111,
+        "elevM": 76.6,
+        "begin": "20060101",
+        "end": "20250827",
+        "distanceM": 17391.443901927178
+      },
+      "year": 2024,
+      "rows": 208,
+      "tmp": 199,
+      "dew": 199,
+      "wnd": 198,
+      "precip": 200,
+      "qcCodes": [
+        "TMP:5",
+        "TMP:9",
+        "WND:5",
+        "WND:9"
+      ]
+    },
+    {
+      "station": {
+        "usaf": "433990",
+        "wban": "99999",
+        "id": "43399099999",
+        "name": "PARO",
+        "call": "VQPR",
+        "lat": 27.403,
+        "lon": 89.425,
+        "elevM": 2234.8,
+        "begin": "20101206",
+        "end": "20250824",
+        "distanceM": 752.3632553314991
+      },
+      "year": 2024,
+      "rows": 186,
+      "tmp": 186,
+      "dew": 186,
+      "wnd": 185,
+      "precip": 0,
+      "qcCodes": [
+        "TMP:1",
+        "TMP:5",
+        "WND:1",
+        "WND:9"
+      ]
+    },
+    {
+      "station": {
+        "usaf": "999999",
+        "wban": "03759",
+        "id": "99999903759",
+        "name": "CHARLOTTESVILLE 2 SSE",
+        "call": "",
+        "lat": 37.998,
+        "lon": -78.466,
+        "elevM": 358.8,
+        "begin": "20070329",
+        "end": "20250828",
+        "distanceM": 2736.570490871458
+      },
+      "year": 2024,
+      "rows": 2313,
+      "tmp": 2304,
+      "dew": 0,
+      "wnd": 192,
+      "precip": 200,
+      "qcCodes": [
+        "TMP:1",
+        "TMP:9",
+        "WND:1",
+        "WND:9"
+      ]
+    },
+    {
+      "station": {
+        "usaf": "725113",
+        "wban": "54786",
+        "id": "72511354786",
+        "name": "DOYLESTOWN AIRPORT",
+        "call": "KDYL",
+        "lat": 40.33,
+        "lon": -75.123,
+        "elevM": 120.5,
+        "begin": "20060101",
+        "end": "20250827",
+        "distanceM": 9818.452848119965
+      },
+      "year": 2021,
+      "rows": 6834,
+      "tmp": 6610,
+      "dew": 6610,
+      "wnd": 6555,
+      "precip": 0,
+      "qcCodes": [
+        "TMP:1",
+        "TMP:5",
+        "TMP:9",
+        "WND:1",
+        "WND:5",
+        "WND:9"
+      ]
+    }
+  ],
+  "iemProbes": [
+    {
+      "station": "DYL",
+      "year": 2024,
+      "rows": 206,
+      "counts": {
+        "tmpf": 206,
+        "dwpf": 206,
+        "relh": 206,
+        "sknt": 204,
+        "p01i": 206
+      }
+    },
+    {
+      "station": "STS",
+      "year": 2024,
+      "rows": 174,
+      "counts": {
+        "tmpf": 174,
+        "dwpf": 174,
+        "relh": 174,
+        "sknt": 174,
+        "p01i": 174
+      }
+    },
+    {
+      "station": "MAE",
+      "year": 2024,
+      "rows": 174,
+      "counts": {
+        "tmpf": 174,
+        "dwpf": 174,
+        "relh": 174,
+        "sknt": 173,
+        "p01i": 174
+      }
+    },
+    {
+      "station": "CHO",
+      "year": 2024,
+      "rows": 186,
+      "counts": {
+        "tmpf": 186,
+        "dwpf": 186,
+        "relh": 186,
+        "sknt": 186,
+        "p01i": 186
+      }
+    }
+  ],
+  "iemDepth": {
+    "stoney_hill": [
+      {
+        "year": 2021,
+        "rows": 95
+      },
+      {
+        "year": 2015,
+        "rows": 59
+      },
+      {
+        "year": 2005,
+        "rows": 96
+      },
+      {
+        "year": 1998,
+        "rows": 0
+      }
+    ]
+  },
+  "mesonets": [
+    {
+      "name": "Synoptic Data (MesoWest)",
+      "covers": "national aggregator (ASOS, RAWS, state mesonets)",
+      "access": "API token required; free non-commercial tier",
+      "keyless": false,
+      "url": null
+    },
+    {
+      "name": "CA CIMIS",
+      "covers": "California agricultural stations (Madera, Russian River)",
+      "access": "free API key by registration; hourly RH + measured wind at 2 m over turf",
+      "keyless": false,
+      "url": null
+    },
+    {
+      "name": "Iowa Environmental Mesonet — ASOS archive",
+      "covers": "every US ASOS/AWOS site incl. KDYL, KCHO, KSTS, KMAE",
+      "access": "keyless CGI, decades of history",
+      "keyless": true,
+      "url": "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
+    },
+    {
+      "name": "NEWA (Cornell)",
+      "covers": "Northeast/Midwest ag stations, incl. computed leaf wetness",
+      "access": "out of scope by plan §2 (NEWA integration of any kind is excluded)",
+      "keyless": false,
+      "url": null
+    },
+    {
+      "name": "Bhutan / NCHM",
+      "covers": "Paro",
+      "access": "no public hourly API found; reanalysis only",
+      "keyless": false,
+      "url": null
+    }
+  ],
+  "attempts": [
+    {
+      "source": "NWS",
+      "site": "stoney_hill",
+      "what": "nearest stations",
+      "url": "https://api.weather.gov/points/40.3288,-75.0072/stations",
+      "status": 200,
+      "ok": true,
+      "records": 4,
+      "note": "KDYL@9.8km, KTTN@17.2km, KCKZ@24.9km, KPNE@27.8km"
+    },
+    {
+      "source": "NWS obs",
+      "site": "stoney_hill",
+      "what": "T-1d (6h window)",
+      "url": "https://api.weather.gov/stations/KDYL/observations?start=2026-07-25T13%3A16%3A36Z&end=2026-07-25T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 78,
+      "note": "temperature=78 dewpoint=78 relativeHumidity=78 windSpeed=63 qc:V=78"
+    },
+    {
+      "source": "NWS obs",
+      "site": "stoney_hill",
+      "what": "T-2d (6h window)",
+      "url": "https://api.weather.gov/stations/KDYL/observations?start=2026-07-24T13%3A16%3A36Z&end=2026-07-24T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 78,
+      "note": "temperature=78 dewpoint=78 relativeHumidity=78 windSpeed=74 qc:V=78"
+    },
+    {
+      "source": "NWS obs",
+      "site": "stoney_hill",
+      "what": "T-3d (6h window)",
+      "url": "https://api.weather.gov/stations/KDYL/observations?start=2026-07-23T13%3A16%3A36Z&end=2026-07-23T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 78,
+      "note": "temperature=78 dewpoint=77 relativeHumidity=77 windSpeed=75 qc:V=78"
+    },
+    {
+      "source": "NWS obs",
+      "site": "stoney_hill",
+      "what": "T-4d (6h window)",
+      "url": "https://api.weather.gov/stations/KDYL/observations?start=2026-07-22T13%3A16%3A36Z&end=2026-07-22T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 78,
+      "note": "temperature=78 dewpoint=78 relativeHumidity=78 windSpeed=77 qc:V=78"
+    },
+    {
+      "source": "NWS obs",
+      "site": "stoney_hill",
+      "what": "T-5d (6h window)",
+      "url": "https://api.weather.gov/stations/KDYL/observations?start=2026-07-21T13%3A16%3A36Z&end=2026-07-21T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 83,
+      "note": "temperature=83 dewpoint=83 relativeHumidity=83 windSpeed=81 qc:V=83 precipitationLastHour=2"
+    },
+    {
+      "source": "NWS obs",
+      "site": "stoney_hill",
+      "what": "T-6d (6h window)",
+      "url": "https://api.weather.gov/stations/KDYL/observations?start=2026-07-20T13%3A16%3A36Z&end=2026-07-20T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 76,
+      "note": "temperature=76 dewpoint=76 relativeHumidity=76 windSpeed=74 qc:V=76"
+    },
+    {
+      "source": "NWS obs",
+      "site": "stoney_hill",
+      "what": "T-7d (6h window)",
+      "url": "https://api.weather.gov/stations/KDYL/observations?start=2026-07-19T13%3A16%3A36Z&end=2026-07-19T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 5,
+      "note": "temperature=5 dewpoint=5 relativeHumidity=5 windSpeed=4 qc:V=5"
+    },
+    {
+      "source": "NWS obs",
+      "site": "stoney_hill",
+      "what": "T-10d (6h window)",
+      "url": "https://api.weather.gov/stations/KDYL/observations?start=2026-07-16T13%3A16%3A36Z&end=2026-07-16T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 0,
+      "note": "EMPTY"
+    },
+    {
+      "source": "NWS obs",
+      "site": "stoney_hill",
+      "what": "T-14d (6h window)",
+      "url": "https://api.weather.gov/stations/KDYL/observations?start=2026-07-12T13%3A16%3A36Z&end=2026-07-12T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 0,
+      "note": "EMPTY"
+    },
+    {
+      "source": "NWS",
+      "site": "russian_river",
+      "what": "nearest stations",
+      "url": "https://api.weather.gov/points/38.5058,-122.8536/stations",
+      "status": 200,
+      "ok": true,
+      "records": 4,
+      "note": "KSTS@3.3km, AR323@14.2km, HWKC1@25.5km, OAAC1@47.2km"
+    },
+    {
+      "source": "NWS obs",
+      "site": "russian_river",
+      "what": "T-1d (6h window)",
+      "url": "https://api.weather.gov/stations/KSTS/observations?start=2026-07-25T13%3A16%3A36Z&end=2026-07-25T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 80,
+      "note": "temperature=80 dewpoint=80 relativeHumidity=80 windSpeed=77 qc:V=80"
+    },
+    {
+      "source": "NWS obs",
+      "site": "russian_river",
+      "what": "T-2d (6h window)",
+      "url": "https://api.weather.gov/stations/KSTS/observations?start=2026-07-24T13%3A16%3A36Z&end=2026-07-24T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 80,
+      "note": "temperature=80 dewpoint=80 relativeHumidity=80 windSpeed=76 qc:V=80"
+    },
+    {
+      "source": "NWS obs",
+      "site": "russian_river",
+      "what": "T-3d (6h window)",
+      "url": "https://api.weather.gov/stations/KSTS/observations?start=2026-07-23T13%3A16%3A36Z&end=2026-07-23T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 79,
+      "note": "temperature=79 dewpoint=79 relativeHumidity=79 windSpeed=78 qc:V=79"
+    },
+    {
+      "source": "NWS obs",
+      "site": "russian_river",
+      "what": "T-4d (6h window)",
+      "url": "https://api.weather.gov/stations/KSTS/observations?start=2026-07-22T13%3A16%3A36Z&end=2026-07-22T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 80,
+      "note": "temperature=80 dewpoint=80 relativeHumidity=80 windSpeed=79 qc:V=80 precipitationLastHour=2"
+    },
+    {
+      "source": "NWS obs",
+      "site": "russian_river",
+      "what": "T-5d (6h window)",
+      "url": "https://api.weather.gov/stations/KSTS/observations?start=2026-07-21T13%3A16%3A36Z&end=2026-07-21T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 78,
+      "note": "temperature=78 dewpoint=77 relativeHumidity=77 windSpeed=78 qc:V=78 precipitationLastHour=3"
+    },
+    {
+      "source": "NWS obs",
+      "site": "russian_river",
+      "what": "T-6d (6h window)",
+      "url": "https://api.weather.gov/stations/KSTS/observations?start=2026-07-20T13%3A16%3A36Z&end=2026-07-20T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 78,
+      "note": "temperature=78 dewpoint=78 relativeHumidity=78 windSpeed=76 qc:V=78"
+    },
+    {
+      "source": "NWS obs",
+      "site": "russian_river",
+      "what": "T-7d (6h window)",
+      "url": "https://api.weather.gov/stations/KSTS/observations?start=2026-07-19T13%3A16%3A36Z&end=2026-07-19T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 3,
+      "note": "temperature=3 dewpoint=3 relativeHumidity=3 windSpeed=3 qc:V=3"
+    },
+    {
+      "source": "NWS obs",
+      "site": "russian_river",
+      "what": "T-10d (6h window)",
+      "url": "https://api.weather.gov/stations/KSTS/observations?start=2026-07-16T13%3A16%3A36Z&end=2026-07-16T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 0,
+      "note": "EMPTY"
+    },
+    {
+      "source": "NWS obs",
+      "site": "russian_river",
+      "what": "T-14d (6h window)",
+      "url": "https://api.weather.gov/stations/KSTS/observations?start=2026-07-12T13%3A16%3A36Z&end=2026-07-12T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 0,
+      "note": "EMPTY"
+    },
+    {
+      "source": "NWS",
+      "site": "madera",
+      "what": "nearest stations",
+      "url": "https://api.weather.gov/points/36.8579,-119.9970/stations",
+      "status": 200,
+      "ok": true,
+      "records": 4,
+      "note": "KMAE@17.4km, KFAT@26.2km, MTACA@34.9km, PG425@39.1km"
+    },
+    {
+      "source": "NWS obs",
+      "site": "madera",
+      "what": "T-1d (6h window)",
+      "url": "https://api.weather.gov/stations/KMAE/observations?start=2026-07-25T13%3A16%3A36Z&end=2026-07-25T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 58,
+      "note": "temperature=58 dewpoint=58 relativeHumidity=58 windSpeed=49 qc:V=58"
+    },
+    {
+      "source": "NWS obs",
+      "site": "madera",
+      "what": "T-2d (6h window)",
+      "url": "https://api.weather.gov/stations/KMAE/observations?start=2026-07-24T13%3A16%3A36Z&end=2026-07-24T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 57,
+      "note": "temperature=57 dewpoint=57 relativeHumidity=57 windSpeed=57 qc:V=57"
+    },
+    {
+      "source": "NWS obs",
+      "site": "madera",
+      "what": "T-3d (6h window)",
+      "url": "https://api.weather.gov/stations/KMAE/observations?start=2026-07-23T13%3A16%3A36Z&end=2026-07-23T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 48,
+      "note": "temperature=48 dewpoint=48 relativeHumidity=48 windSpeed=45 qc:V=48"
+    },
+    {
+      "source": "NWS obs",
+      "site": "madera",
+      "what": "T-4d (6h window)",
+      "url": "https://api.weather.gov/stations/KMAE/observations?start=2026-07-22T13%3A16%3A36Z&end=2026-07-22T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 54,
+      "note": "temperature=54 dewpoint=54 relativeHumidity=54 windSpeed=49 qc:V=54"
+    },
+    {
+      "source": "NWS obs",
+      "site": "madera",
+      "what": "T-5d (6h window)",
+      "url": "https://api.weather.gov/stations/KMAE/observations?start=2026-07-21T13%3A16%3A36Z&end=2026-07-21T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 59,
+      "note": "temperature=59 windSpeed=56 qc:V=59 dewpoint=48 relativeHumidity=48"
+    },
+    {
+      "source": "NWS obs",
+      "site": "madera",
+      "what": "T-6d (6h window)",
+      "url": "https://api.weather.gov/stations/KMAE/observations?start=2026-07-20T13%3A16%3A36Z&end=2026-07-20T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 61,
+      "note": "temperature=61 dewpoint=61 relativeHumidity=61 windSpeed=61 qc:V=61"
+    },
+    {
+      "source": "NWS obs",
+      "site": "madera",
+      "what": "T-7d (6h window)",
+      "url": "https://api.weather.gov/stations/KMAE/observations?start=2026-07-19T13%3A16%3A36Z&end=2026-07-19T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 2,
+      "note": "temperature=2 dewpoint=2 relativeHumidity=2 windSpeed=2 qc:V=2"
+    },
+    {
+      "source": "NWS obs",
+      "site": "madera",
+      "what": "T-10d (6h window)",
+      "url": "https://api.weather.gov/stations/KMAE/observations?start=2026-07-16T13%3A16%3A36Z&end=2026-07-16T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 0,
+      "note": "EMPTY"
+    },
+    {
+      "source": "NWS obs",
+      "site": "madera",
+      "what": "T-14d (6h window)",
+      "url": "https://api.weather.gov/stations/KMAE/observations?start=2026-07-12T13%3A16%3A36Z&end=2026-07-12T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 0,
+      "note": "EMPTY"
+    },
+    {
+      "source": "NWS",
+      "site": "monticello_va",
+      "what": "nearest stations",
+      "url": "https://api.weather.gov/points/38.0200,-78.4800/stations",
+      "status": 200,
+      "ok": true,
+      "records": 4,
+      "note": "KCHO@13.2km, KGVE@31.4km, KW13@41.2km, KLKU@44.7km"
+    },
+    {
+      "source": "NWS obs",
+      "site": "monticello_va",
+      "what": "T-1d (6h window)",
+      "url": "https://api.weather.gov/stations/KCHO/observations?start=2026-07-25T13%3A16%3A36Z&end=2026-07-25T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 79,
+      "note": "temperature=79 dewpoint=79 relativeHumidity=79 windSpeed=79 qc:V=79"
+    },
+    {
+      "source": "NWS obs",
+      "site": "monticello_va",
+      "what": "T-2d (6h window)",
+      "url": "https://api.weather.gov/stations/KCHO/observations?start=2026-07-24T13%3A16%3A36Z&end=2026-07-24T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 80,
+      "note": "temperature=80 dewpoint=80 relativeHumidity=80 windSpeed=75 qc:V=80"
+    },
+    {
+      "source": "NWS obs",
+      "site": "monticello_va",
+      "what": "T-3d (6h window)",
+      "url": "https://api.weather.gov/stations/KCHO/observations?start=2026-07-23T13%3A16%3A36Z&end=2026-07-23T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 78,
+      "note": "temperature=78 dewpoint=78 relativeHumidity=78 windSpeed=73 qc:V=78"
+    },
+    {
+      "source": "NWS obs",
+      "site": "monticello_va",
+      "what": "T-4d (6h window)",
+      "url": "https://api.weather.gov/stations/KCHO/observations?start=2026-07-22T13%3A16%3A36Z&end=2026-07-22T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 78,
+      "note": "temperature=78 windSpeed=76 qc:V=78 dewpoint=74 relativeHumidity=74"
+    },
+    {
+      "source": "NWS obs",
+      "site": "monticello_va",
+      "what": "T-5d (6h window)",
+      "url": "https://api.weather.gov/stations/KCHO/observations?start=2026-07-21T13%3A16%3A36Z&end=2026-07-21T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 80,
+      "note": "temperature=79 dewpoint=80 relativeHumidity=79 qc:V=79 precipitationLastHour=5 windSpeed=72 qc:Z=1"
+    },
+    {
+      "source": "NWS obs",
+      "site": "monticello_va",
+      "what": "T-6d (6h window)",
+      "url": "https://api.weather.gov/stations/KCHO/observations?start=2026-07-20T13%3A16%3A36Z&end=2026-07-20T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 78,
+      "note": "temperature=78 dewpoint=78 relativeHumidity=78 windSpeed=74 qc:V=78"
+    },
+    {
+      "source": "NWS obs",
+      "site": "monticello_va",
+      "what": "T-7d (6h window)",
+      "url": "https://api.weather.gov/stations/KCHO/observations?start=2026-07-19T13%3A16%3A36Z&end=2026-07-19T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 3,
+      "note": "temperature=3 dewpoint=3 relativeHumidity=3 windSpeed=3 qc:V=3 precipitationLastHour=1"
+    },
+    {
+      "source": "NWS obs",
+      "site": "monticello_va",
+      "what": "T-10d (6h window)",
+      "url": "https://api.weather.gov/stations/KCHO/observations?start=2026-07-16T13%3A16%3A36Z&end=2026-07-16T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 0,
+      "note": "EMPTY"
+    },
+    {
+      "source": "NWS obs",
+      "site": "monticello_va",
+      "what": "T-14d (6h window)",
+      "url": "https://api.weather.gov/stations/KCHO/observations?start=2026-07-12T13%3A16%3A36Z&end=2026-07-12T19%3A16%3A36Z",
+      "status": 200,
+      "ok": true,
+      "records": 0,
+      "note": "EMPTY"
+    },
+    {
+      "source": "NCEI ISD",
+      "site": "-",
+      "what": "station-history inventory",
+      "url": "https://www.ncei.noaa.gov/pub/data/noaa/isd-history.csv",
+      "status": 200,
+      "ok": true,
+      "records": 29662,
+      "note": "inventory downloaded — identifier mapping is now RESOLVED, not guessed"
+    },
+    {
+      "source": "NCEI ISD",
+      "site": "stoney_hill",
+      "what": "72511354786 (KDYL) 2024-06 week",
+      "url": "https://www.ncei.noaa.gov/access/services/data/v1?dataset=global-hourly&stations=72511354786&startDate=2024-06-01&endDate=2024-06-08&dataTypes=TMP,DEW,WND,AA1&format=json&units=metric",
+      "status": 200,
+      "ok": true,
+      "records": 242,
+      "note": "TMP=234 DEW=234 WND=232 precip=196 qc=[TMP:5|TMP:9|WND:5|WND:9]"
+    },
+    {
+      "source": "NCEI ISD",
+      "site": "russian_river",
+      "what": "72495723213 (KSTS) 2024-06 week",
+      "url": "https://www.ncei.noaa.gov/access/services/data/v1?dataset=global-hourly&stations=72495723213&startDate=2024-06-01&endDate=2024-06-08&dataTypes=TMP,DEW,WND,AA1&format=json&units=metric",
+      "status": 200,
+      "ok": true,
+      "records": 213,
+      "note": "TMP=204 DEW=204 WND=204 precip=200 qc=[TMP:5|TMP:9|WND:5|WND:9]"
+    },
+    {
+      "source": "NCEI ISD",
+      "site": "madera",
+      "what": "74504693242 (KMAE) 2024-06 week",
+      "url": "https://www.ncei.noaa.gov/access/services/data/v1?dataset=global-hourly&stations=74504693242&startDate=2024-06-01&endDate=2024-06-08&dataTypes=TMP,DEW,WND,AA1&format=json&units=metric",
+      "status": 200,
+      "ok": true,
+      "records": 208,
+      "note": "TMP=199 DEW=199 WND=198 precip=200 qc=[TMP:5|TMP:9|WND:5|WND:9]"
+    },
+    {
+      "source": "NCEI ISD",
+      "site": "paro",
+      "what": "43399099999 (VQPR) 2024-06 week",
+      "url": "https://www.ncei.noaa.gov/access/services/data/v1?dataset=global-hourly&stations=43399099999&startDate=2024-06-01&endDate=2024-06-08&dataTypes=TMP,DEW,WND,AA1&format=json&units=metric",
+      "status": 200,
+      "ok": true,
+      "records": 186,
+      "note": "TMP=186 DEW=186 WND=185 precip=0 qc=[TMP:1|TMP:5|WND:1|WND:9]"
+    },
+    {
+      "source": "NCEI ISD",
+      "site": "monticello_va",
+      "what": "99999903759 (CHARLOTTESVILLE 2 SSE) 2024-06 week",
+      "url": "https://www.ncei.noaa.gov/access/services/data/v1?dataset=global-hourly&stations=99999903759&startDate=2024-06-01&endDate=2024-06-08&dataTypes=TMP,DEW,WND,AA1&format=json&units=metric",
+      "status": 200,
+      "ok": true,
+      "records": 2313,
+      "note": "TMP=2304 DEW=0 WND=192 precip=200 qc=[TMP:1|TMP:9|WND:1|WND:9]"
+    },
+    {
+      "source": "NCEI ISD",
+      "site": "stoney_hill",
+      "what": "72511354786 FULL 2021 season (Apr 1–Oct 31)",
+      "url": "https://www.ncei.noaa.gov/access/services/data/v1?dataset=global-hourly&stations=72511354786&startDate=2021-04-01&endDate=2021-10-31&dataTypes=TMP,DEW,WND&format=json&units=metric",
+      "status": 200,
+      "ok": true,
+      "records": 6834,
+      "note": "TMP=6610 DEW=6610 WND=6555 · 1.33× hourly density"
+    },
+    {
+      "source": "IEM ASOS",
+      "site": "stoney_hill",
+      "what": "DYL 2024-06 week",
+      "url": "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=DYL&data=tmpf&data=dwpf&data=relh&data=sknt&data=drct&data=p01i&year1=2024&month1=6&day1=1&year2=2024&month2=6&day2=8&tz=UTC&format=onlycomma&latlon=no&missing=M&trace=T&direct=no&report_type=3&report_type=4",
+      "status": 200,
+      "ok": true,
+      "records": 206,
+      "note": "tmpf=206 dwpf=206 relh=206 sknt=204 p01i=206"
+    },
+    {
+      "source": "IEM ASOS",
+      "site": "russian_river",
+      "what": "STS 2024-06 week",
+      "url": "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=STS&data=tmpf&data=dwpf&data=relh&data=sknt&data=drct&data=p01i&year1=2024&month1=6&day1=1&year2=2024&month2=6&day2=8&tz=UTC&format=onlycomma&latlon=no&missing=M&trace=T&direct=no&report_type=3&report_type=4",
+      "status": 200,
+      "ok": true,
+      "records": 174,
+      "note": "tmpf=174 dwpf=174 relh=174 sknt=174 p01i=174"
+    },
+    {
+      "source": "IEM ASOS",
+      "site": "madera",
+      "what": "MAE 2024-06 week",
+      "url": "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=MAE&data=tmpf&data=dwpf&data=relh&data=sknt&data=drct&data=p01i&year1=2024&month1=6&day1=1&year2=2024&month2=6&day2=8&tz=UTC&format=onlycomma&latlon=no&missing=M&trace=T&direct=no&report_type=3&report_type=4",
+      "status": 200,
+      "ok": true,
+      "records": 174,
+      "note": "tmpf=174 dwpf=174 relh=174 sknt=173 p01i=174"
+    },
+    {
+      "source": "IEM ASOS",
+      "site": "monticello_va",
+      "what": "CHO 2024-06 week",
+      "url": "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=CHO&data=tmpf&data=dwpf&data=relh&data=sknt&data=drct&data=p01i&year1=2024&month1=6&day1=1&year2=2024&month2=6&day2=8&tz=UTC&format=onlycomma&latlon=no&missing=M&trace=T&direct=no&report_type=3&report_type=4",
+      "status": 200,
+      "ok": true,
+      "records": 186,
+      "note": "tmpf=186 dwpf=186 relh=186 sknt=186 p01i=186"
+    },
+    {
+      "source": "IEM ASOS",
+      "site": "stoney_hill",
+      "what": "DYL depth check 2021-07-01..03",
+      "url": "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=DYL&data=tmpf&data=dwpf&data=relh&data=sknt&data=p01i&year1=2021&month1=7&day1=1&year2=2021&month2=7&day2=3&tz=UTC&format=onlycomma&latlon=no&missing=M&trace=T&direct=no&report_type=3&report_type=4",
+      "status": 200,
+      "ok": true,
+      "records": 95,
+      "note": "has data"
+    },
+    {
+      "source": "IEM ASOS",
+      "site": "stoney_hill",
+      "what": "DYL depth check 2015-07-01..03",
+      "url": "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=DYL&data=tmpf&data=dwpf&data=relh&data=sknt&data=p01i&year1=2015&month1=7&day1=1&year2=2015&month2=7&day2=3&tz=UTC&format=onlycomma&latlon=no&missing=M&trace=T&direct=no&report_type=3&report_type=4",
+      "status": 200,
+      "ok": true,
+      "records": 59,
+      "note": "has data"
+    },
+    {
+      "source": "IEM ASOS",
+      "site": "stoney_hill",
+      "what": "DYL depth check 2005-07-01..03",
+      "url": "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=DYL&data=tmpf&data=dwpf&data=relh&data=sknt&data=p01i&year1=2005&month1=7&day1=1&year2=2005&month2=7&day2=3&tz=UTC&format=onlycomma&latlon=no&missing=M&trace=T&direct=no&report_type=3&report_type=4",
+      "status": 200,
+      "ok": true,
+      "records": 96,
+      "note": "has data"
+    },
+    {
+      "source": "IEM ASOS",
+      "site": "stoney_hill",
+      "what": "DYL depth check 1998-07-01..03",
+      "url": "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=DYL&data=tmpf&data=dwpf&data=relh&data=sknt&data=p01i&year1=1998&month1=7&day1=1&year2=1998&month2=7&day2=3&tz=UTC&format=onlycomma&latlon=no&missing=M&trace=T&direct=no&report_type=3&report_type=4",
+      "status": 200,
+      "ok": false,
+      "records": 0,
+      "note": "EMPTY"
+    }
+  ],
+  "verdict": {
+    "backfillable": true,
+    "isdWorks": true,
+    "iemWorks": true,
+    "iemDeep": true,
+    "deepestWithData": 2005,
+    "outcome": 1
+  }
+}
