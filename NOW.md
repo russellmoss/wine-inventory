@@ -686,9 +686,35 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
-0. 🔴 **PUSHED 2026-07-26 — PNW Handbooks + OSU EM 8413 KB ingestion. RECON DONE, BUILD BLOCKED ON A
-   RUSSELL DECISION.** Asked: "ingest EM 8413 + the PNW handbook grape/insect/weed/pesticide-safety
-   pages, crawled continually." Measured, do not re-litigate:
+0. 🔴 **PUSHED 2026-07-26 — PNW Handbooks + OSU EM 8413 KB ingestion. RECON + PLAN + COUNCIL DONE;
+   5 design questions need Russell before `/work`.**
+   [plan 099](docs/plans/2026-07-26-099-fix-kb-text-integrity-and-pnw-handbooks-plan.md) (12 units,
+   4 PRs) · [council](docs/plans/council-feedback-099-kb-text-integrity-pnw-handbooks.md).
+   🔴 **The headline is no longer the ingestion — it is a LIVE silent text-loss bug in our own
+   chunker.** `splitBySentences` (`src/lib/knowledge/chunk.ts:115`) uses `String.match(/g)` with a
+   regex that cannot match a decimal point, and `match(/g)` **SKIPS** unmatched spans instead of
+   failing: `"abc. 0.5 def"` → `["abc. ", "5 def"]`. The `0.` is deleted with no error.
+   `tailForOverlap` (:131) shares the regex, so overlap tails carry the loss too. Fires on any block
+   over `MAX_TOKENS` (700) that force-splits. Live result in EM 8413: `0.5–1 lb ai` indexed as
+   `5–1 lb ai` — **a citable 10× dose error in a pesticide guide.** Root-caused from first
+   principles; Defuddle is exonerated. Council's Gemini arm made the severity point sharply: a
+   corrupted rate is often *agronomically plausible* (5 lb/A of sulfur is normal; 5 lb/A of a Group 3
+   DMI is catastrophic and illegal), so nobody catches it — the citation makes it look authoritative.
+   🔴 **Second architectural find: the KB-1 gate reads the WHOLE raw page** (`index-documents.ts:106`)
+   while the section filter does not run until :190 — so an enforcing gate drops a PNW disease page
+   **wholesale, biology and all**, before the filter can strip `Chemical control`. Council's Codex arm
+   gave a better fix than the plan's (keep the gate where it is; make the filter a **pure projection**
+   feeding it; one centralized clear path) **and** caught that the idempotency hash must stay a
+   fingerprint of the **raw** bytes — hashing filtered HTML makes changes inside dropped sections
+   invisible forever.
+   🔴 **Third: Gemini changed a design decision.** Stripping the whole `Chemical control` section
+   discards the fungicide **resistance-management prose** (FRAC 3/11 resistance documented in OR/WA;
+   alternate groups; ≤2 sprays per group) — tier B, and the best content on the page. The cut must be
+   **block-level within** the section: keep the `<p>` preambles, drop the `<ul>`/`<table>` product rows.
+   Same applies to `Biological`/`Cultural control`, which also name products.
+   Also corrected: the cross-region test was designed backwards — MMR contaminates **generic** queries,
+   not regional ones, because `mmrSelect(…, 0.7)` actively rewards dissimilarity.
+   Original recon (measured, do not re-litigate):
    • **EM 8413 IS ALREADY IN THE CORPUS AND IT IS A DEFECT, NOT A WIN.** `osu-extension` doc
    `/catalog/em-8413-…`, 47 chunks. Its rate tables are **Airtable `<iframe>` embeds** (3) — the
    substance never arrived, only the empty tag got indexed (chunks 4, 14). 2 raw `<table>` blobs
@@ -1516,7 +1542,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 (PNW-handbook + EM 8413 KB recon — tangent 0 pushed; blocked on a KB-1 scope call)_
+_Last updated: 2026-07-26 (plan 099 + council done; 5 design questions open before /work)_
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
