@@ -1016,6 +1016,29 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **🟩 SKB PR 1 + Unit 5 BUILT (2026-07-27) — the boundary is now REAL, so the source units are
+  unblocked.** Branch `claude/skb-knowledge-sources-plan-bd36b7`, 3 commits, **not yet PR'd**.
+  Plan: [SKB-knowledge-sources-plan.md](docs/spray_assistant/phases/SKB-knowledge-sources-plan.md).
+  Units **1, 2, 3, 5 of 11**. 82 new tests, full suite green, `tsc` clean, `verify:invariants` 49/49.
+  - **KB-1 invariant + detector + INLINE gate** (`src/lib/knowledge/boundary/`). A product→fact table
+    never reaches the corpus for an enforcing source. Three mechanics, none optional: the detector reads
+    **raw HTML / PDF pre-chunk lines, never post-extraction text**; the gate is inline in
+    `index-documents.ts` **before extraction AND before the idempotency short-circuit**, signalling by
+    **returned field, never a throw** (a throw there is read by the re-crawl tombstone pass as "page
+    removed" and would mass-tombstone a source); and `uncertain` **skips for enforcing, is admitted and
+    counted for report-only**. Enforcement is the DEFAULT — the 25 incumbents are a frozen report-only
+    census whose **deletion** is how D3's grandfather clause closes.
+  - **The legality refusal** — `search_knowledge_base` stops advertising "compliance" and refuses the
+    **verdict, not the query**: a handler-level classifier prepends a non-certification preamble while
+    still surfacing the retrieved agronomic context. 12 NEGATIVE classifier cases + a negative golden,
+    because a caveat that fires on everything is caveat fatigue.
+  - **`allowPaths`** — exact-path allowlist with the canonicalization contract tested per clause.
+  - ⚠️ **Plan assumption that did NOT hold: `knowledge_blob.blobUrl` is NULL corpus-wide**, so
+    `verify:kb-boundary` cannot re-read stored bytes. Enforcing sources are audited by **live re-fetch**
+    (the correct seam); the report-only census reads chunk text and is reported as an **approximate
+    FLOOR**, worst on PDFs. Units 4 and 6–11 remain — all of them need `.env`, live crawls, or an
+    operator-gated network probe.
+
 - **🔴 RELEASE BLOCKER FOUND + FIXED (2026-07-26): `AppUser.vineyardIds` was ALWAYS `[]` under
   `app_rls`.** Surfaced during S4 browser QA (it blocked the pass) but pre-existing and unrelated to S4.
   **[PR #530](https://github.com/russellmoss/wine-inventory/pull/530)** (branch
@@ -1452,7 +1475,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 — **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
+_Last updated: 2026-07-27 — **SKB PR 1 + Unit 5 BUILT on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill

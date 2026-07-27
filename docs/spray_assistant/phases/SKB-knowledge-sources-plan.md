@@ -336,7 +336,7 @@ newsletter is email-delivery only with no archive endpoint. `archive.lib.msu.edu
 
 ### PR 1 — the boundary guard (lands first, no source depends on it shipping late)
 
-#### Unit 1: the tabular/prose boundary as an invariant + a pure detector
+#### ✅ Unit 1 (BUILT 2026-07-27): the tabular/prose boundary as an invariant + a pure detector
 
 **Goal:** §2's tier-C rule becomes a mechanically enforced guard instead of a sentence in a runbook.
 **Files:** `src/lib/knowledge/boundary/product-table-core.ts` (new) ·
@@ -379,7 +379,7 @@ worst, never `prose`** (proves the seam fix, and is the one test that would have
 **Verification:** `npx vitest run test/knowledge-product-table.test.ts` and
 `npm run verify:invariants`
 
-#### Unit 2: the **inline ingest gate**, plus `verify:kb-boundary` as its auditor
+#### ✅ Unit 2 (BUILT 2026-07-27): the **inline ingest gate**, plus `verify:kb-boundary` as its auditor
 
 **Goal:** a tier-C document from an enforcing source is **never indexed in the first place**, and the
 corpus-wide count is auditable after the fact.
@@ -417,7 +417,7 @@ script's grouping/enforcing-set/exit-code arithmetic with injected rows, not a D
 **Verification:** `npx vitest run test/knowledge-boundary-gate.test.ts`, then
 `npm run verify:kb-boundary` from the **main checkout** (needs `DATABASE_URL`; worktrees have no `.env`)
 
-#### Unit 3: refuse the **verdict**, not the query — and enforce it in the handler
+#### ✅ Unit 3 (BUILT 2026-07-27): refuse the **verdict**, not the query — and enforce it in the handler
 
 **Goal:** `search_knowledge_base` stops advertising "compliance" and stops issuing legality verdicts,
 while still giving the grower the cited agronomic context it retrieved.
@@ -496,7 +496,7 @@ Building the ANN index stays out of scope (D11).
 **Verification:** `npm run verify:kb-register` passes against its own fresh capture (zero drift), and
 `SKB-baseline.md` states counts, **latency with an explicit flip threshold**, and `capturedAt`
 
-#### Unit 5: `allowPaths` — an exact-path allowlist primitive
+#### ✅ Unit 5 (BUILT 2026-07-27): `allowPaths` — an exact-path allowlist primitive
 
 **Goal:** a source with a flat article namespace can be scoped safely, which `allowPrefixes` cannot
 do (D6).
@@ -898,6 +898,58 @@ Full reconciliation in [SKB-council-feedback.md](SKB-council-feedback.md).
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 0 | — | — |
 | Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+## 12. Build log
+
+**2026-07-27 — PR 1 (Units 1–3) + Unit 5 BUILT** on `claude/skb-knowledge-sources-plan-bd36b7`.
+3 commits, not yet PR'd. 82 new tests; full `vitest run` green, `tsc --noEmit` clean,
+`verify:invariants` 49/49, `verify:ai-native` green.
+
+| Unit | State | Evidence |
+|---|---|---|
+| 1 detector + `KB-1` | ✅ built | `boundary/product-table-core.ts`, `test/knowledge-product-table.test.ts` (24) |
+| 2 inline gate + auditor | ✅ built | `index-documents.ts`, `boundary/{enforcing,audit-core}.ts`, `scripts/verify-kb-boundary.ts`, `test/knowledge-boundary-gate.test.ts` (16) |
+| 3 legality refusal | ✅ built | `search-knowledge-base.ts`, `test/knowledge-{legality-guard,tool-description}.test.ts` (42), `test/evals/assistant-kb-legality-refusal.*` (4 golden) |
+| 5 `allowPaths` | ✅ built | `crawl/path-match.ts`, `test/knowledge-allow-paths.test.ts` (26) |
+| 4, 6–11 | ⏸ not started | every one needs `.env`, a live crawl, or an operator-gated probe — see below |
+
+### ⚠️ Three things the build found that the plan did not anticipate
+
+1. **`knowledge_blob.blobUrl` is NULL corpus-wide**, so the auditor cannot re-read stored bytes as
+   §7 Unit 2(b) assumed. Resolved by splitting the seam honestly: **enforcing sources are audited by
+   LIVE RE-FETCH** (the correct raw-bytes seam, and the count that must be zero), while the report-only
+   census reads **post-extraction chunk text** and is printed as an **approximate FLOOR**, worst on PDFs.
+   The caveat is in the script's output, not only in its comments — an under-reported number is wrong in
+   the safe-sounding direction. **This weakens D3's close-out evidence and should be reviewed before the
+   close-out is called.**
+2. **The gate had to run BEFORE the idempotency short-circuit**, which §7 did not specify. If it ran
+   after, a source moved onto the enforcing list keeps its already-indexed tier-C chunks live and
+   retrievable forever: the stored hash still matches, chunks still exist, and `indexDocument` returns
+   `unchanged` without the detector ever seeing the bytes — **D3's close-out would be a no-op.**
+3. **The flat (markup-lost) arm needed its own product QUALIFICATION**, which §7's test matrix did not
+   call for. Without it a grape phenology table (`Bud break | 14 days | 110`) reads as a product table,
+   because a growth stage is cell-shaped and an interval is an interval. Caught by a test added on the
+   principle that this is a PRODUCT-table detector, not a table detector. A second defect from the same
+   pass: a bare integer matched the FRAC-code pattern, so *"apply at 7 to 10 day intervals"* scored two
+   resistance-group cells and read as a row.
+
+### Deviation from the plan, with the reason
+
+§7 Unit 3 says to register the golden in `test/evals/assistant-tools.eval.test.ts`. It is a **new
+uniquely-named pair** instead (`assistant-kb-legality-refusal.{golden,eval.test}.ts`, modelled on the
+CURRENCY_WARNING pair). That harness validates tool+args selection against the registry and cannot
+express reply-TEXT assertions, which is the whole measurement here — and §5's own lane rule says new
+golden work lands in a uniquely-named file because `test/evals/assistant-*.golden.ts` is contended with
+S5a and S11. Unit 3's file list already named only the new golden.
+
+### What remains, and why none of it could run here
+
+Unit 4 (baseline capture), 6 (Penn State), 7 (Virginia Tech), 8 (retrieval evidence), 9 (cross-region
+contamination), 10 (MSU probe), 11 (registers + reports). Every one needs a live `DATABASE_URL` (this is
+a `.env`-less worktree), a live crawl, or — for MSU — an **operator-run probe from a non-CI egress**
+that is a deliberate human action by D9. Unit 9 is still the phase's biggest unknown (D13).
+
+---
 
 **VERDICT:** ✅ **COUNCIL-RECONCILED — ready for `/work`.** The program's required pre-build review has
 run and its findings are folded (plan v2, 11 units / 4 PRs). `/plan-eng-review` remains available for a
