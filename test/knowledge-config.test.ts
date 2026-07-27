@@ -471,10 +471,11 @@ describe("Cornell NY/PA Grape Guide preview source (plan 099)", () => {
     expect(guide().homeDomain).toBe("cropandpestguides.cce.cornell.edu");
   });
 
-  // THE containment assertion. The rest of this host is a paid book. An empty allowPrefixes means no
-  // path on it is crawlable, so the only reachable document is the one in directUrls below. A future
-  // diff that adds a prefix here silently opens a paid publication to the crawler.
-  it("can never be path-crawled — allowPrefixes is EMPTY", () => {
+  // Containment, part 1. The rest of this host is a paid book. An empty allowPrefixes means sitemap
+  // discovery and link-following can admit nothing here. A future diff adding a prefix would silently
+  // open a paid publication to the crawler. (Part 2 is the single pinned directUrls entry below —
+  // `crawlUrls` does not re-gate PATH on redirect, so the URL list is the real bound.)
+  it("is undiscoverable by sitemap or link-following — allowPrefixes is EMPTY", () => {
     expect(guide().allowPrefixes).toEqual([]);
   });
 

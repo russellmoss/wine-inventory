@@ -224,11 +224,15 @@ TEMPLATE — copy this block for each new decision:
 - **Fine until:** the breadcrumb logic is stable. Plan 099 changed it (root/heading de-duplication,
   middle elision) to fix Cornell's Grape Guide collapsing to 11 breadcrumbs across 77 chunks.
 - **What breaks at scale:** re-indexing to apply a breadcrumb change is O(corpus) Voyage spend
-  (~23.5k chunks). PDFs self-heal via `PDF_EXTRACT_VERSION`; **HTML documents with no section filter
-  hash on the bare `contentHash` and will never re-index on their own**, so the corpus holds two
-  breadcrumb formats until a deliberate campaign runs.
-- **Tripwire:** a third breadcrumb format landing before the second is reconciled; retrieval quality
-  diverging between PDF and HTML sources; anyone folding a corpus-wide re-index into an unrelated PR.
+  (~23.5k chunks). **Nothing self-heals.** A version bump (`PDF_EXTRACT_VERSION`) changes only the index
+  hash; it is necessary but not sufficient, because the monthly sweep 304s and returns before
+  `onDocument` fires, 16 of 26 sources are `autoCrawl:false` and not in the sweep at all, and
+  `crawl:curated` does not pass `ignoreValidators`. HTML has a second independent blocker: no section
+  filter means the bare `contentHash` is the index hash. So the corpus carries two breadcrumb formats
+  until someone runs `reindex:knowledge` on purpose.
+- **Tripwire:** a third breadcrumb format landing before the second is reconciled; anyone folding a
+  corpus-wide re-index into an unrelated PR; **anyone claiming a version bump alone will propagate a
+  extractor/chunker change** — it will not, and the run will look green.
 - **Status:** 🟡 (code fixed, corpus split; deferred campaign tracked in `TODOS.md` §"Chunk breadcrumbs").
 
 ### Section-level content filtering strips in place; it does NOT create per-anchor documents (plan 084)

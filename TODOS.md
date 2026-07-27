@@ -33,18 +33,31 @@ any rule would be a guess against titles that legitimately contain `|` or `–`.
 normalising the title where the publisher IS known — `index-documents.ts` `buildDocumentMetadata`, or
 the extractors.
 
-**⚠️ The corpus still holds the old breadcrumbs.** Fixing the code does not fix stored chunks — the
-breadcrumb is baked into chunk text and its vector, and `indexDocument` early-returns on an unchanged
-index hash. **PDFs will heal**: `PDF_EXTRACT_VERSION` went to `"2"`, which `deriveIndexHash` folds in,
-so ~893 PDF documents re-extract on their next crawl. **HTML will not**: an HTML doc with no section
-filter hashes on the bare `contentHash`, so nothing forces it. Those chunks keep the old breadcrumbs
-indefinitely.
+**⚠️ The corpus still holds the old breadcrumbs, and NOTHING heals on its own.** The breadcrumb is
+baked into stored chunk text and its vector, so fixing the code does not fix the corpus.
 
-**Tripwire / what closing this looks like:** `npm run reindex:knowledge -- --sources=<keys>` across the
-HTML sources, or `reset:knowledge-source` + re-crawl per source. Cost is the reason it is deferred:
-~23.5k chunks re-embedded through Voyage. Do it as its own deliberate campaign, and **capture
-`verify:kb-register` and `kb:snapshot --repeat 3` baselines before and after together** — this changes
-embedded text corpus-wide, so it can move retrieval. Do not fold it into an unrelated PR.
+An earlier draft of this entry claimed PDFs would self-heal on their next crawl via the
+`PDF_EXTRACT_VERSION` bump. **That was wrong**, caught in review, and the reasoning is worth keeping
+because it is the same trap plan 090 hit:
+
+- `PDF_EXTRACT_VERSION` `"1"` → `"2"` is **necessary but not sufficient**. It only changes the *hash*.
+  It does nothing unless `indexDocument` is actually reached with fresh bytes.
+- **The monthly sweep never reaches it.** `crawlWithFollowing` issues a conditional GET and returns
+  early on a 304, before `onDocument` fires. It has no `ignoreValidators` option at all.
+- **And most PDFs are not in the sweep anyway** — 16 of 26 sources are `autoCrawl: false` and routed to
+  `curated`, which is essentially the whole PDF corpus. `scripts/crawl-curated.ts` does not pass
+  `ignoreValidators` either, so a manual curated re-run also no-ops on unchanged bytes.
+- HTML is unhealable for a second, independent reason: a doc with no section filter hashes on the bare
+  `contentHash`, so even a forced re-fetch produces the same index hash.
+
+**So there is one lever, and it is deliberate:** `npm run reindex:knowledge -- --sources=<keys>`, which
+passes `ignoreValidators: true` precisely for this (see the header comment in
+`scripts/reindex-knowledge-corpus.ts`, which documents the 304 trap by name). Per-source alternative:
+`reset:knowledge-source` + re-crawl.
+
+**Cost is why it is deferred:** ~23.5k chunks re-embedded through Voyage. Run it as its own campaign,
+and **capture `verify:kb-register` and `kb:snapshot --repeat 3` baselines before and after together** —
+this changes embedded text corpus-wide, so it can move retrieval. Do not fold it into an unrelated PR.
 
 **Where:** `src/lib/knowledge/chunk.ts` (fixed), `src/lib/knowledge/index-documents.ts` (publisher
 suffix), `src/lib/knowledge/extract/pdf-structure.ts` (`PDF_EXTRACT_VERSION`).

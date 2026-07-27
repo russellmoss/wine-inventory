@@ -89,6 +89,32 @@ describe("breadcrumb de-duplication and capping", () => {
     expect(chunks.some((c) => c.sectionPath.endsWith("Pest"))).toBe(true);
   });
 
+  // Regression: containment must be ONE-directional. A heading that EXTENDS the title is more
+  // specific than it, and dropping it merges siblings onto one breadcrumb — the very collapse this
+  // suite exists to prevent. Both breadcrumbs here are well under the cap, so nothing forces a drop.
+  it("keeps sibling headings that each extend the root title", () => {
+    const root = "Pest Management Guidelines for Grapes";
+    const md = [
+      "## Pest Management Guidelines for Grapes in the Finger Lakes",
+      "Downy mildew pressure in the Finger Lakes is driven by persistent summer leaf wetness.",
+      "## Pest Management Guidelines for Grapes on Long Island",
+      "Long Island's maritime climate extends the botrytis risk window well past veraison.",
+    ].join("\n\n");
+    const paths = new Set(chunkMarkdown(md, root).map((c) => c.sectionPath));
+    expect(paths.size).toBe(2);
+    expect([...paths].some((p) => p.endsWith("Finger Lakes"))).toBe(true);
+    expect([...paths].some((p) => p.endsWith("Long Island"))).toBe(true);
+  });
+
+  it("keeps a section whose edition year is the only thing distinguishing it", () => {
+    // Only a LEADING year is identity-neutral; stripping every year collided these two.
+    const chunks = chunkMarkdown(
+      `# Pest Management Guidelines for Grapes 2024\n\nThe 2024 edition's spray thresholds differed.`,
+      "Pest Management Guidelines for Grapes 2025",
+    );
+    expect(chunks.some((c) => c.sectionPath.includes("2024"))).toBe(true);
+  });
+
   it("keeps the leaf whole and elides the middle when a deep stack exceeds the cap", () => {
     const root = "A Fairly Long Publication Title About Vineyard Pest Management Practices";
     const crumb = capBreadcrumbSegments([
@@ -116,6 +142,22 @@ describe("breadcrumb de-duplication and capping", () => {
     const crumb = capBreadcrumbSegments(["Root", leaf]);
     expect(crumb.length).toBeLessThanOrEqual(140);
     expect(crumb.endsWith("…")).toBe(true);
+  });
+
+  // The ellipsis has to come OUT of the budget. A segment with no late word boundary — a glued token
+  // from PDF extraction, or a German compound — used to return 141 characters.
+  it("stays within the cap when the over-long leaf has no usable word boundary", () => {
+    for (const leaf of ["Z".repeat(200), `Ch ${"a".repeat(200)}`, "Rebstockkrankheiten".repeat(20)]) {
+      expect(capBreadcrumbSegments([leaf]).length).toBeLessThanOrEqual(140);
+      expect(capBreadcrumbSegments(["Root", leaf]).length).toBeLessThanOrEqual(140);
+      expect(capBreadcrumb(`Root > ${leaf}`).length).toBeLessThanOrEqual(140);
+    }
+  });
+
+  it("handles empty and whitespace-only input without throwing", () => {
+    expect(capBreadcrumbSegments([])).toBe("");
+    expect(capBreadcrumbSegments(["   ", ""])).toBe("");
+    expect(capBreadcrumbSegments(["  Root  ", "   ", "Leaf"])).toBe("Root > Leaf");
   });
 
   it("returns an under-cap breadcrumb byte-identical (no regression for HTML sources)", () => {

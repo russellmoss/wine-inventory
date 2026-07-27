@@ -52,34 +52,51 @@ const CRUMB_ELLIPSIS = "…";
 function crumbKey(s: string): string {
   return s
     .toLowerCase()
-    .replace(/\b(?:19|20)\d{2}\b/g, " ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
-    .replace(/\s+/g, " ");
+    // Only a LEADING edition year is dropped. Stripping every year would collide
+    // "...Guidelines for Grapes 2024" with "...Guidelines for Grapes 2025" and delete a section whose
+    // year is the only thing distinguishing it.
+    .replace(/^(?:19|20)\d{2}\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
- * True when `segment` says nothing the root title has not already said. Exact key match, or
- * whole-string containment where the shorter side is long enough to be a title rather than a section
- * name — without the word-count floor, a heading legitimately called "Pest" would be swallowed by a
- * root containing "pest management".
+ * True when `segment` says nothing the root title has not already said.
+ *
+ * Containment is deliberately ONE-DIRECTIONAL: drop only when the ROOT already contains the heading.
+ * The reverse — a heading that CONTAINS the root — is a heading that is *more specific* than the
+ * title ("Pest Management Guidelines for Grapes in the Finger Lakes" under "Pest Management Guidelines
+ * for Grapes"), and dropping it would merge sibling sections onto one breadcrumb. That is the exact
+ * collapse this whole change exists to fix, so testing containment both ways would reintroduce it.
+ *
+ * The word-count floor stops a root containing "pest management" from swallowing a section
+ * legitimately called "Pest".
  */
 function restatesRoot(segment: string, root: string): boolean {
-  const a = crumbKey(segment);
-  const b = crumbKey(root);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
-  if (shorter.split(" ").length < 4) return false;
-  return longer.includes(shorter);
+  const seg = crumbKey(segment);
+  const rt = crumbKey(root);
+  if (!seg || !rt) return false;
+  if (seg === rt) return true;
+  if (seg.length >= rt.length) return false; // more specific than the title — keep it
+  if (seg.split(" ").length < 4) return false;
+  return rt.includes(seg);
 }
 
-/** Truncate a single over-long segment on a word boundary, as plan 090 did. */
+/**
+ * Truncate a single over-long segment on a word boundary, as plan 090 did.
+ * The ellipsis has to come out of the budget, not be appended past it — the pre-plan-099 version
+ * returned MAX + 1 characters for a segment whose first space fell early (a glued token from PDF
+ * extraction, or a German compound).
+ */
 function truncateSegment(s: string): string {
   if (s.length <= MAX_BREADCRUMB_CHARS) return s;
-  const cut = s.slice(0, MAX_BREADCRUMB_CHARS);
+  const budget = MAX_BREADCRUMB_CHARS - CRUMB_ELLIPSIS.length;
+  const cut = s.slice(0, budget);
   const lastSpace = cut.lastIndexOf(" ");
-  return `${(lastSpace > MAX_BREADCRUMB_CHARS * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}${CRUMB_ELLIPSIS}`;
+  const body = lastSpace > budget * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return `${body.trimEnd()}${CRUMB_ELLIPSIS}`;
 }
 
 /**

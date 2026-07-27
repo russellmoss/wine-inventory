@@ -477,8 +477,12 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
       "Cornell Cooperative Extension 2025 NY/PA Pest Management Guidelines for Grapes — FREE PREVIEW EXCERPT (25 of 166 pages) of a PAID publication sold by the Cornell Store. © 2025 Cornell University, all rights reserved, no licence granted. Reference use with citation + link back only; paraphrase, never reproduce. WITHDRAW ON PUBLISHER REQUEST.",
     // Non-empty because crawler.ts dereferences seedRoots[0]; the crawl itself is directUrls-driven.
     seedRoots: ["https://cropandpestguides.cce.cornell.edu/Preview/2025/2025_Grape_Guide_Preview.pdf"],
-    // Fail-closed: EMPTY, so this host can never be path-crawled beyond the one preview PDF.
-    // Same pattern as viticulture-extension-refs.
+    // Fail-closed: EMPTY, so sitemap discovery and link-following can admit NOTHING on this host
+    // (crawler.ts pathAllowed / decideAdmission). Same pattern as viticulture-extension-refs.
+    // Known limit, stated rather than overclaimed: the curated path this source actually uses is
+    // `crawlUrls`, which gates on HOST per redirect hop but deliberately does NOT re-gate the PATH
+    // (crawler.ts, "operator-directed" note). So a same-host 302 out of /Preview/ would be followed.
+    // What bounds this source in practice is the single pinned directUrls entry, tested below.
     allowPrefixes: [],
     denyPrefixes: [],
     autoCrawl: false,
