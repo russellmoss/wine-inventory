@@ -2,6 +2,41 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
+## Deferred from plan 099 PR A (council-raised, deliberately out of scope)
+
+Four real defects found while fixing the chunker text-loss bug. None is a data-corruption risk on
+its own, which is why they were not bundled into a fix whose whole value was a tight parity control.
+
+1. **Sentence boundaries are not domain-aware** (council C1, Gemini). The rule — split at `.`
+   followed by whitespace — is unchanged by the plan-099 fix, and it shatters `approx.`, `var.`,
+   `spp.`, `cv.`, `subsp.`, `Dr.`, `BBCH 12.`, and European decimal formatting (`1.500,00`) used by
+   the French, German, Spanish and Catalan sources. Gemini wanted this fixed inside Unit 1; Codex
+   said explicitly not to touch sentence detection in an integrity fix, and Codex won on sequencing:
+   character *deletion* changes a number's value, whereas a misplaced *boundary* only splits a
+   sentence across two chunks that already carry 75 tokens of overlap. Fix separately, with its own
+   before/after retrieval measurement. Minimum shape: negative-lookahead on digits
+   (`(?<!\d)\.(?!\d)`) plus an explicit agronomic/taxonomic abbreviation list.
+
+2. **No user path to report a dangerous citation** (council design question, Gemini). `/developer`
+   → `bug_reports` exists, but nothing connects a suspect citation in an assistant answer to it.
+   This is the only human backstop against corruption that looks plausible — and plan 099 proved
+   the corruption is usually plausible (5 lb/A of sulfur is a normal spray; 5 lb/A of a Group 3 DMI
+   is catastrophic and illegal). Worth a "report this citation" affordance on the citation chip.
+
+3. **Raw HTML leaks into chunk text — 925 chunks / 476 documents corpus-wide.** Trigger: any
+   `<table>` containing a `colspan` attribute anywhere makes Defuddle abandon markdown conversion
+   and emit the whole table as raw `<table>…</table>` HTML, which the chunker then stores verbatim.
+   `ifv-france` is dominant at **753 chunks across 380 documents, roughly 55% of that source**;
+   also `uc-ipm` (83), `ives-technical-reviews` (26), `awri` (26 `<td>` + 5 `<iframe>`),
+   `osu-extension` (10 + 3). This directly undermines `chunk.ts`'s own stated design goal of
+   preserving dose-table structure. Upstream-library problem, much larger blast radius, own plan.
+
+4. **`extract/index.ts:61` decodes every document as UTF-8 unconditionally** — no HTTP
+   `Content-Type` charset param and no `<meta charset>` sniffing. Latent, not currently triggered:
+   the one `osu-extension` mojibake (`Temperature (В°C)`) is baked into OSU's own bytes upstream,
+   and the single `awri` case is an unrelated PDF font-encoding failure in `extract/pdf.ts`. But a
+   future source served as genuine windows-1252 would be silently mangled by us.
+
 ## 🔴 EM 8413 is in the corpus with corrupted pesticide rates (LIVE, safety-relevant)
 
 Found 2026-07-26 during PNW-handbook recon. `osu-extension` document
