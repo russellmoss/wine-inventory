@@ -201,7 +201,7 @@ export async function indexDocument(input: {
   // by the time we have markdown the section boundaries are gone.
   let bytes = input.bytes;
   if (sectionFilterApplies) {
-    const filtered = applySectionFilter(input.bytes.toString("utf8"));
+    const filtered = applySectionFilter(input.bytes.toString("utf8"), sectionFilter!.strategy);
     if (filtered.html === null) {
       // Sections existed and every one was an announcement.
       //

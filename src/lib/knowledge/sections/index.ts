@@ -10,6 +10,7 @@ import { PDF_EXTRACT_VERSION } from "../extract/pdf-structure";
 import { CHUNKER_VERSION } from "../chunk";
 import { findSourceConfig } from "../config";
 import { splitHtmlSections } from "./split-html-sections";
+import { splitPnwSections, isProductSection, stripProductBlocks, stripRateShapedBlocks } from "./split-pnw-sections";
 import { classifySection } from "./classify-section";
 
 /**
@@ -62,8 +63,15 @@ export function shouldApplySectionFilter(contentType: string, sourceKey?: string
   return resolveSectionFilter(contentType, sourceKey) !== null;
 }
 
-/** The strategies a source may declare. PR C (plan 100 Unit 7) adds "body-heading" to this union. */
-export type SectionFilterStrategy = "anchor-heading";
+/** The strategies a source may declare. */
+export type SectionFilterStrategy = "anchor-heading" | "pnw-label";
+
+/**
+ * BUMP THIS when the PNW splitter or its product-section rule changes what gets indexed.
+ * Versioned SEPARATELY from SECTION_FILTER_VERSION so a change to one strategy does not force a
+ * re-index of every document filtered by the other.
+ */
+export const PNW_FILTER_VERSION = "1";
 
 export interface SectionFilterResolution {
   strategy: SectionFilterStrategy;
@@ -88,13 +96,75 @@ export function resolveSectionFilter(
 ): SectionFilterResolution | null {
   if (contentType !== "html" || !sourceKey) return null;
   const strategy = findSourceConfig(sourceKey)?.sectionFilter;
-  if (strategy === "anchor-heading") {
-    return { strategy, version: SECTION_FILTER_VERSION };
-  }
+  if (strategy === "anchor-heading") return { strategy, version: SECTION_FILTER_VERSION };
+  if (strategy === "pnw-label") return { strategy, version: PNW_FILTER_VERSION };
   return null;
 }
 
-export function applySectionFilter(rawHtml: string): SectionFilterResult {
+/**
+ * Plan 100 Unit 7 — dispatch on the resolved strategy.
+ *
+ * `strategy` defaults to "anchor-heading" so every pre-plan-100 caller (and the VT verify script,
+ * which calls this directly) behaves byte-identically.
+ */
+export function applySectionFilter(
+  rawHtml: string,
+  strategy: SectionFilterStrategy = "anchor-heading",
+): SectionFilterResult {
+  return strategy === "pnw-label" ? applyPnwFilter(rawHtml) : applyAnchorHeadingFilter(rawHtml);
+}
+
+/**
+ * The PNW filter. Unlike the anchor-heading strategy this does NOT drop whole sections — it keeps
+ * every section and strips the product BLOCKS out of the management ones. See split-pnw-sections.ts
+ * for why the cut has to be at block level (the FRAC resistance-management prose lives inside
+ * `Chemical control`, above the product bullets, and is the best content on the page).
+ */
+function applyPnwFilter(rawHtml: string): SectionFilterResult {
+  const { sections } = splitPnwSections(rawHtml);
+
+  // Fail OPEN on an unrecognized template. Returning null here would clear the document's chunks.
+  if (sections.length === 0) {
+    return { html: rawHtml, failedOpen: true, keptAnchors: [], dropped: [] };
+  }
+
+  const kept: string[] = [];
+  const dropped: DroppedSection[] = [];
+  const keptHtml: string[] = [];
+
+  for (const s of sections) {
+    // Two rules, and the second is the one that actually holds the line.
+    //
+    //   label-based  — a section CALLED "Chemical control" loses all of its lists and tables.
+    //   content-based — any rate-shaped list or table loses itself, wherever it sits.
+    //
+    // The content rule exists because the fixtures showed a `Chemical control` section is itself
+    // subdivided by seasonal lead-ins ("Dormant season", "Summer") and by `Note` /
+    // `Combination Fungicides`, each opening a new section whose label says nothing about products
+    // while its bullets are still rate tables. Enumerating every sub-heading a land-grant editor
+    // might write is not a strategy; reading the blocks is.
+    const prose = isProductSection(s.label)
+      ? stripProductBlocks(s.html)
+      : stripRateShapedBlocks(s.html);
+
+    keptHtml.push(prose);
+    kept.push(prose.length < s.html.length ? `${s.label} (prose only)` : s.label);
+    // Recorded as a drop so the crawl log and the verify script can SEE the tier-C removal happen.
+    // A silent strip is indistinguishable from a splitter that quietly stopped matching.
+    if (prose.length < s.html.length) {
+      dropped.push({
+        anchor: s.label,
+        heading: s.label,
+        reason: `product blocks stripped (${s.html.length - prose.length} bytes)`,
+      });
+    }
+  }
+
+  const html = `<!doctype html><html><body><article>${keptHtml.join("\n")}</article></body></html>`;
+  return { html, failedOpen: false, keptAnchors: kept, dropped };
+}
+
+function applyAnchorHeadingFilter(rawHtml: string): SectionFilterResult {
   const { sections } = splitHtmlSections(rawHtml);
 
   if (sections.length === 0) {
@@ -174,4 +244,5 @@ export function deriveIndexHash(input: IndexHashInput): string {
 }
 
 export { splitHtmlSections } from "./split-html-sections";
+export { splitPnwSections, isProductSection, stripProductBlocks, stripRateShapedBlocks } from "./split-pnw-sections";
 export { classifySection, normalizeHeading } from "./classify-section";

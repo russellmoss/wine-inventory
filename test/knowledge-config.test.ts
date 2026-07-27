@@ -184,12 +184,17 @@ describe("VT Enology Notes source (plan 084)", () => {
     expect(vt().sectionFilter).toBe("anchor-heading");
   });
 
-  it("is the ONLY source that declares a sectionFilter (blast-radius guard)", () => {
-    // Adding sectionFilter to a source changes its stored indexedContentHash (deriveIndexHash
-    // stops passing through), which forces a full re-embed of that source's slice of the
-    // ~1,449-document corpus on the next monthly sweep. Nothing else in CI would catch that.
+  it("keeps the set of section-filtered sources to the known list (blast-radius guard)", () => {
+    // Adding sectionFilter to a source changes its stored indexedContentHash (the strategy and its
+    // version are folded in), which forces a full re-embed of that source's slice of the corpus on
+    // the next monthly sweep. Nothing else in CI would catch that, so the set is pinned here and a
+    // new entry has to be a deliberate edit.
+    //
+    // `pnw-handbooks` (plan 100) is on this list from birth — it declares "pnw-label" before it has
+    // ever been crawled, so there is no re-embed to trigger. That is the safe way to add one.
     expect(KNOWLEDGE_SOURCES.filter((s) => s.sectionFilter).map((s) => s.key)).toEqual([
       "vt-enology-notes",
+      "pnw-handbooks",
     ]);
   });
 
