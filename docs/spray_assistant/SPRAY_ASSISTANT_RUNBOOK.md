@@ -113,6 +113,17 @@ let a second program build the same thing.
     governed visual vocabulary (clear / watch / act / unknown / blocked) defined **once**, in S9.
     **If S9 cannot write a one-sentence operational instruction for a state, that state does not
     exist** (council D3).
+19. **The corpus/relational line is tabular vs prose, not mentions-FRAC vs does-not** (SKB Unit 1/11,
+    invariant [[KB-1-product-table-is-not-corpus]]). Disease biology (tier A) and advisory prose that
+    names FRAC groups or active ingredients as context while deferring rates to the label (tier B)
+    are corpus content. A **table or matrix keyed by product/active ingredient** — product × FRAC
+    group, × efficacy rating, × rate, × REI/PHI (tier C) — is never corpus content for an enforcing
+    source; it routes to S2/S2b relational or is dropped. **Tier B is admitted for its value, not
+    because it is safe** — any corpus content naming a product can synthesise into a clearance that
+    overrides a relational `GAP` (rule §3.6's failure mode, arriving by way of prose or a table
+    equally), which is why the legality refusal in `search_knowledge_base` is a hard precondition of
+    tier B, not a parallel nicety. Enforced by a pre-extraction detector + an inline ingest gate
+    (`npm run verify:kb-boundary`); new sources enforce on arrival with no opt-in step.
 
 ## 4. Phase map and parallel lanes
 
@@ -310,7 +321,7 @@ cellar as a residue flag — a thing no incumbent can do, because no incumbent o
 | S9 decision record | 4 | ⬜ not started | — | — | — | — | — |
 | S10 planner surface | 5A | ⬜ not started | — | — | — | — | — |
 | S11 assistant tools | 5B | ⬜ not started | — | — | — | — | — |
-| SKB knowledge sources | anytime | 🟨 **building — PR 1 (U1–U3) + U5 SHIPPED, 4 of 11 units** (the boundary is REAL, so the source units are unblocked). **KB-1**: a product→fact table never reaches the corpus for an enforcing source — detector on **raw HTML / PDF pre-chunk lines, never post-extraction text**; gate **inline in `index-documents.ts`, before extraction AND before the idempotency short-circuit**, signalling by returned field, **never a throw** (tombstone hazard); `uncertain` **skips for enforcing, is counted for report-only**. Enforcement is the DEFAULT; incumbents are a frozen report-only census whose **deletion** closes D3. **`search_knowledge_base` refuses the legality VERDICT, not the query** (handler-level classifier + rule 9; 12 negative cases against caveat fatigue). `allowPaths` exact-path primitive. **QA: 4 defects found, 3 invisible to unit tests** — detector vs 10 REAL pages 6/10→8/10 (markup density beat the header window; VT's **29-row** efficacy table read as prose), and `verify:kb-boundary`'s first run found **`virginia-fruit`: 69 docs / 260 chunks / `defaultEnabled=true` / NO config entry, silently ENFORCING**. 🔴 **Two findings that change the remaining plan: (1) `virginia-fruit` IS `virginiafruit.ento.vt.edu`, so U7 is a RECONCILIATION not a greenfield add and needs rewriting; (2) `uc-ipm` — a tier-1 INCUMBENT — carries tier-C product×rate×REI/PHI tables TODAY (D3 floor = 19, a severe under-count).** ⚠️ Still open: no region dimension in retrieval while MMR λ 0.7 rewards cross-regional mixing (U9 gates the flip); U4 + U6–U11 all need `.env` / a live crawl / an operator-gated probe | [SKB plan](phases/SKB-knowledge-sources-plan.md) | [SKB council](phases/SKB-council-feedback.md) | [#538](https://github.com/russellmoss/wine-inventory/pull/538) | [SKB QA](qa/SKB-qa-report.md) | — |
+| SKB knowledge sources | anytime | 🟩 **shipped — all 11 units complete** (PR 1 #538 landed the boundary; Units 4/6-11 needed `.env`/a live crawl/an operator-gated probe, none of which could run in a worktree, so they landed as their own commits on this branch). **Penn State Extension** (45 hand-curated tier-A grape disease/IPM articles from a live 94-item hub enumeration, `allowPaths`-scoped, dark on landing) + **Virginia Tech grape IPM RECONCILED** (`virginia-fruit` was a live DB-only orphan with `allowPrefixes:["/"]`; rescoped to an exact 68-page `allowPaths` list after a `--follow` crawl proved the loose config pulled in apple/pear/peach orchard content and pesticide-use-statistics pages — both new sources needed this same class of fix). `verify:kb-boundary` PASS corpus-wide (extension-psu 47 docs/2 correctly-gated-empty, pnw-handbooks 64/2, cornell-grape-guide 1/0) — the KB-1 gate caught two REAL product tables in hand-curated PSU content the humans thought were tier A. 5 new retrieval cases pass (`verify:knowledge-base` 26/26); displacement 8/120 (3%), PASSED. 🔴 **D13 cross-region contamination REPRODUCES** (measured, not assumed): a Michigan downy-mildew probe mixes Wine Australia/AWRI with eastern sources; a Pennsylvania grape-berry-moth probe mixes UC IPM with virginia-fruit/Cornell. `extension-psu` stays dark as a direct consequence; `virginia-fruit`'s pre-existing `defaultEnabled:true` sits in a measured-mixed result right now, in production — left as an explicit open question for Russell, not decided. MSU stays DORMANT; the operator-gated crawl probe is pending (see `SKB-msu-decision.md`) — `verify:msu`'s self-authorizing language was narrowed so a single PASS no longer implies un-dormanting. Corpus is 37,759 chunks — D11's scale-register tripwire corrected with the current number. | [SKB plan](phases/SKB-knowledge-sources-plan.md) | [SKB council](phases/SKB-council-feedback.md) | [#538](https://github.com/russellmoss/wine-inventory/pull/538) | [SKB QA](qa/SKB-qa-report.md) | [SKB report](phases/SKB-report.md) |
 
 Statuses: ⬜ not started → 🟦 planning → 🟨 building → 🟪 QA → 🟩 shipped.
 Update at every transition; link the plan, council feedback, PR(s), QA report, and phase report.
@@ -904,6 +915,26 @@ source**, and **nothing safety-critical goes in the corpus** — FRAC codes, lab
 and interlocks are S2/S2b/S7 relational data. RAG answers *"why is powdery pressure high this
 week"*; it must never answer *"can I legally apply this."*
 
+**Outcome, recorded 2026-07-27 (Unit 11) so the recon is not re-run:**
+
+- ⛔ **NEWA rejected** (D4) — `newa.cornell.edu` serves ~1,559 characters of visible grape text per
+  236 KB page behind a Gatsby SPA; its model documentation is a video, not crawlable text; no
+  robots.txt, no sitemap. Moved from "candidate source" to an S5a/S5b model **citation**
+  (NEWA's actual value is live model output, which is relational/computed, not corpus prose).
+- ⛔ **ENTO-635-C rejected** (D5), `virginiafruit.ento.vt.edu` taken in its place — the pest guide PDF
+  is 23 pages of which ~22 are product/rate/REI/PHI spray tables (`life cycle` and `scouting` occur
+  zero times), despite carrying the best reuse licence of any host examined (an affirmative VCE
+  public-use grant). Licence was never the constraint; content was. Named as a hand-off to **S2b**
+  with its reuse grant captured, not left as an open-ended "maybe someday."
+- 🟨 **MSU Extension stays dormant** — the operator-gated populate attempt (D8/D9) is pending;
+  `verify:msu`'s self-authorization was narrowed so a single live PASS from one egress no longer
+  implies un-dormanting (see `phases/SKB-msu-decision.md` for the exact command and criterion).
+- ✅ **Penn State Extension** and **Virginia Tech grape IPM** (`virginia-fruit`, a RECONCILIATION of a
+  pre-existing DB-only orphan, not a fresh add) both shipped. `virginia-fruit`'s already-live
+  `defaultEnabled:true` was found (Unit 9) to sit inside a measured cross-region-mixed result set —
+  see rule §3.19 and `phases/SKB-region-finding.md`. This is an open question for the owner, not a
+  decision made here.
+
 **Gate:** baseline captured before and re-captured after; each new source's license posture recorded
 in `KnowledgeSource.license`; staged rollout (`defaultEnabled:false` → crawl → enable for Demo →
 measure → flip); `verify:knowledge-base`, `verify:kb-register`, `verify:kb-subscriptions` green;
@@ -925,6 +956,7 @@ measure → flip); `verify:knowledge-base`, `verify:kb-register`, `verify:kb-sub
 | Hourly retention destroys decision replay | MED | S0 sizes retention by replay horizon, or snapshots decision inputs. |
 | Users read screening indices as diagnoses | MED | "Scout not diagnose" copy tests; risk + confidence always paired. |
 | Export-market MRL violation on a blended wine | MED | **Documented as Later** (council D1, Russell's decision 2026-07-26) — not built; S8's lineage makes it cheap to add when a customer needs it. |
+| **Cross-region contamination in retrieval** (council C4/D13) | HIGH | Measured, REPRODUCES (SKB Unit 9) — no region dimension in retrieval, MMR rewards mixing across it. `extension-psu` stays dark as a direct consequence; `virginia-fruit`'s pre-existing live status is an open owner question, not decided. A region filter is its own scoped phase, not built here. See `phases/SKB-region-finding.md` + the scale-register D13 entry.
 
 ## 11. Phase reports and decisions
 

@@ -1,4 +1,13 @@
-# SKB QA report — PR 1 (Units 1–3) + Unit 5
+# SKB QA report — full phase (PR 1 + Units 4, 6-11)
+
+This report now covers the whole phase. Part 1 is the original PR 1 (Units 1-3 + 5) QA pass,
+unchanged. Part 2 is Units 4, 6-11 (this session, 2026-07-27), which needed a live DB and could not
+be QA'd in the branch's original worktree.
+
+---
+
+## Part 1 — PR 1 (Units 1-3) + Unit 5
+
 
 **Date:** 2026-07-27
 **Branch:** `claude/skb-knowledge-sources-plan-bd36b7`
@@ -128,3 +137,87 @@ grapes?"* → full cited epidemiology answer, and programmatically asserted **no
 **QA hygiene:** `.env` was copied into the worktree to boot the dev server and **deleted afterwards**;
 the temporary port-3005 launch entry was reverted. No fixtures were created and no writes were made to
 any tenant — every script used was read-only.
+
+---
+
+## Part 2 — Units 4, 6-11 (2026-07-27)
+
+**No browser QA — there is no UI surface.** SKB adds knowledge sources and a boundary gate to a
+backend corpus; nothing here is reachable from a page a grower would click through. Per the runbook's
+own precedent (S5a: "browser QA n/a - no UI yet"), verification here is the DB-backed `verify:*`
+suite plus the live-corpus measurements in `SKB-measurements.md` and `SKB-region-finding.md`, run from
+this worktree with `.env` copied in (worktrees have no `.env` by default).
+
+### Program-wide safety cases (QA-PROTOCOL §4) most relevant to this phase
+
+- **SAFE-1 (decline to recommend from a trade name alone)** — unaffected; this phase adds corpus
+  content and a gate, not a recommendation path.
+- **SAFE-3/SAFE-4 (gap vs no-code-exists rendering)** — unaffected; relational, not touched.
+- **SAFE-14 (`epa-pesticide` disabled -> the assistant declines rather than answering from memory)**
+  — the case Unit 3's own plan flagged as most plausibly regressed by adding more corpus prose.
+  Verified structurally: `test/knowledge-legality-guard.test.ts` and the
+  `assistant-kb-legality-refusal` golden (both pre-existing, from PR 1) still pass unmodified after
+  this phase's corpus additions - the handler-level classifier does not depend on which sources exist,
+  only on the query shape, so more corpus content cannot silently widen its blind spot.
+
+### KB-1 boundary gate — the gate that matters most for THIS phase specifically
+
+Adding two new sources is exactly the scenario KB-1 exists to guard. Live, not simulated:
+
+```
+ENFORCE  cornell-grape-guide     1 docs  product-table 0  uncertain 0  unaudited 0  empty 0
+ENFORCE  extension-psu         47 docs  product-table 0  uncertain 0  unaudited 0  empty 2
+ENFORCE  pnw-handbooks         64 docs  product-table 0  uncertain 0  unaudited 0  empty 2
+
+PASS — no product→fact table on any enforcing source.
+```
+
+`extension-psu`'s 2 `empty` documents are the gate catching real product tables in content a human
+picked as tier-A on title alone (a spotted-lanternfly management article, a herbicide grower-survey
+writeup) - the strongest evidence this session produced that the detector generalizes past its own
+fixtures. Full detail in `SKB-measurements.md`.
+
+Also fixed this session: `verify:kb-boundary` itself had a bug where a document whose chunks the
+inline gate had ALREADY cleared (0 chunks stored) was re-flagged as a fresh leak on live re-fetch,
+because re-fetching raw content re-detects the same table shape the gate already caught. Added an
+`empty` verdict distinct from `unaudited`; confirmed against the live corpus before and after.
+
+### Retrieval correctness
+
+`npm run verify:knowledge-base`: **26/26** (21 retrieval + 2 rejection + 2 coverage [1 known-failing,
+unrelated to this phase] + date/title coverage), including the 5 new Unit 8 cases for PSU/VT, each
+checked against the live corpus before being written into the suite (not guessed).
+
+### Displacement
+
+`npm run verify:kb-register`: **8/120 slots changed hands, 4 to publishers absent from baseline (3%)
+- PASSED.** Only 2 of the 8 are attributable to the new sources; the rest are pre-existing corpus
+churn, recorded rather than hidden.
+
+### Cross-region contamination (the phase's own hardest finding)
+
+Measured via 4 hand-built probes (`REGION_CASES` in `scripts/kb-eval-cases.ts`), not assumed:
+**2 of 4 reproduce a climate-mixed result set.** This is a FAIL against the hazard, by design - the
+plan's own pre-committed branch treats a reproduction as a hard block on the flip, not a bug to
+silently work around. Full writeup: `SKB-region-finding.md`.
+
+### Full verification sweep
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | clean |
+| `npx vitest run` (full suite) | 4933 passed, 0 failed, 229 skipped (2 known-flaky whole-suite-contention timeouts confirmed passing in isolation) |
+| `npm run verify:kb-boundary` | PASS |
+| `npm run verify:knowledge-base` | 26/26 |
+| `npm run verify:kb-register` | PASSED (8/120, 3%) |
+| `npm run verify:kb-subscriptions` | PASS |
+| `npm run verify:invariants` | 50/50 |
+| `npm run verify:tripwires` | all 16 accounted for |
+| `npm run verify:msu` | config PASS, live BLOCKED (expected - Imperva, not a regression) |
+
+### Deferred / not this phase's call to make
+
+- `extension-psu`'s `defaultEnabled` flip - blocked by the region finding.
+- `virginia-fruit`'s `defaultEnabled` status - open owner question.
+- MSU's populate/un-dormant decision - operator action pending.
+- The region-filter architecture (D13) - its own scoped phase.

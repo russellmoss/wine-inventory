@@ -209,7 +209,7 @@ TEMPLATE — copy this block for each new decision:
   backfill; MMR/RRF over a huge candidate set costs CPU if `k` isn't bounded.
 - **Tripwire:** vector queries trending into tens of ms; chunk counts crossing ~10k; a re-embed job
   scanning the whole corpus on every run instead of the changed subset; retrieval `LIMIT k` unbounded.
-- **Status:** 🟡 **the chunk-count tripwire above has been CROSSED** — the corpus is ~23.5k chunks
+- **Status:** 🟡 **the chunk-count tripwire above has been CROSSED** — the corpus is now ~37,759 chunks (measured 2026-07-27, SKB Unit 11 — was ~23.5k when plan 099 last corrected this line)
   against a stated "fine until hundreds–low-thousands" and a "~10k" tripwire, so every dense query is
   now a sequential scan over the whole corpus. Nothing is broken (latency has not been measured as a
   user-visible problem), but the 🟢 was stale and is corrected here rather than left to look deliberate.
@@ -217,6 +217,33 @@ TEMPLATE — copy this block for each new decision:
   Guarded by `verify:knowledge-base` + `verify:tenant-isolation`;
   see [[decisions/0007-knowledge-base-rag-global-corpus-tenant-subscriptions]].
 
+
+### Knowledge-base retrieval has NO region dimension, and MMR rewards mixing across it (SKB Unit 9, D13)
+- **Choice (inherited, not made here):** `retrieve.ts` selects the top-k via MMR
+  (`mmrSelect(..., 0.7)`) over the GLOBAL chunk pool filtered only by tenant-enabled sources. Nothing
+  in the chunk, the query, or tenant config carries a region/climate dimension.
+- **Fine until:** a question's geographically-correct answer is dense enough in ONE publisher that
+  MMR's 30% dissimilarity weight has nowhere off-region to reach (measured: an eastern black-rot
+  question stayed 8/8 Cornell; a Virginia powdery-mildew question stayed all eastern/PNW).
+- **What breaks at scale:** the more regional sources the corpus gains, the MORE often a
+  region-bound question sits near BOTH the correct regional chunk and a semantically-similar
+  chunk from a different climate, and MMR's dissimilarity term actively prefers pulling in the
+  second one. Closing a regional coverage gap makes this WORSE, not better, because there is now
+  more off-region content dense enough to compete for a slot.
+- **Tripwire:** none automated. Measured by hand via `REGION_CASES` in `scripts/kb-eval-cases.ts`
+  (4 fixed probes) and `npm run kb:snapshot`, which keeps them in the committed snapshot for
+  before/after comparison on future corpus changes.
+- **Status:** 🔴 **measured and REPRODUCED, 2026-07-27** (SKB Unit 9) — a Michigan downy-mildew
+  probe retrieved Wine Australia + AWRI alongside Penn State/Cornell/PNW; a Pennsylvania grape-berry-
+  moth probe retrieved UC IPM alongside Virginia Tech/Cornell. `extension-psu` stays
+  `defaultEnabled: false` as a direct consequence (a hard block, not a preference). `virginia-fruit`
+  is the harder case: it was already `defaultEnabled: true` for every tenant before this was
+  measured, and sits in the mixed Pennsylvania result above right now, in production — not a new
+  risk, but the first time it has been measured rather than assumed away. See
+  `docs/spray_assistant/phases/SKB-region-finding.md` for the full writeup; darkening it was
+  deliberately left as an open question for the owner, not decided here.
+  A region metadata dimension + a tenant-region retrieval filter is the documented remedy and is
+  explicitly its own phase (SKB D13) — not built as part of a source-expansion phase.
 ### Breadcrumb text is baked into every stored chunk and its vector (plan 099)
 - **Choice:** `chunk.ts` prepends the section breadcrumb into each chunk's `text`, which is what gets
   embedded AND what backs the generated `search_vector`. That makes a breadcrumb bug a *data* bug, not a
