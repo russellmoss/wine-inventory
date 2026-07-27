@@ -928,7 +928,12 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     // The robots-DECLARED sitemap. /sitemap.xml and /sitemap_index.xml both 200 with
     // content-type: image/png (soft-404s) - a naive check would accept either.
     sitemapUrls: ["https://extension.psu.edu/sitemap/sitemap.xml"],
-    allowPrefixes: ["/food-safety-and-quality/grape-and-wine-production/"],
+    // ⚠️ Was allowPrefixes: ["/food-safety-and-quality/grape-and-wine-production/"] - the live crawl
+    // showed that admits every sub-hub under it too, including wine-production/ (31 chunks) and
+    // business-management-and-marketing/ (27 chunks), neither of which is this source's mandate (the
+    // same class of bug the virginia-fruit reconciliation found). Empty: admission is entirely the
+    // exact allowPaths list below, including the three hub/sub-hub pages worth keeping.
+    allowPrefixes: [],
     // SKB Unit 5's allowPaths primitive exists for exactly this source: PSU articles live at FLAT
     // ROOT SLUGS with no grape namespace ("/grape-disease-black-rot"), and "/powdery-mildew",
     // "/downy-mildew", "/black-rot-and-frogeye-leaf-spot" at the identical URL shape are the
@@ -936,6 +941,14 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     // collision slugs appear in this list; they were checked against the live hub listing, not
     // guessed. Hand-reviewed from the hub's real title+link pairs (2026-07-27), grouped by topic.
     allowPaths: [
+      // hub / sub-hub pages worth keeping (grape-production is grape-specific; common-problems is a
+      // disease/pest troubleshooting index; the top-level listing is the source of this curation).
+      // wine-production/, business-management-and-marketing/, experts/ and featured-articles/ are
+      // deliberately NOT here - out of this source's disease/IPM mandate, found live when the
+      // now-removed allowPrefixes admitted them as an unintended side effect.
+      "/food-safety-and-quality/grape-and-wine-production/see-all-grape-and-wine-production",
+      "/food-safety-and-quality/grape-and-wine-production/grape-production",
+      "/food-safety-and-quality/grape-and-wine-production/common-problems",
       // disease / pest biology
       "/grape-disease-black-rot",
       "/grape-disease-downy-mildew",
@@ -945,7 +958,7 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
       "/review-of-spotted-lanternfly-updates-and-findings-in-vineyards",
       "/spotted-lanternfly-research-updates-and-panel-discussion",
       "/new-quiz-available-test-your-knowledge-of-the-spotted-lanternfly",
-      "/spotted-lanternfly-link",
+      // "/spotted-lanternfly-link" removed - the live crawl found it 301s to "/spotted-lanternfly", which is not on this list (unreviewed); the redirect target is refused as out of scope rather than silently followed.
       "/field-guide-to-vineyard-herbicide-drift",
       "/a-review-of-survey-results-regarding-auxin-herbicides-and-vineyard-damage-grape-grower-feedback",
       "/understanding-and-preventing-spring-frost-and-freeze-damage-to-grapes",
