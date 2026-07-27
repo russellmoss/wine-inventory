@@ -343,8 +343,8 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
 
 > Machine-readable notes: [[SPRAY-1-append-only-correction-as-event]] · [[SPRAY-2-facts-as-of-snapshot]] ·
 > [[SPRAY-3-gap-renders-unknown]] · [[SPRAY-4-planned-harvest-audited]] · [[SPRAY-5-dried-before-rain-derived]] ·
-> [[SPRAY-6-clean-scout-never-closes]].
-> SPRAY-1..5 guarded by `npm run verify:spray-record`; SPRAY-6 by `npm run verify:latent-infection`.
+> [[SPRAY-7-clean-scout-never-closes]].
+> SPRAY-1..5 guarded by `npm run verify:spray-record`; SPRAY-6 by `npm run verify:product-facts`; SPRAY-7 by `npm run verify:latent-infection`.
 
 - **Spray history is append-only, corrected as an event (SPRAY-1, critical, database).** A Postgres
   `BEFORE UPDATE` trigger refuses any content change on all six append-only tables (per-table
@@ -366,7 +366,7 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   no planned date; point-in-time reads; the stream IS the outbox — S7a consumes
   `plannedHarvestChangesSince(cursor)` as a watermark (council C4). Split picks coexist (G4); PHI reads
   the EARLIEST open date.
-- **A clean scouting pass never closes a latent infection event (SPRAY-6, critical, app-code).**
+- **A clean scouting pass never closes a latent infection event (SPRAY-7, critical, app-code).**
   An open event closes by its resolution rule or by an attributed human append — never by the ABSENCE
   of symptoms, because during the latent period there is by definition nothing to see. Fedele et al.
   2020 scored a Botrytis model at 65% against field assessment but >87% against post-harvest assays of
