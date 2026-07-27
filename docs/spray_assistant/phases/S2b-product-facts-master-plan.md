@@ -11,17 +11,35 @@
 > | Unit | State | Evidence |
 > |---|---|---|
 > | 0 · CDPR interval probe | ✅ done | [probe report](S2b-cdpr-interval-probe.md) |
-> | 1 · jurisdiction + per-block-line snapshot | ✅ built | schema + migration |
-> | 2 · curated facts master (global) | ✅ **tables** built | `verify:product-facts` 1, 2, 3 |
-> | 3 · separation rules + conditional PHI/REI | ✅ **tables** built | `verify:product-facts` 4 |
-> | 4 · fifth source + fact-group provenance | ✅ built | schema + migration |
-> | 5 · tenant grower-supplied override + RLS | ✅ built | `verify:product-facts` 5, 5b, 6 |
+> | 1 · jurisdiction + per-block-line snapshot | 🟥 **SCHEMA ONLY** — `resolveJurisdiction` NOT built, no UI, and **nothing writes the block-line snapshot**, so council C3 (the rule §3.8 replay fix) is unimplemented | columns + migration only |
+> | 2 · curated facts master (global) | 🟥 **TABLES ONLY** — no `product-facts.json` artifact, no `seed-product-facts.ts`, no CDPR propose-seeder, **no artifact-discipline test**, so "every curated row carries source + as-of + reviewer" is unenforced | `verify:product-facts` 1, 2, 3 |
+> | 3 · separation rules + conditional PHI/REI | 🟥 **TABLES ONLY** — `separation.ts` (most-restrictive-wins) and the JMS oil↔sulfur goldens NOT built, so KD-2's direction-specificity is unproven | `verify:product-facts` 4 |
+> | 4 · fifth source + fact-group provenance | ✅ built + wired | schema + `factsSnapshotColumns` |
+> | 5 · tenant grower-supplied override + RLS | 🟨 **table + RLS only** — no entry surface, so SAFE-19 (the flagship non-US gate item) is data-layer-only | `verify:product-facts` 5, 5b, 6 |
 > | 6 · the real `ProductFactsResolver` | ✅ built + wired at the composition root | `verify:product-facts` 7-11 |
 > | 7 · coverage report | ✅ built | `report:product-facts-coverage` |
 > | 7b · pest-code ingest | ✅ built + **run live** | 41 categories, 42,132 mappings |
 > | 8 · verify + invariant SPRAY-6 | ✅ built | 22 assertions · 48/48 invariants guarded |
 > | 9 · monthly drift detector | ✅ built | extends the existing pesticide cron step |
-> | 10 · browser QA | ⬜ **needs Russell** — QA-PROTOCOL requires the USER to log in; Claude never types a password | — |
+> | 10 · browser QA + `qa/S2b-qa-report.md` | 🟥 **INCOMPLETE** — blocked on a dev-server restart (it is running pre-migration code); report not written | — |
+>
+> ## ⛔ S2b is NOT done and NOT deployable as a feature
+>
+> An earlier revision of this table said "Units 0-9 DONE". **That was wrong** — three units are
+> tables-only and one is schema-only. Corrected above after auditing the filesystem rather than
+> trusting the notes. What is genuinely finished is the **foundation**: schema, RLS, the resolver,
+> the pest ingest, the coverage report, the verify gate, and the cron.
+>
+> **The four gaps that block "done":**
+> 1. **Unit 1** — nothing writes the jurisdiction snapshot, so council C3 is unfixed in practice.
+> 2. **Unit 2** — no curated artifact, no seeder, and no discipline test, so the gate item "every
+>    curated row carries source + as-of + reviewer" has nothing enforcing it.
+> 3. **Unit 3** — `separation.ts` and the JMS oil↔sulfur goldens are missing; KD-2 is unproven.
+> 4. **Unit 5 UI** — SAFE-19 cannot be run in a browser.
+>
+> **And it delivers no user-visible value yet**: the tables are empty by design, coverage is 0%, and
+> BOTH pre-committed thresholds report BELOW — so S7a and S6 remain blocked. That is the designed
+> behavior, not a defect, but it means shipping this changes nothing a grower can see.
 >
 > Gates green: `verify:product-facts` **22/22** · `verify:spray-record` 14/14 · `verify:pesticide`
 > 31/31 · `verify:tenant-isolation` · `verify:naming` 25/25 · `verify:invariants` **48/48** ·
