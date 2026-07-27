@@ -167,6 +167,7 @@ export async function loadVineyardClimateSummary(vineyardId: string, today?: str
     stationDistanceM: dec(configRow.stationDistanceM),
     stationElevationDeltaM: dec(configRow.stationElevationDeltaM),
     siteElevationM: dec(configRow.siteElevationM),
+    primarySourceElevationM: dec(configRow.primarySourceElevationM),
     attribution: configRow.attribution,
     lastRefreshAt: configRow.lastRefreshAt ? configRow.lastRefreshAt.toISOString() : null,
     unitSystem: configRow.unitSystem,
@@ -188,7 +189,14 @@ export async function loadVineyardClimateSummary(vineyardId: string, today?: str
 }
 
 /** The provider keys a grower may choose as their primary climate source (R14). */
-const SELECTABLE_PROVIDERS = new Set(["gridmet", "rcc_acis", "nasa_power", "daymet", "noaa_cdo"]);
+const SELECTABLE_PROVIDERS = new Set([
+  "gridmet",
+  "rcc_acis",
+  "open_meteo_archive",
+  "nasa_power",
+  "daymet",
+  "noaa_cdo",
+]);
 
 /**
  * Set (or clear) the grower's primary-source override for a vineyard (R14). `providerKey = null` reverts to
@@ -411,7 +419,7 @@ export async function loadVineyardRainfallRange(
     const primary = effectivePrimary({ primaryProviderKey: configRow.primaryProviderKey, primaryProviderOverride: configRow.primaryProviderOverride });
     // The deep-history source (mirrors backfill-core's provider choice) — labeled per-day fallback
     // where the primary (e.g. a station) has no off-season coverage. One source per day, never a mix.
-    const historyKey = configRow.coverageState === "US_HIGH_RES" ? "gridmet" : "nasa_power";
+    const historyKey = configRow.coverageState === "US_HIGH_RES" ? "gridmet" : "open_meteo_archive";
     const rows = await prisma.vineyardClimateDaily.findMany({
       where: { vineyardId, providerKey: { in: [primary, historyKey] }, localDate: { gte: new Date(`${startIso}T00:00:00.000Z`), lte: new Date(`${endIso}T00:00:00.000Z`) } },
       select: { providerKey: true, localDate: true, precipMm: true },
