@@ -205,10 +205,40 @@ empirically during recon rather than from docs.
 | **EM 8413 repair shape** | Withdraw the corrupted catalog-page chunks, ingest the 2026 PDF, keep the prose | Repair the tables; or just delete the document | The prose is worth having (resistance strategy, `RULES` stewardship, sprayer calibration, safe use, certification bodies). The tables are tier C and must not come back. The PDF is where the prose actually lives in full. |
 | **Chunker fix shape** | Replace the lossy `match()` with a scanner that provably partitions the input | Patch the regex to also match `\d+\.\d+` | A patched regex is still a regex that *might* not cover some input. The invariant we want is `parts.join("") === input`, which is a property, not a pattern. Assert it in code and in a property test. |
 
+## Council revisions — decisions Russell settled 2026-07-26
+
+Reviewed by Codex `gpt-5.4` and Gemini `gemini-3.1-pro-preview`; full text in
+`docs/plans/council-feedback-099-kb-text-integrity-pnw-handbooks.md`. Russell accepted all
+recommendations. The five open questions resolve as:
+
+1. **Block-level classification (C8): ACCEPTED**, scope increase and all. Section-level would ship
+   the source stripped of its resistance-management prose.
+2. **Re-index scope (C3): re-index every re-fetchable stale document, and mark the rest
+   UNVERIFIABLE.** Do not report the corpus clean when part of it could not be adjudicated.
+   (`blobUrl` is NULL corpus-wide, so re-index means re-fetch; ~578 documents are robots-blocked.)
+3. **`publishedAt` when the revision date is unknown: do NOT fail closed.** Gemini argued FIFRA
+   liability requires refusing undated pesticide documents; that would refuse a large fraction of a
+   corpus only ~31% of which is dated. Instead: **never display a date we know to be wrong**
+   (suppress 2014 on a document linking the 2026 edition), show "revision date unknown", and let the
+   existing staleness warning carry the rest.
+4. **Enforce-by-default for unknown source keys: KEPT.** Codex wanted an explicit `boundaryMode`
+   config; SKB chose the default deliberately so nobody can add a source and forget to opt in.
+   Harden the untested path instead — **exercising the enforcing delete transaction on a disposable
+   Neon branch is a hard gate** before `pnw-handbooks` becomes the first enforcing source in existence.
+5. **A user path to report a dangerous citation: filed, out of scope here** (Unit 12). The repo has
+   `/developer` → `bug_reports` but nothing connects a suspect citation to it. It is the only human
+   backstop against plausible-looking corruption.
+
+**Not adopted:** domain-aware sentence boundaries inside Unit 1 (C1 — the reviewers conflicted;
+filed separately in Unit 12). **Confirmed correct by review:** the non-throwing `assessProductTable`
+contract, the lossless-scanner approach over a patched regex, `defaultEnabled: false` staged rollout,
+exact path prefixes over keyword matching.
+
 ## Implementation Units
 
 Grouped into four PRs. PR boundaries matter here because PR A is a live correctness fix that should
-land on its own, fast, without waiting for the source work.
+land on its own, fast, without waiting for the source work. Council SHOULD-FIX 4 made PR A genuinely
+independent by pulling the hash-payload shape forward into Unit 1b.
 
 ---
 
@@ -230,30 +260,141 @@ of merging it, not silently inherited:
 
 ---
 
-### Unit 1: Make chunk splitting lossless
+### Unit 1: Make chunk splitting lossless  — REVISED per council C1, C2, SHOULD-FIX 1
 
 **Goal:** `splitBySentences` and `tailForOverlap` can no longer drop input characters.
 **Files:** `src/lib/knowledge/chunk.ts`, `test/knowledge-chunk.test.ts` (extend; create if absent)
 **Approach:** Replace the `String.match(/…/g)` sentence scan with an explicit scanner that walks the
 string and emits every character exactly once, so the concatenation of the parts equals the input.
 Keep the existing sentence-boundary *semantics* (split after `.`/`!`/`?` followed by whitespace or
-end-of-input) — the goal is identical boundaries with total coverage, not better sentence detection.
-Both `splitBySentences` (line 115) and `tailForOverlap` (line 131) use the same regex today; give
-them one shared, tested helper rather than two copies. Add a cheap internal assertion so a future
-regression fails loudly instead of silently.
+end-of-input). Both `splitBySentences` (line 115) and `tailForOverlap` (line 131) use the same regex
+today; give them one shared, tested helper. Add a cheap internal assertion so a future regression
+fails loudly instead of silently.
+
+> **Council C1 — scope discipline.** Gemini argued the boundary rule *itself* is domain-wrong
+> (`approx.`, `var.`, `spp.`, `cv.`, `subsp.`, `BBCH 12.`, European `1.500,00`). Codex argued the
+> opposite: do not touch sentence detection inside an integrity fix. **Codex wins on sequencing.**
+> Character deletion changes a number's *value*; a misplaced boundary only splits a sentence across
+> two chunks that already carry 75 tokens of deliberate overlap. Bundling a semantic rewrite destroys
+> the parity control that proves this fix is safe. Gemini's list is filed in Unit 12 as its own item.
+
+> **Council C2 — parity and coverage are in tension; the old success criterion was unsatisfiable.**
+> You *cannot* reproduce the old output for `"abc. 0.5 def"`, because the old output omits bytes.
+> Parity is therefore required **only on inputs where the old matcher already covered the full
+> string** (`oldParts.join("") === input`). Everywhere else, coverage wins and parity is explicitly
+> waived. Assert exactly that, and no more.
+
 **Tests:**
-- Property test: for a generated corpus of strings (including decimals, ellipses, abbreviations,
-  URLs, no-terminal-punctuation, empty, whitespace-only, and CJK), `parts.join("") === input`.
-- Regression: `"abc. 0.5 def"` yields parts that rejoin to the original and no part begins `5 def`.
-- Regression from real data: the EM 8413 phrases `0.5–1 lb ai`, `0.25–0.5 lb ai (1-2 pts product)`,
-  `0.5 inch of water`, `Gallery 0.5 TG` survive a forced split intact.
-- Boundary-parity: on a set of ordinary prose fixtures, the new splitter produces the **same** chunk
-  boundaries as the old one, so this is a pure integrity fix and not a silent re-chunking of the corpus.
+- Property test: for a generated corpus of strings (decimals, ellipses, abbreviations, URLs, CRLF,
+  tabs, NBSP and other non-ASCII whitespace, no-terminal-punctuation, empty, whitespace-only, CJK),
+  `parts.join("") === input`.
+- **Conditional parity:** for every generated input where the *old* regex was itself lossless, the
+  new splitter must produce byte-identical parts. Where the old regex lost bytes, assert only coverage.
+- Regression: `"abc. 0.5 def"` rejoins to the original and no part begins `5 def`.
+- Real-data regressions: `0.5–1 lb ai`, `0.25–0.5 lb ai (1-2 pts product)`, `0.5 inch of water`,
+  `Gallery 0.5 TG` survive a forced split intact.
+- **Chunker-level overlap invariant (SHOULD-FIX 1):** `tailForOverlap` output is *prepended* to the
+  next chunk, so a lossless splitter is not sufficient on its own. Test end-to-end on `chunkMarkdown`
+  that each chunk's overlap prefix is an exact suffix of already-emitted source text — no duplication,
+  no truncation across the boundary.
 - Force-split path: a >700-token block with a decimal after the last sentence boundary.
 **Depends on:** none
 **Execution note:** test-first. Write the failing property test before touching `chunk.ts`.
-**Patterns to follow:** existing pure-logic unit tests under `test/` run at `environment: "node"`.
 **Verification:** `npx vitest run test/knowledge-chunk.test.ts`, then the full suite.
+
+### Unit 1b: Settle the index-hash payload shape now  — NEW per council SHOULD-FIX 4, C4
+
+**Goal:** PR A becomes genuinely independent of PR C, and the raw-vs-filtered hash question is
+decided once rather than drifting across three PRs.
+**Files:** `src/lib/knowledge/sections/index.ts` (or a new `index-hash.ts`), `test/`
+**Approach:** Codex caught that PR A is *not* cleanly independent as originally written, because
+Unit 2 mutates `deriveIndexHash` — the same seam Unit 7 later rewires — risking hash-shape churn and
+the accidental loss of a salt during a merge. Define the final payload shape here, in PR A:
+
+`rawContentHash + pdfBit + chunkerVersion + resolvedFilterStrategy + strategyVersion`
+
+Two non-negotiables baked in now:
+- **C4 (the sharpest council finding): `rawContentHash` is a fingerprint of the RAW fetched bytes,
+  never of filtered HTML.** If the hash were derived from filtered output, a change inside a
+  currently-dropped section would be permanently invisible — and would silently surface as a stale
+  snapshot the moment filter rules loosen. Filtering affects indexed *output*, never the source
+  *fingerprint*.
+- **Per-strategy versions, not one global `SECTION_FILTER_VERSION` (SHOULD-FIX 3).** Otherwise any
+  strategy bump re-indexes every filtered document in the corpus. Documents with no filter must not
+  inherit a filter-version salt at all.
+
+PR C then only adds a new member to the strategy union; it does not reshape the payload.
+**Tests:** hash changes when the chunker version changes; is stable when it does not; differs between
+two strategies at the same version number; an unfiltered document's hash is unaffected by any
+filter-version bump.
+**Depends on:** none (can run parallel with Unit 1)
+
+### Unit 2: Compute the stale set honestly and re-index it  — REVISED per council C3, SHOULD-FIX 5, 6, 9
+
+**Goal:** Every document that could carry dropped text is re-chunked, and anything that *cannot* be
+adjudicated is marked rather than assumed clean.
+**Files:** `src/lib/knowledge/index-documents.ts`, `scripts/reindex-knowledge-corpus.ts`, new campaign script
+
+> **Council C3 — the original scoping was not defensible.** Codex: once the chunker version is bumped,
+> every document indexed by the old chunker is *semantically stale*, and the candidate heuristic
+> cannot prove absence (`1.10` → `10` leaves no signature). Spot checks must not define the write set.
+> **Complication neither reviewer knew about:** `knowledge_blob.blobUrl` is NULL corpus-wide, so
+> re-indexing requires **re-fetching**, and ~578 documents are robots-blocked from re-fetch despite
+> already being in the corpus. So "re-index everything stale" is partly *impossible*, not just costly.
+
+**Approach:** Derive the stale set **deterministically without re-fetching** — a document could only
+have been damaged if one of its blocks took the force-split path, which is inferable from stored
+per-chunk `tokenCount`. Partition that set into re-fetchable and not. Re-index the first through the
+normal `indexDocument` seam. For the second, mark unverifiable — **do not report the corpus as clean
+when part of it could not be adjudicated** (Russell's answer to design question 2).
+
+Three hardening items from review:
+- **SHOULD-FIX 5:** confirm `ignoreValidators: true` bypasses only HTTP *cache* validators, not KB-1
+  or section gating. If it bypassed gating, a repair run would re-admit exactly what we exclude.
+  Add an explicit test.
+- **SHOULD-FIX 6:** confirm `newRevision = currentRev + 1` is computed *under* the `FOR UPDATE` lock
+  rather than from the earlier `findUnique`. The code read suggests it already is — verify, do not
+  assume. Pause concurrent crawls for targeted documents during the campaign.
+- **SHOULD-FIX 9:** the campaign needs a **restartable manifest** — intended document IDs, pre-run
+  hashes, per-document disposition. Without it an interrupted run leaves an unknowable state and the
+  candidate set drifts as sources change.
+**Depends on:** Units 1, 1b
+
+### Unit 3: Adjudicate the damage by byte diff
+
+**Goal:** A defensible number, not a heuristic guess.
+**Approach:** The line-start-unit heuristic returns 74–79 chunks across ~64 documents and 14 sources,
+but spot-checking showed roughly 40–50% false positives (`243 kg Nitrat-N/ha` is a real number, not a
+truncation), and it structurally cannot catch drops that leave a plausible integer or swallow prose.
+Do not report the heuristic as a count. For each document in the stale set: re-fetch, re-run the
+**fixed** chunker, byte-diff against stored chunk text. A byte diff is ground truth; the heuristic is
+only a cross-check. Report confirmed / refuted / **unverifiable** by source key, and state the recall
+floor honestly.
+**Tests:** none (measurement).
+**Depends on:** Units 1, 2
+
+### Unit 3b: Ingest-time numeric-integrity invariant  — NEW per council C9
+
+**Goal:** This class of corruption cannot recur silently, in this pipeline or a future one.
+**Files:** `src/lib/knowledge/chunk.ts` or `index-documents.ts`, `test/`
+**Approach:** Gemini's point: the plan as written fixed one bug retrospectively and left the pipeline
+blind to the next. And a corrupted rate is often *agronomically plausible* — 5 lb/A of sulfur is
+normal, 5 lb/A of a Group 3 DMI is catastrophic and illegal — so nobody catches it, because the
+citation makes it look authoritative.
+
+Extract every decimal-shaped token (`\d+[.,]\d+`) from the extracted text *before* chunking, and
+assert every one of those exact strings still appears in the finalized chunks. If any vanishes, fail
+the document loudly rather than indexing it. This is what the plan's own requirement — "structurally
+impossible, not merely unlikely" — actually demands, and unlike the Unit 1 fix it generalizes beyond
+the one regex we happened to find.
+
+Watch the false-positive shape: legitimate chunk-boundary splits can separate a number from its unit
+without losing the number itself, so assert on the *numeric token's presence*, not on its surrounding
+context. Overlap means a token may legitimately appear more than once; assert presence, not count.
+**Tests:** a document whose numbers all survive passes; a document with a deliberately lossy splitter
+injected fails with a message naming the missing token; a document with numbers only inside overlap
+regions still passes.
+**Depends on:** Unit 1
 
 ### Unit 2: Bump the chunker version and force re-index of damaged documents
 
@@ -343,7 +484,33 @@ a truncated rate; confirm `publishedAt` is the 2026 edition date.
 
 ---
 
-### Unit 7: `body-heading` section-filter strategy
+### Unit 7: `body-heading` section-filter strategy — REVISED per council C8, SHOULD-FIX 2, 3, 7
+
+> **Council C8 — this changed the design, and it is the biggest content decision in the plan.**
+> Stripping the whole `Chemical control` section discards the fungicide **resistance-management
+> prose** — *"Resistance to FRAC 3 and 11 has been documented in Oregon and Washington… alternate or
+> tank-mix materials from different groups… limit applications from any specific group to two or
+> fewer sprays"* — which is **tier B and arguably the best content on the page**. My own recon
+> supports Gemini here: the powdery mildew page opens `Chemical control` with three paragraphs of
+> timing and resistance strategy, and only *then* gives ~30 product bullets.
+>
+> **The cut is therefore BLOCK-level within a section, not section-level.** Keep `<p>` preambles;
+> drop `<ul>`/`<li>`/`<table>` blocks carrying product→fact rows. This is a real scope increase
+> (a block classifier, not a section classifier) and Russell accepted it — the section-level version
+> would have shipped the source stripped of its best material.
+>
+> **SHOULD-FIX 7 — the same applies to `Biological control` and `Cultural control`**, which also name
+> products (*Bacillus subtilis*/Serenade, potassium bicarbonate, dormant horticultural oil rates).
+> A header-based allowlist admits them unexamined. Classify blocks everywhere, and let the gate
+> assess whatever survives.
+
+> **SHOULD-FIX 2 — return a resolved value, not a boolean.** `shouldApplySectionFilter(...): boolean`
+> must become `SectionFilterResolution = { strategy, version } | null`. If `deriveIndexHash` keeps
+> taking `sectionFilterApplies: boolean`, a source switching `anchor-heading` → `body-heading`
+> **collides and wrongly short-circuits**. Unit 1b already lands the payload shape for this.
+
+**Original unit text follows; the block-level cut above supersedes its section-level framing.**
+
 
 **Goal:** A second section-filter strategy that splits on body headings instead of `<a name>` anchors.
 **Files:** `src/lib/knowledge/sections/` (new splitter + dispatch), `src/lib/knowledge/config.ts`,
@@ -370,7 +537,26 @@ two strategies evolving separately.
 refactoring the dispatch, so the regression guard is real.
 **Verification:** `npm run verify:vt-enology` still passes unchanged.
 
-### Unit 8: Run section filtering before the KB-1 boundary gate
+### Unit 8: Feed the gate a filtered projection — REPLACED per council C5, C6
+
+> **Council C6 — Codex offered a better design and it is adopted.** Do **not** relocate the
+> safety-critical gate. Instead: resolve filtered candidate HTML first as a **pure projection**
+> returning `{ candidateHtml, empty }` that never touches the database, pass that candidate to
+> `assessProductTable`, and let **one centralized decision point** choose between `product-table`,
+> `empty`, or proceed. Same outcome, no destructive logic moved.
+>
+> **Council C5 — this also fixes a defect the original Unit 8 would have introduced.** There are
+> currently *two independent destructive clear paths*: the gate clears chunks and returns
+> `skipped: "product-table"`, and the section filter clears chunks and returns `skipped: "empty"`.
+> They can double-clear and leave `activeRevision` inconsistent with `indexedContentHash` and with
+> the actual chunk set. Collapse both into one atomic `clearIndexedDocument(reason, hashState)`.
+>
+> The gate keeps its position above the idempotency short-circuit either way — that ordering is
+> load-bearing and is why a source promoted to enforcing does not keep tier-C chunks live forever.
+>
+> Note Gemini misread this seam ("why is the gate async cleanup?"). The inline gate in
+> `index-documents.ts` **is** a hard block at ingestion; `verify:kb-boundary` is a separate auditor
+> that proves the gate did not leak. No change needed there.
 
 **Goal:** The gate assesses what we would actually index, so a filtered page is not dropped for
 content the filter removes.
@@ -426,7 +612,20 @@ zero-sections-found. Also assert the *Mahonia* pages are refused by path.
 **Verification:** `npm run verify:pnw-handbooks` green; crawl reports ~71 documents with no
 `skippedChallenge`; `verify:kb-boundary` reports zero enforcing-source flags.
 
-### Unit 11: Measure displacement and cross-region contamination before enabling
+### Unit 11: Measure displacement and cross-region contamination — REVISED per council C7
+
+> **Council C7 — the region test was designed backwards.** Running "regionally-specific questions"
+> tests the wrong thing. MMR contamination surfaces on **generic** queries: a Bhutan tenant asks
+> "how do I manage powdery mildew", dense retrieval returns Bhutan-relevant chunks, and
+> `mmrSelect(..., 0.7)` then actively **rewards dissimilarity** — pulling in an Oregon FRAC-11
+> resistance profile *precisely because it is different*. The winemaker rotates chemistry against
+> Oregon's resistance data.
+>
+> **The test is therefore: generic disease queries run in a non-PNW tenant, measuring the RATE at
+> which PNW chunks appear in the returned set.** Gemini's "assert zero" is too strict as an
+> acceptance bar for a corpus with no region dimension at all — measure the rate, set the bar
+> deliberately, and report the number. Building the actual regional filter stays SKB Unit 9's job.
+
 
 **Goal:** Prove the source helps before every tenant sees it. This is the gate on `defaultEnabled`.
 **Files:** none (measurement), results appended to this plan
@@ -451,7 +650,17 @@ passages surface where they do not belong. **A reproduction of cross-region cont
 
 **Goal:** The known-broken things that are out of scope do not evaporate.
 **Files:** `TODOS.md`, `docs/architecture/` registers as appropriate, `NOW.md`
-**Approach:** File the raw-HTML table leak with its measured numbers (925 chunks / 476 documents;
+**Approach:** File **three council items that are real but deliberately out of scope**:
+(a) **domain-aware sentence boundaries** (council C1) — the current rule splits at `.` + whitespace,
+which shatters `approx.`, `var.`, `spp.`, `cv.`, `subsp.`, `Dr.`, `BBCH 12.`, and European decimal
+formatting (`1.500,00`) used by the French/German/Spanish/Catalan sources. Real, but a *retrieval
+quality* defect, not a data-corruption one, and bundling it into Unit 1 would destroy that unit's
+parity control;
+(b) **a user path to report a dangerous citation** (council design question) — `/developer` →
+`bug_reports` exists but nothing connects a suspect citation to it, and it is the only human backstop
+against corruption that looks plausible;
+(c) the two originally-scoped items below.
+File the raw-HTML table leak with its measured numbers (925 chunks / 476 documents;
 `ifv-france` 753 chunks ≈55% of the source; trigger is any `<table>` containing `colspan`, which makes
 Defuddle abandon markdown conversion). File the `extract/index.ts:61` charset gap (unconditional
 `bytes.toString("utf8")`, no HTTP charset or `<meta charset>` sniffing — latent, not currently
@@ -498,9 +707,18 @@ the non-certification preamble fires; confirm a Bhutan-context question does not
 ## Success Criteria
 
 - [ ] `splitBySentences` and `tailForOverlap` provably cannot drop input; property test passes
-- [ ] Chunk boundaries on ordinary prose are unchanged by the fix (parity test)
-- [ ] Every confirmed-corrupted document is re-indexed and re-verified by byte diff against live source
+- [ ] **Conditional** parity holds: byte-identical output on every input where the OLD matcher was
+      itself lossless; coverage explicitly wins where it was not (council C2 — the original
+      "boundaries unchanged" criterion was unsatisfiable, since the old output omits bytes)
+- [ ] Chunk-level overlap invariant holds: each chunk's overlap prefix is an exact suffix of
+      already-emitted source text
+- [ ] The index-hash payload is `rawContentHash + pdfBit + chunkerVersion + strategy + strategyVersion`,
+      with `rawContentHash` derived from RAW bytes, never filtered HTML (council C4)
+- [ ] Ingest-time numeric-integrity invariant rejects a document that loses a decimal token
+- [ ] Every re-fetchable stale document is re-indexed and re-verified by byte diff; every
+      non-re-fetchable one is marked UNVERIFIABLE rather than assumed clean
 - [ ] A defensible corruption count is reported, separating confirmed from heuristic noise
+- [ ] The repair campaign is restartable from a manifest
 - [ ] An operator can re-index or withdraw a single document without touching its source
 - [ ] No `em-8413` chunk contains `<td`, `<iframe`, or a truncated rate; `publishedAt` reflects 2026
 - [ ] `body-heading` strategy ships; `anchor-heading` behavior byte-identical (`verify:vt-enology` green)
