@@ -42,8 +42,10 @@ state of any vessel/lot is the fold of all lines over time, materialized in `Ves
    vessel and never on the lot. Bottled wine is unaffected — `BOTTLE_STORAGE` legs carry
    `vesselId: null`.
    Identity is resolved at the moment of combination by `decideCombineRoute` (absorb into the
-   resident / keep / mint a new blend lot), which refuses absorbing across tax class, ownership,
-   bond, form or ferment state. The chokepoint's own assertion is deliberately **monotone** — it
+   resident / keep / mint a new blend lot), which refuses absorbing across tax class, bond, form or
+   ferment state — but NOT across owner: plan 093 Unit 6 allows a cross-owner absorb and bills the
+   consumed minority owner's fraction instead of blocking. The chokepoint's own assertion is
+   deliberately **monotone** — it
    refuses an operation that leaves a vessel with MORE lots than it started with, rather than one
    that merely isn't perfect, so an already-mis-recorded vessel can still be racked out and healed
    instead of being frozen unusable. See [[LEDGER-12-one-lot-per-vessel]].

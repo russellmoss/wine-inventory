@@ -16,7 +16,9 @@ import type { WineTaxClass } from "@/lib/compliance/types";
  *
  * ABSORB makes the arriving wine take on the RESIDENT's identity. That is right when they are
  * the same kind of thing and wrong the moment they are not — so it is refused across tax class,
- * ownership, bond, physical form, and ferment state. Tax class is the sharp one: silently
+ * bond, physical form, and ferment state. NOT across owner: plan 093 Unit 6 allows a cross-owner
+ * absorb (see the note at `decideCombineRoute` below) because refusing it deadlocked the daily
+ * topping op; the consumed minority owner's fraction is billed, not blocked. Tax class is the sharp one: silently
  * inheriting the resident's class misreports TTB 5120.17 lines 5 and 20 (produced by / used for
  * blending), which is exactly the hazard InnoVint documents in its own blend guidance.
  *
