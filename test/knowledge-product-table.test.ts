@@ -220,6 +220,73 @@ describe("KB-1 detector — the two council C2 regressions", () => {
   });
 });
 
+/**
+ * ── REGRESSIONS FROM THE LIVE CHECK (2026-07-27) ──
+ *
+ * Every fixture above was written by the same person who wrote the detector, so none of them could
+ * say whether the mental model of real extension markup was right. Running the detector against the
+ * ACTUAL pages the plan §6 classified by hand found two defects that all 24 fixtures missed. Both are
+ * pinned here so they cannot come back without the network.
+ *
+ * Live result before the fix: 6/10 agreed. After: 8/10, with the two remaining "disagreements" being
+ * wrong EXPECTATIONS rather than wrong verdicts (a /SprayGuide/ table-of-contents page that genuinely
+ * has no rows, and the UC IPM page below).
+ */
+describe("KB-1 detector — markup density (the defect the live check found)", () => {
+  /**
+   * PSU serves ~370 KB of HTML for ~16 KB of visible text — about 4 %. The detector sliced the raw
+   * markup to 4 KB and stripped tags afterwards, so its window onto a table was ~160 characters of
+   * TEXT and the header row fell outside it. Measured cost on real pages: a 7-row efficacy matrix and
+   * a 29-row product x efficacy table BOTH read as prose. Fix: strip first, then slice.
+   */
+  const DENSE_ATTRS = ' class="cms-block cms-table-block layout-full" data-analytics-region="body" role="presentation"';
+  const PSU_DENSITY_TABLE = `
+<h2>Efficacy of pesticides for grape disease control</h2>
+<table${DENSE_ATTRS}>
+${"<colgroup><col style=\"width:16.6%\" /></colgroup>".repeat(90)}
+<tr${DENSE_ATTRS}><th${DENSE_ATTRS}>Trade Name</th><th${DENSE_ATTRS}>Black rot</th><th${DENSE_ATTRS}>Powdery mildew</th><th${DENSE_ATTRS}>Downy mildew</th></tr>
+<tr${DENSE_ATTRS}><td${DENSE_ATTRS}>Abound</td><td>E</td><td>G</td><td>E</td></tr>
+<tr${DENSE_ATTRS}><td${DENSE_ATTRS}>Rally</td><td>E</td><td>E</td><td>N</td></tr>
+<tr${DENSE_ATTRS}><td${DENSE_ATTRS}>Quintec</td><td>N</td><td>E</td><td>N</td></tr>
+<tr${DENSE_ATTRS}><td${DENSE_ATTRS}>Mancozeb</td><td>G</td><td>P</td><td>G</td></tr>
+<tr${DENSE_ATTRS}><td${DENSE_ATTRS}>Captan</td><td>F</td><td>P</td><td>G</td></tr>
+</table>`;
+// Bare trade names on purpose: a formulation code ("Abound 2.08SC") would qualify the table by the
+// named-product route and the header window would never be exercised. The real pages that failed
+// carried plain names, so the fixture has to as well or it proves nothing.
+
+  it("finds a header row that sits beyond 4 KB of RAW markup", () => {
+    // The header row is >4000 chars into the markup but well inside the first 4000 chars of TEXT.
+    expect(PSU_DENSITY_TABLE.indexOf("Trade Name")).toBeGreaterThan(4000);
+    const r = assessProductTable({ kind: "html", html: PSU_DENSITY_TABLE });
+    expect(r.verdict).toBe("product-table");
+    expect(r.structured).toBe(true);
+  });
+
+  /**
+   * A spray table's caption is routinely a heading ABOVE the <table>, not a <th> inside it. Refusing
+   * to look there is how VT's 29-row GrapePestEfficacy table survived as prose despite the detector
+   * counting all 29 of its rows.
+   */
+  it("qualifies a table on a document-level caption when the table declares no header of its own", () => {
+    const captionAbove = `
+<h2>Relative effectiveness of fungicides for grape disease control</h2>
+<table>
+<tr><td>Abound</td><td>E</td><td>G</td></tr>
+<tr><td>Rally</td><td>E</td><td>E</td></tr>
+<tr><td>Quintec</td><td>N</td><td>E</td></tr>
+<tr><td>Mancozeb</td><td>G</td><td>P</td></tr>
+<tr><td>Captan</td><td>F</td><td>P</td></tr>
+</table>`;
+    expect(assessProductTable({ kind: "html", html: captionAbove }).verdict).toBe("product-table");
+  });
+
+  it("but a document with NO header signal anywhere still passes — the phenology table did not regress", () => {
+    // This is the guard on the fix above: doc-level qualification must not become "any table counts".
+    expect(assessProductTable({ kind: "html", html: PHENOLOGY_TABLE }).verdict).toBe("prose");
+  });
+});
+
 describe("KB-1 detector — it is data, never an exception", () => {
   // A throw out of the index path is read by the monthly re-crawl's tombstone pass as "the page was
   // removed", so a detector crash on one weird document could mark a whole source `withdrawn`.

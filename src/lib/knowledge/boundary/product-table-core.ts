@@ -225,9 +225,18 @@ interface TableFinding {
  * trade-name parenthetical or a formulation code. A phenology table with a "7 days" column passes
  * neither and stays prose; ENTO-635-C's Table 3.1 and PSU's trade-name matrix pass both.
  */
-function assessTable(tableHtml: string): TableFinding {
+function assessTable(tableHtml: string, docHeaders: string[]): TableFinding {
   const rows = rowsOf(tableHtml);
-  const headers = headerSignalsIn(normalize(stripTags(tableHtml.slice(0, 4000))));
+  // STRIP FIRST, THEN SLICE. Slicing the raw markup and stripping afterwards was a live defect: PSU
+  // serves ~4 % text-to-markup, so a 4 KB window of HTML is ~160 characters of text and the header row
+  // sits far outside it. Measured against the real pages, that alone made a 7-row efficacy matrix and a
+  // 29-row spray-efficacy table both read as prose.
+  const ownHeaders = headerSignalsIn(normalize(stripTags(tableHtml)).slice(0, 4000));
+  // Document-level headers qualify a table too. A spray table's caption is routinely a heading ABOVE
+  // the <table> rather than a <th> inside it, and refusing to look there is how a 29-row product x
+  // efficacy matrix survives as prose. The phenology case is still safe: it carries no header signal
+  // anywhere in the document, and its label cells carry no product tell.
+  const headers = ownHeaders.length > 0 ? ownHeaders : docHeaders;
   let productFactRows = 0;
   let namedProducts = 0;
   for (const r of rows) {
@@ -348,7 +357,7 @@ export function assessProductTable(input: BoundaryInput): BoundaryAssessment {
       let tables = 0;
       while ((m = re.exec(raw)) !== null) {
         tables++;
-        const f = assessTable(m[1]);
+        const f = assessTable(m[1], docHeaders);
         if (f.rows > bestTable.rows) bestTable = f;
       }
       if (tables > 0) signals.push(`tables:${tables}`);
