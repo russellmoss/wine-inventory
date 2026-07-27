@@ -93,6 +93,7 @@ export const queryClimateTool: AssistantTool = {
         stationDistanceM: dec(configRow.stationDistanceM),
         stationElevationDeltaM: dec(configRow.stationElevationDeltaM),
         siteElevationM: dec(configRow.siteElevationM),
+        primarySourceElevationM: dec(configRow.primarySourceElevationM),
         attribution: configRow.attribution,
         lastRefreshAt: configRow.lastRefreshAt ? configRow.lastRefreshAt.toISOString() : null,
         unitSystem: configRow.unitSystem,
@@ -130,9 +131,21 @@ export const queryClimateTool: AssistantTool = {
         siteElevationM: s.siteElevationM,
         seasonYear: s.seasonYear,
         gdd: { seasonToDateC: s.headline.seasonGddC, completenessPct: s.headline.gddCompletenessPct, vsLastYearC: s.headline.priorYear?.deltaC ?? null, lastYearC: s.headline.priorYear?.seasonGddC ?? null },
+        // Source fidelity — does the primary series describe THIS site? When it doesn't, the
+        // classifications below are withheld and the model must say why rather than guess.
+        sourceFidelity: {
+          band: s.sourceFidelity.band,
+          classificationAllowed: s.sourceFidelity.classificationAllowed,
+          sourceElevationM: s.sourceFidelity.sourceElevationM,
+          deltaM: s.sourceFidelity.deltaM,
+          note: s.sourceFidelity.reason,
+        },
         winkler: (() => {
           // Winkler is classified on the LONG-TERM full-season average (20-yr preferred), NOT the partial
-          // current season. Falls back to a prompt to load history if none is backfilled yet.
+          // current season. Two distinct reasons it can be absent — never conflate them (§3.6).
+          if (!s.sourceFidelity.classificationAllowed) {
+            return { region: null, refused: true, note: s.sourceFidelity.reason };
+          }
           const n = s.normals.winkler20 ?? s.normals.winkler10;
           if (!n) return { region: null, note: "No long-term history loaded yet — Winkler needs the multi-year full-season average. Load history on the Weather & climate page." };
           return { region: n.region, basis: `${n.yearsUsed}-yr average`, avgGddF: n.avgGddF };
@@ -148,7 +161,8 @@ export const queryClimateTool: AssistantTool = {
           const r = composeRainfallRangeCore({
             rows: dailyRows.map((row) => ({ providerKey: row.providerKey, localDate: row.localDate, precipMm: row.precipMm })),
             primaryProviderKey: s.primaryProviderKey,
-            historyProviderKey: s.coverageState === "US_HIGH_RES" ? "gridmet" : "nasa_power",
+            // Non-US history comes from the elevation-corrected archive, not the raw coarse grid.
+            historyProviderKey: s.coverageState === "US_HIGH_RES" ? "gridmet" : "open_meteo_archive",
             startIso: addDaysIso(todayLocal, -29),
             endIso: todayLocal,
           });

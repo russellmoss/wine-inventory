@@ -34,9 +34,21 @@ export interface IngestInput {
 
 export interface IngestDeps {
   providers?: ClimateProvider[]; // default: providersForLocation(lat, lon)
-  fetchSeries?: (p: ClimateProvider, lat: number, lon: number, s: string, e: string) => Promise<ProviderSeries>;
+  fetchSeries?: (
+    p: ClimateProvider,
+    lat: number,
+    lon: number,
+    s: string,
+    e: string,
+    opts?: { siteElevationM?: number | null },
+  ) => Promise<ProviderSeries>;
   fetchElevationM?: (lat: number, lon: number) => Promise<number | null>;
   now?: Date;
+  /**
+   * The elevation already on the config row. Used ONLY as the fallback when this run's elevation
+   * lookup fails, so a transient miss can never wipe a good stored value (see the write below).
+   */
+  knownSiteElevationM?: number | null;
 }
 
 export interface IngestResult {
@@ -47,6 +59,8 @@ export interface IngestResult {
   coverageState: string;
   rowsWritten: number;
   siteElevationM: number | null;
+  /** Elevation the chosen primary series describes (provider-reported); null when unpublished. */
+  primarySourceElevationM: number | null;
 }
 
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -72,12 +86,17 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
   const { vineyardId, lat, lon, startIso, endIso } = input;
   const now = deps.now ?? new Date();
   const providers = deps.providers ?? providersForLocation(lat, lon);
-  const fetchSeries = deps.fetchSeries ?? ((p, la, lo, s, e) => p.fetchDailySeries(la, lo, s, e));
+  const fetchSeries =
+    deps.fetchSeries ?? ((p, la, lo, s, e, opts) => p.fetchDailySeries(la, lo, s, e, opts));
   // Elevation chain (plan 096 U5): EPQS (US) → Open-Meteo (global) — Bhutan finally gets a real siteElevationM.
   const elevFn = deps.fetchElevationM ?? fetchSiteElevationM;
 
   // ── OUTSIDE any tx (R8): elevation + all provider fetches ──
-  const siteElevationM = await elevFn(lat, lon).catch(() => null);
+  // Elevation is deliberately non-fatal, but it is NOT disposable: it is the downscale target for the
+  // ERA5 archive and the denominator of the fidelity check. A failed lookup falls back to the value
+  // already stored — never to null, which used to silently clear a good elevation on any transient miss.
+  const fetchedElevationM = await elevFn(lat, lon).catch(() => null);
+  const siteElevationM = fetchedElevationM ?? deps.knownSiteElevationM ?? null;
 
   const succeeded: Array<{ series: ProviderSeries; local: LocalDailyRecord[] }> = [];
   const providersFailed: Array<{ provider: ProviderKey; error: string }> = [];
@@ -87,7 +106,7 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
       const series =
         p.key === "rcc_acis" && input.stationOverride
           ? await fetchAcisStationSeries(input.stationOverride, startIso, endIso)
-          : await fetchSeries(p, lat, lon, startIso, endIso);
+          : await fetchSeries(p, lat, lon, startIso, endIso, { siteElevationM });
       succeeded.push({ series, local: mapSeriesToLocalDaily(series) });
       await recordWeatherUsage(p.key, { requests: 1 }, now).catch(() => {});
     } catch (e) {
@@ -116,6 +135,8 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
   const primaryProviderKey = selectPrimaryCore(candidates) ?? succeeded[0].series.providerKey;
   const primarySeries = succeeded.find((s) => s.series.providerKey === primaryProviderKey)!.series;
   const coverageState = coverageStateFor(lat, lon);
+  // What elevation does the chosen headline source actually describe? Null when it doesn't publish one.
+  const primarySourceElevationM = primarySeries.sourceElevationM ?? null;
 
   const stationSeries = succeeded.find((s) => s.series.kind === "station")?.series;
   const stationDistanceM =
@@ -138,6 +159,10 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
         attribution: series.attribution,
         sourceUrl: series.sourceUrl,
         fetchedAt: now.toISOString(),
+        // The elevation THIS series describes + the site's, so any stored row can be audited for the
+        // grid-cell-elevation bias after the fact without re-fetching the provider.
+        sourceElevationM: series.sourceElevationM ?? null,
+        siteElevationM,
       });
       tuples.push(
         Prisma.sql`(gen_random_uuid()::text, ${tenantId}, ${vineyardId}, ${r.localDate}::date, ${series.providerKey},
@@ -173,6 +198,7 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
         stationName: stationSeries?.stationName ?? null,
         stationDistanceM,
         siteElevationM,
+        primarySourceElevationM,
         coverageState,
         // Plan 098: a NEW config starts on "Auto" (NULL) — the read chain resolves
         // grower override → winery display units → the geo default at this point, so the
@@ -187,7 +213,10 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
         stationId: stationSeries?.stationId ?? null,
         stationName: stationSeries?.stationName ?? null,
         stationDistanceM,
+        // `siteElevationM` already falls back to the stored value on a failed lookup (above), so this
+        // never regresses a known elevation to NULL.
         siteElevationM,
+        primarySourceElevationM,
         coverageState,
         attribution: [...new Set(succeeded.map((s) => s.series.attribution))].join(" · "),
         lastRefreshAt: now,
@@ -205,5 +234,6 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
     coverageState,
     rowsWritten,
     siteElevationM,
+    primarySourceElevationM,
   };
 }

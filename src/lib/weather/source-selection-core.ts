@@ -9,6 +9,21 @@ import type { ProviderKey } from "./providers/types";
 
 const STATION_MAX_DISTANCE_M = 16_093; // ~10 miles — beyond this a grid is the better primary.
 
+/**
+ * Explicit preference among GRIDS, best first. This used to be implicit in the registry array order
+ * plus a stable sort, which is far too fragile a thing to hang a live tenant's headline on:
+ * `open_meteo_archive` and `nasa_power` are both GLOBAL_COARSE with identical completeness, so the
+ * winner was decided by tie-break luck. The archive is downscaled to the site's own elevation; POWER
+ * reports its ~50 km cell's mean elevation, which at the Bhutan vineyards is 1.0–1.8 km above the
+ * vines (docs/analysis/bhutan-nasa-power-elevation-bias.md). Unlisted grids sort last but before none.
+ */
+const GRID_PREFERENCE: readonly string[] = ["gridmet", "open_meteo_archive", "daymet", "nasa_power"];
+
+function gridRank(providerKey: string): number {
+  const i = GRID_PREFERENCE.indexOf(providerKey);
+  return i === -1 ? GRID_PREFERENCE.length : i;
+}
+
 export interface PrimaryCandidate {
   providerKey: ProviderKey;
   kind: "grid" | "station";
@@ -50,7 +65,10 @@ export function selectPrimaryCore(candidates: PrimaryCandidate[]): ProviderKey |
     const ea = a.stationElevationDeltaM ?? Number.POSITIVE_INFINITY;
     const eb = b.stationElevationDeltaM ?? Number.POSITIVE_INFINITY;
     if (ea !== eb) return ea - eb;
-    return b.completeness - a.completeness;
+    if (b.completeness !== a.completeness) return b.completeness - a.completeness;
+    // Two equally-complete grids at the same (absent) distance: prefer the one that describes the
+    // SITE rather than a grid-cell mean. Explicit, not incidental — see GRID_PREFERENCE.
+    return gridRank(a.providerKey) - gridRank(b.providerKey);
   });
   return ranked[0]?.providerKey ?? null;
 }

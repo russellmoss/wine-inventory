@@ -1061,6 +1061,17 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- 🔴→🟩 **Bhutan weather elevation bias FOUND AND FIXED (2026-07-26, branch
+  `claude/weather-elevation-fidelity`, PR #536)** — a LIVE-tenant data-quality defect surfaced by the S5a
+  Unit 0 probe. NASA POWER answers with its ~50 km cell's MEAN elevation, **1.0–1.8 km above** each Bhutan
+  vineyard, so the series ran **4.8–9.7 °C cold**: the card showed **Winkler Region I at Region V sites**,
+  Jones "Too cool" at a subtropical valley, **frost events on nights that were ~12 °C**, and Bajo (1,230 m)
+  identical to Ser Bhum (2,773 m). Fix = an elevation-downscaled ERA5 archive provider (the same
+  `elevation=` correction the FORECAST path already had) + `source-fidelity-core`, which **withholds the
+  hard-boundary classifications** when the source's own reported elevation is >300 m off the site (§3.6)
+  rather than mislabelling them. Migration applied + all 8 vineyards re-ingested on the live tenant;
+  observed and forecast now agree to the decimal. POWER rows kept as a second source (reversible).
+  Report: `docs/analysis/bhutan-nasa-power-elevation-bias.md`.
 - **/bulk composition-editor phantom ADJUST fixed (2026-07-26, PR #534):** `updateComponentVolume`
   targeted the lot-tuple total while the editor displayed the component PROJECTION — on a blend (Demo T5,
   2026-SY-2: 6995 L tuple vs 6370 L Syrah share) saving the untouched value drew 625 L. Now: untouched
@@ -1515,7 +1526,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 — **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness. Bhutan's daily series may be 8–9 °C off vs ERA5 — escalated as its own investigation.** Also this date: plan 098 tenant unit preferences built (all 12 units; QA + ship pending); S2b product-facts FOUNDATION merged + live (#535), phase still open._
+_Last updated: 2026-07-26 — **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness.** **The Bhutan 8–9 °C question is now CLOSED and FIXED (#536):** NASA POWER was reporting its ~50 km cell's mean elevation, 1.0–1.8 km above the vineyards — an elevation-corrected ERA5 provider plus a fidelity refusal shipped, and all 8 vineyards were re-ingested on the live tenant. Also this date: plan 098 tenant unit preferences merged (#533); S2b product-facts FOUNDATION merged + live (#535), phase still open._
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill

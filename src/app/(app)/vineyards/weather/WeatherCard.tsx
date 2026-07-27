@@ -208,6 +208,29 @@ export function WeatherCard({
         </div>
       ) : (
         <>
+          {/* Source fidelity (docs/analysis/bhutan-nasa-power-elevation-bias.md) — when the primary
+              series describes a point well above/below the vines, say so BEFORE any number, and let
+              the withheld classifications below point back here. §3.4: confidence beside the value. */}
+          {summary.sourceFidelity.reason && (
+            <div
+              style={{
+                ...card,
+                borderColor: summary.sourceFidelity.classificationAllowed ? "var(--warning)" : "var(--danger)",
+                display: "grid",
+                gap: 4,
+              }}
+            >
+              <div style={{ ...label, color: summary.sourceFidelity.classificationAllowed ? "var(--warning)" : "var(--danger)" }}>
+                {summary.sourceFidelity.classificationAllowed ? "Source elevation caveat" : "Climate classifications withheld"}
+              </div>
+              <div style={{ textTransform: "none" }}>{summary.sourceFidelity.reason}</div>
+              <div style={{ ...label, textTransform: "none", color: "var(--text-muted)" }}>
+                Daily readings, trends and the forecast are unaffected — it is the season totals and class labels that
+                depend on the source sitting at the vineyard&apos;s elevation.
+              </div>
+            </div>
+          )}
+
           {/* Headline — cumulative GDD in the vineyard's display units, from the PRIMARY source (R14). */}
           <div style={{ ...card, display: "grid", gap: 10 }}>
             <div style={label}>Season {summary.seasonYear} · Cumulative Growing Degree Days ({unit === "IMPERIAL" ? "base 50 °F" : "base 10 °C"}, Apr 1–Oct 31)</div>
@@ -237,6 +260,11 @@ export function WeatherCard({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12 }}>
             <Panel title="Winkler region (long-term average)">
               {(() => {
+                // Two distinct reasons this can be blank, and they must never read as each other:
+                // "we don't have the history yet" vs "the source doesn't describe this site" (§3.6).
+                if (!summary.sourceFidelity.classificationAllowed) {
+                  return <div style={{ ...label, textTransform: "none" }}>Withheld — the weather source doesn&apos;t describe this site closely enough to classify. See the note above.</div>;
+                }
                 const n = winklerWindow === 10 ? summary.normals.winkler10 : summary.normals.winkler20;
                 if (!n) {
                   return <div style={{ ...label, textTransform: "none" }}>Load history above to classify — Winkler needs the multi-year full-season average.</div>;
@@ -262,7 +290,9 @@ export function WeatherCard({
             </Panel>
             <Panel title="Growing-season temp (Jones)">
               <div style={big}>{formatTemp(h.gst.gstC, unit, 1)}</div>
-              <div style={{ ...label, textTransform: "none" }}>{h.gst.group ?? ""}</div>
+              <div style={{ ...label, textTransform: "none" }}>
+                {h.gst.group ?? (summary.sourceFidelity.classificationAllowed ? "" : "Class withheld — source elevation mismatch")}
+              </div>
             </Panel>
             <Panel title="Frost — vulnerable window">
               <div>{h.frost.vulnerableWindow.startIso} → {h.frost.vulnerableWindow.endIso}</div>
