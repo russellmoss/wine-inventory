@@ -8,6 +8,22 @@ import { ProviderFetchError, type ClimateProvider, type DailyRecord, type Provid
 const POWER_FILL = -999;
 const clean = (v: unknown): number | null => (typeof v === "number" && v > POWER_FILL ? v : null);
 
+/**
+ * POWER reports the elevation of the GRID CELL it answered with, as the third element of
+ * `geometry.coordinates` ([lon, lat, elevationM]). That number is the single most important piece of
+ * provenance this adapter carries: in Himalayan terrain the cell mean sits 1.0–1.8 km above the
+ * vineyard, which is exactly the 4.8–9.7 °C cold bias measured at Bhutan
+ * (`docs/analysis/bhutan-nasa-power-elevation-bias.md`). It used to be discarded. It is now surfaced
+ * so `source-fidelity-core` can refuse the temperature-derived classifications rather than mislabel them.
+ */
+export function parsePowerCellElevationM(json: unknown): number | null {
+  const coords = (json as { geometry?: { coordinates?: unknown } })?.geometry?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 3) return null;
+  const elev = Number(coords[2]);
+  // POWER uses the same -999 fill here as it does for parameters.
+  return Number.isFinite(elev) && elev > POWER_FILL ? elev : null;
+}
+
 /** Pure normalizer — committed-fixture tested. Parses the POWER JSON into sourceDate-keyed DailyRecords. */
 export function normalizePowerResponse(json: unknown): DailyRecord[] {
   const param = (json as { properties?: { parameter?: Record<string, Record<string, number>> } })?.properties
@@ -58,6 +74,7 @@ export const nasaPowerProvider: ClimateProvider = {
       attribution: "NASA POWER (Prediction Of Worldwide Energy Resources)",
       sourceUrl: url,
       records,
+      sourceElevationM: parsePowerCellElevationM(json),
     };
   },
 };

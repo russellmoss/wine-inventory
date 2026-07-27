@@ -28,6 +28,8 @@ export const PROVIDER_HOST_ALLOWLIST: Record<WeatherSourceKey, string | readonly
   gridmet: "data.rcc-acis.org",
   daymet: "daymet.ornl.gov",
   nasa_power: "power.larc.nasa.gov",
+  // ERA5 archive (elevation-downscaled observations). Same vendor as the forecast adapter, own host.
+  open_meteo_archive: ["archive-api.open-meteo.com", "customer-api.open-meteo.com"],
   rcc_acis: "data.rcc-acis.org",
   noaa_cdo: "www.ncdc.noaa.gov",
   usgs_epqs: "epqs.nationalmap.gov",

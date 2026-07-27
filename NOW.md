@@ -1097,6 +1097,17 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
     (the correct seam); the report-only census reads chunk text and is reported as an **approximate
     FLOOR**, worst on PDFs. Units 4 and 6–11 remain — all of them need `.env`, live crawls, or an
     operator-gated network probe.
+- 🔴→🟩 **Bhutan weather elevation bias FOUND AND FIXED (2026-07-26, branch
+  `claude/weather-elevation-fidelity`, PR #536)** — a LIVE-tenant data-quality defect surfaced by the S5a
+  Unit 0 probe. NASA POWER answers with its ~50 km cell's MEAN elevation, **1.0–1.8 km above** each Bhutan
+  vineyard, so the series ran **4.8–9.7 °C cold**: the card showed **Winkler Region I at Region V sites**,
+  Jones "Too cool" at a subtropical valley, **frost events on nights that were ~12 °C**, and Bajo (1,230 m)
+  identical to Ser Bhum (2,773 m). Fix = an elevation-downscaled ERA5 archive provider (the same
+  `elevation=` correction the FORECAST path already had) + `source-fidelity-core`, which **withholds the
+  hard-boundary classifications** when the source's own reported elevation is >300 m off the site (§3.6)
+  rather than mislabelling them. Migration applied + all 8 vineyards re-ingested on the live tenant;
+  observed and forecast now agree to the decimal. POWER rows kept as a second source (reversible).
+  Report: `docs/analysis/bhutan-nasa-power-elevation-bias.md`.
 - **/bulk composition-editor phantom ADJUST fixed (2026-07-26, PR #534):** `updateComponentVolume`
   targeted the lot-tuple total while the editor displayed the component PROJECTION — on a blend (Demo T5,
   2026-SY-2: 6995 L tuple vs 6370 L Syrah share) saving the untouched value drew 625 L. Now: untouched
