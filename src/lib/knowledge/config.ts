@@ -880,14 +880,16 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     // content on the page) and then lists ~30 products with rates, PHI and REI (tier C).
     sectionFilter: "pnw-label",
     crawlCadence: "monthly",
-    // ⚠️ Ships DARK on purpose, and this is a gate rather than caution. Two things must be measured
-    // before it flips: the `verify:kb-register` displacement diff against a baseline captured
-    // BEFORE this source existed, and cross-region contamination. The corpus has NO region
-    // dimension and `retrieve.ts` runs mmrSelect(..., 0.7), so 30% of the selection weight is
-    // DISSIMILARITY — a Pacific-Northwest source can be pulled into a Bhutan answer precisely
-    // because it is different. Test that with GENERIC disease queries in a non-PNW tenant, not
-    // regional ones. Same staged shape as `ives-technical-reviews`.
-    defaultEnabled: false,
+    // Staged, then turned on — same shape as `ives-technical-reviews`. Shipped dark, enabled for
+    // Demo Winery alone, measured, then flipped. Both required gates came back clean (plan 100
+    // Unit 11, measured 2026-07-27, full numbers in that plan's Unit 11 result):
+    //   displacement: 0/120 slots changed hands against a pre-PNW baseline (verify:kb-register)
+    //   cross-region: 0/40 PNW passages surfaced for 5 GENERIC disease/pesticide queries run
+    //     against org_bhutan_wine_co, which had no subscription row at measurement time — the
+    //     exact failure mode council flagged (a Pacific-Northwest source can be pulled into an
+    //     unrelated-region answer because retrieve.ts's mmrSelect(..., 0.7) rewards dissimilarity,
+    //     and the corpus has no region dimension) did not reproduce.
+    defaultEnabled: true,
   },
 ];
 
