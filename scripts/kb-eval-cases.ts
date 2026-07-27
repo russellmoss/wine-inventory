@@ -63,6 +63,27 @@ export const RETRIEVAL_CASES: RetrievalCase[] = [
   // that was already right.
   { q: "What is the best way to measure volatile acidity?",
     expectPaths: ["/laboratory_methods/chemical/va/"], expectFact: ["distillation", "cash"] },
+  // SKB Unit 8 - retrieval evidence for the two new eastern sources (Penn State Extension,
+  // Virginia Tech grape IPM). Each case was checked against the LIVE corpus before being written
+  // here (2026-07-27, org_demo_winery with extension-psu enabled for Demo per the staged rollout),
+  // not guessed from the source dossiers.
+  { q: "What causes eastern black rot in grapes and how do I manage it?",
+    expectPaths: ["grape-disease-black-rot", "blogs.cornell.edu"], expectFact: ["black rot"] }, // PSU
+  // The plan's own bar for a source unit: a question ONLY this source's content actually answers.
+  // Measured: virginiafruit.ento.vt.edu's GBM.html takes 3 of the top 6 slots outright.
+  { q: "What are the generations and life cycle of grape berry moth in the eastern US?",
+    expectPaths: ["GBM.html"], expectFact: ["berry moth"] }, // VT
+  { q: "How do I manage spotted lanternfly in a vineyard?",
+    expectPaths: ["spotted-lanternfly-in-vineyards", "blogs.cornell.edu"], expectFact: ["spotted lanternfly"] }, // PSU
+  { q: "What weather conditions lead to grape sour rot near harvest?",
+    expectPaths: ["grape-sour-rot"], expectFact: ["sour rot"] }, // PSU, rank 1 measured
+  // Council S6 - assert eastern powdery mildew coverage instead of assuming it. PSU has no grape PM
+  // article (confirmed 404 in the source recon) and virginia-fruit is an entomology site with no
+  // fungal-disease content, so this asserts the corpus's EXISTING cornell-grapes coverage actually
+  // answers an eastern PM question, rather than falling back to uc-ipm/AWRI's California/Australian
+  // epidemiology. Measured: 4 of 6 top results are Cornell, the rest WSU: zero uc-ipm, zero AWRI.
+  { q: "How do I control powdery mildew on grapes in a humid eastern climate?",
+    expectPaths: ["blogs.cornell.edu"], expectFact: ["powdery mildew"] },
 ];
 
 /**

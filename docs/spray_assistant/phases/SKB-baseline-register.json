@@ -1,16 +1,16 @@
 {
-  "capturedAt": "2026-07-27T16:25:48.634Z",
+  "capturedAt": "2026-07-27T13:36:42.124Z",
   "topK": 6,
   "questions": [
     {
       "question": "What is the most ideal YAN concentration for a white must?",
       "publishers": [
         "AWRI",
-        "Scott Laboratories",
         "AWRI",
+        "Scott Laboratories",
         "Virginia Tech Enology",
         "AWRI",
-        "Cornell Fruit Resources: Grapes"
+        "Virginia Tech Enology"
       ]
     },
     {
@@ -28,11 +28,11 @@
       "question": "How much SO2 should I add at crush?",
       "publishers": [
         "AWRI",
-        "AWRI",
         "Virginia Tech Enology",
         "AWRI",
         "AWRI",
-        "Virginia Tech Enology"
+        "Virginia Tech Enology",
+        "AWRI"
       ]
     },
     {
@@ -94,11 +94,11 @@
       "question": "What TA and pH should I target for a Riesling?",
       "publishers": [
         "WSU Viticulture & Enology",
-        "Penn State Extension",
         "AWRI",
         "WSU Viticulture & Enology",
         "LVWO Weinsberg (Germany)",
-        "WSU Viticulture & Enology"
+        "WSU Viticulture & Enology",
+        "IVES Technical Reviews"
       ]
     },
     {
@@ -108,7 +108,7 @@
         "AWRI",
         "Oregon Wine Research Institute (OSU)",
         "Scott Laboratories",
-        "AWRI",
+        "ETS Laboratories",
         "AWRI"
       ]
     },
@@ -116,8 +116,8 @@
       "question": "When is the right time to pick based on numbers?",
       "publishers": [
         "AWRI",
-        "Penn State Extension",
         "Oregon Wine Research Institute (OSU)",
+        "AWRI",
         "AWRI",
         "AWRI",
         "Oregon Wine Research Institute (OSU)"
@@ -129,7 +129,7 @@
         "Scott Laboratories",
         "Oregon Wine Research Institute (OSU)",
         "AWRI",
-        "AWRI",
+        "Scott Laboratories",
         "Scott Laboratories",
         "Scott Laboratories"
       ]
@@ -138,9 +138,9 @@
       "question": "What is the correct dose of DAP for a nitrogen-deficient must?",
       "publishers": [
         "Scott Laboratories",
-        "Virginia Tech Enology",
-        "Scott Laboratories",
         "AWRI",
+        "Scott Laboratories",
+        "Virginia Tech Enology",
         "OSU Extension (Oregon State University)",
         "Oregon Wine Research Institute (OSU)"
       ]
@@ -163,7 +163,7 @@
         "Cornell Fruit Resources: Grapes",
         "Cornell Fruit Resources: Grapes",
         "AWRI",
-        "AWRI",
+        "Cornell Fruit Resources: Grapes",
         "Oregon Wine Research Institute (OSU)"
       ]
     },
@@ -171,11 +171,11 @@
       "question": "How do I test for protein stability?",
       "publishers": [
         "Virginia Tech Enology",
+        "AWRI",
         "Virginia Tech Enology",
+        "AWRI",
         "Oregon Wine Research Institute (OSU)",
-        "AWRI",
-        "AWRI",
-        "Virginia Tech Enology"
+        "Oregon Wine Research Institute (OSU)"
       ]
     },
     {
@@ -184,9 +184,9 @@
         "Virginia Tech Enology",
         "WSU Viticulture & Enology",
         "Scott Laboratories",
-        "ICVV — Instituto de Ciencias de la Vid y del Vino (Spain)",
         "Virginia Tech Enology",
-        "AWRI"
+        "AWRI",
+        "WSU Viticulture & Enology"
       ]
     },
     {
@@ -206,9 +206,9 @@
         "AWRI",
         "Wine Australia",
         "AWRI",
-        "Cornell Fruit Resources: Grapes",
+        "AWRI",
         "WSU Viticulture & Enology",
-        "AWRI"
+        "Cornell Fruit Resources: Grapes"
       ]
     },
     {
@@ -219,7 +219,7 @@
         "Wine Australia",
         "Wine Australia",
         "UC IPM (UC Agriculture & Natural Resources)",
-        "Wine Australia"
+        "Cornell Fruit Resources: Grapes"
       ]
     }
   ]

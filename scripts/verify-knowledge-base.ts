@@ -123,6 +123,20 @@ async function main() {
         "https://blogs.cornell.edu/newfruit/files/2016/12/Assessing-Winter-Cold-Injury-of-Grape-Canes-and-Trunks-Final-2ijd3wl.pdf",
       ],
     },
+    {
+      // SKB Unit 6/7 - the two new eastern sources. A couple of representative pages each, matching
+      // the RETRIEVAL_CASES that depend on them, so a fresh CI DB self-seeds before checking.
+      source: "extension-psu",
+      urls: [
+        "https://extension.psu.edu/grape-disease-black-rot/",
+        "https://extension.psu.edu/grape-sour-rot/",
+        "https://extension.psu.edu/spotted-lanternfly-in-vineyards/",
+      ],
+    },
+    {
+      source: "virginia-fruit",
+      urls: ["https://www.virginiafruit.ento.vt.edu/GBM.html"],
+    },
   ];
   for (const ns of NEW_SOURCE_EVAL) {
     await crawlUrls(ns.source, ns.urls, {
