@@ -1016,6 +1016,17 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **Plan 098 tenant unit preferences BUILT (2026-07-26, branch `claude/tenant-unit-preferences-78472c`)** —
+  all 12 units done: 7 nullable AppSettings unit columns (Migration A) + the audited hoist-if-uniform
+  Migration B (Demo hoisted IMPERIAL; Bhutan's disagreeing weather/geometry values preserved — zero
+  behavior change, both migrations APPLIED to the live DB); `src/lib/units/display.ts` is the ONE
+  display-unit authority (weather/units-core + phenology/units are re-export shims); settings card +
+  UnitsProvider; weather/vineyard/cellar/harvest/ferment display sweeps; volume INPUTS with inline
+  adornment + dirty-check round-trip; assistant threads units through route → runAssistant →
+  ToolContext → query_climate display strings (the Oregon-forecast °C bug fixed). Full vitest green,
+  verify:naming/invariants/ai-native green. **Remaining: interactive browser QA on Demo Winery
+  (needs the user's pane login) + /review + /ship.**
+
 - **🔴 RELEASE BLOCKER FOUND + FIXED (2026-07-26): `AppUser.vineyardIds` was ALWAYS `[]` under
   `app_rls`.** Surfaced during S4 browser QA (it blocked the pass) but pre-existing and unrelated to S4.
   **[PR #530](https://github.com/russellmoss/wine-inventory/pull/530)** (branch
@@ -1452,7 +1463,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 — **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
+_Last updated: 2026-07-26 (plan 098 tenant unit preferences built — all 12 units; QA + ship pending)_
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill

@@ -1,7 +1,7 @@
 ---
 title: Tenant-configurable unit display preferences (°C/°F, L/hL/gal, mm/in, ha/acres, m/ft, kg/lb)
 type: feat
-status: reviewed
+status: completed
 date: 2026-07-26
 branch: claude/cellarhand-unit-preferences-939c4f
 depth: deep
