@@ -3,7 +3,7 @@
 **Program:** Spray Intelligence · [runbook](../SPRAY_ASSISTANT_RUNBOOK.md) §9 S2b
 **Depends on:** S2 (shipped + live, deploy `147b75c3`) · S3a (shipped, PR1–PR3 merged)
 **Unblocks:** S7a (legality + rotation), S8 (lot residue), S6 (protection budget), S7b (interlocks)
-**Status:** 🟨 **building — Units 0-5 DONE and merged-ready; Units 6-10 remain** ([council feedback](S2b-council-feedback.md))
+**Status:** 🟨 **built — Units 0-9 DONE; Unit 10 (browser QA) is the only one left** ([council feedback](S2b-council-feedback.md))
 **Plan depth:** Deep (12 units) · **Date:** 2026-07-26
 
 > ## Build status (2026-07-26)
@@ -16,14 +16,24 @@
 > | 3 · separation rules + conditional PHI/REI | ✅ **tables** built | `verify:product-facts` 4 |
 > | 4 · fifth source + fact-group provenance | ✅ built | schema + migration |
 > | 5 · tenant grower-supplied override + RLS | ✅ built | `verify:product-facts` 5, 5b, 6 |
-> | 6 · the real `ProductFactsResolver` | ⬜ next PR | — |
-> | 7 · coverage report · 7b · pest-code ingest | ⬜ next PR | — |
-> | 8 · verify + invariant note | 🟨 partial — `verify:product-facts` exists with 8 assertions | |
-> | 9 · monthly drift detector · 10 · QA | ⬜ next PR | — |
+> | 6 · the real `ProductFactsResolver` | ✅ built + wired at the composition root | `verify:product-facts` 7-11 |
+> | 7 · coverage report | ✅ built | `report:product-facts-coverage` |
+> | 7b · pest-code ingest | ✅ built + **run live** | 41 categories, 42,132 mappings |
+> | 8 · verify + invariant SPRAY-6 | ✅ built | 22 assertions · 48/48 invariants guarded |
+> | 9 · monthly drift detector | ✅ built | extends the existing pesticide cron step |
+> | 10 · browser QA | ⬜ **needs Russell** — QA-PROTOCOL requires the USER to log in; Claude never types a password | — |
 >
-> Gates green: `verify:product-facts` 8/8 · `verify:tenant-isolation` · `verify:naming` 25/25 ·
-> `verify:invariants` 47/47 · `verify:ai-native` (KD-7 held — no allowlist entry spent) ·
-> `tsc` clean · 4,613 unit tests · lint 0 errors.
+> Gates green: `verify:product-facts` **22/22** · `verify:spray-record` 14/14 · `verify:pesticide`
+> 31/31 · `verify:tenant-isolation` · `verify:naming` 25/25 · `verify:invariants` **48/48** ·
+> `verify:ai-native` (KD-7 held — no allowlist entry spent) · `tsc` clean · 4,612 unit tests ·
+> lint 0 errors. One unrelated pre-existing flake (`assistant-commit-tenant-context`) whose own
+> comment documents it as whole-suite contention; it passes in isolation.
+>
+> ⚠️ **The 42,132 pest mappings carry a `revisionId` pointing at a FAILED revision.** The run that
+> wrote them was killed mid-flight (a stray NUL byte in the source file, since repaired) and its
+> revision was resolved to FAILED rather than left orphaned as RUNNING. The DATA is verified clean —
+> valid EPA numbers, valid 2-char codes, zero contaminated rows — and nothing reads these tables yet.
+> The next monthly ingest re-stamps them under a PUBLISHED revision. Recorded rather than papered over.
 >
 > ⛔ **NOT built, and not mine to build: the curated CONTENT.** These units ship the *machinery*. A
 > curated row's `reviewedBy` is a human signature on a legal fact (rule §3.1 — "the label is the law,
