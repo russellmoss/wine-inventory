@@ -64,6 +64,8 @@ describe("global-model denylist (K3)", () => {
         // grower-supplied override (TenantProductFacts) is TENANT-SCOPED and must NOT appear here.
         "PesticideProductFacts", "PesticideProductReiCondition", "PesticideProductPhiCondition",
         "PesticideSeparationRule", "PesticideProductCondition",
+        // S2b Unit 7b — the DPR pest vocabulary.
+        "PesticidePestCategory", "PesticideProductPest",
       ].sort(),
     );
     for (const m of ["User", "Session", "Organization", "Member", "Invitation", "FxRate", "KnowledgeChunk", "PesticideProduct", "PesticideProductFacts"]) expect(isGlobalModel(m)).toBe(true);

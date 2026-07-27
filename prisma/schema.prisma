@@ -5920,6 +5920,47 @@ model PesticideProductCondition {
   @@map("pesticide_product_condition")
 }
 
+/// Spray S2b Unit 7b — the CODED PEST VOCABULARY (council GQ1), ingested from CA DPR's
+/// `target_pest.dat` in the SAME directory S2 already pulls. Tenant-GLOBAL reference data.
+///
+/// ⚠️ THIS IS A CATEGORY, NOT A SPECIES, and nothing may present it as one. The probe
+/// (phases/S2b-cdpr-interval-probe.md) established that EPA APPRIL carries no target pest at all
+/// (`PEST_CAT` is the PRODUCT category) and DPR publishes exactly 41 coarse buckets — `C0 FUNGI`,
+/// `E0 INSECTS`, `J0 MITES/TICKS`. There is no public source for "powdery mildew". So the grower's
+/// free-text `spray_application.targetPest` stays the truth of record and this only ever rides
+/// alongside it as an optional coded companion, human-confirmed, never inferred.
+model PesticidePestCategory {
+  code       String   @id // the 2-char DPR code: "C0", "E9", "M1"
+  name       String // "FUNGI", "BEETLES-COLEOPTERA (WEEVIL, BORER, WIREWORM)"
+  sourceUrl  String
+  sourceAsOf DateTime
+  revisionId String? // K14 mark-and-sweep watermark
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  products PesticideProductPest[]
+
+  @@index([revisionId])
+  @@map("pesticide_pest_category")
+}
+
+/// product → pest-category mapping from DPR's `prod_target_pest.dat`. Used to PROPOSE a code for a
+/// spray record's free-text target pest; a human confirms it (the trade-name-map pattern — never
+/// LLM-auto-applied, rule §3.2).
+model PesticideProductPest {
+  id           String  @id @default(cuid())
+  epaRegNumber String
+  pestCode     String
+  revisionId   String?
+
+  pestCategory PesticidePestCategory @relation(fields: [pestCode], references: [code], onDelete: Restrict)
+
+  @@unique([epaRegNumber, pestCode])
+  @@index([epaRegNumber])
+  @@index([pestCode])
+  @@map("pesticide_product_pest")
+}
+
 /// Spray S2b Unit 5 — the GROWER-SUPPLIED facts override. TENANT-SCOPED and RLS-isolated (full
 /// AGENTS.md Phase-12 checklist) — this is the ONE S2b table that is NOT global, and it must NOT be
 /// added to GLOBAL_MODELS.

@@ -58,6 +58,9 @@ export const GLOBAL_MODELS: ReadonlySet<string> = new Set([
   "PesticideProductPhiCondition",
   "PesticideSeparationRule",
   "PesticideProductCondition",
+  // S2b Unit 7b — the DPR pest vocabulary (41 coarse categories + the product mapping).
+  "PesticidePestCategory",
+  "PesticideProductPest",
 ]);
 
 export function isGlobalModel(model: string | undefined): boolean {

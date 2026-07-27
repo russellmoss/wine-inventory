@@ -30,7 +30,7 @@ const B = "org_isolation_test_b";
 // S2b adds the curated product-facts master as global reference too; TenantProductFacts (the
 // grower-supplied override) is TENANT-SCOPED and is NOT listed — the RLS coverage guard must demand
 // RLS on it.
-const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation", "FxRate", "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument", "KnowledgeUrlObservation", "KnowledgeChunk", "PesticideDataRevision", "PesticideProduct", "PesticideActiveIngredient", "PesticideProductIngredient", "PesticideSiteRegistration", "PesticideStateRegistration", "PesticideUseRestriction", "PesticideResistanceAssignment", "PesticideProductFacts", "PesticideProductReiCondition", "PesticideProductPhiCondition", "PesticideSeparationRule", "PesticideProductCondition"]);
+const GLOBAL_MODELS = new Set(["User", "Session", "Account", "Verification", "Organization", "Member", "Invitation", "FxRate", "KnowledgeSource", "TrustedDomain", "CandidateSource", "KnowledgeBlob", "KnowledgeDocument", "KnowledgeUrlObservation", "KnowledgeChunk", "PesticideDataRevision", "PesticideProduct", "PesticideActiveIngredient", "PesticideProductIngredient", "PesticideSiteRegistration", "PesticideStateRegistration", "PesticideUseRestriction", "PesticideResistanceAssignment", "PesticideProductFacts", "PesticideProductReiCondition", "PesticideProductPhiCondition", "PesticideSeparationRule", "PesticideProductCondition", "PesticidePestCategory", "PesticideProductPest"]);
 
 const OWNER_URL = process.env.DATABASE_URL_UNPOOLED;
 const APP_URL = process.env.DATABASE_URL_APP;
