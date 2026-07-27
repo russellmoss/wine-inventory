@@ -7,8 +7,11 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**SPRAY INTELLIGENCE — Wave 1 LANDING: S0 complete · S2 built · S3a SHIPPED · S4 built.
-S3a's record cores are MERGED (2026-07-26) -> Wave 2 (S7a · S8 · S6 · S7b) can start.**
+**SPRAY INTELLIGENCE — Wave 1 LANDING: S0 complete · S2 built · S3a SHIPPED · S4 built ·
+S2b resumption (Units 1/2/3/5) built + DB-proven 2026-07-27, on `claude/s2b-resume-units-2026-07-27`
+(not yet PR'd). ⚠️ Wave 2 (S7a · S8 · S6) is still BLOCKED — coverage is 0% (needs real curated
+content, a human's review signature) and a new finding says the shipped resolver doesn't gate on
+`reviewedBy` yet either. See [S2b-report.md](docs/spray_assistant/phases/S2b-report.md).**
 
 🟩 **S0 (lane A — the weather-lane spike): COMPLETE. Gate answered, and S1 is NARROWED.**
 [report](docs/spray_assistant/phases/S0-report.md) · [QA](docs/spray_assistant/qa/S0-qa-report.md) ·

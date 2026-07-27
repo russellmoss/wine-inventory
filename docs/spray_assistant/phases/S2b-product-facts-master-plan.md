@@ -7,22 +7,22 @@
 See §0 below for the resumption scope. ([council feedback](S2b-council-feedback.md))
 **Plan depth:** Deep (12 units) · **Date:** 2026-07-26 · **Resumed:** 2026-07-27
 
-> ## Build status (2026-07-26)
+> ## Build status (2026-07-26; updated 2026-07-27 — resumption)
 >
 > | Unit | State | Evidence |
 > |---|---|---|
 > | 0 · CDPR interval probe | ✅ done | [probe report](S2b-cdpr-interval-probe.md) |
-> | 1 · jurisdiction + per-block-line snapshot | 🟥 **SCHEMA ONLY** — `resolveJurisdiction` NOT built, no UI, and **nothing writes the block-line snapshot**, so council C3 (the rule §3.8 replay fix) is unimplemented | columns + migration only |
-> | 2 · curated facts master (global) | 🟥 **TABLES ONLY** — no `product-facts.json` artifact, no `seed-product-facts.ts`, no CDPR propose-seeder, **no artifact-discipline test**, so "every curated row carries source + as-of + reviewer" is unenforced | `verify:product-facts` 1, 2, 3 |
-> | 3 · separation rules + conditional PHI/REI | 🟥 **TABLES ONLY** — `separation.ts` (most-restrictive-wins) and the JMS oil↔sulfur goldens NOT built, so KD-2's direction-specificity is unproven | `verify:product-facts` 4 |
+> | 1 · jurisdiction + per-block-line snapshot | ✅ **built + DB-proven** — `resolveJurisdiction`/`resolveJurisdictionBatch`, propose-from-GPS + confirm UI, block-line snapshot written at record AND correction time (resolved before the tx opens — a P2028 latency finding, see plan §0/report) | `verify:spray-record` group 15, `test/pesticide-jurisdiction.test.ts` |
+> | 2 · curated facts master (global) | 🟨 **machinery built + live-tested; content NOT shipped** — `seed-product-facts.ts` (replay/--propose/--dry-run), the discipline validator, 1072 real CDPR proposals generated + spot-checked then **reverted to `[]`** (curated content needs a human's review signature; also a NEW finding that the resolver doesn't gate on `reviewedBy` — see report Finding 1) | `pesticide-facts-artifact.test.ts` 14/14, `pesticide-product-facts-derive.test.ts` 6/6, live `--propose` run |
+> | 3 · separation rules + conditional PHI/REI | ✅ **built + proven** — `separation.ts` (most-restrictive-wins, pure), 14 goldens on the JMS Stylet-Oil worked example incl. the CLASS-ambiguity case (council G5) | `test/pesticide-separation.test.ts` 14/14 |
 > | 4 · fifth source + fact-group provenance | ✅ built + wired | schema + `factsSnapshotColumns` |
-> | 5 · tenant grower-supplied override + RLS | 🟨 **table + RLS only** — no entry surface, so SAFE-19 (the flagship non-US gate item) is data-layer-only | `verify:product-facts` 5, 5b, 6 |
+> | 5 · tenant grower-supplied override + RLS | ✅ **built + DB-proven** — `/vineyards/sprays/products` entry surface, `tenantProductRef` on the spray form, SAFE-19's data half now has a UI to exercise (not yet clicked live) | `verify:tenant-isolation` +6 cases (RLS, WITH CHECK, mutable UPDATE, KD-3 composite upsert) |
 > | 6 · the real `ProductFactsResolver` | ✅ built + wired at the composition root | `verify:product-facts` 7-11 |
-> | 7 · coverage report | ✅ built | `report:product-facts-coverage` |
+> | 7 · coverage report | ✅ built; re-run 2026-07-27, still 0% (unchanged — needs real content) | `report:product-facts-coverage` |
 > | 7b · pest-code ingest | ✅ built + **run live** | 41 categories, 42,132 mappings |
 > | 8 · verify + invariant SPRAY-6 | ✅ built | 22 assertions · 48/48 invariants guarded |
 > | 9 · monthly drift detector | ✅ built | extends the existing pesticide cron step |
-> | 10 · browser QA + `qa/S2b-qa-report.md` | 🟥 **INCOMPLETE** — blocked on a dev-server restart (it is running pre-migration code); report not written | — |
+> | 10 · browser QA + `qa/S2b-qa-report.md` | 🟨 **report updated 2026-07-27** (script/DB-proven); **no live interactive browser session this pass** — still open | [qa/S2b-qa-report.md](../qa/S2b-qa-report.md), [phases/S2b-report.md](S2b-report.md) |
 >
 > ## ⛔ S2b is NOT done and NOT deployable as a feature
 >
