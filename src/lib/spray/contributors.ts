@@ -14,4 +14,9 @@ export interface SprayContributor {
 }
 
 /** Appended one line per lane. Empty until the first Wave-2 lane lands. */
-export const SPRAY_CONTRIBUTORS: SprayContributor[] = [];
+export const SPRAY_CONTRIBUTORS: SprayContributor[] = [
+  // S5a. The section is the latent-infection LEDGER, not a powdery risk index: the Unit 0 gate
+  // ruled the index out on reconstructed hourly data, so this lane contributes what somebody
+  // OBSERVED and what is still incubating, never a modelled risk band.
+  { key: "latent-infection", phase: "S5a" },
+];

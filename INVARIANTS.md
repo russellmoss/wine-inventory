@@ -342,8 +342,9 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
 ## Spray Intelligence — the application record (S3a)
 
 > Machine-readable notes: [[SPRAY-1-append-only-correction-as-event]] · [[SPRAY-2-facts-as-of-snapshot]] ·
-> [[SPRAY-3-gap-renders-unknown]] · [[SPRAY-4-planned-harvest-audited]] · [[SPRAY-5-dried-before-rain-derived]].
-> All five guarded by `npm run verify:spray-record`.
+> [[SPRAY-3-gap-renders-unknown]] · [[SPRAY-4-planned-harvest-audited]] · [[SPRAY-5-dried-before-rain-derived]] ·
+> [[SPRAY-6-clean-scout-never-closes]].
+> SPRAY-1..5 guarded by `npm run verify:spray-record`; SPRAY-6 by `npm run verify:latent-infection`.
 
 - **Spray history is append-only, corrected as an event (SPRAY-1, critical, database).** A Postgres
   `BEFORE UPDATE` trigger refuses any content change on all six append-only tables (per-table
@@ -365,6 +366,17 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   no planned date; point-in-time reads; the stream IS the outbox — S7a consumes
   `plannedHarvestChangesSince(cursor)` as a watermark (council C4). Split picks coexist (G4); PHI reads
   the EARLIEST open date.
+- **A clean scouting pass never closes a latent infection event (SPRAY-6, critical, app-code).**
+  An open event closes by its resolution rule or by an attributed human append — never by the ABSENCE
+  of symptoms, because during the latent period there is by definition nothing to see. Fedele et al.
+  2020 scored a Botrytis model at 65% against field assessment but >87% against post-harvest assays of
+  SYMPTOMLESS berries. `evaluateResolution` accepts `scoutedCleanOn` and deliberately ignores it;
+  `closeInfectionEvent` exposes no parameter that would let a clean scout close an event. Same family
+  as SPRAY-3 and PEST-1 (absence of evidence rendering as a clearance), applied to TIME rather than
+  coverage. Companion rule (S5a KD-4): `infectiousExpectedAt` takes the SHORTEST plausible latent
+  period and the expiry the LONGEST — opposite ends of one interval, each erring toward "the pathogen
+  is active", never averaged. NOTE: S5a ships this ledger WITHOUT a powdery risk index; the Unit 0
+  probe failed its pre-committed gate at every site and the index moved to S5b behind S1.
 - **driedBeforeRain is derived, never self-reported (SPRAY-5, high, core).** Computed from the block's
   own finish time + hourly precip through an injected port, or UNKNOWN; the human correction is an
   attributed append-only override row. A null block `finishedAt` yields REI/residual UNKNOWN and never

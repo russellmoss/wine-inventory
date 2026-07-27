@@ -99,3 +99,4 @@ innovint-docs/_raw/
 
 # Generated pronunciation listening-pass audio (plan 091) — never commit
 pronunciation-sample*.mp3
+.probe-cache/
