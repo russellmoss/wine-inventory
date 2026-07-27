@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-27T16:29:06.068Z",
+  "capturedAt": "2026-07-27T16:41:51.705Z",
   "entries": [
     {
       "query": "What is a good pre-infection fungicide I can use for downy mildew?",
@@ -908,21 +908,21 @@
           "rank": 6,
           "publisher": "OSU Extension (Oregon State University)",
           "tier": 1,
-          "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-8985-field-monitoring-leafroll-virus-mealybug-pacific-northwest-vineyards",
-          "sectionPath": "Field Monitoring for Leafroll Virus and Mealybug in Pacific Northwest Vineyards > Introduction",
-          "publishedAt": "2014-12-18",
-          "dateSource": "published",
-          "textHash": "dda2651a3281"
-        },
-        {
-          "rank": 7,
-          "publisher": "OSU Extension (Oregon State University)",
-          "tier": 1,
           "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-9092-distribution-monitoring-grape-mealybug-key-vector-grapevine-leafroll-disease-oregon",
           "sectionPath": "Distribution and Monitoring of Grape Mealybug: A Key Vector of Grapevine Leafroll Disease in Oregon > For more information",
           "publishedAt": "2014-12-18",
           "dateSource": "published",
           "textHash": "680ee8ac810f"
+        },
+        {
+          "rank": 7,
+          "publisher": "OSU Extension (Oregon State University)",
+          "tier": 1,
+          "canonicalUrl": "https://extension.oregonstate.edu/catalog/em-8985-field-monitoring-leafroll-virus-mealybug-pacific-northwest-vineyards",
+          "sectionPath": "Field Monitoring for Leafroll Virus and Mealybug in Pacific Northwest Vineyards > Introduction",
+          "publishedAt": "2014-12-18",
+          "dateSource": "published",
+          "textHash": "dda2651a3281"
         },
         {
           "rank": 8,
@@ -934,7 +934,9 @@
           "dateSource": "published",
           "textHash": "67ccd8ddaa75"
         }
-      ]
+      ],
+      "unstable": true,
+      "observedProfiles": 2
     },
     {
       "query": "How much sugar do I add at tirage to reach the right bottle pressure in méthode champenoise sparkling wine?",
@@ -2123,6 +2125,346 @@
           "publishedAt": "2015-08-06",
           "dateSource": "published",
           "textHash": "dac29a66d85d"
+        }
+      ]
+    },
+    {
+      "query": "A Michigan vineyard is seeing downy mildew pressure this week - what should I do?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Wine Australia",
+          "tier": 1,
+          "canonicalUrl": "https://www.wineaustralia.com/getmedia/80ce4f86-58ba-4bfd-9720-a203982c0399/201012-Downy-Mildew-QA?ext=.pdf",
+          "sectionPath": "Downy Mildew > Downy Mildew > Questions and Answers > Q 18.: What if my vines were at or just",
+          "publishedAt": "2010-12-06",
+          "dateSource": "published",
+          "textHash": "ea6cec84262d"
+        },
+        {
+          "rank": 2,
+          "publisher": "Penn State Extension",
+          "tier": 1,
+          "canonicalUrl": "https://extension.psu.edu/grape-disease-downy-mildew/",
+          "sectionPath": "Grape Disease - Downy Mildew > Disease Management",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "06f107226b81"
+        },
+        {
+          "rank": 3,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/2018/04/s1776.pdf",
+          "sectionPath": "ask the > Skipping vineyard sprays in dry years > DOWNY MILDEW",
+          "publishedAt": "2015-12-15",
+          "dateSource": "published",
+          "textHash": "c29d21d94379"
+        },
+        {
+          "rank": 4,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Downy Mildew",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "6892d7070884"
+        },
+        {
+          "rank": 5,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > … > Six to Ten-Inch Shoot Growth",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "6580d2bbc5be"
+        },
+        {
+          "rank": 6,
+          "publisher": "AWRI",
+          "tier": 1,
+          "canonicalUrl": "https://www.awri.com.au/wp-content/uploads/downy_mildew_management.pdf",
+          "sectionPath": "viti-notes[pests and diseases] > Managing downy mildew",
+          "publishedAt": "2011-03-09",
+          "dateSource": "published",
+          "textHash": "677e37b485d5"
+        },
+        {
+          "rank": 7,
+          "publisher": "PNW Pest Management Handbooks (OSU / WSU / UI Extension)",
+          "tier": 1,
+          "canonicalUrl": "https://pnwhandbooks.org/plantdisease/host-disease/grape-vitis-spp-downy-mildew",
+          "sectionPath": "",
+          "publishedAt": "2026-04-16",
+          "dateSource": "last-modified",
+          "textHash": "02cd87ff84d8"
+        },
+        {
+          "rank": 8,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > … > 6- to 10-Inch Shoot Growth",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "7ec319c6586e"
+        }
+      ]
+    },
+    {
+      "query": "Grape berry moth is active in my Pennsylvania vineyard - what generation and timing should I expect?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "585d722f944b"
+        },
+        {
+          "rank": 2,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "2e3ecb80d790"
+        },
+        {
+          "rank": 3,
+          "publisher": "UC IPM (UC Agriculture & Natural Resources)",
+          "tier": 1,
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/omnivorous-leafroller",
+          "sectionPath": "Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Description of the Pest",
+          "publishedAt": "2015-07-01",
+          "dateSource": "published",
+          "textHash": "c1bd9eb88459"
+        },
+        {
+          "rank": 4,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "9ce7842b952c"
+        },
+        {
+          "rank": 5,
+          "publisher": "Virginia Tech — Virginia Fruit (Mid-Atlantic Grape IPM)",
+          "tier": 1,
+          "canonicalUrl": "https://www.virginiafruit.ento.vt.edu/GBM.html",
+          "sectionPath": "Grape berry moth > Grape berry moth, Paralobesia viteana (Clemens)",
+          "publishedAt": "2026-03-03",
+          "dateSource": "published",
+          "textHash": "6a058beddc8c"
+        },
+        {
+          "rank": 6,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2022/11/2022-insects-grapes-review.pdf",
+          "sectionPath": "Insects & grapes review, 2022 > Grape Insect and Mite Pests, 2022 Field Season > Bloom to Mid-season",
+          "publishedAt": "2022-05-09",
+          "dateSource": "published",
+          "textHash": "6fdf28869a06"
+        },
+        {
+          "rank": 7,
+          "publisher": "IVES Technical Reviews",
+          "tier": 1,
+          "canonicalUrl": "https://ives-technicalreviews.eu/article/view/9943",
+          "sectionPath": "Cryptoblabes gnidiella : a growing challenge for Mediterranean vineyards\n\t\t\t\t\t\t\t| IVES Technical Reviews, vine and wine > Life cycle",
+          "publishedAt": "2026-03-04",
+          "dateSource": "published",
+          "textHash": "ee9656080f4b"
+        },
+        {
+          "rank": 8,
+          "publisher": "UC IPM (UC Agriculture & Natural Resources)",
+          "tier": 1,
+          "canonicalUrl": "https://ipm.ucanr.edu/agriculture/grape/light-brown-apple-moth",
+          "sectionPath": "Light Brown Apple Moth / Grape / Agriculture: Pest Management Guidelines / UC Statewide IPM Program (UC IPM) > Description of the Pest",
+          "publishedAt": "2021-12-01",
+          "dateSource": "published",
+          "textHash": "d6adb6fc029c"
+        }
+      ]
+    },
+    {
+      "query": "How do I manage powdery mildew pressure on grapes in Virginia this humid week?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/viticulture-enology-extension-news-fall-2017/",
+          "sectionPath": "Viticulture & Enology Extension News – Fall 2017 | Viticulture & Enology > Powdery Mildew in 2017",
+          "publishedAt": "2026-06-30",
+          "dateSource": "published",
+          "textHash": "725b9637dcbb"
+        },
+        {
+          "rank": 2,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/documents/2026/03/veen-fall-2017.pdf",
+          "sectionPath": "Viticulture and Enology Extension News > Viticulture and Enology Extension News > NOTE FROM THE EDITOR > Powdery Mildew in 2017",
+          "publishedAt": "2017-09-20",
+          "dateSource": "published",
+          "textHash": "929d076258c6"
+        },
+        {
+          "rank": 3,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/documents/2026/03/veen-fall-2017.pdf",
+          "sectionPath": "Viticulture and Enology Extension News > Viticulture and Enology Extension News > NOTE FROM THE EDITOR > Powdery Mildew in 2017",
+          "publishedAt": "2017-09-20",
+          "dateSource": "published",
+          "textHash": "ab31705421b6"
+        },
+        {
+          "rank": 4,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
+          "sectionPath": "Grape Disease Control, Spring 2021 > Early Season Grape Diseases",
+          "publishedAt": "2021-04-13",
+          "dateSource": "published",
+          "textHash": "cc281a68a898"
+        },
+        {
+          "rank": 5,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Powdery Mildew",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "f7a365f5d40a"
+        },
+        {
+          "rank": 6,
+          "publisher": "WSU Viticulture & Enology",
+          "tier": 1,
+          "canonicalUrl": "https://wine.wsu.edu/documents/2026/03/veen-fall-2017.pdf",
+          "sectionPath": "Viticulture and Enology Extension News > Viticulture and Enology Extension News > NOTE FROM THE EDITOR > Powdery Mildew, con’t.",
+          "publishedAt": "2017-09-20",
+          "dateSource": "published",
+          "textHash": "755c7ae63221"
+        },
+        {
+          "rank": 7,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Powdery Mildew",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "b0581f0b8c03"
+        },
+        {
+          "rank": 8,
+          "publisher": "Oregon Wine Research Institute (OSU)",
+          "tier": 1,
+          "canonicalUrl": "https://ir.library.oregonstate.edu/downloads/vd66w7932",
+          "sectionPath": "VitEnoTechNwsltr-mar2016-Danielle Fianl > Viticulture & Enology > Viticulture & Enology > Oregon Wine Research Institute—Viticulture &…",
+          "publishedAt": "2016-04-04",
+          "dateSource": "published",
+          "textHash": "ee1e235e1940"
+        }
+      ]
+    },
+    {
+      "query": "What are the spray timing recommendations for black rot in an eastern US vineyard this season?",
+      "results": [
+        {
+          "rank": 1,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > Early-Season Grape Diseases > Black Rot > Recent research",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "26a80343a95a"
+        },
+        {
+          "rank": 2,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
+          "sectionPath": "Grape Disease Control, Spring 2021 > Early Season Grape Diseases",
+          "publishedAt": "2021-04-13",
+          "dateSource": "published",
+          "textHash": "758a3f03082e"
+        },
+        {
+          "rank": 3,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2021/",
+          "sectionPath": "Grape Disease Control, Spring 2021 | Cornell Fruit Resources: Grapes > … > One to Two Weeks Post-Bloom",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "e9682181be43"
+        },
+        {
+          "rank": 4,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > … > One to Two Weeks Post-Bloom",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "6c284e3e4ffc"
+        },
+        {
+          "rank": 5,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2020/05/Gold_earlyseasonmgmt_flxnewsletter_may2020.pdf",
+          "sectionPath": "Early Season Grape Disease Management, Spring 2020",
+          "publishedAt": "2020-05-07",
+          "dateSource": "published",
+          "textHash": "55134bde5c6c"
+        },
+        {
+          "rank": 6,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2021/04/gold_grapediseasecontrol_spring2021_FINAL_accessible.pdf",
+          "sectionPath": "Grape Disease Control, Spring 2021 > Seasonal Program Design: Considerations by Growth Stage",
+          "publishedAt": "2021-04-13",
+          "dateSource": "published",
+          "textHash": "d4959c9b67c6"
+        },
+        {
+          "rank": 7,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/files/2020/05/Gold_earlyseasonmgmt_flxnewsletter_may2020.pdf",
+          "sectionPath": "Early Season Grape Disease Management, Spring 2020",
+          "publishedAt": "2020-05-07",
+          "dateSource": "published",
+          "textHash": "d5ac7311e2d3"
+        },
+        {
+          "rank": 8,
+          "publisher": "Cornell Fruit Resources: Grapes",
+          "tier": 1,
+          "canonicalUrl": "https://blogs.cornell.edu/grapes/ipm/diseases/grape-disease-control-spring-2023/",
+          "sectionPath": "Grape Disease Control, Spring 2023 | Cornell Fruit Resources: Grapes > … > Immediate Pre-Bloom to Early Bloom",
+          "publishedAt": null,
+          "dateSource": "unknown",
+          "textHash": "3fc32bbaea30"
         }
       ]
     }
