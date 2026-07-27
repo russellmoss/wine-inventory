@@ -36,7 +36,7 @@ import { assessProductTable } from "@/lib/knowledge/boundary/product-table-core"
 import { summarizeBoundaryAudit, type AuditRow } from "@/lib/knowledge/boundary/audit-core";
 import { boundaryModeFor } from "@/lib/knowledge/boundary/enforcing";
 import { fetchDocument } from "@/lib/knowledge/crawl/fetcher";
-import { TRUSTED_DOMAIN_SET } from "@/lib/knowledge/config";
+import { TRUSTED_DOMAIN_SET, KNOWLEDGE_SOURCES } from "@/lib/knowledge/config";
 
 const RED = "\x1b[31m", GRN = "\x1b[32m", YEL = "\x1b[33m", DIM = "\x1b[2m", RST = "\x1b[0m";
 
@@ -110,6 +110,28 @@ async function main() {
   const scoped = onlySource ? all.filter((d) => d.sourceKey === onlySource) : all;
   const enforcing = scoped.filter((d) => boundaryModeFor(d.sourceKey) === "enforce");
   const reportOnly = scoped.filter((d) => boundaryModeFor(d.sourceKey) === "report-only");
+
+  // ⚠️ CONFIG-ORPHANED SOURCES. The boundary census is built from KNOWLEDGE_SOURCES, so a source that
+  // exists only as a DB row falls through to the `enforce` default — arming the gate's chunk-clearing
+  // path against live content nobody declared. This is not hypothetical: the first real run of this
+  // script found `virginia-fruit` with 69 documents, 260 chunks and defaultEnabled=true, absent from
+  // config entirely. No unit test can catch it, because both sides of the obvious assertion come from
+  // the same config file. So it is checked here, on every run, against the database.
+  const configKeys = new Set(KNOWLEDGE_SOURCES.map((s) => s.key));
+  const orphaned = [...new Set(all.map((d) => d.sourceKey))].filter((k) => !configKeys.has(k));
+  if (orphaned.length > 0) {
+    console.log(`\n${YEL}⚠️  ${orphaned.length} source(s) in the DB with NO config entry:${RST}`);
+    for (const k of orphaned) {
+      const n = all.filter((d) => d.sourceKey === k).length;
+      const mode = boundaryModeFor(k);
+      console.log(
+        `    ${k.padEnd(26)} ${String(n).padStart(4)} docs  → ${mode}` +
+          (mode === "enforce"
+            ? `  ${RED}(enforcing an undeclared source — add it to the census or to config)${RST}`
+            : `  ${DIM}(named in BOUNDARY_LEGACY_DB_ONLY_KEYS)${RST}`),
+      );
+    }
+  }
 
   console.log(`\n${DIM}KB-1 boundary audit — ${scoped.length} active documents${RST}`);
   console.log(`${DIM}  enforcing: ${enforcing.length} (live re-fetch)  report-only: ${reportOnly.length}${includeReportOnly ? " (approximate, from chunk text)" : " — skipped, pass --report-only"}${RST}\n`);

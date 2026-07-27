@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   BOUNDARY_REPORT_ONLY_SOURCE_KEYS,
+  BOUNDARY_LEGACY_DB_ONLY_KEYS,
   boundaryModeFor,
   staleReportOnlyKeys,
 } from "@/lib/knowledge/boundary/enforcing";
@@ -45,12 +46,30 @@ describe("boundary scope — enforcement is the default", () => {
     expect(staleReportOnlyKeys()).toEqual([]);
   });
 
-  it("the census covers every source registered today — a source added without a decision enforces, which is the fail-closed direction", () => {
+  it("the census covers every source registered today, plus the documented DB-only legacy keys", () => {
     // This is not a "keep them in sync" chore. It documents that as of SKB, report-only is a CLOSED
     // set: every future source enforces on arrival. If this fails, someone registered a source and
     // silently added it to the grandfather list, which is the thing council C3 forbade.
-    const registered = KNOWLEDGE_SOURCES.map((s) => s.key).sort();
-    expect([...BOUNDARY_REPORT_ONLY_SOURCE_KEYS].sort()).toEqual(registered);
+    const expected = [...KNOWLEDGE_SOURCES.map((s) => s.key), ...BOUNDARY_LEGACY_DB_ONLY_KEYS].sort();
+    expect([...BOUNDARY_REPORT_ONLY_SOURCE_KEYS].sort()).toEqual(expected);
+  });
+
+  it("a DB-only legacy source is report-only, NOT enforcing", () => {
+    // `virginia-fruit`: 69 active documents, 260 chunks, defaultEnabled=true, and NO config entry —
+    // found live by the first real run of verify:kb-boundary. Before this it fell through to the
+    // `enforce` default, which would arm the gate's chunk-clearing path against live content.
+    for (const key of BOUNDARY_LEGACY_DB_ONLY_KEYS) {
+      expect(boundaryModeFor(key), key).toBe("report-only");
+    }
+  });
+
+  it("⚠️ a DB-only source is INVISIBLE to this file — the real check is verify:kb-boundary", () => {
+    // Stated as a test so it is read, not buried in a comment. Every assertion above compares config
+    // against config, so a source that exists only as a database row cannot be caught here by
+    // construction. `virginia-fruit` was found by RUNNING the auditor, not by the suite, and the
+    // auditor now reports config-orphaned sources on every run so the next one is caught by a check.
+    const configKeys = new Set(KNOWLEDGE_SOURCES.map((s) => s.key));
+    expect(BOUNDARY_LEGACY_DB_ONLY_KEYS.every((k) => !configKeys.has(k))).toBe(true);
   });
 });
 
