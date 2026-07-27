@@ -71,6 +71,11 @@ export type RawDetail = {
   manager: string | null;
   /** Plan 098: NULL = "Auto" — geometry displays follow the winery's unit prefs. */
   defaultUnit: string | null;
+  /** Spray S2b Unit 1 (KD-9). Nullable and never defaulted — see field-coercion.ts. */
+  regulatoryCountry: string | null;
+  regulatoryState: string | null;
+  jurisdictionConfirmedAt: Date | null;
+  jurisdictionConfirmedBy: string | null;
 };
 
 export type SerializedDetail = {
@@ -83,6 +88,11 @@ export type SerializedDetail = {
   manager: string | null;
   /** The vineyard's EXPLICIT geometry-unit override; null = "Auto" (follow the winery). */
   defaultUnit: string | null;
+  regulatoryCountry: string | null;
+  regulatoryState: string | null;
+  /** ISO string — Decimals never cross this boundary and neither do Dates (same rule). */
+  jurisdictionConfirmedAt: string | null;
+  jurisdictionConfirmedBy: string | null;
 };
 
 export type VineyardDetailPayload = {
@@ -129,6 +139,10 @@ export function serializeDetail(row: RawDetail): SerializedDetail {
     soilType: row.soilType,
     manager: row.manager,
     defaultUnit: row.defaultUnit,
+    regulatoryCountry: row.regulatoryCountry,
+    regulatoryState: row.regulatoryState,
+    jurisdictionConfirmedAt: row.jurisdictionConfirmedAt ? row.jurisdictionConfirmedAt.toISOString() : null,
+    jurisdictionConfirmedBy: row.jurisdictionConfirmedBy,
   };
 }
 

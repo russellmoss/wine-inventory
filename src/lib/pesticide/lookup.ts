@@ -281,6 +281,59 @@ export async function lookupRegistration(opts: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Spray S2b Unit 1 — jurisdiction resolution (KD-9).
+//
+// NOT entitlement-gated: a vineyard's jurisdiction is the tenant's own farm metadata, not
+// epa-pesticide registry content, so it must resolve even when that source is off (the toggle
+// only protects the data WE ship). Classified in UNGATED_BY_DESIGN in
+// test/pesticide-boundaries.test.ts for that reason.
+//
+// Unset OR unconfirmed both resolve to null — a proposed-but-not-confirmed jurisdiction never
+// resolves (rule §3.2 / council S6). Callers treat null exactly like a jurisdiction that fails
+// `lookupRegistration`'s own country check (never a clearance path).
+// ─────────────────────────────────────────────────────────────────────────────
+
+function jurisdictionFromDetailRow(
+  detail: { regulatoryCountry: string | null; regulatoryState: string | null; jurisdictionConfirmedAt: Date | null } | null,
+): PesticideJurisdiction | null {
+  if (!detail || !detail.regulatoryCountry || !detail.jurisdictionConfirmedAt) return null;
+  return { country: detail.regulatoryCountry, state: detail.regulatoryState ?? null };
+}
+
+/** One vineyard's confirmed jurisdiction, or null if unset/unconfirmed. `VineyardDetail` is
+ * tenant-scoped, so this reads inside `runAsTenant` — await INSIDE the callback (TENANT-3): a
+ * lazy PrismaPromise evaluated after the ALS scope exits would silently read the outer tenant. */
+export async function resolveJurisdiction(tenantId: string, vineyardId: string): Promise<PesticideJurisdiction | null> {
+  const detail = await runAsTenant(tenantId, async () => {
+    return await prisma.vineyardDetail.findUnique({
+      where: { vineyardId },
+      select: { regulatoryCountry: true, regulatoryState: true, jurisdictionConfirmedAt: true },
+    });
+  });
+  return jurisdictionFromDetailRow(detail);
+}
+
+/** Batched over multiple vineyards (a spray pass may span more than one — council C3). Every id in
+ * `vineyardIds` gets an entry, `null` when that vineyard has no confirmed jurisdiction. */
+export async function resolveJurisdictionBatch(
+  tenantId: string,
+  vineyardIds: string[],
+): Promise<Record<string, PesticideJurisdiction | null>> {
+  const ids = [...new Set(vineyardIds.filter(Boolean))];
+  const out: Record<string, PesticideJurisdiction | null> = {};
+  if (ids.length === 0) return out;
+  const details = await runAsTenant(tenantId, async () => {
+    return await prisma.vineyardDetail.findMany({
+      where: { vineyardId: { in: ids } },
+      select: { vineyardId: true, regulatoryCountry: true, regulatoryState: true, jurisdictionConfirmedAt: true },
+    });
+  });
+  const byVineyard = new Map(details.map((d) => [d.vineyardId, d]));
+  for (const id of ids) out[id] = jurisdictionFromDetailRow(byVineyard.get(id) ?? null);
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Spray S2b — the batched PRODUCT-FACTS reads behind ProductFactsResolver.
 //
 // These live HERE, not in product-facts.ts, because lookup.ts is the lane's only permitted prisma

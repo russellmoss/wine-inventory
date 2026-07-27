@@ -21,6 +21,9 @@ import {
   elevationToCanonicalM,
   gpsLatToCanonical,
   gpsLngToCanonical,
+  optCountryCode,
+  optStateCode,
+  resolveJurisdictionUpdate,
 } from "@/lib/vineyard/field-coercion";
 import { serializeBlock, serializeDetail, type VineyardDetailPayload } from "@/lib/vineyard/data";
 import { normalizeToken } from "@/lib/lot/code";
@@ -138,9 +141,25 @@ export const upsertVineyardDetail = action(
     // Plan 098: "auto" persists NULL — geometry then follows the winery's display units. A legacy
     // caller that sends no unitOverride keeps the pre-098 behavior (the display unit is persisted).
     const defaultUnit = formData.get("unitOverride") === "auto" ? null : unit;
-    const data = { gpsLat, gpsLng, elevationM, soilType, manager, defaultUnit };
 
     const before = await prisma.vineyardDetail.findUnique({ where: { vineyardId } });
+
+    // S2b Unit 1 (KD-9) — a jurisdiction is never derived from GPS or defaulted; the form may only
+    // PROPOSE it, and resolveJurisdictionUpdate is what keeps an edited-but-unconfirmed value from
+    // silently reading as confirmed (council S6).
+    const submittedCountry = optCountryCode(formData.get("regulatoryCountry"));
+    const submittedState = optStateCode(formData.get("regulatoryState"));
+    const confirmChecked = formData.get("confirmJurisdiction") === "on";
+    const jurisdiction = resolveJurisdictionUpdate(
+      before,
+      { country: submittedCountry, state: submittedState },
+      confirmChecked,
+      actor.actorUserId,
+      new Date(),
+    );
+
+    const data = { gpsLat, gpsLng, elevationM, soilType, manager, defaultUnit, ...jurisdiction };
+
     await runInTenantTx(async (tx) => {
       await tx.vineyardDetail.upsert({
         where: { vineyardId },
@@ -155,6 +174,9 @@ export const upsertVineyardDetail = action(
             soilType: before.soilType,
             manager: before.manager,
             defaultUnit: before.defaultUnit,
+            regulatoryCountry: before.regulatoryCountry,
+            regulatoryState: before.regulatoryState,
+            jurisdictionConfirmedAt: before.jurisdictionConfirmedAt?.toISOString() ?? null,
           }
         : null;
       const afterForDiff = {
@@ -164,6 +186,9 @@ export const upsertVineyardDetail = action(
         soilType,
         manager,
         defaultUnit,
+        regulatoryCountry: jurisdiction.regulatoryCountry,
+        regulatoryState: jurisdiction.regulatoryState,
+        jurisdictionConfirmedAt: jurisdiction.jurisdictionConfirmedAt?.toISOString() ?? null,
       };
       await writeAudit(tx, {
         ...actor,

@@ -67,8 +67,17 @@ describe("K7 — lookup.ts is the ONLY prisma importer in the lane", () => {
   //   getPesticideFactsAsOf     — reads only revision watermarks (dates + a sha), no product facts
   //   lookupTenantProductFactsBatch — KD-4: grower-supplied data must resolve with the source toggle
   //                                   OFF, or the non-US tenant is bricked through the back door
+  //   resolveJurisdiction / resolveJurisdictionBatch — S2b Unit 1 (KD-9): jurisdiction is the
+  //                                   tenant's own vineyard metadata (VineyardDetail), not registry
+  //                                   content, so it must resolve even when epa-pesticide is off
   const GATED_READS = ["lookupRegistration", "lookupProductFactsBatch", "lookupRegistryIdentityBatch"];
-  const UNGATED_BY_DESIGN = ["isPesticideSourceEnabled", "getPesticideFactsAsOf", "lookupTenantProductFactsBatch"];
+  const UNGATED_BY_DESIGN = [
+    "isPesticideSourceEnabled",
+    "getPesticideFactsAsOf",
+    "lookupTenantProductFactsBatch",
+    "resolveJurisdiction",
+    "resolveJurisdictionBatch",
+  ];
 
   function exportedAsyncFns(src: string): string[] {
     return [...src.matchAll(/export async function (\w+)/g)].map((m) => m[1]);
