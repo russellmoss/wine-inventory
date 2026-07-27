@@ -26,17 +26,102 @@ const OVERLAP_TOKENS = 75; // ~15%
  *
  * extract/pdf.ts now caps its own title, but a cap that lives only in one caller is one new extractor
  * away from regressing. 140 sits above the 96-character average of a real HTML breadcrumb in this
- * corpus and well below the 192 that caused the problem. Truncation is on a word boundary with an
- * ellipsis so a clipped breadcrumb reads as clipped rather than as a mangled sentence.
+ * corpus and well below the 192 that caused the problem.
  */
 const MAX_BREADCRUMB_CHARS = 140;
+const CRUMB_SEP = " > ";
+const CRUMB_ELLIPSIS = "…";
 
-export function capBreadcrumb(crumb: string): string {
-  const s = crumb.trim().replace(/\s+/g, " ");
+/**
+ * Plan 099 — the cap alone was not enough, and truncating the tail was the wrong end.
+ *
+ * Cornell's 2025 Grape Guide extracts cleanly (56 real headings, confidence gate passes) yet produced
+ * only 11 distinct breadcrumbs across 77 chunks, 75 of them truncated. The document title is 68 chars
+ * and the PDF's cover title is re-emitted as an H1 saying the same thing minus the year, 63 chars —
+ * 134 of the 140 budget spent twice on one sentence, so the tail truncation ate every real heading and
+ * left `... > 3…`. The chapter number survived; the chapter name did not.
+ *
+ * Two fixes, both pure. Neither is PDF-specific: `TODOS.md` recorded the same failure on IVES HTML,
+ * where the breadcrumb carries the page <title> complete with its ` | Publisher` suffix.
+ *
+ *   1. Drop a heading that merely restates the root title. A leading year is not identity, so
+ *      "2025 X Guidelines" and "X Guidelines" are the same string for this purpose.
+ *   2. Elide from the MIDDLE, never the leaf. The leaf is the most specific segment and the one worth
+ *      embedding; the root names the publication. Keep both, drop what is between them.
+ */
+function crumbKey(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\b(?:19|20)\d{2}\b/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * True when `segment` says nothing the root title has not already said. Exact key match, or
+ * whole-string containment where the shorter side is long enough to be a title rather than a section
+ * name — without the word-count floor, a heading legitimately called "Pest" would be swallowed by a
+ * root containing "pest management".
+ */
+function restatesRoot(segment: string, root: string): boolean {
+  const a = crumbKey(segment);
+  const b = crumbKey(root);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  if (shorter.split(" ").length < 4) return false;
+  return longer.includes(shorter);
+}
+
+/** Truncate a single over-long segment on a word boundary, as plan 090 did. */
+function truncateSegment(s: string): string {
   if (s.length <= MAX_BREADCRUMB_CHARS) return s;
   const cut = s.slice(0, MAX_BREADCRUMB_CHARS);
   const lastSpace = cut.lastIndexOf(" ");
-  return `${(lastSpace > MAX_BREADCRUMB_CHARS * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+  return `${(lastSpace > MAX_BREADCRUMB_CHARS * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}${CRUMB_ELLIPSIS}`;
+}
+
+/**
+ * Join breadcrumb segments to at most MAX_BREADCRUMB_CHARS, preserving the root and the leaf and
+ * eliding the middle. Segments arrive root-first.
+ */
+export function capBreadcrumbSegments(segments: string[]): string {
+  const parts = segments.map((s) => s.trim().replace(/\s+/g, " ")).filter(Boolean);
+  if (parts.length === 0) return "";
+
+  const full = parts.join(CRUMB_SEP);
+  if (full.length <= MAX_BREADCRUMB_CHARS) return full;
+  if (parts.length === 1) return truncateSegment(parts[0]);
+
+  const root = parts[0];
+  const leaf = parts[parts.length - 1];
+
+  // Root + leaf is the floor for keeping both. If even that does not fit, the leaf wins: it is the
+  // segment that distinguishes this chunk from its siblings.
+  if (`${root}${CRUMB_SEP}${CRUMB_ELLIPSIS}${CRUMB_SEP}${leaf}`.length > MAX_BREADCRUMB_CHARS) {
+    const withEllipsis = `${CRUMB_ELLIPSIS}${CRUMB_SEP}${leaf}`;
+    return withEllipsis.length <= MAX_BREADCRUMB_CHARS ? withEllipsis : truncateSegment(leaf);
+  }
+
+  // Re-add middles closest to the leaf first — the nearer an ancestor is to the leaf, the more it
+  // narrows the meaning.
+  const middles = parts.slice(1, -1);
+  const kept: string[] = [];
+  for (let i = middles.length - 1; i >= 0; i--) {
+    const candidate = [root, ...(i > 0 ? [CRUMB_ELLIPSIS] : []), middles[i], ...kept, leaf];
+    if (candidate.join(CRUMB_SEP).length <= MAX_BREADCRUMB_CHARS) {
+      kept.unshift(middles[i]);
+    } else {
+      return [root, CRUMB_ELLIPSIS, ...kept, leaf].join(CRUMB_SEP);
+    }
+  }
+  return [root, ...kept, leaf].join(CRUMB_SEP);
+}
+
+/** Back-compat string form: split an already-joined breadcrumb and apply the same rules. */
+export function capBreadcrumb(crumb: string): string {
+  return capBreadcrumbSegments(crumb.split(CRUMB_SEP));
 }
 
 export function estimateTokens(s: string): number {
@@ -59,8 +144,13 @@ const isTableRow = (line: string) => /^\s*\|/.test(line);
 function parseSegments(markdown: string, rootTitle: string): Segment[] {
   const lines = markdown.split("\n");
   const stack: { level: number; text: string }[] = [];
+  const root = rootTitle.trim();
+  // A heading that restates the document title is dropped wherever it sits in the stack, leaf included:
+  // the root already carries that text, so nothing is lost and the budget is freed for real sections.
   const breadcrumb = () =>
-    capBreadcrumb([rootTitle.trim(), ...stack.map((h) => h.text)].filter(Boolean).join(" > "));
+    capBreadcrumbSegments(
+      [root, ...stack.map((h) => h.text).filter((h) => !restatesRoot(h, root))].filter(Boolean),
+    );
 
   const segments: Segment[] = [];
   let blocks: Block[] = [];

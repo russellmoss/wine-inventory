@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { chunkMarkdown, estimateTokens } from "@/lib/knowledge/chunk";
+import {
+  chunkMarkdown,
+  estimateTokens,
+  capBreadcrumb,
+  capBreadcrumbSegments,
+} from "@/lib/knowledge/chunk";
 
 const DOC = `# Barrel sanitation
 Hot water is the most effective and practical sanitation method for controlling Brett in oak.
@@ -57,5 +62,90 @@ describe("chunkMarkdown", () => {
 
   it("estimateTokens is chars/4", () => {
     expect(estimateTokens("a".repeat(400))).toBe(100);
+  });
+});
+
+// Plan 099. The Grape Guide extracted cleanly (56 headings, confidence gate passed) and STILL collapsed
+// to 11 distinct breadcrumbs across 77 chunks, 75 of them truncated, because the root title and the
+// PDF's cover-title H1 said the same thing twice and the cap then ate the tail.
+describe("breadcrumb de-duplication and capping", () => {
+  const GUIDE_ROOT = "2025 New York and Pennsylvania Pest Management Guidelines for Grapes";
+  const GUIDE_H1 = "New York and Pennsylvania Pest Management Guidelines for Grapes";
+
+  it("drops a heading that restates the root title, differing only by a leading year", () => {
+    const md = `# ${GUIDE_H1}\n\n## 3 Vineyard Disease Management\n\n### 3.2 Fungicide Information\n\nSterol inhibitors remain effective against powdery mildew where resistance has not developed.`;
+    const chunks = chunkMarkdown(md, GUIDE_ROOT);
+    for (const c of chunks) {
+      expect(c.sectionPath).not.toContain(`${GUIDE_ROOT} > ${GUIDE_H1}`);
+    }
+    expect(chunks.some((c) => c.sectionPath.endsWith("3.2 Fungicide Information"))).toBe(true);
+  });
+
+  it("keeps a heading that merely shares a word with the root", () => {
+    const chunks = chunkMarkdown(
+      `# Pest\n\nSome body text about a specific pest of grapevines in the region.`,
+      "2025 Pest Management Guidelines for Grapes",
+    );
+    expect(chunks.some((c) => c.sectionPath.endsWith("Pest"))).toBe(true);
+  });
+
+  it("keeps the leaf whole and elides the middle when a deep stack exceeds the cap", () => {
+    const root = "A Fairly Long Publication Title About Vineyard Pest Management Practices";
+    const crumb = capBreadcrumbSegments([
+      root,
+      "Chapter Five Pest Management Schedules For Diseases",
+      "Section Two Major Insects Of The Growing Season",
+      "5.2.9 First Postbloom Spray",
+    ]);
+    expect(crumb.length).toBeLessThanOrEqual(140);
+    expect(crumb.endsWith("5.2.9 First Postbloom Spray")).toBe(true); // leaf intact
+    expect(crumb.startsWith(root)).toBe(true); // publication still named
+    expect(crumb).toContain("…"); // and it reads as elided
+  });
+
+  it("drops the root before it will drop the leaf", () => {
+    const root = "X".repeat(130);
+    const leaf = "5.2.9 First Postbloom Spray";
+    const crumb = capBreadcrumbSegments([root, leaf]);
+    expect(crumb.length).toBeLessThanOrEqual(140);
+    expect(crumb).toBe(`… > ${leaf}`);
+  });
+
+  it("tail-truncates when the leaf alone exceeds the cap", () => {
+    const leaf = "Long ".repeat(60).trim();
+    const crumb = capBreadcrumbSegments(["Root", leaf]);
+    expect(crumb.length).toBeLessThanOrEqual(140);
+    expect(crumb.endsWith("…")).toBe(true);
+  });
+
+  it("returns an under-cap breadcrumb byte-identical (no regression for HTML sources)", () => {
+    const crumb = "Brett > Hot-water regimes > Barrel sanitation";
+    expect(capBreadcrumb(crumb)).toBe(crumb);
+    expect(capBreadcrumbSegments(["Brett", "Hot-water regimes"])).toBe("Brett > Hot-water regimes");
+  });
+
+  it("never emits a breadcrumb over the cap, across the Grape Guide heading shape", () => {
+    // mirrors the real document: cover title as H1, then numbered chapters and sub-sections
+    const md = [
+      `# ${GUIDE_H1}`,
+      "## 1 Pesticide Information",
+      "### 1.1 Pesticide Classification and Certification",
+      "Restricted use pesticides can only be purchased by a certified applicator in New York State.",
+      "### 1.1.1 Certification in New York State",
+      "Private applicators use or supervise the use of pesticides to produce agricultural commodities.",
+      "## 3 Vineyard Disease Management",
+      "### 3.2 Fungicide Information",
+      "Fungicide resistance management requires alternating FRAC groups across the season.",
+      "## 7 Sprayer Technology",
+      "### 7.3.2 Airblast Sprayer Calibration",
+      "Calibrate the airblast sprayer at the travel speed you will actually use in the vineyard.",
+    ].join("\n\n");
+    const chunks = chunkMarkdown(md, GUIDE_ROOT);
+    for (const c of chunks) expect(c.sectionPath.length).toBeLessThanOrEqual(140);
+    // the whole point: distinct, specific breadcrumbs rather than one truncated slab
+    const distinct = new Set(chunks.map((c) => c.sectionPath));
+    expect(distinct.size).toBeGreaterThan(3);
+    expect(chunks.some((c) => c.sectionPath.includes("1.1.1 Certification in New York State"))).toBe(true);
+    expect(chunks.some((c) => c.sectionPath.includes("7.3.2 Airblast Sprayer Calibration"))).toBe(true);
   });
 });

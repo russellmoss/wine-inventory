@@ -1016,6 +1016,30 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **🧵 TANGENT (2026-07-27, branch `claude/grape-guide-pdf-kb-87c8d8`) — Cornell NY/PA Grape Guide as a
+  KB source + the breadcrumb defect it exposed. Plan 099, code BUILT and green, NOT yet PR'd or crawled.**
+  Owner asked to ingest the [2025 Grape Guide preview PDF](https://cropandpestguides.cce.cornell.edu/Preview/2025/2025_Grape_Guide_Preview.pdf).
+  **Three blockers were surfaced and the owner decided to proceed anyway (2026-07-27):** plan 087 lists
+  that host as "paid. Do not crawl." (the *unreachable* half of that note is stale — it serves 200); the
+  preview is a 25-page sampler of a 166-page **paid** book spanning all 8 chapters, so pages 22-24 are
+  tier-C product × rate × REI/PHI tables; and it carries "© 2025 Cornell University. All rights reserved."
+  with no grant. Decision: ingest, **paraphrase + cite rather than reproduce, withdraw on request** — the
+  same posture `vt-enology-notes` already runs under. Posture is recorded in the source's `license` string
+  so takedown is `active:false` + `reset:knowledge-source`.
+  **The bigger half was a corpus-wide defect this forced out.** The guide extracts *cleanly* (56 headings,
+  confidence gate passes) yet collapsed to **11 distinct breadcrumbs across 77 chunks, 75 truncated** — the
+  68-char title plus a 63-char cover-title H1 ate 134 of the 140-char budget and the cap truncated the
+  *tail*, deleting every real heading. Fixed in `chunk.ts` (drop a heading restating the root; elide the
+  MIDDLE, never the leaf) → **46 distinct breadcrumbs, 19/77 elided, 0 over cap.** Closes the long-open
+  `TODOS.md` breadcrumb entry for the duplication half; the ` | <publisher>` suffix and the **HTML corpus
+  re-index remain deferred** (PDFs self-heal via `PDF_EXTRACT_VERSION` → `"2"`; HTML hashes on bare
+  `contentHash` and never will). Also corrected `scale-register.md`: the KB entry claimed 🟢 while its own
+  ~10k-chunk tripwire had been crossed at ~23.5k.
+  **Remaining (plan 099 Unit 6, strictly ordered):** capture `verify:kb-register --capture` +
+  `kb:snapshot --repeat 3` BEFORE → merge+deploy → `seed:knowledge-sources` → `crawl:curated -- cornell-grape-guide`
+  → read rows back → **numeric-fidelity spot check on the rate cells** (see the EM 8413 precedent in
+  `TODOS.md` — a live 10× dose error from a converter eating a leading `0.`) → re-measure displacement →
+  enable Demo → flip `defaultEnabled`. Ships `defaultEnabled:false`.
 - **/bulk composition-editor phantom ADJUST fixed (2026-07-26, PR #534):** `updateComponentVolume`
   targeted the lot-tuple total while the editor displayed the component PROJECTION — on a blend (Demo T5,
   2026-SY-2: 6995 L tuple vs 6370 L Syrah share) saving the untouched value drew 625 L. Now: untouched

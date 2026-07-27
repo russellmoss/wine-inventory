@@ -37,8 +37,12 @@
  *
  * "1" is the first version that carries heading inference, typographic titles, running-header removal,
  * boilerplate suppression, the confidence gate and ligature repair.
+ *
+ * "2" (plan 099) — breadcrumb output changed for every PDF whose cover title is re-emitted as an H1.
+ * The change lives in `chunk.ts`, not here, but the effect is on extraction OUTPUT for the same bytes,
+ * so this is the constant that has to move or the corpus never sees it.
  */
-export const PDF_EXTRACT_VERSION = "1";
+export const PDF_EXTRACT_VERSION = "2";
 
 export interface PdfTextItem {
   str: string;

@@ -2,44 +2,52 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
-## Chunk breadcrumbs carry the page `<title>`, site suffix and all
+## 🟡 Chunk breadcrumbs: CODE FIXED (plan 099), CORPUS PENDING a re-index
 
-**What:** every chunk's `sectionPath` is prefixed with the raw HTML `<title>`, so the embedded text
-of an IVES chunk begins:
+**Status 2026-07-27.** The duplication half of this is fixed in `src/lib/knowledge/chunk.ts`. What
+remains is (a) re-indexing the existing corpus so the fix actually reaches stored chunks, and (b) one
+smaller piece of the original defect.
+
+**What was wrong:** every chunk's `sectionPath` began with the document title, then repeated it as the
+first heading. On IVES HTML the title arrived with the publisher's site suffix and literal tabs:
 
 ```
 Understanding Esca: watch out for the grafting type!
 			| IVES Technical Reviews, vine and wine > Understanding Esca: watch out for the grafting type! …
 ```
 
-The article title appears **twice**, once with the publisher's site suffix and literal tabs/newlines.
-That string is part of what gets embedded and part of what the assistant sees, on every chunk.
+Plan 099 found the same failure on PDFs, and measured it: Cornell's Grape Guide extracted cleanly
+(56 real headings, confidence gate passed) and still produced **11 distinct breadcrumbs across 77
+chunks, 75 of them truncated**, because the 68-char title plus the 63-char cover-title H1 consumed 134
+of the 140-char budget and the cap then truncated the *tail* — deleting every real heading and leaving
+`… > 3…`.
 
-**Why it matters:** `sectionPath` is not cosmetic — it is concatenated into the chunk text before
-embedding, so the noise is inside the vector. At ~14 chunks/article it is a few hundred characters of
-repeated boilerplate per chunk. It also lands in the citation UI. Related in kind to the known
-breadcrumb defect where headingless PDFs take a page-one slab as their breadcrumb.
+**What is fixed:** `crumbKey` / `restatesRoot` drop a heading that restates the root title (a leading
+year is not identity, so "2025 X Guidelines" and "X Guidelines" are one string); segment whitespace is
+collapsed, which kills the literal tabs; and `capBreadcrumbSegments` now elides from the **middle**,
+keeping the root and the leaf, because the leaf is the segment worth embedding.
 
-**Why it was NOT fixed with IVES (PR #465):** chunking runs inside `indexDocument`, *before* the
-crawl script re-applies the feed's clean `dc:title`. Fixing it there would mean either reordering the
-index pipeline or special-casing one source — and this is **generic behaviour affecting all 24
-sources**, not an IVES quirk. Patching around it in `crawl-ives.ts` would have been the wrong layer
-and would have hidden the general problem behind one source looking fine.
+**What is NOT fixed — the ` | <publisher>` suffix.** The root title still carries it (once now, not
+twice). It cannot be stripped safely in `chunk.ts`: that layer does not know the source's publisher, so
+any rule would be a guess against titles that legitimately contain `|` or `–`. Doing it properly means
+normalising the title where the publisher IS known — `index-documents.ts` `buildDocumentMetadata`, or
+the extractors.
 
-**Shape of the fix (unverified):** normalise the title before it becomes a breadcrumb — collapse
-whitespace, strip a trailing ` | <publisher>` / ` - <publisher>` suffix, and drop the leading title
-segment when it merely repeats the first heading. Pure and unit-testable.
+**⚠️ The corpus still holds the old breadcrumbs.** Fixing the code does not fix stored chunks — the
+breadcrumb is baked into chunk text and its vector, and `indexDocument` early-returns on an unchanged
+index hash. **PDFs will heal**: `PDF_EXTRACT_VERSION` went to `"2"`, which `deriveIndexHash` folds in,
+so ~893 PDF documents re-extract on their next crawl. **HTML will not**: an HTML doc with no section
+filter hashes on the bare `contentHash`, so nothing forces it. Those chunks keep the old breadcrumbs
+indefinitely.
 
-**⚠️ Re-embedding required.** The breadcrumb is baked into stored chunk text and its vector, so
-fixing the code does **not** fix the corpus — the same trap as the `vessel_component` incremental
-fold. Existing chunks need `reset:knowledge-source` + a re-crawl per source, or they keep the old
-breadcrumbs forever (`indexDocument` early-returns on an unchanged content hash).
+**Tripwire / what closing this looks like:** `npm run reindex:knowledge -- --sources=<keys>` across the
+HTML sources, or `reset:knowledge-source` + re-crawl per source. Cost is the reason it is deferred:
+~23.5k chunks re-embedded through Voyage. Do it as its own deliberate campaign, and **capture
+`verify:kb-register` and `kb:snapshot --repeat 3` baselines before and after together** — this changes
+embedded text corpus-wide, so it can move retrieval. Do not fold it into an unrelated PR.
 
-**Measure before and after:** `npm run verify:kb-register` against
-`docs/kb-register-baseline.json` — this changes embedded text corpus-wide, so it can move retrieval.
-
-**Where:** `src/lib/knowledge/chunk.ts`, `src/lib/knowledge/index-documents.ts`,
-`src/lib/knowledge/extract/`.
+**Where:** `src/lib/knowledge/chunk.ts` (fixed), `src/lib/knowledge/index-documents.ts` (publisher
+suffix), `src/lib/knowledge/extract/pdf-structure.ts` (`PDF_EXTRACT_VERSION`).
 
 ## Knowledge-corpus prompt-injection posture (all 17 sources, pre-existing)
 
