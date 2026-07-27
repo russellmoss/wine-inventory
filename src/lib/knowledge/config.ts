@@ -891,6 +891,162 @@ export const KNOWLEDGE_SOURCES: KnowledgeSourceConfig[] = [
     //     and the corpus has no region dimension) did not reproduce.
     defaultEnabled: true,
   },
+  {
+    key: "extension-psu",
+    publisher: "Penn State Extension",
+    homeDomain: "extension.psu.edu",
+    tier: 1,
+    // SKB Unit 6. robots '*': Allow: / at Crawl-delay 10; disallows are Magento plumbing (/admin/,
+    // /checkout/, /catalog/) plus facet query params and /*.php$ - none of which our allowPaths
+    // admits anyway. No named AI-crawler rules in robots, no Content-Signal, no /.well-known/ai.txt.
+    // BUT our UA (CellarhandKnowledgeBot) gets 403 where ClaudeBot/GPTBot also get 403 and
+    // CCBot/Googlebot/curl/Chrome get 200 - an undeclared edge block on named AI crawlers that
+    // robots.txt itself does not ask for. Council-reconciled decision (D7, Russell 2026-07-26):
+    // crawl anyway - the DECLARED policy (robots) permits our UA, and the posture is recorded here
+    // verbatim rather than silently overridden.
+    license:
+      "Penn State Extension content, (c) The Pennsylvania State University - all rights reserved, " +
+      "no blanket reuse grant (permission is per-page via psu.edu/copyright-information); reference " +
+      "use with citation + link back. robots '*' Allow: / at Crawl-delay 10, no named AI-crawler " +
+      "rules - but ClaudeBot and GPTBot specifically get 403 at the edge while our own UA, CCBot, " +
+      "Googlebot and curl all get 200 (an undeclared block, not a robots disallow).",
+    // WHY: PSU is the only tier-1 eastern grape source at this content depth besides Cornell and the
+    // orphaned virginia-fruit entry (see extension-virginia-fruit below). Curated by hand from a live
+    // dry-run of the hub's own 94-item paginated listing (2026-07-27), not a keyword match over the
+    // sitemap - the hub mixes viticulture/IPM content with enology, tasting-room and market-trend
+    // articles PSU also files under "grape-and-wine-production", none of which are this source's
+    // mandate (already covered by vt-enology-notes/awri/wsu/scott-labs, or simply out of scope).
+    //
+    // TWO KNOWN TIER-C PAGES ARE DELIBERATELY EXCLUDED (SKB S2, D1): "fundamental-considerations-
+    // for-managing-fungal-diseases-of-grapevines" embeds a ~40-row trade-name x disease matrix, and
+    // "home-fruit-gardens-table-6-5-efficacy-of-pesticides-for-grape-disease-control" is a generic
+    // efficacy table. Neither is on the allowPaths list below, so admission refuses them by omission;
+    // both are ALSO named in denyPrefixes as an explicit, auditable record of the exclusion.
+    seedRoots: [
+      "https://extension.psu.edu/food-safety-and-quality/grape-and-wine-production/see-all-grape-and-wine-production/",
+    ],
+    // The robots-DECLARED sitemap. /sitemap.xml and /sitemap_index.xml both 200 with
+    // content-type: image/png (soft-404s) - a naive check would accept either.
+    sitemapUrls: ["https://extension.psu.edu/sitemap/sitemap.xml"],
+    allowPrefixes: ["/food-safety-and-quality/grape-and-wine-production/"],
+    // SKB Unit 5's allowPaths primitive exists for exactly this source: PSU articles live at FLAT
+    // ROOT SLUGS with no grape namespace ("/grape-disease-black-rot"), and "/powdery-mildew",
+    // "/downy-mildew", "/black-rot-and-frogeye-leaf-spot" at the identical URL shape are the
+    // ORNAMENTAL/tree-fruit articles - a prefix gate cannot separate them. None of those three
+    // collision slugs appear in this list; they were checked against the live hub listing, not
+    // guessed. Hand-reviewed from the hub's real title+link pairs (2026-07-27), grouped by topic.
+    allowPaths: [
+      // disease / pest biology
+      "/grape-disease-black-rot",
+      "/grape-disease-downy-mildew",
+      "/grape-sour-rot",
+      "/spotted-lanternfly-management-in-vineyards",
+      "/spotted-lanternfly-in-vineyards",
+      "/review-of-spotted-lanternfly-updates-and-findings-in-vineyards",
+      "/spotted-lanternfly-research-updates-and-panel-discussion",
+      "/new-quiz-available-test-your-knowledge-of-the-spotted-lanternfly",
+      "/spotted-lanternfly-link",
+      "/field-guide-to-vineyard-herbicide-drift",
+      "/a-review-of-survey-results-regarding-auxin-herbicides-and-vineyard-damage-grape-grower-feedback",
+      "/understanding-and-preventing-spring-frost-and-freeze-damage-to-grapes",
+      "/introducing-a-grower-friendly-tool-for-assessing-grapevine-cold-damage-risk",
+      "/vineyard-disease-management-expert-forum-discussion",
+      "/the-future-of-grapevine-disease-management",
+      "/academic-and-industry-perspectives-on-biofungicide-use-in-vineyards",
+      "/optimizing-vineyard-spray-programs-insights-from-frame-networks-project",
+      // canopy / training / pruning cultural practice
+      "/dormant-cane-and-spur-pruning-in-bunch-grape-vineyards",
+      "/grapevine-cane-and-spur-pruning-fundamentals",
+      "/a-stepwise-guide-to-dormant-pruning-and-training-young-grapevines",
+      "/shoot-thinning-considerations-in-bunch-grape-vineyards",
+      "/early-season-grapevine-canopy-management-shoot-thinning",
+      "/early-season-grapevine-canopy-management-part-ii-early-leaf-removal-elr",
+      "/grapevine-fruit-zone-leaf-removal",
+      "/mechanized-grapevine-fruit-zone-leaf-removal",
+      "/a-brief-review-of-fruit-zone-management-principles",
+      "/watson-training-system-for-bunch-wine-grapes",
+      // nutrition / tissue sampling
+      "/a-general-review-of-applied-grapevine-nutrition-principles",
+      "/advancements-in-grapevine-nutrition",
+      "/assessing-and-managing-potassium-concentration-in-the-vineyard",
+      "/the-fundamentals-of-grapevine-tissue-sampling-for-nutrient-analysis",
+      // planting material / cultivars / floor & nutrient management panels
+      "/clean-grapevine-production-and-grapevine-certification",
+      "/cultivars-in-the-commonwealth",
+      "/veraison-to-harvest-vineyard-and-winery-considerations",
+      "/timely-topics-and-management-issues-in-vineyards",
+      "/vineyard-floor-and-weed-management-expert-forum-discussion",
+      "/vineyard-nutrient-management-expert-forum-discussion",
+      // dated eastern seasonal monitoring - the "why is pressure high this week" content the
+      // program's own problem frame opens with
+      "/2025-post-veraison-in-pennsylvania-october-14",
+      "/2025-post-veraison-in-pennsylvania-october-21",
+      "/2025-post-veraison-in-pennsylvania-october-7",
+      "/2025-post-veraison-in-pennsylvania-september-16",
+      "/2025-post-veraison-in-pennsylvania-september-2",
+      "/2025-post-veraison-in-pennsylvania-september-23",
+      "/2025-post-veraison-in-pennsylvania-september-30",
+      "/2025-post-veraison-in-pennsylvania-september-9",
+    ],
+    denyPrefixes: [
+      // the two known tier-C pages (D1) - excluded by omission above; named here too as an
+      // explicit, auditable record rather than relying on the allowlist alone.
+      "/fundamental-considerations-for-managing-fungal-diseases-of-grapevines",
+      "/home-fruit-gardens-table-6-5-efficacy-of-pesticides-for-grape-disease-control",
+      // Magento housekeeping the robots.txt disallows
+      "/admin/",
+      "/checkout/",
+      "/catalog/",
+    ],
+    autoCrawl: true,
+    crawlCadence: "monthly",
+    // Staged rollout (SKB gate): dark on landing. Crawl -> verify:kb-boundary -> verify:kb-register
+    // -> enable for Demo only -> re-measure (incl. Unit 9's cross-region cases) -> flip only if all
+    // three signals clear.
+    defaultEnabled: false,
+  },
+  {
+    key: "virginia-fruit",
+    publisher: "Virginia Tech - Virginia Fruit (Mid-Atlantic Grape IPM)",
+    homeDomain: "virginiafruit.ento.vt.edu",
+    tier: 1,
+    // SKB Unit 7. This is a RECONCILIATION, not a fresh add - build found this exact source already
+    // live in the DB (69 documents, 260 chunks, defaultEnabled: true) with NO config entry at all,
+    // seeded from a branch that never merged (see the partitionSeededSources comment above and
+    // BOUNDARY_LEGACY_DB_ONLY_KEYS in boundary/enforcing.ts). Its prior ad-hoc config had
+    // allowPrefixes: ["/"] - the WHOLE host, including /SprayGuide/'s tier-C rate tables. This entry
+    // replaces that with the scope the SKB plan actually specifies for this source.
+    // robots '*': disallows only Dreamweaver internals (/_mm/, /_notes/, /_baks/, /MMWIP/). No
+    // crawl-delay, no named AI-crawler rules. Static host (AmazonS3), no WAF observed.
+    license:
+      "No licence statement of any kind observed on this host - no copyright notice, no VCE " +
+      "public-use grant, no disclaimer. Weaker posture than pubs.ext.vt.edu (which DOES carry the " +
+      "VCE grant) or enology.fst.vt.edu (which asserts copyright with no licence); do not import " +
+      "either onto this host. Reference use with citation + link back, resting on the absence of " +
+      "any restriction rather than an affirmative grant.",
+    seedRoots: ["https://www.virginiafruit.ento.vt.edu/grape-fruit-ipm.html"],
+    // No sitemap exists (404) - discovery is a hub crawl, so --follow is mandatory.
+    allowPrefixes: ["/"],
+    denyPrefixes: [
+      "/_mm/",
+      "/_notes/",
+      "/_baks/",
+      "/MMWIP/",
+      // tier C (D1): GrapeSprays.html and GrapePestEfficacy.html are product/rate tables, not the
+      // pest-biology prose this source exists for.
+      "/SprayGuide/",
+    ],
+    // Per-page Last-Modified (GBM.html: Tue, 03 Mar 2026; hub: Mon, 18 May 2026) makes conditional
+    // GET and a real publishedAt both work here - the monthly sweep is genuinely useful on this host
+    // in a way it is not for PSU (which has no Last-Modified header at all).
+    autoCrawl: true,
+    crawlCadence: "monthly",
+    // Already live and defaultEnabled at the DB level before this config existed. Reconciling the
+    // config does not re-stage the rollout - Unit 8/9's measurement still runs (this phase's
+    // baseline + register gates apply to it same as PSU), but the flip decision is not re-litigated
+    // for content that has been serving every tenant for a week already.
+    defaultEnabled: true,
+  },
 ];
 
 // Domains the crawler may follow links INTO (allowlist-gated cross-domain following). A link to a domain
@@ -986,6 +1142,12 @@ export const TRUSTED_DOMAINS: { domain: string; sourceKey?: string }[] = [
   // keep the crawl on grapes — not the host gate.
   { domain: "pnwhandbooks.org", sourceKey: "pnw-handbooks" },
   { domain: "www.pnwhandbooks.org", sourceKey: "pnw-handbooks" },
+  // Penn State Extension (SKB Unit 6) - scoped by allowPaths (flat-slug articles), not by host.
+  { domain: "extension.psu.edu", sourceKey: "extension-psu" },
+  // Virginia Tech grape IPM (SKB Unit 7, reconciling the already-live virginia-fruit source).
+  // Static AmazonS3 host serves both forms; homeDomain is the apex, www is the form seedRoots uses.
+  { domain: "virginiafruit.ento.vt.edu", sourceKey: "virginia-fruit" },
+  { domain: "www.virginiafruit.ento.vt.edu", sourceKey: "virginia-fruit" },
 ];
 
 /**

@@ -9,6 +9,7 @@ import {
 import { CURATED_SPECS, findCuratedSpec } from "@/lib/knowledge/curated-specs";
 import { pathAllowed as crawlerPathAllowed } from "@/lib/knowledge/crawl/crawler";
 import { expandQueryTerms } from "@/lib/knowledge/synonyms";
+import { boundaryModeFor } from "@/lib/knowledge/boundary/enforcing";
 
 describe("knowledge source config", () => {
   it("has AWRI and Wine Australia as tier-1 sources", () => {
@@ -538,8 +539,8 @@ describe("Cornell NY/PA Grape Guide preview source (plan 099)", () => {
 // is in. So the sweep has to tolerate a row it does not recognise.
 describe("partitionSeededSources — the sweep must fail CLOSED on an unknown key", () => {
   it("routes an unknown key to `unknown`, never to `auto`", () => {
-    const got = partitionSeededSources([{ key: "virginia-fruit" }]);
-    expect(got.unknown).toEqual(["virginia-fruit"]);
+    const got = partitionSeededSources([{ key: "not-a-real-source-either" }]);
+    expect(got.unknown).toEqual(["not-a-real-source-either"]);
     expect(got.auto).toEqual([]);
     expect(got.curated).toEqual([]);
   });
@@ -575,5 +576,130 @@ describe("partitionSeededSources — the sweep must fail CLOSED on an unknown ke
 
   it("handles an empty set", () => {
     expect(partitionSeededSources([])).toEqual({ auto: [], curated: [], unknown: [] });
+  });
+});
+
+// SKB Unit 6. Flat-slug source: PSU articles have no grape namespace, so allowPaths (not
+// allowPrefixes) is the actual admission gate for individual articles.
+describe("Penn State Extension source (SKB Unit 6)", () => {
+  const psu = () => findSourceConfig("extension-psu")!;
+  const admitted = (path: string) => crawlerPathAllowed(psu(), `https://extension.psu.edu${path}`);
+
+  it("resolves and is a tier-1 extension source", () => {
+    expect(psu()).toBeTruthy();
+    expect(psu().tier).toBe(1);
+    expect(psu().homeDomain).toBe("extension.psu.edu");
+  });
+
+  it("license records the undeclared edge block AND the all-rights-reserved posture", () => {
+    const license = psu().license.toLowerCase();
+    expect(license).toContain("all rights reserved");
+    expect(license).toContain("claudebot");
+    expect(license).toContain("gptbot");
+  });
+
+  it("is dark on landing — staged rollout, not an immediate flip", () => {
+    expect(psu().defaultEnabled).toBe(false);
+  });
+
+  it("stays on the monthly sweep", () => {
+    expect(psu().autoCrawl).not.toBe(false);
+  });
+
+  it("sitemapUrls is exactly the robots-declared path, never /sitemap_index.xml", () => {
+    // /sitemap.xml and /sitemap_index.xml both 200 with content-type: image/png on this host — a
+    // soft-404 a naive check would accept.
+    expect(psu().sitemapUrls).toEqual(["https://extension.psu.edu/sitemap/sitemap.xml"]);
+  });
+
+  it("declares no bare '/' allow prefix", () => {
+    expect(psu().allowPrefixes).not.toContain("/");
+  });
+
+  it("refuses the two known tier-C pages", () => {
+    for (const path of [
+      "/fundamental-considerations-for-managing-fungal-diseases-of-grapevines",
+      "/home-fruit-gardens-table-6-5-efficacy-of-pesticides-for-grape-disease-control",
+    ]) {
+      expect(admitted(path), path).toBe(false);
+    }
+  });
+
+  it("refuses the ornamental/tree-fruit namespace collisions", () => {
+    // Identical URL shape to the real grape articles on this host; none of these three are on the
+    // allowPaths list, so they are refused by omission — asserted explicitly so a future edit that
+    // widens allowPrefixes cannot accidentally admit them.
+    for (const path of ["/powdery-mildew", "/downy-mildew", "/black-rot-and-frogeye-leaf-spot"]) {
+      expect(admitted(path), path).toBe(false);
+    }
+  });
+
+  it("admits a real grape article, slashed and unslashed", () => {
+    expect(admitted("/grape-disease-black-rot")).toBe(true);
+    expect(admitted("/grape-disease-black-rot/")).toBe(true);
+  });
+
+  it("admits the dated eastern seasonal monitoring posts", () => {
+    expect(admitted("/2025-post-veraison-in-pennsylvania-september-9")).toBe(true);
+  });
+
+  it("allowlists the host", () => {
+    expect(TRUSTED_DOMAIN_SET.has("extension.psu.edu")).toBe(true);
+  });
+
+  it("does not declare a sectionFilter — PSU's tier-C pages are excluded by omission, not filtered", () => {
+    expect(psu().sectionFilter).toBeUndefined();
+  });
+});
+
+// SKB Unit 7. A RECONCILIATION, not a fresh add: this exact source was already live in the DB
+// (69 documents, 260 chunks, defaultEnabled: true) with no config entry at all before this landed.
+describe("Virginia Tech grape IPM source (SKB Unit 7, reconciling virginia-fruit)", () => {
+  const vf = () => findSourceConfig("virginia-fruit")!;
+  const admitted = (path: string) => crawlerPathAllowed(vf(), `https://virginiafruit.ento.vt.edu${path}`);
+
+  it("resolves and is a tier-1 extension source", () => {
+    expect(vf()).toBeTruthy();
+    expect(vf().tier).toBe(1);
+    expect(vf().homeDomain).toBe("virginiafruit.ento.vt.edu");
+  });
+
+  it("is report-only via the plain pre-SKB census, not the enforce default", () => {
+    expect(boundaryModeFor("virginia-fruit")).toBe("report-only");
+  });
+
+  it("was already live before this reconciliation — defaultEnabled stays true, not re-staged", () => {
+    expect(vf().defaultEnabled).toBe(true);
+  });
+
+  it("license records the absence of any statement, and does not import pubs.ext.vt.edu's grant", () => {
+    const license = vf().license.toLowerCase();
+    expect(license).toContain("no licence statement");
+    expect(license).not.toContain("public use");
+  });
+
+  it("refuses /SprayGuide/ — tier C, not the pest-biology prose this source exists for", () => {
+    expect(admitted("/SprayGuide/GrapeSprays.html")).toBe(false);
+    expect(admitted("/SprayGuide/GrapePestEfficacy.html")).toBe(false);
+  });
+
+  it("admits a real pest-biology page", () => {
+    expect(admitted("/GBM.html")).toBe(true);
+  });
+
+  it("refuses the Dreamweaver internals robots.txt disallows", () => {
+    for (const path of ["/_mm/foo", "/_notes/bar", "/_baks/baz", "/MMWIP/qux"]) {
+      expect(admitted(path), path).toBe(false);
+    }
+  });
+
+  it("allowlists both the apex and www — the host serves both forms", () => {
+    expect(TRUSTED_DOMAIN_SET.has("virginiafruit.ento.vt.edu")).toBe(true);
+    expect(TRUSTED_DOMAIN_SET.has("www.virginiafruit.ento.vt.edu")).toBe(true);
+  });
+
+  it("has no sitemap, so seedRoots + --follow is the only discovery path", () => {
+    expect(vf().sitemapUrls).toBeUndefined();
+    expect(vf().seedRoots).toEqual(["https://www.virginiafruit.ento.vt.edu/grape-fruit-ipm.html"]);
   });
 });
