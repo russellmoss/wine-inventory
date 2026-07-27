@@ -4,6 +4,17 @@ import { prisma } from "@/lib/prisma";
 import { COST_SETTINGS_DEFAULTS, type CostSettings } from "@/lib/cost/policy";
 import { coerceCurrency, type CurrencyCode } from "@/lib/money/currency";
 import { isRealTimeZone } from "@/lib/work-orders/due-at";
+import { resolveUnitPrefs, type UnitPrefs, type UnitPrefsRow } from "@/lib/units/display";
+
+const UNIT_PREF_COLUMNS = {
+  unitSystem: true,
+  unitTemperature: true,
+  unitPrecipitation: true,
+  unitVolume: true,
+  unitArea: true,
+  unitLength: true,
+  unitWeight: true,
+} as const;
 
 // Phase 12 (K10): per-org winery settings — one row per tenant. findFirst is tenant-scoped by the
 // active tenant context (RLS + the Prisma extension), so it returns the calling org's row (default
@@ -69,6 +80,27 @@ export async function getWineryTimeZone(): Promise<string | null> {
   const s = await prisma.appSettings.findFirst({ select: { timeZone: true } });
   // A value that somehow got in without passing the write-side gate must not break a page render.
   return isRealTimeZone(s?.timeZone) ? s!.timeZone : null;
+}
+
+/**
+ * Plan 098: the tenant's RESOLVED display-unit preferences. Never null — an unconfigured (or
+ * junk-valued) row resolves to metric, which is exactly today's behavior. `resolveUnitPrefs` is
+ * the only reader of the raw columns (read-side permissive, like `isRealTimeZone` above); pair
+ * writes with `setUnitPrefs`, which validates strictly.
+ */
+export async function getUnitPrefs(): Promise<UnitPrefs> {
+  const s = await prisma.appSettings.findFirst({ select: UNIT_PREF_COLUMNS });
+  return resolveUnitPrefs(s);
+}
+
+/**
+ * Plan 098: the RAW stored unit columns (nulls preserved), for the settings card only — it must
+ * render "follows the master" for a NULL dimension, which the resolved shape can't express.
+ * Every display surface wants `getUnitPrefs()` instead.
+ */
+export async function getUnitPrefsRaw(): Promise<UnitPrefsRow> {
+  const s = await prisma.appSettings.findFirst({ select: UNIT_PREF_COLUMNS });
+  return s ?? {};
 }
 
 /** Plan 077: per-tenant opt-in — eagerly create a QBO vendor when one is created in Cellarhand (default off;

@@ -16,7 +16,6 @@ import { mapSeriesToLocalDaily, type LocalDailyRecord } from "./obs-time-core";
 import { selectPrimaryCore, type PrimaryCandidate } from "./source-selection-core";
 import { recordWeatherUsage } from "./usage-core";
 import { coverageStateFor, providersForLocation } from "./providers/registry";
-import { defaultUnitSystemFor } from "./us-coverage";
 import { fetchSiteElevationM } from "./providers/open-meteo-elevation";
 import { fetchAcisStationSeries, type AcisStation } from "./providers/rcc-acis";
 import { ProviderFetchError, type ClimateProvider, type ProviderKey, type ProviderSeries } from "./providers/types";
@@ -175,10 +174,11 @@ export async function ingestVineyardWeatherCore(input: IngestInput, deps: Ingest
         stationDistanceM,
         siteElevationM,
         coverageState,
-        // Display default at FIRST config creation only (plan 096 U3, council S2): US forecast
-        // coverage (CONUS+AK+HI+territories — not the CONUS-only coverageState) → IMPERIAL.
-        // Never set on update — the grower's toggle owns it after creation.
-        unitSystem: defaultUnitSystemFor(input.lat, input.lon),
+        // Plan 098: a NEW config starts on "Auto" (NULL) — the read chain resolves
+        // grower override → winery display units → the geo default at this point, so the
+        // pre-098 geo behavior (plan 096 U3 council S2: US forecast coverage → IMPERIAL) is
+        // unchanged for an unconfigured winery, and a configured winery isn't shadowed by a
+        // seeded value the grower never chose. The toggle owns the column after creation.
         attribution: [...new Set(succeeded.map((s) => s.series.attribution))].join(" · "),
         lastRefreshAt: now,
       },

@@ -4,7 +4,8 @@ import React from "react";
 import Link from "next/link";
 import { Badge, Button, LocalTime } from "@/components/ui";
 import type { TimelineItem, OpItem, TimelineLeg } from "@/lib/lot/timeline";
-import { formatL } from "@/lib/lot/timeline";
+import { formatVolume, type VolumeUnit } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import {
   TIMELINE_FILTERS,
   type TimelineBucket,
@@ -54,16 +55,17 @@ function chipTone(item: TimelineItem): Tone {
   }
 }
 
-function signed(leg: TimelineLeg): string {
+function signed(leg: TimelineLeg, vol: VolumeUnit): string {
   const sign = leg.deltaL >= 0 ? "+" : "−";
-  return `${sign}${formatL(Math.abs(leg.deltaL))} L`;
+  return `${sign}${formatVolume(Math.abs(leg.deltaL), vol)}`;
 }
 
 // A compact leg line inside a row. Not itself a link (the row is the button); a "view lot"/vessel
 // affordance lives on the meta line so it doesn't nest interactive elements inside the row button.
 function LegLine({ leg }: { leg: TimelineLeg }) {
+  const volUnit = useUnitPrefs().volume;
   const vol = (
-    <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--text-secondary)" }}>{signed(leg)}</span>
+    <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--text-secondary)" }}>{signed(leg, volUnit)}</span>
   );
   if (leg.isExternal) {
     return (

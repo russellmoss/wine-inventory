@@ -135,7 +135,10 @@ export const upsertVineyardDetail = action(
     const soilType = optStr(formData.get("soilType"), 120);
     const manager = optStr(formData.get("manager"), 120);
 
-    const data = { gpsLat, gpsLng, elevationM, soilType, manager, defaultUnit: unit };
+    // Plan 098: "auto" persists NULL — geometry then follows the winery's display units. A legacy
+    // caller that sends no unitOverride keeps the pre-098 behavior (the display unit is persisted).
+    const defaultUnit = formData.get("unitOverride") === "auto" ? null : unit;
+    const data = { gpsLat, gpsLng, elevationM, soilType, manager, defaultUnit };
 
     const before = await prisma.vineyardDetail.findUnique({ where: { vineyardId } });
     await runInTenantTx(async (tx) => {
@@ -160,7 +163,7 @@ export const upsertVineyardDetail = action(
         elevationM: elevationM?.toString() ?? null,
         soilType,
         manager,
-        defaultUnit: unit,
+        defaultUnit,
       };
       await writeAudit(tx, {
         ...actor,

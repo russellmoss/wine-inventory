@@ -218,6 +218,22 @@ export const ASSISTANT_READ_GOLDEN: ReadGoldenCase[] = [
     args: { vineyard: "Paro" },
     note: "plan 097 — hourly crossingTimes (vineyard-local hours) answer WHEN, not just whether; R11: no hourly rows → an honest note",
   },
+  // Plan 098 — tenant display units. The payload's `display` strings arrive pre-formatted in the
+  // vineyard's RESOLVED system (config override → winery prefs → geo); the model uses them verbatim.
+  // The imperial-tenant and auto-inherit payload behavior is pinned deterministically in
+  // test/assistant-climate-display.test.ts (this harness asserts tool selection, not payload shape).
+  {
+    utterance: "What's the forecast for Willamette Valley this week?",
+    tool: "query_climate",
+    args: { vineyard: "Willamette Valley" },
+    note: "plan 098 imperial-tenant case — a US winery's reply must read in °F/inches from the display strings, never a °C number restated",
+  },
+  {
+    utterance: "How hot will it get at Home Ranch tomorrow?",
+    tool: "query_climate",
+    args: { vineyard: "Home Ranch" },
+    note: "plan 098 auto-inherit case — a vineyard with no unit override follows the winery's display units through the chain",
+  },
   // VI-P3 — NDVI date COMPARISON (change over time). Distinct from a single-date read (query_ndvi_stats).
   {
     utterance: "How has the NDVI changed in Estate Vineyard since last month?",

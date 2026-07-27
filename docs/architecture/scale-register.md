@@ -270,3 +270,25 @@ TEMPLATE — copy this block for each new decision:
 - **Tripwire:** peak RSS above **400 MB** at realistic scale, OR any estate whose raster exceeds ~2M pixels. Either means the next step is streaming the raster in tiles rather than holding it whole — and the pure math modules move unchanged, which is why rule 2.4 exists.
 - **Also measured, in a real browser (Unit 13):** the raster -> RGBA -> canvas -> Leaflet paint blocks the main thread for **151 ms** at estate scale and **2098 ms** at 500 ha. Running it in a browser rather than jsdom found a 6x bug (a per-pixel array allocation in the palette lookup, now a LUT). At 500 ha, ~60% of the block is `percentileDomain` allocating one object per sample - a typed-array quantile path is the cheapest fix, and moving the transform to a Web Worker is the next one, which the pure modules already permit.
 - **Status:** 🟢 fine for now (measured 2026-07-24; `npm run verify:gis-measure` re-runs the sweep, `docs/GIS/phases/p0-render.md` records the paint)
+
+### Tenant display-unit preferences resolve per request, with ONE pure display authority (plan 098)
+- **Choice:** unit preferences live as seven nullable TEXT columns on `AppSettings` (master system +
+  per-dimension overrides), resolved by ONE pure resolver (`resolveUnitPrefs`, src/lib/units/display.ts —
+  the app-wide conversion/formatting authority; weather/units-core and phenology/units are shims). Reads
+  are per-request server-side (layout → `UnitsProvider` context; assistant route → `runAssistant` opt so
+  the loop stays DB-free), never cached (K12-safe). Per-vineyard weather/geometry columns became nullable
+  OVERRIDES; a one-shot audited hoist-if-uniform migrated the uniform tenant (Demo) to a master and
+  preserved every disagreeing value (Bhutan). Canonical storage stays metric; dosing rates, TTB gallons,
+  spray-legal, audit prose never convert. Weather family follows the coarse MASTER; non-weather
+  temperature/precip surfaces follow their dimension (documented grain split).
+- **Fine until:** always — the resolver is O(1) over one 7-column row; the layout already batched a
+  settings read, so this added one `findFirst` per app-shell render and one per assistant turn.
+- **What breaks at scale:** nothing structural; the only drift risk is a NEW display surface hardcoding a
+  unit instead of routing through display.ts (the U8 sweep's grep gate is the review-time defense), or an
+  entry path accepting a non-default unit without converting at the push boundary (the ferment °F lesson —
+  the analyte registry validates but does NOT normalize at write).
+- **Tripwire:** any inline `× 1.8`, `/ 25.4`, `× 3.785` outside src/lib/units/display.ts; a reader of
+  AppSettings unit columns other than resolveUnitPrefs; a `runAssistant` caller doing a settings read
+  inside the loop.
+- **Status:** 🟢 (shipped plan 098; 4,654-test suite + goldens pin the resolver contract and the
+  imperial-tenant assistant payload; live-QAed on Demo Winery).

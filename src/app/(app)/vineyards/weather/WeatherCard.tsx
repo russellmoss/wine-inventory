@@ -9,7 +9,8 @@ import { useRouter } from "next/navigation";
 import type { ClimateSummary } from "@/lib/weather/read-core";
 import { coverageLabel, providerLabel, trustLabel } from "@/lib/weather/card-core";
 import { backfillVineyardWeatherHistory, listNearbyStations, refreshVineyardWeatherCurrentSeason, setVineyardPrimarySource, setVineyardStation, setVineyardUnitSystem, type StationOption } from "@/lib/weather/actions";
-import { formatGdd, formatPrecip, formatTemp, gddCToF, gddFToC, type UnitSystem } from "@/lib/weather/units-core";
+import { formatGdd, formatPrecip, formatTemp, gddFToC, type UnitSystem } from "@/lib/weather/units-core";
+import { formatDistance, formatLength } from "@/lib/units/display";
 import { StationMapClient } from "./StationMap.client";
 import { GddChart } from "./GddChart";
 import { RainfallSectionClient } from "./RainfallSection.client";
@@ -147,11 +148,13 @@ export function WeatherCard({
   }
 
   const h = summary?.headline;
-  // Display units (plan 096 U3) — every number below renders through units-core with this.
+  // Display units (plan 096 U3 / plan 098) — the RESOLVED system; every number renders through it.
   const unit: UnitSystem = summary?.unitSystem ?? "METRIC";
+  // The vineyard's explicit override; null = Auto (winery display units → geo default).
+  const unitOverride: UnitSystem | null = summary?.unitSystemOverride ?? null;
 
-  async function changeUnits(next: UnitSystem) {
-    if (!selectedId || next === unit) return;
+  async function changeUnits(next: UnitSystem | null) {
+    if (!selectedId || next === unitOverride) return;
     setErr(null);
     const res = await setVineyardUnitSystem(selectedId, next);
     if (!res.ok) setErr(res.error);
@@ -212,11 +215,11 @@ export function WeatherCard({
               <span style={big}>{formatGdd(h.seasonGddC, unit)}</span>
               <span style={{ color: "var(--text-muted)" }}>
                 to date · {trustLabel(h.gddCompletenessPct)} confidence ({h.gddCompletenessPct}% of season) ·{" "}
-                {unit === "IMPERIAL" ? `${h.seasonGddC.toLocaleString()} °C-GDD` : `${Math.round(gddCToF(h.seasonGddC)).toLocaleString()} °F-GDD`}
+                {formatGdd(h.seasonGddC, unit === "IMPERIAL" ? "METRIC" : "IMPERIAL")}
               </span>
             </div>
             {summary.normals.hasHistory ? (
-              <GddChart series={summary.normals.comparison} />
+              <GddChart series={summary.normals.comparison} unitSystem={unit} />
             ) : (
               <div style={{ ...card, background: "var(--surface-muted)", display: "grid", gap: 8 }}>
                 <div>Load 20 years of history to chart this season against the 10- and 20-year average curves and classify the Winkler region.</div>
@@ -308,16 +311,22 @@ export function WeatherCard({
                   ? `You chose ${providerLabel(summary.primaryProviderOverride, summary.station.name)} — the headline + assistant answer in this source.`
                   : `Auto-selected the nearest quality source. The headline + assistant answer in it; compare the others below.`}
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span style={label}>Units</span>
-                {(["IMPERIAL", "METRIC"] as const).map((u) => (
+                {/* 3-state (plan 098): explicit °F / °C override this vineyard; Auto follows the winery's
+                    display units (falling back to the geo default). Coarse by design — whole system. */}
+                {([
+                  { value: "IMPERIAL" as UnitSystem | null, text: "°F / in" },
+                  { value: "METRIC" as UnitSystem | null, text: "°C / mm" },
+                  { value: null as UnitSystem | null, text: `Auto (${(summary?.unitSystemAuto ?? "METRIC") === "IMPERIAL" ? "°F" : "°C"})` },
+                ]).map(({ value, text }) => (
                   <button
-                    key={u}
-                    onClick={() => changeUnits(u)}
+                    key={text}
+                    onClick={() => changeUnits(value)}
                     disabled={busy}
-                    style={{ padding: "4px 10px", borderRadius: 6, fontSize: 13, cursor: "pointer", border: "1px solid var(--border-default)", background: unit === u ? "var(--accent)" : "transparent", color: unit === u ? "var(--accent-on)" : "var(--text-secondary)" }}
+                    style={{ padding: "4px 10px", borderRadius: 6, fontSize: 13, cursor: "pointer", border: "1px solid var(--border-default)", background: unitOverride === value ? "var(--accent)" : "transparent", color: unitOverride === value ? "var(--accent-on)" : "var(--text-secondary)" }}
                   >
-                    {u === "IMPERIAL" ? "°F / in" : "°C / mm"}
+                    {text}
                   </button>
                 ))}
               </div>
@@ -325,8 +334,8 @@ export function WeatherCard({
               {summary.station.name && (
                 <div>
                   Active station: <strong>{summary.station.name}</strong>
-                  {summary.station.distanceM != null && ` · ${Math.round(summary.station.distanceM / 100) / 10} km away`}
-                  {summary.siteElevationM != null && ` · site ${Math.round(summary.siteElevationM)} m`}
+                  {summary.station.distanceM != null && ` · ${formatDistance(summary.station.distanceM / 1000, unit)} away`}
+                  {summary.siteElevationM != null && ` · site ${formatLength(summary.siteElevationM, unit === "IMPERIAL" ? "FT" : "M")}`}
                 </div>
               )}
               {summary.coverageState === "US_HIGH_RES" && (
