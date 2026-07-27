@@ -1016,7 +1016,14 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
-- **Plan 098 tenant unit preferences BUILT (2026-07-26, branch `claude/tenant-unit-preferences-78472c`)** —
+- **/bulk composition-editor phantom ADJUST fixed (2026-07-26, PR #534):** `updateComponentVolume`
+  targeted the lot-tuple total while the editor displayed the component PROJECTION — on a blend (Demo T5,
+  2026-SY-2: 6995 L tuple vs 6370 L Syrah share) saving the untouched value drew 625 L. Now: untouched
+  save = no-op, blend-share edits refused with guidance, single-origin edits unchanged. Pure plan fn +
+  regression test (`src/lib/bulk/component-adjust.ts`). Server-side only — composes with plan 098's
+  unit-input work (merged #533).
+- **Plan 098 tenant unit preferences BUILT (2026-07-26, branch `claude/tenant-unit-preferences-78472c`;
+  merged to main as #533)** —
   all 12 units done: 7 nullable AppSettings unit columns (Migration A) + the audited hoist-if-uniform
   Migration B (Demo hoisted IMPERIAL; Bhutan's disagreeing weather/geometry values preserved — zero
   behavior change, both migrations APPLIED to the live DB); `src/lib/units/display.ts` is the ONE
