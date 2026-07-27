@@ -21,6 +21,7 @@ export type ProviderKey =
   | "gridmet"
   | "daymet"
   | "nasa_power"
+  | "open_meteo_archive"
   | "rcc_acis"
   | "noaa_cdo"
   | "usgs_epqs";
@@ -48,6 +49,17 @@ export interface ProviderSeries {
   attribution: string;
   sourceUrl: string; // the endpoint hit (provenance; never rendered to the grower)
   records: DailyRecord[];
+  /**
+   * The elevation (m) the series ACTUALLY DESCRIBES — not the vineyard's.
+   *
+   * A ~50 km grid product reports the temperature of its cell's MEAN elevation. In flat terrain that
+   * is the site; in mountains it is a different place. At Bhutan Bajo, NASA POWER self-reports a cell
+   * elevation of 3,038 m for a vineyard at 1,229 m, and the stored series runs 9.7 °C cold as a result
+   * (`docs/analysis/bhutan-nasa-power-elevation-bias.md`). Providers that publish this MUST surface it
+   * so `source-fidelity-core` can refuse a classification instead of mislabelling one (rule §3.6).
+   * `null` = the provider does not publish it → fidelity is UNKNOWN, never silently "fine".
+   */
+  sourceElevationM?: number | null;
   // Station-only context (used by source selection + the config row).
   stationId?: string;
   stationName?: string;
@@ -94,6 +106,16 @@ export interface ClimateProvider {
   capabilities: WeatherMetric[];
   /** Pure: does this provider cover the point, and at what tier. */
   coverageFor(lat: number, lon: number): CoverageState;
-  /** Impure: fetch + normalize a daily series for [startIso, endIso]. Throws ProviderFetchError on failure. */
-  fetchDailySeries(lat: number, lon: number, startIso: string, endIso: string): Promise<ProviderSeries>;
+  /**
+   * Impure: fetch + normalize a daily series for [startIso, endIso]. Throws ProviderFetchError on failure.
+   * `opts.siteElevationM` is the resolved vineyard elevation; a provider that supports statistical
+   * downscaling (Open-Meteo archive) uses it, and every other adapter ignores it.
+   */
+  fetchDailySeries(
+    lat: number,
+    lon: number,
+    startIso: string,
+    endIso: string,
+    opts?: { siteElevationM?: number | null },
+  ): Promise<ProviderSeries>;
 }

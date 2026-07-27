@@ -13,6 +13,7 @@ import { heatDays, type HeatResult } from "./heat-core";
 import { rainfall, type RainfallResult } from "./rainfall-core";
 import { filterToSeason, seasonCompleteness, seasonWindowFor, seasonYearFor, hemisphereFor } from "./season-core";
 import { computeSpreadCore, effectivePrimary, gapFillCore, type Spread, type WeatherConfigLike } from "./source-selection-core";
+import { assessSourceFidelity, gapFillCandidates, type SourceFidelity } from "./source-fidelity-core";
 import { comparisonSeries, gddGraphCurves, perYearSeasonGdd, winklerNormal, type CurvePoint, type NamedCurve, type WinklerNormal, type YearGdd } from "./normals-core";
 import { parseUnitSystem, type UnitSystem } from "@/lib/units/display";
 import { defaultUnitSystemFor } from "./us-coverage";
@@ -55,6 +56,8 @@ export interface ClimateConfig extends WeatherConfigLike {
   stationDistanceM: number | null;
   stationElevationDeltaM: number | null;
   siteElevationM: number | null;
+  /** Elevation the primary series describes (provider-reported). Drives the fidelity guard. */
+  primarySourceElevationM?: number | null;
   attribution: string | null;
   lastRefreshAt: string | null;
   /** Display units ("METRIC" | "IMPERIAL") — plan 096 U3; storage stays metric, units-core converts. */
@@ -88,10 +91,16 @@ export interface ClimateSummary {
   /** What "Auto" resolves to at this site (tenant -> geo, IGNORING the override) — labels the Auto toggle. */
   unitSystemAuto: "METRIC" | "IMPERIAL";
   // Headline — the PRIMARY's numbers (R14).
+  /**
+   * Does the primary series actually describe THIS vineyard? When `classificationAllowed` is false the
+   * temperature-derived CLASSIFICATIONS below are null rather than wrong (rule §3.6).
+   */
+  sourceFidelity: SourceFidelity;
   headline: {
     seasonGddC: number;
     gddCompletenessPct: number;
-    winkler: WinklerResult;
+    /** NULL when source fidelity refuses the classification — render `sourceFidelity.reason` instead. */
+    winkler: WinklerResult | null;
     gst: GstResult;
     frost: FrostResult;
     heat: HeatResult;
@@ -196,8 +205,20 @@ export function composeClimateSummaryCore(input: {
       gddCumulative.push({ date: r.localDate, cumC: Math.round(running * 10) / 10 });
     }
   }
-  const winkler = winklerRegion(headlineGdd.gddTotal);
-  const gst = growingSeasonTemp(primarySeason);
+  // ── Source fidelity gate (docs/analysis/bhutan-nasa-power-elevation-bias.md) ──
+  // Computed BEFORE the classifications so a source that describes a point far above/below the vines
+  // withholds the hard-boundary labels instead of stating the wrong one confidently. The raw GDD, GST
+  // number, frost list and curves still render — only the CLASSES refuse.
+  const sourceFidelity = assessSourceFidelity({
+    siteElevationM: config.siteElevationM,
+    sourceElevationM: config.primarySourceElevationM,
+    providerKey: primary,
+  });
+
+  const winkler = sourceFidelity.classificationAllowed ? winklerRegion(headlineGdd.gddTotal) : null;
+  const gstRaw = growingSeasonTemp(primarySeason);
+  // GST's NUMBER survives (it's a mean, and the offset is disclosed); only the Jones CLASS refuses.
+  const gst: GstResult = sourceFidelity.classificationAllowed ? gstRaw : { ...gstRaw, group: null };
   const frost = frostEvents(primaryLocalAll, latitude, seasonYear);
   const heat = heatDays(primarySeason);
   const rain = rainfall(primarySeason);
@@ -211,8 +232,11 @@ export function composeClimateSummaryCore(input: {
     priorYear = { seasonYear: seasonYear - 1, seasonGddC: pAcc.gddTotal, deltaC: Math.round((headlineGdd.gddTotal - pAcc.gddTotal) * 100) / 100, completenessPct: Math.round(pComp.fraction * 100) };
   }
 
-  // Separately-labelled continuous (grid-filled) series — composed ON READ, never stored.
-  const bestGrid = ["gridmet", "nasa_power", "daymet"].find((k) => k !== primary && byProvider.has(k)) as ProviderKey | undefined;
+  // Separately-labelled continuous (grid-filled) series — composed ON READ, never stored. Candidate
+  // order + the nasa_power exclusion live in source-fidelity-core: filling gaps from the uncorrected
+  // coarse grid while the elevation-corrected archive is present would smuggle the bias back into a
+  // number the card labels merely "derived".
+  const bestGrid = gapFillCandidates([...byProvider.keys()], primary)[0] as ProviderKey | undefined;
   let gridFilledGddC: number | null = null;
   if (bestGrid) {
     const gridSeason = filterToSeason(toLocal(byProvider.get(bestGrid) ?? []), latitude, seasonYear);
@@ -224,8 +248,12 @@ export function composeClimateSummaryCore(input: {
   const normalsSource = byProvider.has("gridmet") ? "gridmet" : primary;
   const normalsRows = toLocal(byProvider.get(normalsSource) ?? []);
   const perYearNormals = perYearSeasonGdd(normalsRows, latitude);
-  const winkler10 = winklerNormal(perYearNormals, 10, seasonYear);
-  const winkler20 = winklerNormal(perYearNormals, 20, seasonYear);
+  // The 20-yr Winkler NORMAL is the most authoritative-looking number on the card, so it refuses on
+  // the same gate as the season-to-date one. (Bhutan has no gridMET, so `normalsSource` falls through
+  // to the primary — the normal rode the same biased series the headline did.)
+  const normalsFidelityOk = sourceFidelity.classificationAllowed || normalsSource !== primary;
+  const winkler10 = normalsFidelityOk ? winklerNormal(perYearNormals, 10, seasonYear) : null;
+  const winkler20 = normalsFidelityOk ? winklerNormal(perYearNormals, 20, seasonYear) : null;
   const graph = gddGraphCurves(normalsRows, latitude, seasonYear);
   const comparison = comparisonSeries(normalsRows, latitude, seasonYear);
   const normals = {
@@ -257,6 +285,7 @@ export function composeClimateSummaryCore(input: {
     unitSystem: resolveWeatherUnitSystem(config.unitSystem, input.tenantUnitSystem, latitude, input.longitude),
     unitSystemOverride: parseUnitSystem(config.unitSystem),
     unitSystemAuto: resolveWeatherUnitSystem(null, input.tenantUnitSystem, latitude, input.longitude),
+    sourceFidelity,
     headline: {
       seasonGddC: headlineGdd.gddTotal,
       gddCompletenessPct: Math.round(headlineComp.fraction * 100),
@@ -273,7 +302,7 @@ export function composeClimateSummaryCore(input: {
     spread,
     perSource,
     honesty: {
-      winklerNearBoundary: winkler.nearBoundary,
+      winklerNearBoundary: winkler?.nearBoundary ?? false,
       precipLowConfidence: true,
       frostFraming: "Sub-freezing nights in the vulnerable window are an elevated-risk signal — check the vines; they are not a damage report.",
       gridFilledIsDerived: gridFilledGddC !== null,

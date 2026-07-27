@@ -481,6 +481,64 @@ per-tenant rules mean moving lexicon application into the speak route only.
 
 </details>
 
+🟩 **S5a (lane C — powdery index + latent-infection ledger): LEDGER BUILT AND VERIFIED; the index is
+a NO-GO.** [phase report](docs/spray_assistant/phases/S5a-report.md)
+[probe report](docs/spray_assistant/phases/S5a-diurnal-fidelity-probe.md) ·
+[plan v2](docs/spray_assistant/phases/S5a-powdery-index-latent-ledger-plan.md) ·
+[council](docs/spray_assistant/phases/S5a-council-feedback.md)
+
+⛔ **The pre-committed no-go TRIGGERED again — all 8 sites failed.** Gubler-Thomas point deltas were
+scored from Felber et al. 2018 reconstructions against **genuine station hourly METAR** (IEM ASOS,
+6 seasons/site, Wilson CIs), not ERA5 — council C2's methodological fix. The failure is **structural,
+not tuning**, on four independent lines: a sawtooth control performs as well as the calibrated model;
+our sites violate its shape assumptions *far less* than the sites it was calibrated on (0.2–1.4% vs
+Felber's own 27%); consecutive-hours-in-band MAE is **2.2–3.4 h against a rule thresholded at 6 h**;
+and Savalkar's monthly-station-statistics mitigation lifted no station-oracle site (it made Stoney
+Hill *worse*) because that >75% error reduction was for a smooth accumulator and this is a
+narrow-window threshold counter — plan §1.2 confirmed by measurement.
+
+**The error runs in the crop-loss direction:** G1 unsafe-miss breaches its 2% bar at six of eight
+sites, worst **13.6% at Madera** — the same site S0 flagged for reporting its highest confidence on
+its worst inputs. **Unlike ADR 0012 there is no regime split to narrow to:** the best oracle in the
+fleet (Russian River, 3.7 km) scored *worse* than a 9.8 km one.
+
+→ **S5a ships the LEDGER ONLY. The powdery index moves to S5b behind S1, which is now load-bearing
+for powdery mildew and not only for leaf wetness.** Units 3–4 (`diurnal-core`, `powdery-core`) do
+not ship as a risk engine.
+
+✅ **The ledger is BUILT, migrated to prod, and verified.** Units 1, 2, 5, 6, 7, 8, 9, 10, 11 all
+landed: `latent_infection_event` (append-only, RLS, 7 CHECKs), the resolution rules, the read seam,
+`query_spray_decision` **thin + hard-refusing** (first `SPRAY_CONTRIBUTORS` entry), 26 unit tests,
+and **`verify:latent-infection` — 43 assertions green against the live DB**. `verify:invariants`
+49/49, `verify:tenant-isolation` green incl. 6 new cases, `verify:ai-native` green, build green.
+
+⚠️ **The append-only trap, worth remembering repo-wide:** `GRANT SELECT, INSERT` does NOT make a
+table append-only — `ALTER DEFAULT PRIVILEGES` already granted `app_rls` full DML on every new
+table, so a narrow GRANT changes nothing. It needs an explicit **`REVOKE UPDATE, DELETE, TRUNCATE`**.
+Caught only by test-applying the migration to a disposable Neon branch; `prisma validate` checks the
+Prisma schema, not the SQL. See [[append-only-needs-revoke-not-grant]].
+
+✅ **Bhutan's 8–9 °C weather gap — ESCALATED FROM S5a AND NOW FIXED (PR #536).** It was elevation,
+and it was resolvable. NASA POWER publishes the elevation of the grid cell it answers with
+(`geometry.coordinates[2]`) and the adapter was discarding it: **Bajo's cell sits at 3,038 m against
+a vineyard at 1,229 m.** Re-sampling ERA5 at POWER's own cell elevation collapsed the bias from
+**−9.71 °C to +1.80 °C** across all 8 sites at a 4.7–6.1 °C/km lapse rate. Two parts, because either
+alone would be wrong: an **ERA5 archive provider passing `elevation=`** (POWER rows are deliberately
+NOT lapse-corrected at ingest — that would put a derived number in a column contracted as "the
+SINGLE source of this row"), plus **`source-fidelity-core`**, which WITHHOLDS hard-boundary
+classifications when the source's own reported elevation is >300 m off the site, while still
+rendering the raw series, GDD and GST. Winkler classes are ~278 °C-days wide — 1 °C moves the label,
+so there is no "approximately right" region. Live: Bajo Region I "too cool" + fabricated April
+frosts → **Region V "very hot", 0 frosts**; three sites that read identically are now distinct.
+`nasa_power` rows kept as a second source, so it is reversible. **The guard proved itself
+mid-backfill** — Open-Meteo 429'd on Paro, ingest fell back to POWER, and the card withheld Paro's
+classifications instead of showing the old wrong ones.
+⚠️ **This does NOT reopen S5a's index NO-GO** — Bhutan was `consistency_only` tier, the gate is
+per-site and never averaged, and the six US sites failed independently against genuine station METAR.
+🪝 **Left alone, found in passing:** Gortshalu / Lingmethang / Norzinthang have NO forecast rows at
+all (`vineyard_forecast_daily` empty for them). Separate issue.
+
+
 ## 🔭 Also in flight
 
 **SPRAY INTELLIGENCE S3a (lane C) — plan written + council-reconciled, READY FOR `/work`
@@ -1032,15 +1090,68 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   68-char title plus a 63-char cover-title H1 ate 134 of the 140-char budget and the cap truncated the
   *tail*, deleting every real heading. Fixed in `chunk.ts` (drop a heading restating the root; elide the
   MIDDLE, never the leaf) → **46 distinct breadcrumbs, 19/77 elided, 0 over cap.** Closes the long-open
-  `TODOS.md` breadcrumb entry for the duplication half; the ` | <publisher>` suffix and the **HTML corpus
-  re-index remain deferred** (PDFs self-heal via `PDF_EXTRACT_VERSION` → `"2"`; HTML hashes on bare
-  `contentHash` and never will). Also corrected `scale-register.md`: the KB entry claimed 🟢 while its own
-  ~10k-chunk tripwire had been crossed at ~23.5k.
+  `TODOS.md` breadcrumb entry for the duplication half. ⚠️ **NOTHING self-heals** — review killed the
+  claim that PDFs would: `PDF_EXTRACT_VERSION` → `"2"` changes only the index hash, but the sweep 304s
+  before `indexDocument` runs, 16 of 26 sources are `autoCrawl:false` and not in the sweep at all, and
+  `crawl:curated` doesn't pass `ignoreValidators`. **`reindex:knowledge` is the only lever**, deferred
+  (~23.5k chunks of Voyage spend) and tripwired. Also corrected `scale-register.md`: the KB entry claimed
+  🟢 while its own ~10k-chunk tripwire had been crossed at ~23.5k.
   **Remaining (plan 099 Unit 6, strictly ordered):** capture `verify:kb-register --capture` +
   `kb:snapshot --repeat 3` BEFORE → merge+deploy → `seed:knowledge-sources` → `crawl:curated -- cornell-grape-guide`
   → read rows back → **numeric-fidelity spot check on the rate cells** (see the EM 8413 precedent in
   `TODOS.md` — a live 10× dose error from a converter eating a leading `0.`) → re-measure displacement →
   enable Demo → flip `defaultEnabled`. Ships `defaultEnabled:false`.
+  🔴 **NEW INTERACTION, unresolved:** #538 merged the **KB-1 tier-C boundary gate** into
+  `index-documents.ts` after plan 099 was written. The Grape Guide's pages 22-24 are exactly what that
+  gate refuses. Whether `cornell-grape-guide` is an *enforcing* source decides whether the crawl indexes
+  the prose and drops the tables, or refuses the document outright. **Settle this before Unit 6 step 4.**
+- **🟩 SKB PR 1 + Unit 5 BUILT (2026-07-27) — the boundary is now REAL, so the source units are
+  unblocked.** Branch `claude/skb-knowledge-sources-plan-bd36b7`, 3 commits, **not yet PR'd**.
+  Plan: [SKB-knowledge-sources-plan.md](docs/spray_assistant/phases/SKB-knowledge-sources-plan.md).
+  Units **1, 2, 3, 5 of 11**. 82 new tests, full suite green, `tsc` clean, `verify:invariants` 49/49.
+  - **KB-1 invariant + detector + INLINE gate** (`src/lib/knowledge/boundary/`). A product→fact table
+    never reaches the corpus for an enforcing source. Three mechanics, none optional: the detector reads
+    **raw HTML / PDF pre-chunk lines, never post-extraction text**; the gate is inline in
+    `index-documents.ts` **before extraction AND before the idempotency short-circuit**, signalling by
+    **returned field, never a throw** (a throw there is read by the re-crawl tombstone pass as "page
+    removed" and would mass-tombstone a source); and `uncertain` **skips for enforcing, is admitted and
+    counted for report-only**. Enforcement is the DEFAULT — the 25 incumbents are a frozen report-only
+    census whose **deletion** is how D3's grandfather clause closes.
+  - **The legality refusal** — `search_knowledge_base` stops advertising "compliance" and refuses the
+    **verdict, not the query**: a handler-level classifier prepends a non-certification preamble while
+    still surfacing the retrieved agronomic context. 12 NEGATIVE classifier cases + a negative golden,
+    because a caveat that fires on everything is caveat fatigue.
+  - **`allowPaths`** — exact-path allowlist with the canonicalization contract tested per clause.
+  - ✅ **QA'd 2026-07-27** — [report](docs/spray_assistant/qa/SKB-qa-report.md). Full suite 396 files /
+    4,733 tests green, `tsc` clean, lint 0 errors, all pure guards green. **4 defects found, 3 of them
+    invisible to the unit tests:** the detector vs 10 REAL pages went 6/10 → 8/10 (markup density beat
+    the table header window — VT's **29-row** GrapePestEfficacy table read as PROSE); and
+    `verify:kb-boundary`'s first-ever run found **`virginia-fruit`: 69 docs, 260 chunks,
+    `defaultEnabled=true`, NO config entry, silently ENFORCING**. Live browser QA (port 3005, never
+    :3000) proved the captan case refuses the verdict, keeps the cited context, and issues neither a
+    clearance nor a self-authored prohibition; the biology negative control draws no caveat.
+  - 🔴 **Unit 7 needs REWRITING before it is built:** `virginia-fruit` IS `virginiafruit.ento.vt.edu`
+    — already partly in the corpus and already `defaultEnabled=true`. It is a RECONCILIATION, not a
+    greenfield add, and the plan's staged dark rollout does not describe the real starting state.
+  - 🔴 **UC IPM carries tier-C content TODAY** (verified by hand: a `Common name | Amount per acre |
+    R.E.I. | P.H.I. | MODE-OF-ACTION GROUP` table). **D3 census floor = 19** flagged docs, and that is
+    a severe under-count — the chunk-text arm scores uc-ipm at 0 while a live fetch finds a 21-row table.
+  - ⚠️ **Plan assumption that did NOT hold: `knowledge_blob.blobUrl` is NULL corpus-wide**, so
+    `verify:kb-boundary` cannot re-read stored bytes. Enforcing sources are audited by **live re-fetch**
+    (the correct seam); the report-only census reads chunk text and is reported as an **approximate
+    FLOOR**, worst on PDFs. Units 4 and 6–11 remain — all of them need `.env`, live crawls, or an
+    operator-gated network probe.
+- 🔴→🟩 **Bhutan weather elevation bias FOUND AND FIXED (2026-07-26, branch
+  `claude/weather-elevation-fidelity`, PR #536)** — a LIVE-tenant data-quality defect surfaced by the S5a
+  Unit 0 probe. NASA POWER answers with its ~50 km cell's MEAN elevation, **1.0–1.8 km above** each Bhutan
+  vineyard, so the series ran **4.8–9.7 °C cold**: the card showed **Winkler Region I at Region V sites**,
+  Jones "Too cool" at a subtropical valley, **frost events on nights that were ~12 °C**, and Bajo (1,230 m)
+  identical to Ser Bhum (2,773 m). Fix = an elevation-downscaled ERA5 archive provider (the same
+  `elevation=` correction the FORECAST path already had) + `source-fidelity-core`, which **withholds the
+  hard-boundary classifications** when the source's own reported elevation is >300 m off the site (§3.6)
+  rather than mislabelling them. Migration applied + all 8 vineyards re-ingested on the live tenant;
+  observed and forecast now agree to the decimal. POWER rows kept as a second source (reversible).
+  Report: `docs/analysis/bhutan-nasa-power-elevation-bias.md`.
 - **/bulk composition-editor phantom ADJUST fixed (2026-07-26, PR #534):** `updateComponentVolume`
   targeted the lot-tuple total while the editor displayed the component PROJECTION — on a blend (Demo T5,
   2026-SY-2: 6995 L tuple vs 6370 L Syrah share) saving the untouched value drew 625 L. Now: untouched
@@ -1495,7 +1606,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 (plan 098 tenant unit preferences built — all 12 units; QA + ship pending)_
+_Last updated: 2026-07-27 — **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness. Bhutan's daily series may be 8–9 °C off vs ERA5 — escalated as its own investigation.** Also this date: plan 098 tenant unit preferences built (all 12 units; QA + ship pending); S2b product-facts FOUNDATION merged + live (#535), phase still open. And: **SKB PR 1 + Unit 5 BUILT AND QA'd on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill

@@ -2,6 +2,42 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
+## 🔴 KB-1's product-table gate is structurally BLIND to PDFs (found 2026-07-27, plan 099)
+
+**What:** `index-documents.ts` hands the detector raw bytes — `{ kind: "text", text: input.bytes.toString("utf8") }`
+for anything non-HTML. For HTML that is readable markup and the detector works as designed. **For a PDF
+those bytes are Flate-compressed content streams**, so the detector inspects binary noise.
+
+**Measured** on Cornell's 2025 NY/PA Grape Guide preview, whose pages 22-24 are textbook tier C
+(Common Name × Trade Name × Formulation × WSSA Group × Days to Harvest × REI × EPA Reg. Number):
+
+| Input | verdict | rows | signals |
+|---|---|---|---|
+| raw bytes as utf8 (**what the pipeline does**) | `prose` | 1 | `flat-run:1, flat-unqualified` |
+| extracted markdown (what it never sees) | `prose` | 0 | 7 header hits: trade-name, restricted-entry, days-to-harvest, rate-per-acre, formulation, active-ingredient, relative-effectiveness |
+
+Only 40% of the raw byte-string is printable ASCII, and `"Trade Name"`, `"EPA Reg"`, `"REI"` and
+`"carfentrazone"` are all **absent** from it. So an enforcing source ships a full pesticide rate table
+into the corpus with verdict `prose`.
+
+**Why the second row matters too.** Even given clean extracted text the verdict is still `prose`: the
+structured arm counts repeated rows, and `extract/pdf.ts` emits no pipe tables, so `rowCount` is 0 and
+the seven header signals alone do not carry the verdict. Council C2's reasoning ("post-extraction text
+destroys the row-repetition signal, so run pre-extraction") is right about HTML and does not transfer —
+for PDFs pre-extraction bytes are *less* legible than post-extraction text, not more.
+
+**Why this is not fixed here:** it is SKB's phase and its D3 close-out, it is a safety detector, and the
+fix is a design question (decompress and inspect? build the arm on `extractTextItems` geometry? let
+header-signal density carry a verdict when the row arm cannot run?) that deserves its own plan, not a
+drive-by in a source PR.
+
+**Consequence to hold until then:** for any PDF source, the boundary gate provides **no protection**,
+whatever `boundaryModeFor` says. `verify:kb-boundary`'s per-source counts are a floor on HTML and
+approximately zero-information on PDFs. Treat an "enforcing" PDF source as ungated.
+
+**Where:** `src/lib/knowledge/index-documents.ts` (the `{ kind: "text" }` call site),
+`src/lib/knowledge/boundary/product-table-core.ts` (the structured arm).
+
 ## 🟡 Chunk breadcrumbs: CODE FIXED (plan 099), CORPUS PENDING a re-index
 
 **Status 2026-07-27.** The duplication half of this is fixed in `src/lib/knowledge/chunk.ts`. What
