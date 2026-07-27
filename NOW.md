@@ -686,7 +686,53 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
-0. ✅ **POPPED — UC IPM knowledge source + corpus dates + stale-guidance warning. MERGED (#405,
+0. 🔴 **PUSHED 2026-07-26 — PNW Handbooks + OSU EM 8413 KB ingestion. RECON DONE, BUILD BLOCKED ON A
+   RUSSELL DECISION.** Asked: "ingest EM 8413 + the PNW handbook grape/insect/weed/pesticide-safety
+   pages, crawled continually." Measured, do not re-litigate:
+   • **EM 8413 IS ALREADY IN THE CORPUS AND IT IS A DEFECT, NOT A WIN.** `osu-extension` doc
+   `/catalog/em-8413-…`, 47 chunks. Its rate tables are **Airtable `<iframe>` embeds** (3) — the
+   substance never arrived, only the empty tag got indexed (chunks 4, 14). 2 raw `<table>` blobs
+   survived Defuddle unconverted → chunks 7–9 + 16–23 are raw `<td headers="table-cell-413816-…">`
+   garbage. **Numeric corruption in a pesticide-rate document**: `0.5–1 lb ai` indexed as `5–1 lb ai`,
+   `0.5 lb ai` → `5 lb ai`, `0.5 inch` → `5 inch` (leading `0.` eaten, markdown ordered-list read).
+   That is a citable 10× dose error. Mojibake `Temperature (В°C)`. `publishedAt` = **2014-12-18** while
+   the page links the **2026** PDF → freshness scoring believes an annually-revised safety document is
+   12 years old. The real content is the PDF
+   (`/sites/extd8/files/documents/donnelja/pest-management-guide-for-wine-grapes-in-oregon-2026.pdf`),
+   which `crawl-osu-extension.ts` never discovers (it reads links from the 2 hubs + sitemap, never from
+   a catalog page body).
+   • **PNW Handbooks (`pnwhandbooks.org`) is NOT in the registry and is technically an easy add.**
+   robots `*` = `Allow: /`, `Crawl-delay: 10`, Content-Signal `search=yes, ai-train=no, use=reference`
+   — **identical posture to the `osu-extension` source already in the registry** (OSU hosts both). Our
+   UA is NOT on the named blocklist (ClaudeBot/GPTBot/CCBot are). One flat sitemap, 4,999 locs, clean.
+   **71 pages in scope**: 27 `/plantdisease/host-disease/grape-vitis-spp-` (== the user's list exactly)
+   + 1 cultivar table + 17 `/insect/small-fruit/grape` + 9 `/weed/…/vineyard-grape` + 16
+   `/pesticide-safety`. ⚠️ **Exact-prefix `grape-vitis-spp-` is load-bearing**: a naive `/grape|vine/`
+   regex also takes 4 `oregon-grape-berberis-aquifolium-*` pages (*Mahonia*, an ornamental shrub — NOT
+   a grapevine), `ivy-boston-grape`, 3 tree-fruit `*-grape-mealybug`, `puncturevine`,
+   `blackberry-vines`, `garlic-wild-allium-vineale`, `cucurbit-vine`, `potato-vine-kill` — 27 false
+   positives. Extraction is excellent (Defuddle: 3,836 clean words on powdery mildew, no `<table>` at
+   all). Per-page `Last-Modified` exists but is **Varnish-generated (all "today") → useless**; content
+   hash is the seam. Metadata `published` is the Drupal node-create date (2015) — same freshness lie as
+   EM 8413.
+   • ⛔ **THE BLOCKER: this collides head-on with the KB-1 tier-C rule Russell set 2026-07-26**
+   (TABULAR product→fact = never in the corpus). Measured product-signal line density: `/pesticide-safety`
+   **0%** (pure PPE/WPS/spill/pollinator prose — unambiguously safe and valuable); insect pages **22%**;
+   disease pages **30%**; `/weed/…/vineyard-grape` **46% and effectively 100% tier C** (`dichlobenil
+   (Casoron 4G) / Rate 4 to 6 lb ai/A / Site of action Group 20 / Chemical family Nitrile`) — and the
+   weed pages are the part the user asked for by name. **The boundary runs THROUGH the middle of every
+   disease and insect page, not between pages**: `Chemical control` is a bulleted product list carrying
+   rate + PHI + FRAC group + REI (`Abound at 10 to 15.5 fl oz/A … Group 11 fungicide. 4-hr reentry.`).
+   So this needs a **`sectionFilter`, like `vt-enology-notes` — and PNW splits on body headings, not
+   `<a name>` anchors, so the existing `"anchor-heading"` strategy does NOT fit.**
+   • ⛔ **And the KB-1 gate is NOT ON MAIN** — `src/lib/knowledge/boundary/` lives only on the unmerged
+   `claude/skb-knowledge-sources-plan-bd36b7` (9 commits). Ingesting PNW first puts 71 pages of
+   product/rate/REI text in with **no gate at all**, and per the SKB build log the gate must run
+   **before** the idempotency short-circuit or already-indexed tier-C chunks stay retrievable forever.
+   → **Russell decides the scope before any build.** Recommended order: land SKB/KB-1 → fix EM 8413 →
+   then PNW prose-only. Full write-up in `TODOS.md`.
+
+1. ✅ **POPPED — UC IPM knowledge source + corpus dates + stale-guidance warning. MERGED (#405,
    `77edb7a8`), branch deleted.** Source #19 `uc-ipm` (ipm.ucanr.edu grape PMGs): 87 docs / 667 chunks,
    `autoCrawl: true` so the monthly sweep takes it with no workflow edit. robots.txt ALLOWS
    `/agriculture/grape/` — no bypass used or needed. What it uncovered, in order of importance:
@@ -1470,7 +1516,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 (plan 098 tenant unit preferences built — all 12 units; QA + ship pending)_
+_Last updated: 2026-07-26 (PNW-handbook + EM 8413 KB recon — tangent 0 pushed; blocked on a KB-1 scope call)_
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill

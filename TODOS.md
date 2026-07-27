@@ -2,6 +2,60 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
+## 🔴 EM 8413 is in the corpus with corrupted pesticide rates (LIVE, safety-relevant)
+
+Found 2026-07-26 during PNW-handbook recon. `osu-extension` document
+`https://extension.oregonstate.edu/catalog/em-8413-pest-management-guide-wine-grapes-oregon`,
+47 chunks, `status = active`, retrievable today. Four independent defects, all reproduced by
+re-fetching the live page and running `extract/html.ts` on it:
+
+1. **Rate corruption — the serious one.** A leading `0.` is eaten, so `0.5–1 lb ai` is indexed as
+   `5–1 lb ai` (chunk 17), `0.5 lb ai (1-2 pts product)` as `5 lb ai` (19), `0.5 inch of water` as
+   `5 inch of water` (23), `0.5 TG/isoxaben` as `5 TG/isoxaben` (21). Almost certainly the markdown
+   converter reading a line-initial `0.` as an ordered-list marker. **In a pesticide guide that is a
+   citable 10× dose error.** Check whether this hits other numeric sources too — it is a converter
+   bug, not an EM-8413 bug.
+2. **The actual rate tables never arrived.** Tables 2, 3 and 7 are **Airtable `<iframe>` embeds**;
+   only the bare `<iframe src="https://airtable.com/embed/…">` tag is in chunk text (chunks 4, 14).
+3. **Raw HTML leaked into chunk text.** Defuddle left 2 `<table>` blocks unconverted, so chunks 7–9
+   and 16–23 are strings of `<td headers="table-cell-413816-4-0 …">3</td><td …>12 hr</td>`. Also
+   mojibake: `Temperature (В°C)` (UTF-8 degree sign decoded as cp1252).
+4. **`publishedAt` = 2014-12-18** while chunk 0 links
+   `…/pest-management-guide-for-wine-grapes-in-oregon-**2026**.pdf`. This guide is revised annually;
+   freshness scoring believes it is 12 years old, which is exactly backwards for a safety document.
+
+The substance lives in that PDF, and `/sites/…*.pdf` already passes `crawl-osu-extension.ts`'s
+`isContentPath`. It was never fetched because `discover()` only reads links from the two wine hubs
+and the sitemap — never from a `/catalog/` page body. Fetching the PDF instead of (or as well as)
+the catalog page is most of the fix.
+
+⚠️ Note the interaction with **KB-1**: most of what is missing here (Tables 3/4/7/8 — product ×
+rate × REI/PHI × FRAC group) is **tier C and must NOT be repaired into the corpus**. The right
+outcome is probably *withdraw the tabular chunks, keep the prose* (resistance strategy, sprayer
+calibration, safe-use, certification bodies), not *ingest the tables properly*.
+
+## PNW Handbooks (`pnwhandbooks.org`) — 71 grape pages, blocked on the KB-1 scope call
+
+Full recon in `NOW.md` tangent 0. Short version: robots and licensing posture are **identical to the
+`osu-extension` source we already run** (`Allow: /`, `Crawl-delay: 10`, `use=reference`,
+`ai-train=no`; our UA is not on the named blocklist). One flat 4,999-loc sitemap. 71 pages in scope
+under four exact prefixes; `grape-vitis-spp-` must be an **exact prefix**, because a naive
+`/grape|vine/` match also takes 4 `oregon-grape-berberis-aquifolium-*` pages (*Mahonia*, an
+ornamental shrub, not a grapevine) plus 23 other false positives. Extraction is clean.
+
+Blocked on two things, in order:
+- **KB-1 / `src/lib/knowledge/boundary/` is not on main** (unmerged
+  `claude/skb-knowledge-sources-plan-bd36b7`, 9 commits). Without it these 71 pages land ungated.
+- **A new `sectionFilter` strategy.** The tier-A/tier-C boundary runs *inside* each page:
+  `Cause` / `Symptoms` / `Cultural control` / `Biology and life history` are exactly the biology
+  prose the corpus wants, and `Chemical control` is a bulleted product list carrying rate + PHI +
+  FRAC/IRAC group + REI. Measured product-signal line density: `/pesticide-safety` 0 %, insect 22 %,
+  disease 30 %, `/weed/…/vineyard-grape` **46 % and effectively 100 % tier C**. PNW splits on body
+  headings, so the existing `"anchor-heading"` strategy does not fit as-is.
+
+`/pesticide-safety` (16 pages, 0 % product signal — WPS, PPE, spills, container disposal, pollinator
+protection, buffer zones) is the one slice with **no boundary question at all** and could ship first.
+
 ## Chunk breadcrumbs carry the page `<title>`, site suffix and all
 
 **What:** every chunk's `sectionPath` is prefixed with the raw HTML `<title>`, so the embedded text
