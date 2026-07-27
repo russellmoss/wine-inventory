@@ -373,6 +373,40 @@ floor honestly.
 **Tests:** none (measurement).
 **Depends on:** Units 1, 2
 
+#### Unit 3 RESULT — measured 2026-07-27, read-only, no corpus writes
+
+Method: re-fetch each document, re-extract, and compare decimal tokens in the LIVE source against
+the STORED chunks. A token counts as confirmed-lost only when the stored chunks also carry the
+**truncated remainder in the same following context** — the smoking gun that distinguishes our
+corruption from an edited page. Corpus at time of measurement: **36,931 chunks / 3,299 active
+documents / 23 sources.**
+
+| Population | n | Confirmed | Refuted | Unreachable | Rate |
+|---|---|---|---|---|---|
+| Heuristic candidates | 64 | **44** | 20 | 0 | **69%** |
+| Random NON-candidates | 90 | **16** | 72 | 2 | **18.2%** |
+
+**The heuristic recovered roughly 7% of the damage.** Extrapolating the 18.2% rate (95% CI
+±8.1pp) across the 3,235 documents it did not flag gives **~590 further corrupted documents
+(CI ~330–850)**, for a corpus-wide total of **~630 of 3,299 — close to one document in five.**
+
+Confirmed in **13 of 14** candidate sources and in 6 sources in the random sample, so this is
+corpus-wide and not source-specific. Real examples: `uc-ipm` herbicide table `0.5 → 5`;
+`awri` `13.6 → 6`, `15.5 → 5`, `0.7 → 7` in an ethanol-reduction fact sheet; `wsu` VEEN newsletter
+`0.0005 → 0005`; `cornell-grapes` Wilcox disease-control guide `4.0 → 0`, `5.5 → 5`;
+`osu-extension` EM 8413 `0.5 → 5`.
+
+**This retires the original "re-index only the confirmed" scoping and vindicates council C3.** The
+candidate heuristic is a floor with ~7% recall, so the stale set is effectively the whole corpus.
+`CHUNKER_VERSION` is therefore folded into `deriveIndexHash` **unconditionally** (Unit 1b), which
+means the monthly sweep will progressively repair every document it re-fetches without a special
+campaign. Unit 2 remains necessary only for documents the sweep will not reach: `autoCrawl: false`
+sources, and anything robots-blocked from re-fetch.
+
+⚠️ **Not yet run: the repair campaign itself.** It re-fetches and re-embeds ~630+ documents, which
+costs real embedding spend and mutates the live corpus, so it is a deliberate, separately-approved
+step rather than something to slip into this PR.
+
 ### Unit 3b: Ingest-time numeric-integrity invariant  — NEW per council C9
 
 **Goal:** This class of corruption cannot recur silently, in this pipeline or a future one.

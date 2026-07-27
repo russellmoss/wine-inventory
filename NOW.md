@@ -686,8 +686,26 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
-0. 🔴 **PUSHED 2026-07-26 — PNW Handbooks + OSU EM 8413 KB ingestion. RECON + PLAN + COUNCIL DONE;
-   5 design questions need Russell before `/work`.**
+0. 🟩 **PR A BUILT + GREEN 2026-07-27 (branch `claude/kb-chunker-text-integrity`, 3 commits, not
+   PR'd). The chunker text-loss bug is FIXED and the damage is MEASURED.**
+   🔴 **~630 of 3,299 corpus documents are corrupted — about one in five.** Measured read-only by
+   re-fetch + byte diff (Unit 3): heuristic candidates 44/64 confirmed (69%), random NON-candidates
+   **16/90 confirmed (18.2%, 95% CI ±8.1pp)** → ~590 more across the 3,235 unflagged, CI ~330–850.
+   **The heuristic had ~7% recall**, so the stale set is effectively the whole corpus — which
+   retires the plan's original "re-index only the confirmed" scoping and vindicates council C3.
+   Confirmed in 13 of 14 candidate sources: `uc-ipm` herbicide table `0.5 → 5`, `awri` `15.5 → 5`,
+   `cornell-grapes` Wilcox guide `4.0 → 0`, `wsu` VEEN `0.0005 → 0005`.
+   Shipped: `splitIntoSentences` (lossless scanner, boundary rule deliberately unchanged);
+   `findDroppedNumericTokens` wired into `indexDocument` as a fail-closed `skipped:"numeric-loss"`;
+   `deriveIndexHash` moved to a payload object with **`CHUNKER_VERSION` folded in unconditionally**
+   (so the monthly sweep now progressively repairs every document it re-fetches) and
+   `rawContentHash` documented as RAW bytes, never filtered HTML. 19 new tests, full suite
+   **395 files / 4,696 tests / 0 failures**, tsc clean, lint 0 errors.
+   ⚠️ **NOT run: the repair campaign** (~630 docs re-fetched + re-embedded = real spend + a live
+   corpus mutation). Needs Russell's go-ahead. Also still open: PR B + PR C, both blocked on the
+   SKB/KB-1 merge.
+   Prior state: **RECON + PLAN + COUNCIL DONE; 5 design questions answered by Russell 2026-07-27
+   ("accept all recommendations").**
    [plan 099](docs/plans/2026-07-26-099-fix-kb-text-integrity-and-pnw-handbooks-plan.md) (12 units,
    4 PRs) · [council](docs/plans/council-feedback-099-kb-text-integrity-pnw-handbooks.md).
    🔴 **The headline is no longer the ingestion — it is a LIVE silent text-loss bug in our own
@@ -1542,7 +1560,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 (plan 099 + council done; 5 design questions open before /work)_
+_Last updated: 2026-07-27 (PR A built + green; chunker text loss fixed, ~630 docs measured corrupted — repair campaign awaits go-ahead)_
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
