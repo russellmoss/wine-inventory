@@ -54,8 +54,10 @@ cannot hold two lots.
 1. **In the cores** — `decideCombineRoute` (`src/lib/ledger/combine.ts`) resolves identity at the
    moment of combination for every operation that puts wine into an occupied vessel: **absorb** into
    the resident (the default, the physical truth), **keep** (requires a different destination), or
-   **mint a new blend lot**. Absorbing is refused across tax class, ownership, bond, physical form
-   and ferment state. These refusals are RETURNED, never thrown, so they survive prod redaction.
+   **mint a new blend lot**. Absorbing is refused across tax class, bond, physical form and ferment
+   state. (Cross-**owner** absorb is ALLOWED as of plan 093 Unit 6 — the resident owner dominates and
+   the consumed minority owner's fraction is billed via `emitBillableConsumption` at execution, not
+   blocked here.) These refusals are RETURNED, never thrown, so they survive prod redaction.
 2. **At the ledger chokepoint** — `assertNoWorsenedCoResidence` in `writeLotOperation`, on the
    POST-FOLD balances. Defence in depth: reaching it means a core skipped its preflight, so the
    message is written for an engineer, not a winemaker.
