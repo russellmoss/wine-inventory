@@ -12,6 +12,21 @@ export interface Chunk {
   tokenCount: number;
 }
 
+/**
+ * BUMP THIS whenever chunking changes what text ends up in a chunk.
+ *
+ * index-documents.ts short-circuits on `indexedContentHash === indexHash`, and the basis of that
+ * hash is the RAW FETCHED BYTES. Fixing the chunker does not change the bytes, so without this
+ * version participating in the hash, every subsequent crawl returns skipped:"unchanged" and the fix
+ * never reaches a single already-indexed document. The failure is silent — the crawl reports success
+ * and repairs nothing.
+ *
+ * v2 (2026-07-26, plan 099 Unit 1): splitIntoSentences replaced a `String.match(/g)` scan that
+ *                                   silently DELETED text. Every document indexed at v1 whose
+ *                                   content took the force-split path is suspect.
+ */
+export const CHUNKER_VERSION = "2";
+
 const TARGET_TOKENS = 512;
 const MAX_TOKENS = 700; // a single block bigger than this is force-split (prose) or kept whole (table)
 const OVERLAP_TOKENS = 75; // ~15%

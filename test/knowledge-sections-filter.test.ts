@@ -5,9 +5,11 @@ import path from "node:path";
 import {
   applySectionFilter,
   deriveIndexHash,
+  resolveSectionFilter,
   shouldApplySectionFilter,
   SECTION_FILTER_VERSION,
 } from "@/lib/knowledge/sections";
+import { CHUNKER_VERSION } from "@/lib/knowledge/chunk";
 import { PDF_EXTRACT_VERSION } from "@/lib/knowledge/extract/pdf-structure";
 import { extractHtml } from "@/lib/knowledge/extract/html";
 
@@ -136,59 +138,107 @@ describe("applySectionFilter — null is reserved for all-dropped", () => {
 
 describe("deriveIndexHash — R1, the silent no-op guard", () => {
   const RAW = "a".repeat(64);
+  const ANCHOR = { strategy: "anchor-heading", version: SECTION_FILTER_VERSION } as const;
 
-  it("passes the hash through untouched when no filter is configured", () => {
-    // Guarantees zero blast radius on the 17 existing sources.
-    expect(deriveIndexHash(RAW, false)).toBe(RAW);
+  // Plan 099 Unit 1b — the signature moved from positional flags to a payload object, and the
+  // chunker version is now folded in UNCONDITIONALLY. That is a deliberate behaviour change: the
+  // old "no version component => bare content hash" shortcut meant a chunker fix could never reach
+  // an already-indexed HTML document with unchanged bytes, which is exactly how the v1 text-loss
+  // bug would have survived its own fix.
+  it("no longer passes the raw hash through, because every document is chunked", () => {
+    expect(deriveIndexHash({ rawContentHash: RAW })).not.toBe(RAW);
   });
 
-  // Plan 090 Unit 8 — the same silent-no-op trap, on the PDF side, where the guard did not reach.
-  describe("PDF extractor version", () => {
-    it("leaves NON-pdf hashes byte-identical to pre-plan-090 behaviour", () => {
-      // The whole point of the isPdf flag being separate: HTML documents must not be dragged into a
-      // needless re-index by a PDF-only change.
-      expect(deriveIndexHash(RAW, false, false)).toBe(RAW);
-      expect(deriveIndexHash(RAW, true, false)).toBe(deriveIndexHash(RAW, true));
-    });
+  it("is deterministic for a given set of versions", () => {
+    expect(deriveIndexHash({ rawContentHash: RAW })).toBe(deriveIndexHash({ rawContentHash: RAW }));
+  });
 
-    it("changes the hash for a PDF even with no section filter", () => {
-      // Section filtering is HTML-only, so before this a PDF's index hash was the bare content hash
-      // and NO extractor improvement could force a re-index of unchanged bytes. Units 4-7 would have
-      // shipped in code and changed nothing in the corpus, silently.
-      expect(deriveIndexHash(RAW, false, true)).not.toBe(RAW);
+  it("moves when CHUNKER_VERSION moves, forcing a genuine re-index of every document", () => {
+    const current = deriveIndexHash({ rawContentHash: RAW });
+    const asIfBumped = deriveIndexHash({ rawContentHash: RAW, chunkerVersion: "999" });
+    expect(asIfBumped).not.toBe(current);
+  });
+
+  describe("PDF extractor version", () => {
+    it("keeps the PDF component independent of the section-filter component", () => {
+      // HTML documents must not be dragged into a needless re-index by a PDF-only change.
+      expect(deriveIndexHash({ rawContentHash: RAW, isPdf: true })).not.toBe(
+        deriveIndexHash({ rawContentHash: RAW, isPdf: false }),
+      );
+      expect(deriveIndexHash({ rawContentHash: RAW, filter: ANCHOR, isPdf: false })).toBe(
+        deriveIndexHash({ rawContentHash: RAW, filter: ANCHOR }),
+      );
     });
 
     it("is deterministic, and distinct from the section-filter-only hash", () => {
-      expect(deriveIndexHash(RAW, false, true)).toBe(deriveIndexHash(RAW, false, true));
-      expect(deriveIndexHash(RAW, false, true)).not.toBe(deriveIndexHash(RAW, true, false));
+      expect(deriveIndexHash({ rawContentHash: RAW, isPdf: true })).toBe(
+        deriveIndexHash({ rawContentHash: RAW, isPdf: true }),
+      );
+      expect(deriveIndexHash({ rawContentHash: RAW, isPdf: true })).not.toBe(
+        deriveIndexHash({ rawContentHash: RAW, filter: ANCHOR }),
+      );
     });
 
     it("moves when PDF_EXTRACT_VERSION moves", () => {
-      const current = deriveIndexHash(RAW, false, true);
+      const current = deriveIndexHash({ rawContentHash: RAW, isPdf: true });
       const asIfBumped = crypto
         .createHash("sha256")
-        .update(`${RAW}|pdf:${Number(PDF_EXTRACT_VERSION) + 1}`)
+        .update(`${RAW}|pdf:${Number(PDF_EXTRACT_VERSION) + 1}|ck:${CHUNKER_VERSION}`)
         .digest("hex");
       expect(asIfBumped).not.toBe(current);
     });
   });
 
   it("changes the stored hash when a filter IS applied", () => {
-    expect(deriveIndexHash(RAW, true)).not.toBe(RAW);
-  });
-
-  it("is deterministic for a given version", () => {
-    expect(deriveIndexHash(RAW, true)).toBe(deriveIndexHash(RAW, true));
+    expect(deriveIndexHash({ rawContentHash: RAW, filter: ANCHOR })).not.toBe(
+      deriveIndexHash({ rawContentHash: RAW }),
+    );
   });
 
   it("moves when SECTION_FILTER_VERSION moves, forcing a genuine re-index", () => {
     // Without this, tuning a drop pattern is a silent no-op: the raw bytes are unchanged, so
     // indexDocument short-circuits to skipped:"unchanged" forever.
-    const current = deriveIndexHash(RAW, true);
-    const asIfBumped = crypto
-      .createHash("sha256")
-      .update(`${RAW}|sf:${Number(SECTION_FILTER_VERSION) + 1}`)
-      .digest("hex");
+    const current = deriveIndexHash({ rawContentHash: RAW, filter: ANCHOR });
+    const asIfBumped = deriveIndexHash({
+      rawContentHash: RAW,
+      filter: { strategy: "anchor-heading", version: String(Number(SECTION_FILTER_VERSION) + 1) },
+    });
     expect(asIfBumped).not.toBe(current);
+  });
+
+  // Council SHOULD-FIX 2/3 — a boolean could not express WHICH strategy applied, so two strategies
+  // at the same version number would collide and a source switching between them would short-circuit
+  // as "unchanged", keeping the old strategy's chunks live forever.
+  it("distinguishes two strategies that share a version number", () => {
+    const a = deriveIndexHash({ rawContentHash: RAW, filter: { strategy: "anchor-heading", version: "1" } });
+    const b = deriveIndexHash({
+      rawContentHash: RAW,
+      // Cast: "body-heading" joins the union in PR C. Pinning the guarantee now is the point of
+      // settling the payload shape in PR A — PR C must only add a member, never reshape the hash.
+      filter: { strategy: "body-heading" as unknown as "anchor-heading", version: "1" },
+    });
+    expect(a).not.toBe(b);
+  });
+
+  it("leaves an unfiltered document unaffected by a filter-version bump", () => {
+    const unfiltered = deriveIndexHash({ rawContentHash: RAW });
+    const unfilteredAgain = deriveIndexHash({ rawContentHash: RAW, filter: null });
+    expect(unfiltered).toBe(unfilteredAgain);
+  });
+});
+
+describe("resolveSectionFilter — which strategy, not merely whether", () => {
+  it("resolves the configured strategy with its version", () => {
+    expect(resolveSectionFilter("html", "vt-enology-notes")).toEqual({
+      strategy: "anchor-heading",
+      version: SECTION_FILTER_VERSION,
+    });
+  });
+
+  it("returns null for PDFs, unconfigured sources, and unknown keys", () => {
+    expect(resolveSectionFilter("pdf", "vt-enology-notes")).toBeNull();
+    expect(resolveSectionFilter("html", "awri")).toBeNull();
+    expect(resolveSectionFilter("html", undefined)).toBeNull();
+    expect(resolveSectionFilter("html", "ghost-source-not-in-config")).toBeNull();
   });
 });
