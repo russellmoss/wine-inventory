@@ -151,10 +151,20 @@ ALTER TABLE "latent_infection_event" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "latent_infection_event" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "tenant_isolation" ON "latent_infection_event" USING ("tenantId" = current_setting('app.tenant_id', true)) WITH CHECK ("tenantId" = current_setting('app.tenant_id', true));
 
--- COUNCIL C5, AND THIS LINE IS THE ACTUAL ENFORCEMENT: app_rls gets SELECT and INSERT ONLY.
--- No UPDATE. No DELETE. A trigger can be dropped or allowlisted by a later migration; a grant that
--- was never made cannot be exercised at all. The triggers below are defence in depth.
+-- COUNCIL C5, AND THIS IS THE ACTUAL ENFORCEMENT: app_rls may SELECT and INSERT, never UPDATE or
+-- DELETE. A trigger can be dropped or allowlisted by a later migration; a privilege the role does
+-- not hold cannot be exercised at all. The triggers below are defence in depth.
+--
+-- THE REVOKE IS LOAD-BEARING AND IS NOT REDUNDANT WITH THE GRANT. The `..._app_rls_role` migration
+-- set ALTER DEFAULT PRIVILEGES granting app_rls full DML on every table subsequently created in
+-- public (AGENTS.md step 8), so a new table arrives with UPDATE and DELETE ALREADY GRANTED. Adding
+-- `GRANT SELECT, INSERT` on top of that changes nothing. This exact mistake was caught by the
+-- self-verify block at the bottom of this file when the migration was first test-applied to a
+-- disposable Neon branch — which is precisely the failure council C5 predicted: a table that LOOKS
+-- append-only because the triggers are there, while the grants quietly allow the opposite.
+-- Precedent for the REVOKE posture: calculation_log.
 GRANT SELECT, INSERT ON "latent_infection_event" TO app_rls;
+REVOKE UPDATE, DELETE, TRUNCATE ON "latent_infection_event" FROM app_rls;
 
 -- ─────────────────────────────── 6) Append-only triggers (defence in depth) ───────────────────────────────
 -- Reuses the spray family's generic guards (20260727010000_spray_record): the mutation guard takes
