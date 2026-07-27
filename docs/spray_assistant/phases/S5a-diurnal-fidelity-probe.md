@@ -127,6 +127,39 @@ about, in its purest form.
 deserves escalation beyond S5a: an 8–9 °C uncertainty on the daily series is a live
 data-quality question for every temperature-derived number already shown to that grower.
 
+> [!success] ✅ RESOLVED 2026-07-27 (PR #536) — and it was NOT a coin-flip after all
+> The escalation above was right to fire, and its central claim — *"the probe cannot say which
+> product is closer to the vineyard"* — turned out to be **answerable, just not from inside this
+> probe**. NASA POWER publishes the elevation of the grid cell it answered with, in
+> `geometry.coordinates[2]`, and the adapter was discarding it. **At Bajo that cell sits at
+> 3,038 m; the vineyard is at 1,229 m.** Re-sampling ERA5 at POWER's *own* reported cell elevation
+> collapsed the bias from **−9.71 °C to +1.80 °C** across all eight sites, at a 4.7–6.1 °C/km lapse
+> rate. **Elevation explained essentially all of it.** The two products were never disagreeing about
+> the weather; they were describing two different altitudes.
+>
+> Fixed in two parts, because either alone would have been wrong: an ERA5 archive provider that
+> passes `elevation=` (the correction `forecast-open-meteo.ts` already made), plus
+> `source-fidelity-core` — when a source's own reported elevation is >300 m off the site, the
+> **hard-boundary classifications are withheld rather than mislabelled**, while the raw series, GDD
+> and GST still render. Winkler classes are ~278 °C-days wide against a ~214-day season, so 1 °C
+> moves the label; there is no "approximately right" region. A provider that publishes no elevation
+> yields UNKNOWN and still classifies — the guard bites where there is evidence, not everywhere
+> evidence is absent.
+>
+> Bajo went Region I "too cool" with fabricated April frosts → **Region V "very hot", zero frosts**,
+> and its stored observation for 2026-07-26 now matches the forecast exactly (31.7 / 20.5 °C). Three
+> Bhutan sites that had read as identical Region I are now distinct. The `nasa_power` rows were kept
+> as a second source, so it is reversible.
+>
+> **This does NOT reopen the index NO-GO.** Bhutan was `consistency_only` tier and the plan already
+> forbade resting any production confidence claim on it; the gate is evaluated **per site, never
+> averaged**; and the six US sites failed independently against *genuine station METAR*. The Bhutan
+> arm was never evidence for the verdict — it was an artifact the probe reported honestly, and that
+> honesty is what surfaced a real live-tenant data bug.
+>
+> ⚠️ **If you re-run this probe, the Bhutan rows will differ.** Bhutan's effective primary is no
+> longer `nasa_power`, and the committed 2024 fixtures under `test/fixtures/s5a/` are POWER-based.
+
 ---
 
 ## What this licenses
