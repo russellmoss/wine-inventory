@@ -2,7 +2,8 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import { resolveVineyards } from "../scope";
 import { prisma } from "@/lib/prisma";
-import { getWineryTimeZone } from "@/lib/settings/data";
+import { getWineryTimeZone, getUnitPrefs } from "@/lib/settings/data";
+import { climateDisplay, forecastDayDisplay, precipDisplay, tempDisplay } from "./climate-display";
 import { resolveSiteTimeZone, siteTodayIso } from "@/lib/weather/site-time-core";
 import { composeRainfallRangeCore } from "@/lib/weather/rainfall-range-core";
 import { composeForecastViewCore, isForecastStale, type ForecastRow } from "@/lib/weather/forecast-read-core";
@@ -52,6 +53,11 @@ export const queryClimateTool: AssistantTool = {
     // on top. "Frost last night" is tz-sensitive, so this resolves PER VINEYARD inside the loop.
     const wineryTz = await getWineryTimeZone().catch(() => undefined);
     let tz = resolveSiteTimeZone(null, wineryTz, ctx.timeZone);
+    // Plan 098: the tenant master for the per-site unit chain (config override → tenant → geo).
+    // ctx.units is the loop-resolved value; a direct settings read is the legitimate fallback for
+    // callers outside the chat loop (only the LOOP is DB-free, not the tools).
+    const tenantSystem =
+      ctx.units !== undefined ? ctx.units.configuredSystem : (await getUnitPrefs().catch(() => null))?.configuredSystem ?? null;
 
     const results = [];
     for (const v of vineyards) {
@@ -91,7 +97,17 @@ export const queryClimateTool: AssistantTool = {
         lastRefreshAt: configRow.lastRefreshAt ? configRow.lastRefreshAt.toISOString() : null,
         unitSystem: configRow.unitSystem,
       };
-      const s = composeClimateSummaryCore({ vineyardId: v.id, rows: dailyRows, config, latitude: centroid.lat, today: todayLocal });
+      // Plan 098: the summary resolves the display system (override → tenant → geo) — the tool
+      // previously loaded config.unitSystem and silently DROPPED it (the Oregon-forecast bug).
+      const s = composeClimateSummaryCore({
+        vineyardId: v.id,
+        rows: dailyRows,
+        config,
+        latitude: centroid.lat,
+        longitude: centroid.lon,
+        today: todayLocal,
+        tenantUnitSystem: tenantSystem,
+      });
 
       // "Frost last night" — R9 freshness fallback: the primary's prior-local-day Tmin, or "not in yet".
       const primaryRows = dailyRows.filter((r) => r.providerKey === s.primaryProviderKey);
@@ -100,10 +116,14 @@ export const queryClimateTool: AssistantTool = {
       const frostLastNight =
         !lastNightRow || lastNightRow.tminC === null
           ? { status: "not_in_yet", note: `Last night's low isn't in yet (provider latency). Latest reading is ${latestWithTmin?.localDate ?? "none"}. Check a physical gauge — don't infer a frost from missing data.`, latestDate: latestWithTmin?.localDate ?? null }
-          : { status: "in", localDate: lastNight, tminC: lastNightRow.tminC, wasFrost: lastNightRow.tminC <= 0, wasKilling: lastNightRow.tminC <= -2 };
+          : { status: "in", localDate: lastNight, low: tempDisplay(lastNightRow.tminC, s.unitSystem), tminC: lastNightRow.tminC, wasFrost: lastNightRow.tminC <= 0, wasKilling: lastNightRow.tminC <= -2 };
 
       results.push({
         vineyard: v.name,
+        // Plan 098 (council SF4): the display strings the model should use VERBATIM — formatted in
+        // the vineyard's resolved unit system. The raw metric keys below stay for back-compat.
+        unitSystem: s.unitSystem,
+        display: climateDisplay(s),
         primarySource: s.primaryProviderKey,
         coverage: s.coverageState,
         station: s.station.name ? { name: s.station.name, distanceKm: s.station.distanceM ? Math.round(s.station.distanceM / 100) / 10 : null } : null,
@@ -132,7 +152,7 @@ export const queryClimateTool: AssistantTool = {
             startIso: addDaysIso(todayLocal, -29),
             endIso: todayLocal,
           });
-          return { totalMm: r.stats.totalMm, wetDays: r.stats.wetDays, daysSinceLastRain: r.stats.daysSinceLastRain, missingDays: r.stats.missingDays, filledDays: r.stats.filledDays };
+          return { total: precipDisplay(r.stats.totalMm, s.unitSystem), totalMm: r.stats.totalMm, wetDays: r.stats.wetDays, daysSinceLastRain: r.stats.daysSinceLastRain, missingDays: r.stats.missingDays, filledDays: r.stats.filledDays };
         })(),
         compareSources: s.spread ? { gddRange: `${s.spread.min}–${s.spread.max} GDD across ${s.spread.sources.join(", ")}`, perSource: s.perSource } : undefined,
         lastRefresh: s.lastRefreshAt,
@@ -180,6 +200,8 @@ export const queryClimateTool: AssistantTool = {
               date,
               firstFrostHourLocal: dayHours.summary.firstFrostHour,
               firstHeatHourLocal: dayHours.summary.firstHeatHour,
+              minTemp: tempDisplay(dayHours.summary.minTempC, s.unitSystem),
+              maxTemp: tempDisplay(dayHours.summary.maxTempC, s.unitSystem),
               minTempC: dayHours.summary.minTempC,
               maxTempC: dayHours.summary.maxTempC,
             };
@@ -191,6 +213,8 @@ export const queryClimateTool: AssistantTool = {
             stale: isForecastStale(view.issuedAt, new Date()),
             days: view.days.map((d) => ({
               date: d.targetDate,
+              // Display-ready strings first (plan 098) — the model uses these verbatim.
+              ...forecastDayDisplay(d, s.unitSystem),
               highC: d.tmaxC,
               lowC: d.tminC,
               condition: d.conditionCode,

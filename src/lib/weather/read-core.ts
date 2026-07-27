@@ -14,8 +14,28 @@ import { rainfall, type RainfallResult } from "./rainfall-core";
 import { filterToSeason, seasonCompleteness, seasonWindowFor, seasonYearFor, hemisphereFor } from "./season-core";
 import { computeSpreadCore, effectivePrimary, gapFillCore, type Spread, type WeatherConfigLike } from "./source-selection-core";
 import { comparisonSeries, gddGraphCurves, perYearSeasonGdd, winklerNormal, type CurvePoint, type NamedCurve, type WinklerNormal, type YearGdd } from "./normals-core";
-import { normalizeUnitSystem } from "./units-core";
+import { parseUnitSystem, type UnitSystem } from "@/lib/units/display";
+import { defaultUnitSystemFor } from "./us-coverage";
 import type { ProviderKey } from "./providers/types";
+
+/**
+ * Plan 098 — the weather-family unit resolution chain, mirroring `resolveSiteTimeZone`:
+ * per-vineyard config override → tenant master (AppSettings.unitSystem, raw — an UNCONFIGURED
+ * tenant falls through) → the geo default at the site. No coordinates (legacy callers/tests) →
+ * METRIC, the storage system, exactly what `normalizeUnitSystem` did before.
+ */
+export function resolveWeatherUnitSystem(
+  configOverride: string | null | undefined,
+  tenantMaster: UnitSystem | null | undefined,
+  lat?: number,
+  lon?: number,
+): UnitSystem {
+  const override = parseUnitSystem(configOverride);
+  if (override) return override;
+  if (tenantMaster) return tenantMaster;
+  if (lat !== undefined && lon !== undefined) return defaultUnitSystemFor(lat, lon);
+  return "METRIC";
+}
 
 /** A stored daily row (Prisma Decimals already coerced to number|null). */
 export interface DailyRow {
@@ -61,8 +81,12 @@ export interface ClimateSummary {
   siteElevationM: number | null;
   attribution: string | null;
   lastRefreshAt: string | null;
-  /** The vineyard's display unit system (plan 096 U3) — every rendered number goes through units-core with this. */
+  /** The RESOLVED display unit system (plan 098): config override → tenant master → geo default. */
   unitSystem: "METRIC" | "IMPERIAL";
+  /** The vineyard's EXPLICIT override, if any — null means "Auto" (following the tenant/geo chain). */
+  unitSystemOverride: "METRIC" | "IMPERIAL" | null;
+  /** What "Auto" resolves to at this site (tenant -> geo, IGNORING the override) — labels the Auto toggle. */
+  unitSystemAuto: "METRIC" | "IMPERIAL";
   // Headline — the PRIMARY's numbers (R14).
   headline: {
     seasonGddC: number;
@@ -114,6 +138,10 @@ export function composeClimateSummaryCore(input: {
   latitude: number;
   today: string;
   seasonYear?: number;
+  /** Plan 098 — geo unit default needs the full point; omitted (legacy callers/tests) → METRIC fallback. */
+  longitude?: number;
+  /** Plan 098 — the tenant's RAW master system (UnitPrefs.configuredSystem); null/omitted = unconfigured. */
+  tenantUnitSystem?: UnitSystem | null;
 }): ClimateSummary {
   const { vineyardId, rows, config, latitude, today } = input;
   const seasonYear = input.seasonYear ?? seasonYearFor(latitude, today);
@@ -226,7 +254,9 @@ export function composeClimateSummaryCore(input: {
     siteElevationM: config.siteElevationM,
     attribution: config.attribution,
     lastRefreshAt: config.lastRefreshAt,
-    unitSystem: normalizeUnitSystem(config.unitSystem),
+    unitSystem: resolveWeatherUnitSystem(config.unitSystem, input.tenantUnitSystem, latitude, input.longitude),
+    unitSystemOverride: parseUnitSystem(config.unitSystem),
+    unitSystemAuto: resolveWeatherUnitSystem(null, input.tenantUnitSystem, latitude, input.longitude),
     headline: {
       seasonGddC: headlineGdd.gddTotal,
       gddCompletenessPct: Math.round(headlineComp.fraction * 100),

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Metric, Button, Modal, ConfirmButton } from "@/components/ui";
 import {
-  formatL,
   type TimelineEvent,
   type TimelineItem,
   type TimelineLeg,
@@ -25,6 +24,8 @@ import { transitionStateAction } from "@/lib/ferment/actions";
 import { AnalyteTrends, type TrendReading } from "@/components/chemistry/AnalyteTrends";
 import { CompositionRollup } from "@/components/lot/CompositionRollup";
 import { LotIdentityControls } from "./LotIdentityControls";
+import { formatVolume, type VolumeUnit } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import { LineageTree } from "@/components/lot/LineageTree";
 import { CostPanel } from "@/components/cost/CostPanel";
 import type { LotCostView } from "@/lib/cost/data";
@@ -249,6 +250,7 @@ function LifecycleControls({ lot }: { lot: LotDetail }) {
 }
 
 function SplitLotControls({ lot }: { lot: LotDetail }) {
+  const vol = useUnitPrefs().volume;
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [sourceVesselId, setSourceVesselId] = React.useState(lot.current.locations[0]?.vesselId ?? "");
@@ -304,7 +306,7 @@ function SplitLotControls({ lot }: { lot: LotDetail }) {
     <Card style={{ flex: "1 1 280px" }}>
       <Eyebrow tone="ink">Split</Eyebrow>
       <p style={{ marginTop: 10, color: "var(--text-secondary)", fontSize: 13.5 }}>
-        {formatL(lot.current.totalL)} L across {lot.current.locations.length} vessel{lot.current.locations.length === 1 ? "" : "s"}.
+        {formatVolume(lot.current.totalL, "L")} across {lot.current.locations.length} vessel{lot.current.locations.length === 1 ? "" : "s"}.
       </p>
       <Button variant="secondary" onClick={() => setOpen(true)} style={{ marginTop: 12 }}>
         Split lot
@@ -318,7 +320,7 @@ function SplitLotControls({ lot }: { lot: LotDetail }) {
               <select value={sourceVesselId} onChange={(e) => setSourceVesselId(e.target.value)} style={fieldStyle}>
                 {lot.current.locations.map((l) => (
                   <option key={l.vesselId} value={l.vesselId}>
-                    {l.label} · {formatL(l.volumeL)} L
+                    {l.label} · {formatVolume(l.volumeL, "L")}
                   </option>
                 ))}
               </select>
@@ -394,14 +396,15 @@ function opLabel(type: string): string {
   }
 }
 
-function signed(leg: TimelineLeg): string {
+function signed(leg: TimelineLeg, vol: VolumeUnit): string {
   const sign = leg.deltaL >= 0 ? "+" : "−";
-  return `${sign}${formatL(Math.abs(leg.deltaL))} L`;
+  return `${sign}${formatVolume(Math.abs(leg.deltaL), vol)}`;
 }
 
 function LegLine({ leg }: { leg: TimelineLeg }) {
+  const volUnit = useUnitPrefs().volume;
   const vol = (
-    <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--text-secondary)" }}>{signed(leg)}</span>
+    <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--text-secondary)" }}>{signed(leg, volUnit)}</span>
   );
   if (leg.isExternal) {
     return (
@@ -941,6 +944,7 @@ function ChemistrySection({ events }: { events: TimelineItem[] }) {
 }
 
 export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostView }) {
+  const vol = useUnitPrefs().volume;
   const origin = [lot.varietyName, lot.vineyardName, lot.vintageYear != null ? String(lot.vintageYear) : null].filter(
     (x): x is string => !!x,
   );
@@ -1018,12 +1022,12 @@ export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostV
             </div>
           ) : (
             <>
-              <Metric value={`${formatL(lot.current.totalL)} L`} caption="currently in the cellar" />
+              <Metric value={formatVolume(lot.current.totalL, vol)} caption="currently in the cellar" />
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
                 {lot.current.locations.map((l) => (
                   <Link key={l.vesselId} href={`/vessels#vessel-${l.vesselId}`}>
                     <Badge tone="neutral" variant="soft">
-                      {l.label} · {formatL(l.volumeL)} L
+                      {l.label} · {formatVolume(l.volumeL, vol)}
                     </Badge>
                   </Link>
                 ))}

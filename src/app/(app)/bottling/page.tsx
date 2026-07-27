@@ -2,10 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { requireActiveTenant } from "@/lib/dal";
 import { BottlingClient, type VesselOpt, type RunRow } from "./BottlingClient";
 import { materialDisplayName } from "@/lib/cellar/materials-shared";
+import { getUnitPrefs } from "@/lib/settings/data";
+import { formatVolume } from "@/lib/units/display";
 import type { MaterialPickerOption } from "@/components/work-orders/MaterialFilterPicker";
 
 export default async function BottlingPage() {
   await requireActiveTenant();
+  const unitPrefs = await getUnitPrefs();
   const [vessels, locations, runs, packagingMaterials, packagingOnHand] = await Promise.all([
     prisma.vessel.findMany({
       where: { isActive: true },
@@ -58,7 +61,7 @@ export default async function BottlingPage() {
     location: r.destinationLocation.name,
     bottledAbv: r.bottledAbv == null ? null : Number(r.bottledAbv),
     vesselIds: [...new Set(r.sources.map((s) => s.vesselId).filter((v): v is string => v !== null))],
-    sources: r.sources.map((s) => `${s.variety?.name ?? "—"} · ${s.vineyard?.name ?? "—"} · ${s.vintage ?? "NV"}: ${Number(s.volumeConsumedL)} L`),
+    sources: r.sources.map((s) => `${s.variety?.name ?? "—"} · ${s.vineyard?.name ?? "—"} · ${s.vintage ?? "NV"}: ${formatVolume(Number(s.volumeConsumedL), unitPrefs.volume)}`),
   }));
 
   return <BottlingClient vessels={vesselOpts} locations={locations} runs={runRows} packagingOptions={packagingOptions} />;

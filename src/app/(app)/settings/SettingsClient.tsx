@@ -17,6 +17,8 @@ import { Commerce7MappingCard } from "./Commerce7MappingCard";
 import { NamingTemplateCard } from "./NamingTemplateCard";
 import { VoiceRecognitionCard } from "./VoiceRecognitionCard";
 import { WineryTimeZoneCard } from "./WineryTimeZoneCard";
+import { UnitPreferencesCard } from "./UnitPreferencesCard";
+import type { UnitPrefsRow } from "@/lib/units/display";
 import { KnowledgeSourcesCard } from "./KnowledgeSourcesCard";
 import type { SourceSetting } from "@/lib/knowledge/subscriptions";
 
@@ -58,6 +60,7 @@ export function SettingsClient({
   knowledgeSources,
   wineryTimeZone,
   timeZoneOptions,
+  unitPrefs,
 }: {
   sparklingEnabled: boolean;
   customCrushEnabled: boolean;
@@ -73,6 +76,7 @@ export function SettingsClient({
   knowledgeSources: SourceSetting[];
   wineryTimeZone: string | null;
   timeZoneOptions: string[];
+  unitPrefs: UnitPrefsRow;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(sparklingEnabled);
@@ -348,6 +352,9 @@ export function SettingsClient({
 
       {/* The clock planned work is read against — due times, the due-today lanes, the assistant's "today". */}
       <WineryTimeZoneCard initial={wineryTimeZone} zones={timeZoneOptions} />
+
+      {/* Plan 098 — how this winery reads quantities: master system + per-dimension overrides. */}
+      <UnitPreferencesCard initial={unitPrefs} />
 
       <VoiceRecognitionCard initial={voice} />
 

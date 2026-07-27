@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { requireActiveTenant } from "@/lib/dal";
 import { classifyBlend } from "@/lib/bulk/blend";
+import { getUnitPrefs } from "@/lib/settings/data";
+import { formatVolume, volumeUnitLabel } from "@/lib/units/display";
 import { casesAndLoose } from "@/lib/bottling/draw";
 import { Card, Eyebrow, Badge, ExportCsvButton } from "@/components/ui";
 
@@ -56,6 +58,8 @@ const td: React.CSSProperties = { padding: "10px 14px", borderTop: "1px solid va
 
 export default async function ReportsPage() {
   await requireActiveTenant();
+  const unitPrefs = await getUnitPrefs();
+  const volLabel = volumeUnitLabel(unitPrefs.volume);
   const [bulk, bottled, finished] = await Promise.all([bulkByVariety(), bottledBySkuLocation(), finishedByCategoryLocation()]);
 
   return (
@@ -70,15 +74,15 @@ export default async function ReportsPage() {
         </div>
         <Card padding="0">
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
-            <thead><tr><th style={th}>Variety</th><th style={{ ...th, textAlign: "right" }}>Unblended (L)</th><th style={{ ...th, textAlign: "right" }}>In blends (L)</th><th style={{ ...th, textAlign: "right" }}>Total (L)</th></tr></thead>
+            <thead><tr><th style={th}>Variety</th><th style={{ ...th, textAlign: "right" }}>Unblended ({volLabel})</th><th style={{ ...th, textAlign: "right" }}>In blends ({volLabel})</th><th style={{ ...th, textAlign: "right" }}>Total ({volLabel})</th></tr></thead>
             <tbody>
               {bulk.length === 0 ? <tr><td style={td} colSpan={4}>No bulk wine.</td></tr> :
                 bulk.map((r) => (
                   <tr key={r.variety}>
                     <td style={td}>{r.variety}</td>
-                    <td style={{ ...td, textAlign: "right" }}>{r.unblendedL}</td>
-                    <td style={{ ...td, textAlign: "right" }}>{r.blendedL}</td>
-                    <td style={{ ...td, textAlign: "right" }}><strong>{r.totalL}</strong></td>
+                    <td style={{ ...td, textAlign: "right" }}>{formatVolume(r.unblendedL, unitPrefs.volume)}</td>
+                    <td style={{ ...td, textAlign: "right" }}>{formatVolume(r.blendedL, unitPrefs.volume)}</td>
+                    <td style={{ ...td, textAlign: "right" }}><strong>{formatVolume(r.totalL, unitPrefs.volume)}</strong></td>
                   </tr>
                 ))}
             </tbody>
