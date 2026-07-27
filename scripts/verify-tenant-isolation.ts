@@ -207,6 +207,12 @@ async function main() {
   await owner.vineyard.upsert({ where: { id: "iso_vy_b" }, update: {}, create: { id: "iso_vy_b", name: "ISO VY B", tenantId: B } });
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_a" }, update: {}, create: { id: "iso_blk_a", vineyardId: "iso_vy_a", tenantId: A, updatedAt: now } });
   await owner.vineyardBlock.upsert({ where: { id: "iso_blk_b" }, update: {}, create: { id: "iso_blk_b", vineyardId: "iso_vy_b", tenantId: B, updatedAt: now } });
+  // S5a latent-infection ledger. Append-only: app_rls holds SELECT+INSERT only (council C5), so an
+  // UPDATE fails with 42501 rather than a trigger message. Deeper behaviour (idempotency, KD-4
+  // bounds, the clean-scout refusal) is proven by `npm run verify:latent-infection`.
+  const lieBase = { pathogen: "POWDERY_MILDEW" as const, hostOrgan: "LEAF" as const, status: "OPEN" as const, resolutionKind: "UNKNOWN" as const, infectionOccurredOn: new Date("2026-05-01T00:00:00Z"), symptomProjectionKind: "UNKNOWN" as const, infectiousProjectionKind: "UNKNOWN" as const, evidenceSource: "GROWER_REPORT" as const, requestHash: "0", enteredByEmail: "iso@test" };
+  await owner.latentInfectionEvent.upsert({ where: { id: "iso_lie_a" }, update: {}, create: { ...lieBase, id: "iso_lie_a", tenantId: A, logicalEventId: "iso_lie_stream_a", seq: 1, blockId: "iso_blk_a", commandId: "iso_lie_cmd_a" } });
+  await owner.latentInfectionEvent.upsert({ where: { id: "iso_lie_b" }, update: {}, create: { ...lieBase, id: "iso_lie_b", tenantId: B, logicalEventId: "iso_lie_stream_b", seq: 1, blockId: "iso_blk_b", commandId: "iso_lie_cmd_b" } });
   // D9 vineyard MEMBERSHIP set. `user_vineyard` is tenant-scoped + RLS-forced even though `user`
   // itself is GLOBAL — the seam that silently emptied AppUser.vineyardIds. One membership per tenant.
   await owner.userVineyard.upsert({ where: { id: "iso_uv_a" }, update: {}, create: { id: "iso_uv_a", tenantId: A, userId: "iso_um_user_a", vineyardId: "iso_vy_a" } });
@@ -1052,6 +1058,29 @@ async function main() {
       });
       sameTenantOk = true;
     } catch (e) { sameTenantOk = false; console.error(e); }
+    // 5c-S5a. latent_infection_event: RLS, WITH CHECK, the composite block FK, and append-only.
+    check("tenant A sees its own latent_infection_event", (await asTenant(A, (db) => db.latentInfectionEvent.findFirst({ where: { id: "iso_lie_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's latent_infection_event (RLS)", (await asTenant(A, (db) => db.latentInfectionEvent.findFirst({ where: { id: "iso_lie_b" } }))) === null);
+    let lieInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.latentInfectionEvent.create({ data: { ...lieBase, id: "iso_lie_x", tenantId: B, logicalEventId: "iso_lie_stream_x", seq: 1, blockId: "iso_blk_a", commandId: "iso_lie_cmd_x" } }));
+    } catch { lieInsertRaised = true; }
+    check("foreign-tenant latent_infection_event INSERT raises (WITH CHECK)", lieInsertRaised);
+    let lieFkRaised = false;
+    try {
+      await asTenant(A, (db) => db.latentInfectionEvent.create({ data: { ...lieBase, id: "iso_lie_fk", tenantId: A, logicalEventId: "iso_lie_stream_fk", seq: 1, blockId: "iso_blk_b", commandId: "iso_lie_cmd_fk" } }));
+    } catch { lieFkRaised = true; }
+    check("latent_infection_event cross-tenant block reference rejected (composite FK, K11)", lieFkRaised);
+    let lieUpdateRaised = false;
+    try {
+      await asTenant(A, (db) => db.latentInfectionEvent.update({ where: { id: "iso_lie_a" }, data: { resolutionNote: "hacked" } }));
+    } catch { lieUpdateRaised = true; }
+    check("latent_infection_event UPDATE refused (app_rls holds no UPDATE grant, council C5)", lieUpdateRaised);
+    let lieDeleteRaised = false;
+    try {
+      await asTenant(A, (db) => db.latentInfectionEvent.delete({ where: { id: "iso_lie_a" } }));
+    } catch { lieDeleteRaised = true; }
+    check("latent_infection_event DELETE refused (no DELETE grant + trigger)", lieDeleteRaised);
     check("same-tenant op line succeeds (positive control)", sameTenantOk);
   } finally {
     // ── Teardown (owner). ──
@@ -1146,6 +1175,7 @@ async function main() {
     // (council C15), so the teardown runs inside one owner transaction with the flag set.
     await owner.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.allow_spray_purge', 'on', true)`;
+      await tx.latentInfectionEvent.deleteMany({ where: { id: { in: ["iso_lie_a", "iso_lie_b", "iso_lie_x", "iso_lie_fk"] } } });
       await tx.sprayBlockLine.deleteMany({ where: { id: { in: ["iso_sbl_a", "iso_sbl_b", "iso_sbl_fk"] } } });
       await tx.sprayApplication.deleteMany({ where: { id: { in: ["iso_spray_a", "iso_spray_b", "iso_spray_x"] } } });
     });
