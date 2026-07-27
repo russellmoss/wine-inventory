@@ -744,22 +744,31 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
-0. ✅ **POPPED 2026-07-27 — both PRs MERGED, PNW Handbooks is chunked + embedded + gated in the KB.**
-   [#544](https://github.com/russellmoss/wine-inventory/pull/544) (chunker fix) +
-   [#545](https://github.com/russellmoss/wine-inventory/pull/545) (PNW source) both merged to main.
+0. ✅ **POPPED 2026-07-27 — all three PRs MERGED, PNW Handbooks is chunked + embedded + LIVE FOR
+   EVERY TENANT.** [#544](https://github.com/russellmoss/wine-inventory/pull/544) (chunker fix) +
+   [#545](https://github.com/russellmoss/wine-inventory/pull/545) (PNW source, staged dark) +
+   [#547](https://github.com/russellmoss/wine-inventory/pull/547) (`defaultEnabled` flip, its own
+   commit per convention — never enabled in the PR that adds a source) all merged to main.
    **59 documents / 142 chunks live**, KB-1-audited clean (2 table-shaped pages correctly refused at
    ingest, 0 stored chunks, confirmed not a leak). Both Unit 11 gates passed: displacement 0/120
    slots changed (`verify:kb-register`), cross-region 0/40 PNW passages leaked into Bhutan on
-   generic queries with no subscription row. `defaultEnabled: false` globally; enabled for **Demo
-   Winery only** via one subscription row — same staged shape as `ives-technical-reviews`.
-   🎯 **ONE DECISION LEFT for Russell: flip `defaultEnabled: true` globally (Bhutan included), or
-   leave it Demo-only?** Both required gates are clean, so the plan's own criteria are satisfied —
-   but flipping exposes the live Bhutan tenant to Oregon-specific extension content for the first
-   time, which is a product call about a real customer, not a technical one, so it was left explicit
-   rather than auto-flipped.
-   ⚠️ **Merging #544 has a cost side effect**: `CHUNKER_VERSION` is folded into `deriveIndexHash`
-   unconditionally, so the monthly sweep now progressively re-indexes (and re-embeds) every document
-   it re-fetches. That is the repair mechanism working as designed, but it is real embedding spend.
+   generic queries pre-flip. Russell's call: flip globally. Note the flip needed TWO steps, not
+   one — `defaultEnabled` lives on the `KnowledgeSource` DB row, so the config edit alone changed
+   nothing until `seed:knowledge-sources` ran; re-verified post-seed that Bhutan now surfaces PNW
+   passages (3/40 on the same 5 generic queries), in line with how every other US-specific source
+   (UC IPM, WSU, OSU Extension) already behaves there. Both eval artifacts (`kb-eval/snapshot.json`,
+   `kb-register-baseline.json`) checked for drift and left untouched — 0 diff, since both run
+   against Demo Winery, which already had PNW enabled before the global flip.
+   Branches/worktrees pruned: `kb-chunker-text-integrity`, `pnw-handbooks-kb-source`,
+   `pnw-handbooks-default-enable` all gone (local + remote) after their squash-merges; the original
+   `grape-kb-ingestion-a530f9` worktree registration had already been unregistered (its directory is
+   this session's tracked cwd, left alone).
+   ⚠️ **Merging #544 has a cost side effect, now live**: `CHUNKER_VERSION` is folded into
+   `deriveIndexHash` unconditionally, so the monthly sweep progressively re-indexes (and re-embeds)
+   every document it re-fetches. That is the repair mechanism working as designed, but it is real
+   embedding spend — a dedicated campaign for the ~630 confirmed-corrupted documents (specifically
+   the ones the monthly sweep won't reach: `autoCrawl:false` sources, robots-blocked re-fetches)
+   is still NOT run and needs its own go-ahead.
    🔴 **~630 of 3,299 corpus documents are corrupted — about one in five.** Measured read-only by
    re-fetch + byte diff (Unit 3): heuristic candidates 44/64 confirmed (69%), random NON-candidates
    **16/90 confirmed (18.2%, 95% CI ±8.1pp)** → ~590 more across the 3,235 unflagged, CI ~330–850.
@@ -1717,7 +1726,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-27 — **Plan 100 SHIPPED, both PRs merged** ([#544](https://github.com/russellmoss/wine-inventory/pull/544) chunker fix, [#545](https://github.com/russellmoss/wine-inventory/pull/545) PNW Handbooks source): the chunker was silently DELETING text (`splitBySentences` used `String.match(/g)`, which skips spans it cannot match, so `0.5 lb ai` indexed as `5 lb ai`). Fixed, with a lossless scanner + a standing ingest-time numeric-integrity guard + `CHUNKER_VERSION` folded unconditionally into `deriveIndexHash`. Measured read-only: **~630 of 3,299 corpus documents corrupted, about 1 in 5** (candidates 44/64; random non-candidates 16/90 = 18.2%) — the monthly sweep now progressively repairs what it re-fetches; a dedicated repair campaign for the rest is NOT run and needs a go-ahead. PNW Handbooks is live: 59 documents / 142 chunks, KB-1-clean, `defaultEnabled: false` with Demo Winery staged on — one decision (global flip, Bhutan included) left for Russell. Correction to the note below: **SKB PR 1 has since MERGED as #538**, so the KB-1 gate is on main. Also this date: **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness. Bhutan's daily series may be 8–9 °C off vs ERA5 — escalated as its own investigation.** Also this date: plan 098 tenant unit preferences built (all 12 units; QA + ship pending); S2b product-facts FOUNDATION merged + live (#535), phase still open. And: **SKB PR 1 + Unit 5 BUILT AND QA'd on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
+_Last updated: 2026-07-27 — **Plan 100 SHIPPED IN FULL, all three PRs merged** ([#544](https://github.com/russellmoss/wine-inventory/pull/544) chunker fix, [#545](https://github.com/russellmoss/wine-inventory/pull/545) PNW Handbooks source, [#547](https://github.com/russellmoss/wine-inventory/pull/547) `defaultEnabled` flip — Russell's call, live for every tenant): the chunker was silently DELETING text (`splitBySentences` used `String.match(/g)`, which skips spans it cannot match, so `0.5 lb ai` indexed as `5 lb ai`). Fixed, with a lossless scanner + a standing ingest-time numeric-integrity guard + `CHUNKER_VERSION` folded unconditionally into `deriveIndexHash`. Measured read-only: **~630 of 3,299 corpus documents corrupted, about 1 in 5** (candidates 44/64; random non-candidates 16/90 = 18.2%) — the monthly sweep now progressively repairs what it re-fetches; a dedicated repair campaign for the rest is NOT run and needs a go-ahead. PNW Handbooks is live for all tenants: 59 documents / 142 chunks, KB-1-clean. Task branches pruned (local + remote). Correction to the note below: **SKB PR 1 has since MERGED as #538**, so the KB-1 gate is on main. Also this date: **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness. Bhutan's daily series may be 8–9 °C off vs ERA5 — escalated as its own investigation.** Also this date: plan 098 tenant unit preferences built (all 12 units; QA + ship pending); S2b product-facts FOUNDATION merged + live (#535), phase still open. And: **SKB PR 1 + Unit 5 BUILT AND QA'd on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
