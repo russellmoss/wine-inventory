@@ -9,13 +9,102 @@ import { composeRainfallRangeCore } from "@/lib/weather/rainfall-range-core";
 import { composeForecastViewCore, isForecastStale, type ForecastRow } from "@/lib/weather/forecast-read-core";
 import { composeForecastHoursCore, type ForecastHourRow } from "@/lib/weather/forecast-hourly-read-core";
 import { gddCToF } from "@/lib/weather/units-core";
-import { composeClimateSummaryCore, type DailyRow, type ClimateConfig } from "@/lib/weather/read-core";
+import { formatGdd } from "@/lib/units/display";
+import { composeClimateSummaryCore, type DailyRow, type ClimateConfig, type ClimateSummary } from "@/lib/weather/read-core";
+import type { CurvePoint, NamedCurve } from "@/lib/weather/normals-core";
 import { resolveVineyardCentroid } from "@/lib/weather/location";
 import { addDaysIso } from "@/lib/weather/obs-time-core";
 
 type QueryClimateInput = { vineyard?: string };
 
 const dec = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+
+// The cumulative °F GDD a day-indexed curve had reached BY a given day-of-season index. Curves skip days
+// with missing temps, so we take the last point AT OR BEFORE the target index (never interpolate forward
+// into a day the season hasn't reached). null when the curve has no point that early (no data yet).
+function cumFAtDayIndex(curve: CurvePoint[], dayIndex: number): number | null {
+  let val: number | null = null;
+  for (const p of curve) {
+    if (p.dayIndex <= dayIndex) val = p.cumF;
+    else break;
+  }
+  return val;
+}
+
+// SAME-DATE GDD comparison (plan VI-P8, feedback: "how far ahead/behind are we vs the SAME DAY last year /
+// the long-term average"). The headline.priorYear is the FULL prior season — apples-to-oranges against a
+// partial season-to-date. The day-indexed comparison curves (normals.comparison) already hold cumulative
+// °F GDD by day-of-season for last year, the long-term average, and the coolest/hottest years; we read this
+// year's current day-of-season index off its own curve and look every other curve up AT THAT SAME INDEX.
+// This is exactly what the Weather & climate graph shows, so the assistant and the page now agree.
+function sameDateGdd(s: ClimateSummary): {
+  asOfDate: string | null;
+  dayOfSeason: number | null;
+  thisYear: { seasonYear: number; toDate: string; toDateF: number } | null;
+  vs: Array<{
+    key: NamedCurve["key"];
+    label: string;
+    toDateF: number;
+    toDate: string;
+    deltaF: number;
+    delta: string;
+    aheadOrBehind: "ahead" | "behind" | "even";
+  }>;
+  note: string;
+} {
+  const u = s.unitSystem;
+  const curves = s.normals.comparison;
+  const current = curves.find((c) => c.key === "current");
+  const currentLast = current && current.curve.length ? current.curve[current.curve.length - 1] : null;
+  // The current day-of-season index = where this year's curve has reached. Everything is read at THIS index.
+  const dayIndex = currentLast ? currentLast.dayIndex : null;
+  const asOfDate = s.headline.gddCumulative.length ? s.headline.gddCumulative[s.headline.gddCumulative.length - 1].date : null;
+
+  if (dayIndex === null || currentLast === null) {
+    return {
+      asOfDate,
+      dayOfSeason: null,
+      thisYear: null,
+      vs: [],
+      note: !s.normals.hasHistory
+        ? "No complete past seasons are loaded yet, so a same-date year-over-year comparison isn't possible. Load multi-year history on the Weather & climate page."
+        : "The current season has no GDD accumulated yet, so there's nothing to compare on this date.",
+    };
+  }
+
+  // Convert °F back to °C only to reuse formatGdd (which speaks the tenant's unit system). formatGdd expects
+  // a °C GDD value and scales it; gddF / 1.8 = gddC.
+  const fToGddC = (f: number) => f / 1.8;
+  const thisYearF = currentLast.cumF;
+
+  const vs: ReturnType<typeof sameDateGdd>["vs"] = [];
+  for (const c of curves) {
+    if (c.key === "current") continue;
+    const cum = cumFAtDayIndex(c.curve, dayIndex);
+    if (cum === null) continue; // that year has no reading this early in the season
+    const deltaF = Math.round(thisYearF - cum);
+    const aheadOrBehind = deltaF > 0 ? "ahead" : deltaF < 0 ? "behind" : "even";
+    vs.push({
+      key: c.key,
+      label: c.label,
+      toDateF: cum,
+      toDate: formatGdd(fToGddC(cum), u),
+      deltaF,
+      delta: `${deltaF >= 0 ? "+" : "\u2212"}${formatGdd(fToGddC(Math.abs(deltaF)), u)}`,
+      aheadOrBehind,
+    });
+  }
+
+  return {
+    asOfDate,
+    dayOfSeason: dayIndex + 1, // human day-of-season (1-based)
+    thisYear: { seasonYear: s.seasonYear, toDate: formatGdd(fToGddC(thisYearF), u), toDateF: thisYearF },
+    vs,
+    note:
+      "Same-date comparison: every figure is cumulative GDD to THIS point in the season (not full-season totals). " +
+      "'ahead'/'behind' is this year minus that reference on the same day-of-season. This matches the Weather & climate graph.",
+  };
+}
 
 // VI-P8 — read the stored weather/climate for a vineyard and answer the grower's plain-English questions:
 // GDD vs last year, warmer/cooler than last year (GST), "was last night a frost?", Winkler region, and the
@@ -25,11 +114,14 @@ export const queryClimateTool: AssistantTool = {
   name: "query_climate",
   description:
     "Get a vineyard's weather & climate: the 7-DAY FORECAST (highs/lows, conditions, expected rain), growing " +
-    "degree days (GDD) vs last year, whether the season is warmer or cooler than last year, the Winkler region, " +
+    "degree days (GDD), whether the season is running ahead of or behind last year AND the long-term average " +
+    "ON THIS SAME DATE (a true same-date year-over-year comparison — how far ahead/behind we are today vs the " +
+    "previous season and the multi-year normal, which also indicates relative phenology), the Winkler region, " +
     "frost risk (including 'was last night a frost?'), heat days, season rainfall, and the last 30 days of rain. " +
     "Call this for questions about the forecast, this week's weather, rain coming, temperature, GDD, degree days, " +
-    "heat, frost, Winkler, growing season, or 'how does this year compare'. Answers in the vineyard's chosen " +
-    "primary source; reads stored data only.",
+    "heat, frost, Winkler, growing season, 'how does this year compare', 'how far ahead/behind are we', 'GDD vs " +
+    "last year at this point', or 'vs the long-term average on this day'. Answers in the vineyard's chosen primary " +
+    "source; reads stored data only.",
   kind: "read",
   inputSchema: {
     type: "object",
@@ -130,7 +222,14 @@ export const queryClimateTool: AssistantTool = {
         station: s.station.name ? { name: s.station.name, distanceKm: s.station.distanceM ? Math.round(s.station.distanceM / 100) / 10 : null } : null,
         siteElevationM: s.siteElevationM,
         seasonYear: s.seasonYear,
-        gdd: { seasonToDateC: s.headline.seasonGddC, completenessPct: s.headline.gddCompletenessPct, vsLastYearC: s.headline.priorYear?.deltaC ?? null, lastYearC: s.headline.priorYear?.seasonGddC ?? null },
+        // NOTE: vsLastYearC/lastYearC here are FULL-SEASON prior-year totals — do NOT use them to answer
+        // "where are we vs last year AT THIS POINT". For a same-date comparison use `gddSameDate` below.
+        gdd: { seasonToDateC: s.headline.seasonGddC, completenessPct: s.headline.gddCompletenessPct, vsLastYearFullSeasonC: s.headline.priorYear?.deltaC ?? null, lastYearFullSeasonC: s.headline.priorYear?.seasonGddC ?? null },
+        // Same-date year-over-year (feedback fix): how far AHEAD or BEHIND this year is at this exact
+        // point in the season vs last year, the long-term average, and the coolest/hottest years —
+        // an apples-to-apples partial-season comparison, and the phenology-relevant answer. Use THIS,
+        // not the full-season gdd figures above, when the user asks "how far ahead/behind are we".
+        gddSameDate: sameDateGdd(s),
         // Source fidelity — does the primary series describe THIS site? When it doesn't, the
         // classifications below are withheld and the model must say why rather than guess.
         sourceFidelity: {
