@@ -489,10 +489,11 @@ describe("Cornell NY/PA Grape Guide preview source (plan 099)", () => {
     expect(guide().crawlCadence).toBe("manual");
   });
 
-  // Staged rollout. Flipping this is a follow-up that happens only after the kb-register displacement
-  // measurement, never in the PR that adds the source.
-  it("ships OFF by default", () => {
-    expect(guide().defaultEnabled).toBe(false);
+  // Staged rollout complete. This was false in the PR that ADDED the source and was flipped only
+  // after the crawl, the numeric-fidelity spot check and a displacement measurement (1/120 slots).
+  // The ordering is the invariant, not the value: never flip in the same PR that adds a source.
+  it("is on by default, after the staged rollout", () => {
+    expect(guide().defaultEnabled).toBe(true);
   });
 
   it("records the withdraw-on-request posture in its licence", () => {

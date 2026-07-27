@@ -1167,9 +1167,9 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
-- **🧵 TANGENT (2026-07-27) — Cornell NY/PA Grape Guide as a KB source + the breadcrumb defect it
-  exposed. Plan 099, [PR #543](https://github.com/russellmoss/wine-inventory/pull/543) OPEN. Code green;
-  NOT merged, NOT seeded, NOT crawled.**
+- **✅ Cornell NY/PA Grape Guide is LIVE in the KB (2026-07-27) + the breadcrumb defect it exposed.
+  Plan 099, [#543](https://github.com/russellmoss/wine-inventory/pull/543) MERGED (`64db4cd9`),
+  crawled, measured, `defaultEnabled:true` for all tenants.**
   Owner asked to ingest the [2025 Grape Guide preview PDF](https://cropandpestguides.cce.cornell.edu/Preview/2025/2025_Grape_Guide_Preview.pdf).
   **Three blockers were surfaced and the owner decided to proceed anyway (2026-07-27):** plan 087 lists
   that host as "paid. Do not crawl." (the *unreachable* half of that note is stale — it serves 200); the
@@ -1189,15 +1189,22 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   `crawl:curated` doesn't pass `ignoreValidators`. **`reindex:knowledge` is the only lever**, deferred
   (~23.5k chunks of Voyage spend) and tripwired. Also corrected `scale-register.md`: the KB entry claimed
   🟢 while its own ~10k-chunk tripwire had been crossed at ~23.5k.
-  **Remaining (plan 100 Unit 6, strictly ordered):** capture `verify:kb-register --capture` +
-  `kb:snapshot --repeat 3` BEFORE → merge+deploy → `seed:knowledge-sources` → `crawl:curated -- cornell-grape-guide`
-  → read rows back → **numeric-fidelity spot check on the rate cells** (see the EM 8413 precedent in
-  `TODOS.md` — a live 10× dose error from a converter eating a leading `0.`) → re-measure displacement →
-  enable Demo → flip `defaultEnabled`. Ships `defaultEnabled:false`.
-  🔴 **NEW INTERACTION, unresolved:** #538 merged the **KB-1 tier-C boundary gate** into
-  `index-documents.ts` after plan 099 was written. The Grape Guide's pages 22-24 are exactly what that
-  gate refuses. Whether `cornell-grape-guide` is an *enforcing* source decides whether the crawl indexes
-  the prose and drops the tables, or refuses the document outright. **Settle this before Unit 6 step 4.**
+  ✅ **Unit 6 COMPLETE — LIVE for all tenants 2026-07-27.** 1 doc / **82 chunks** / 46 distinct
+  breadcrumbs; `publishedAt` 2025-04-30; displacement **1/120 slots (1%)** vs a 25% gate;
+  `verify:knowledge-base` 21/21, `kb-subscriptions`, `kb-register`, `kb-boundary` all green.
+  🔻 **THE GATE FIRED, AND IT WAS RIGHT.** The FIRST crawl produced a **corrupt** document and was
+  thrown away — only 10/20 active ingredients and **6/24 trade names** survived, and chapter 8 stored a
+  table *header* plus `... EPA Reg. 5TG 3, 21 1 year 12 hr 62719-175` where the PDF says
+  `^Snapshot **2.5TG** …`. A rate table that looks authoritative and is wrong. Source was hard-closed
+  (`active:false`) — no tenant ever had it on. **Cause: it ran one commit before [#544 / plan 100 PR A]**,
+  where `splitBySentences`'s `String.match(/g)` silently DELETED spans it couldn't match (`0.5`→`5`),
+  firing on any block over `MAX_TOKENS` — i.e. exactly a 3-page pesticide table. Re-crawled on the fixed
+  chunker (`CHUNKER_VERSION` 2 + `reset:knowledge-source`): **20/20 AIs, 24/24 trade names, 10/10
+  decimals, 8/8 EPA reg numbers, 5/5 page-22 rows verbatim**, zero corruption signatures.
+  ⚠️ **`verify:kb-boundary` says `product-table 0` for this source and that is NOT safety evidence** —
+  it is the PDF blindness in `TODOS.md`. The numeric spot check cleared this document, not the gate.
+  🔑 **Both crawls printed `documents:1, errors:0`.** Only comparing stored cells against the PDF told
+  them apart. A version bump plus a green run proves nothing about content.
 - **🟩 SKB PR 1 + Unit 5 BUILT (2026-07-27) — the boundary is now REAL, so the source units are
   unblocked.** Branch `claude/skb-knowledge-sources-plan-bd36b7`, 3 commits, **not yet PR'd**.
   Plan: [SKB-knowledge-sources-plan.md](docs/spray_assistant/phases/SKB-knowledge-sources-plan.md).
