@@ -1033,6 +1033,20 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
     still surfacing the retrieved agronomic context. 12 NEGATIVE classifier cases + a negative golden,
     because a caveat that fires on everything is caveat fatigue.
   - **`allowPaths`** — exact-path allowlist with the canonicalization contract tested per clause.
+  - ✅ **QA'd 2026-07-27** — [report](docs/spray_assistant/qa/SKB-qa-report.md). Full suite 396 files /
+    4,733 tests green, `tsc` clean, lint 0 errors, all pure guards green. **4 defects found, 3 of them
+    invisible to the unit tests:** the detector vs 10 REAL pages went 6/10 → 8/10 (markup density beat
+    the table header window — VT's **29-row** GrapePestEfficacy table read as PROSE); and
+    `verify:kb-boundary`'s first-ever run found **`virginia-fruit`: 69 docs, 260 chunks,
+    `defaultEnabled=true`, NO config entry, silently ENFORCING**. Live browser QA (port 3005, never
+    :3000) proved the captan case refuses the verdict, keeps the cited context, and issues neither a
+    clearance nor a self-authored prohibition; the biology negative control draws no caveat.
+  - 🔴 **Unit 7 needs REWRITING before it is built:** `virginia-fruit` IS `virginiafruit.ento.vt.edu`
+    — already partly in the corpus and already `defaultEnabled=true`. It is a RECONCILIATION, not a
+    greenfield add, and the plan's staged dark rollout does not describe the real starting state.
+  - 🔴 **UC IPM carries tier-C content TODAY** (verified by hand: a `Common name | Amount per acre |
+    R.E.I. | P.H.I. | MODE-OF-ACTION GROUP` table). **D3 census floor = 19** flagged docs, and that is
+    a severe under-count — the chunk-text arm scores uc-ipm at 0 while a live fetch finds a 21-row table.
   - ⚠️ **Plan assumption that did NOT hold: `knowledge_blob.blobUrl` is NULL corpus-wide**, so
     `verify:kb-boundary` cannot re-read stored bytes. Enforcing sources are audited by **live re-fetch**
     (the correct seam); the report-only census reads chunk text and is reported as an **approximate
@@ -1475,7 +1489,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-27 — **SKB PR 1 + Unit 5 BUILT on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
+_Last updated: 2026-07-27 — **SKB PR 1 + Unit 5 BUILT AND QA'd on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
