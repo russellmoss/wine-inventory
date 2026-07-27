@@ -12,6 +12,7 @@ import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { revalidatePath } from "next/cache";
 import { recordSprayApplicationCore, type SprayRecordResult } from "./record-core";
 import { correctSprayApplicationCore, voidSprayApplicationCore, correctabilityOf, type Correctability } from "./correction-core";
+import { createProductFactsResolver } from "@/lib/pesticide/product-facts";
 import { blockApplicationFacts, foldCurrentApplications, type BlockApplicationFacts } from "./read-core";
 import { resolveDriedBeforeRain, type ResolvedDrying } from "./drying-core";
 import { recordDryingOverrideCore } from "./drying-override-core";
@@ -25,12 +26,14 @@ import type {
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
-async function withTenant<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
+// The callback receives the resolved tenantId so the write paths can build S2b's tenant-bound
+// product-facts resolver. Existing zero-arg callers stay assignable.
+async function withTenant<T>(fn: (tenantId: string) => Promise<T>): Promise<ActionResult<T>> {
   try {
     await requireReadyUser();
     const tenantId = await resolveActiveTenantId();
     if (!tenantId) return { ok: false, error: "No active organization on your session — sign in to a winery first." };
-    const data = await runAsTenant(tenantId, async () => await fn());
+    const data = await runAsTenant(tenantId, async () => await fn(tenantId));
     return { ok: true, data };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Something went wrong." };
@@ -254,7 +257,13 @@ export async function loadSprayFormBlocks(): Promise<
 
 export async function submitSprayRecord(input: RecordSprayInput): Promise<ActionResult<SprayRecordResult>> {
   const who = await actor();
-  const result = await withTenant(() => recordSprayApplicationCore(who, input));
+  // S2b Unit 6 — THE composition root. This is where the null resolver is finally replaced; the
+  // port and both cores are untouched (KD-6, function-argument DI). Registering it back-fills
+  // nothing: existing records keep their frozen snapshots, and a clerical correction still copies
+  // the predecessor verbatim (S3a council G1).
+  const result = await withTenant((tenantId) =>
+    recordSprayApplicationCore(who, input, { factsResolver: createProductFactsResolver(tenantId) }),
+  );
   if (result.ok) revalidatePath("/vineyards/sprays");
   return result;
 }
@@ -264,7 +273,9 @@ export async function submitSprayCorrection(
   input: RecordSprayInput & { correctionReason: string },
 ): Promise<ActionResult<{ applicationId: string }>> {
   const who = await actor();
-  const result = await withTenant(() => correctSprayApplicationCore(who, predecessorId, input));
+  const result = await withTenant((tenantId) =>
+    correctSprayApplicationCore(who, predecessorId, input, { factsResolver: createProductFactsResolver(tenantId) }),
+  );
   if (result.ok) revalidatePath("/vineyards/sprays");
   return result;
 }

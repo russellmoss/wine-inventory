@@ -14,7 +14,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
-import { buildFactsSnapshot } from "./facts-snapshot-core";
+import { buildFactsSnapshot, factsSnapshotColumns } from "./facts-snapshot-core";
 import { NullProductFactsResolver, type ProductFactsKey, type ProductFactsResolver } from "./product-facts-port";
 import {
   canonicalQuantityForBasis,
@@ -181,22 +181,8 @@ export async function recordSprayApplicationCore(
             enteredReiHours: line.enteredReiHours ?? null,
             enteredPhiDays: line.enteredPhiDays ?? null,
             enteredActiveIngredient: line.enteredActiveIngredient ?? null,
-            snapshotPhiDays: snap.snapshotPhiDays,
-            snapshotReiHours: snap.snapshotReiHours,
-            snapshotRainfastHours: snap.snapshotRainfastHours,
-            snapshotMobilityClass: snap.snapshotMobilityClass,
-            snapshotResistanceGroups: snap.snapshotResistanceGroups,
-            resistanceGroupsKnown: snap.resistanceGroupsKnown,
-            snapshotActiveIngredientKeys: snap.snapshotActiveIngredientKeys,
-            activeIngredientsKnown: snap.activeIngredientsKnown,
+            ...factsSnapshotColumns(snap),
             snapshotActiveIngredients: snap.snapshotActiveIngredients === null ? Prisma.DbNull : (snap.snapshotActiveIngredients as unknown as Prisma.InputJsonValue),
-            factsPublishedRevisionId: snap.factsPublishedRevisionId,
-            factsApprilAsOf: snap.factsApprilAsOf,
-            factsCdprAsOf: snap.factsCdprAsOf,
-            factsResistanceArtifactSha256: snap.factsResistanceArtifactSha256,
-            factsAsOf: snap.factsAsOf,
-            factsSource: snap.factsSource,
-            factsCompleteness: snap.factsCompleteness,
           },
           select: { id: true, lineNo: true },
         });

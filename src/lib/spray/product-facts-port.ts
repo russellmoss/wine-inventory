@@ -33,6 +33,27 @@ export interface ProductFactsAsOf {
   apprilAsOf: string | null;
   cdprAsOf: string | null;
   resistanceArtifactSha256: string | null;
+  /**
+   * S2b — THE FIFTH SOURCE. The curated product-facts artifact moves on its OWN cadence (a human
+   * commits it), so per the contract's change rule it gets its own component instead of overloading
+   * one of S2's four. Null = no curated facts contributed to this snapshot.
+   */
+  productFactsArtifactSha256?: string | null;
+  productFactsAsOf?: string | null;
+}
+
+/**
+ * S2b KD-11 — FACT-GROUP provenance. A DIFFERENT axis from the registry watermark above: which
+ * SOURCE each group's values came from, and whether that group was already past review when the
+ * grower acted. Conflating the two is exactly how the scalar-vs-composite seam defect happened.
+ *
+ * Optional on the port so the null resolver and any pre-S2b caller stay valid; absent means "the
+ * resolver does not distinguish groups", which the snapshot builder records as NONE/not-stale.
+ */
+export interface ProductFactsGroupProvenance {
+  source: SprayFactsSource;
+  asOf: string | null;
+  staleAtWrite: boolean;
 }
 
 export interface ResolvedActiveIngredient {
@@ -61,6 +82,9 @@ export interface ResolvedProductFacts {
   /** The composite watermark naming WHICH facts these are. Null = the resolver has no provenance
    * to offer (the null resolver, or a source that has never published). */
   factsAsOf: ProductFactsAsOf | null;
+  /** S2b KD-11 — per-group provenance. Absent = the resolver does not distinguish groups. */
+  regulatory?: ProductFactsGroupProvenance | null;
+  agronomic?: ProductFactsGroupProvenance | null;
 }
 
 export interface ProductFactsResolver {

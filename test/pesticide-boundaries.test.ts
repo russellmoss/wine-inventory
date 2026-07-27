@@ -56,6 +56,67 @@ describe("K7 — lookup.ts is the ONLY prisma importer in the lane", () => {
     expect(gateAt).toBeGreaterThan(-1);
     expect(queryAt).toBeGreaterThan(gateAt);
   });
+
+  // ── S2b / council C5 ────────────────────────────────────────────────────────
+  // The guard above proves the gate inside ONE function. That is not the property we need: a new
+  // exported registry-backed read could query the pesticide tables before entitlement and this
+  // suite would stay green. So enumerate EVERY exported read and assert each one gates itself.
+  //
+  // Deliberately NOT gated, and asserted as such below:
+  //   isPesticideSourceEnabled  — it IS the gate
+  //   getPesticideFactsAsOf     — reads only revision watermarks (dates + a sha), no product facts
+  //   lookupTenantProductFactsBatch — KD-4: grower-supplied data must resolve with the source toggle
+  //                                   OFF, or the non-US tenant is bricked through the back door
+  const GATED_READS = ["lookupRegistration", "lookupProductFactsBatch", "lookupRegistryIdentityBatch"];
+  const UNGATED_BY_DESIGN = ["isPesticideSourceEnabled", "getPesticideFactsAsOf", "lookupTenantProductFactsBatch"];
+
+  function exportedAsyncFns(src: string): string[] {
+    return [...src.matchAll(/export async function (\w+)/g)].map((m) => m[1]);
+  }
+  /** The body of one exported function, up to the next top-level `export`. */
+  function bodyOf(src: string, name: string): string {
+    const start = src.indexOf(`export async function ${name}`);
+    if (start < 0) return "";
+    const next = src.indexOf("\nexport ", start + 1);
+    return src.slice(start, next < 0 ? src.length : next);
+  }
+
+  it("every exported registry-backed read gates itself on entitlement", () => {
+    const src = stripComments(readFileSync(join(LANE_DIR, "lookup.ts"), "utf8"));
+    for (const fn of GATED_READS) {
+      const body = bodyOf(src, fn);
+      expect(body, `${fn} is missing from lookup.ts`).not.toBe("");
+      expect(body, `${fn} queries pesticide data without checking isPesticideSourceEnabled first`).toContain(
+        "isPesticideSourceEnabled",
+      );
+      const gateAt = body.indexOf("isPesticideSourceEnabled");
+      const queryAt = body.search(/prisma\.pesticide\w+\./);
+      if (queryAt > -1) expect(queryAt, `${fn} queries BEFORE its entitlement check`).toBeGreaterThan(gateAt);
+    }
+  });
+
+  it("the enumeration above is complete — a NEW exported read must be classified", () => {
+    const src = readFileSync(join(LANE_DIR, "lookup.ts"), "utf8");
+    const unclassified = exportedAsyncFns(src).filter((f) => !GATED_READS.includes(f) && !UNGATED_BY_DESIGN.includes(f));
+    expect(
+      unclassified,
+      `add these to GATED_READS (and gate them) or to UNGATED_BY_DESIGN with a written reason: ${unclassified.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("KD-4 — the grower-supplied read is NOT behind the source toggle", () => {
+    const body = bodyOf(stripComments(readFileSync(join(LANE_DIR, "lookup.ts"), "utf8")), "lookupTenantProductFactsBatch");
+    expect(body).not.toBe("");
+    expect(
+      body,
+      "gating grower-supplied facts on the epa-pesticide toggle re-bricks the non-US tenant (council C6)",
+    ).not.toContain("isPesticideSourceEnabled");
+  });
+
+  it("the resolver module imports no prisma — composition only (K7)", () => {
+    const src = stripComments(readFileSync(join(LANE_DIR, "product-facts.ts"), "utf8"));
+    expect(/@\/lib\/prisma|from ["']\.\.?\/prisma/.test(src)).toBe(false);
+  });
 });
 
 describe("K6 — no fuzzy matcher anywhere in the lane", () => {
