@@ -8,7 +8,7 @@
 
 import React from "react";
 import type { NamedCurve } from "@/lib/weather/normals-core";
-import { gddFToC, type UnitSystem } from "@/lib/weather/units-core";
+import { gddCToF, gddFToC, type UnitSystem } from "@/lib/weather/units-core";
 
 const W = 680;
 const H = 360;
@@ -64,7 +64,9 @@ export function GddChart({ series, unitSystem = "IMPERIAL" }: { series: NamedCur
 
   if (all.length === 0) return null;
   const maxF = Math.max(500, ...all.map((p) => p.cumF));
-  const yTop = Math.ceil(maxF / 500) * 500;
+  // The PREFERRED axis gets round gridline values: imperial tops out at a 500 °F-GDD multiple;
+  // metric at a 250 °C-GDD multiple (= 450 °F-GDD, since a degree-day scales by exactly 1.8).
+  const yTop = imp ? Math.ceil(maxF / 500) * 500 : gddCToF(Math.ceil(gddFToC(maxF) / 250) * 250);
   const xOf = (d: number) => PAD_L + ((d - d0) / span) * PLOT_W;
   const yOf = (v: number) => H - PAD_B - (v / yTop) * (H - PAD_T - PAD_B);
   const clientToDay = (clientX: number) => {
@@ -94,8 +96,11 @@ export function GddChart({ series, unitSystem = "IMPERIAL" }: { series: NamedCur
     });
   };
 
-  const fTicks: number[] = [];
-  for (let v = 0; v <= yTop; v += yTop / 4) fTicks.push(Math.round(v));
+  // Ticks live in the PREFERRED unit's value space (so its labels are round numbers) and are
+  // positioned via the °F-native scale; the secondary axis shows the converted value.
+  const topPrimary = imp ? yTop : gddFToC(yTop);
+  const primaryTicks: number[] = [];
+  for (let v = 0; v <= topPrimary + 0.5; v += topPrimary / 4) primaryTicks.push(Math.round(v));
   const visibleMonths = NH_MONTHS.filter((m) => m.d >= d0 - 0.5 && m.d <= d1 + 0.5 && m.label);
 
   const pathD = (s: NamedCurve) => {
@@ -171,13 +176,16 @@ export function GddChart({ series, unitSystem = "IMPERIAL" }: { series: NamedCur
         onWheel={onWheel} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={endGesture}
       >
         <clipPath id="gddplot"><rect x={PAD_L} y={PAD_T} width={PLOT_W} height={H - PAD_T - PAD_B} /></clipPath>
-        {fTicks.map((v) => (
-          <g key={v}>
-            <line x1={PAD_L} y1={yOf(v)} x2={W - PAD_R} y2={yOf(v)} stroke="var(--border-subtle)" strokeWidth={1} />
-            <text x={PAD_L - 7} y={yOf(v) + 3} textAnchor="end" fontSize={10} fill="var(--text-muted)">{imp ? v.toLocaleString() : toC(v)}</text>
-            <text x={W - PAD_R + 7} y={yOf(v) + 3} textAnchor="start" fontSize={10} fill="var(--text-muted)">{imp ? toC(v) : v.toLocaleString()}</text>
-          </g>
-        ))}
+        {primaryTicks.map((p) => {
+          const f = imp ? p : gddCToF(p);
+          return (
+            <g key={p}>
+              <line x1={PAD_L} y1={yOf(f)} x2={W - PAD_R} y2={yOf(f)} stroke="var(--border-subtle)" strokeWidth={1} />
+              <text x={PAD_L - 7} y={yOf(f) + 3} textAnchor="end" fontSize={10} fill="var(--text-muted)">{p.toLocaleString()}</text>
+              <text x={W - PAD_R + 7} y={yOf(f) + 3} textAnchor="start" fontSize={10} fill="var(--text-muted)">{imp ? toC(f) : Math.round(f).toLocaleString()}</text>
+            </g>
+          );
+        })}
         {visibleMonths.map((m) => (
           <g key={m.d}>
             <line x1={xOf(m.d)} y1={PAD_T} x2={xOf(m.d)} y2={H - PAD_B} stroke="var(--border-subtle)" strokeWidth={0.75} opacity={0.6} />

@@ -13,7 +13,7 @@ import {
   deactivateGroupAction,
   previewGroupApplyAction,
 } from "@/lib/cellar/actions";
-import { formatVolume } from "@/lib/units/display";
+import { formatVolume, volumeInputToLiters, volumeUnitLabel } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Group actions on /bulk (Phase 3, Unit 9, D13). Target a saved group OR an ad-hoc
@@ -67,6 +67,7 @@ export function GroupActions({
   varietyNames: string[];
   vineyardNames: string[];
 }) {
+  const vol = useUnitPrefs().volume;
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
@@ -367,14 +368,17 @@ export function GroupActions({
                 </option>
                 {vessels.filter((v) => v.totalL > 0).map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.label} ({v.totalL} L)
+                    {v.label} ({formatVolume(v.totalL, vol)})
                   </option>
                 ))}
               </select>
             ) : null}
 
             {needsAmount ? (
-              <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Litres" style={{ ...fieldStyle, width: 96 }} aria-label="Litres" />
+              <span style={{ position: "relative", display: "inline-flex", width: 110 }}>
+                <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Amount" style={{ ...fieldStyle, width: "100%", paddingRight: 34 }} aria-label={`Amount (${volumeUnitLabel(vol)})`} />
+                <span aria-hidden style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 12, color: "var(--text-muted)" }}>{volumeUnitLabel(vol)}</span>
+              </span>
             ) : null}
 
             <Button variant="secondary" size="sm" disabled={pending || targetCount === 0} onClick={previewRun} style={{ minHeight: 44 }}>

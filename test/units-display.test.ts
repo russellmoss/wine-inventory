@@ -21,6 +21,10 @@ import {
   unitPrefsSentence,
   volumeInputToLiters,
   volumeInputValue,
+  tempUnitSystem,
+  precipUnitSystem,
+  weightLegacyUnit,
+  weighOutSecondary,
 } from "@/lib/units/display";
 import { LITERS_PER_US_GALLON } from "@/lib/compliance/gallons";
 
@@ -121,13 +125,14 @@ describe("formatVolume — L | hL | gal", () => {
 
 describe("formatCostPerVolume — the one place a converted money rate exists", () => {
   it("$/L → $/gal multiplies by the exact gallon", () => {
-    expect(formatCostPerVolume(1, "GAL", "$")).toBe("$3.785/gal");
+    expect(formatCostPerVolume(1, "GAL", "$")).toBe("$3.7854/gal");
     expect(formatCostPerVolume(1, "HL", "$")).toBe("$100.00/hL");
     expect(formatCostPerVolume(1.5, "L", "$")).toBe("$1.50/L");
   });
-  it("min 2, max 3 fraction digits", () => {
+  it("min 2, max 4 fraction digits — a tiny nonzero component must never display as zero", () => {
     expect(formatCostPerVolume(0.5, "L", "€")).toBe("€0.50/L");
-    expect(formatCostPerVolume(1.23456, "L", "$")).toBe("$1.235/L");
+    expect(formatCostPerVolume(1.23456, "L", "$")).toBe("$1.2346/L");
+    expect(formatCostPerVolume(0.0004, "L", "$")).toBe("$0.0004/L");
   });
   it("null → em dash", () => {
     expect(formatCostPerVolume(null, "GAL", "$")).toBe("—");
@@ -141,8 +146,8 @@ describe("length / distance / area", () => {
     expect(formatLength(null, "M")).toBe("—");
   });
   it("formatDistance (station distance): km or miles, 1 dp", () => {
-    expect(formatDistance(2.4, "M")).toBe("2.4 km");
-    expect(formatDistance(1.609344, "FT")).toBe("1.0 mi");
+    expect(formatDistance(2.4, "METRIC")).toBe("2.4 km");
+    expect(formatDistance(1.609344, "IMPERIAL")).toBe("1.0 mi");
   });
   it("formatAreaHa converts hectares to acres", () => {
     expect(formatAreaHa(1, "HA")).toBe("1.00 ha");
@@ -197,6 +202,20 @@ describe("write-side parsers are strict", () => {
     expect(parseVolumeUnit("gal")).toBeNull();
     expect(parseVolumeUnit("")).toBeNull();
     expect(parseVolumeUnit(null)).toBeNull();
+  });
+});
+
+describe("dimension → system bridges (one owner)", () => {
+  it("temperature / precipitation / weight bridges follow their dimension", () => {
+    expect(tempUnitSystem(DEFAULT_IMPERIAL_PREFS)).toBe("IMPERIAL");
+    expect(tempUnitSystem(resolveUnitPrefs({ unitSystem: "IMPERIAL", unitTemperature: "C" }))).toBe("METRIC");
+    expect(precipUnitSystem(DEFAULT_METRIC_PREFS)).toBe("METRIC");
+    expect(weightLegacyUnit(DEFAULT_IMPERIAL_PREFS)).toBe("imperial");
+  });
+  it("weighOutSecondary: only gram totals for an LB tenant get the readout", () => {
+    expect(weighOutSecondary(908, "g", "LB")).toBe(" (2.00 lb)");
+    expect(weighOutSecondary(908, "g", "KG")).toBe("");
+    expect(weighOutSecondary(908, "mL", "LB")).toBe("");
   });
 });
 

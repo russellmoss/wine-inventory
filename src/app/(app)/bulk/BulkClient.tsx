@@ -58,7 +58,7 @@ function FillBar({ v }: { v: VesselWithContents }) {
         <div style={{ width: `${Math.min(100, v.fill.pct)}%`, height: "100%", background: v.fill.over ? "var(--danger)" : "var(--accent)" }} />
       </div>
       <span style={{ fontSize: 12.5, color: v.fill.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>
-        {v.fill.filledL}/{v.capacityL} L{v.fill.over ? " ⚠" : ""}
+        {formatVolume(v.fill.filledL, useUnitPrefs().volume)} / {formatVolume(v.capacityL, useUnitPrefs().volume)}{v.fill.over ? " ⚠" : ""}
       </span>
     </div>
   );
@@ -157,6 +157,7 @@ function AddWineForm({
 }
 
 export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, materials, groups }: { vessels: VesselWithContents[]; varieties: Option[]; vineyards: Option[]; blocks: BlockOption[]; subblocks: SubblockOption[]; materials: CellarMaterialDTO[]; groups: VesselGroupDTO[] }) {
+  const vol = useUnitPrefs().volume;
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -307,7 +308,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
         open={!!selected}
         onClose={() => setSelectedId(null)}
         title={selected ? selected.code : ""}
-        subtitle={selected ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{selected.type === "BARREL" ? "Barrel" : "Tank"} · {selected.fill.filledL}/{selected.capacityL} L ({selected.fill.pct}%)<WineBadge v={selected} /></span> : null}
+        subtitle={selected ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{selected.type === "BARREL" ? "Barrel" : "Tank"} · {formatVolume(selected.fill.filledL, vol)} / {formatVolume(selected.capacityL, vol)} ({selected.fill.pct}%)<WineBadge v={selected} /></span> : null}
       >
         {selected ? (
           <div>

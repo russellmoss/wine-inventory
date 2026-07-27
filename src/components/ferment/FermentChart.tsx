@@ -3,7 +3,7 @@
 import React from "react";
 import { scaleLinear, niceAxisBounds, nearestByX } from "@/lib/harvest/chart";
 import type { FermentPoint } from "@/lib/ferment/monitor-data";
-import { cToF } from "@/lib/units/display";
+import { cToF, tempUnitSystem } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Phase 6 fermentation-monitoring chart. Brix on the LEFT y-axis, temperature on the RIGHT
@@ -44,7 +44,7 @@ function linePath(rows: Row[], xOf: (t: number) => number, yOf: (v: number) => n
 export function FermentChart({ points, height = 240 }: { points: FermentPoint[]; height?: number }) {
   // Plan 098: display-only — the axis GEOMETRY stays °C (same physical positions); only the
   // labels and tooltip convert, so the plotted line never moves when the pref changes.
-  const tempF = useUnitPrefs().temperature === "F";
+  const tempF = tempUnitSystem(useUnitPrefs()) === "IMPERIAL";
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   // Active hover point: the snapped reading index + the container-relative tooltip X, both computed

@@ -362,6 +362,28 @@ read-back script, per the repo's "browser proves the UI, script proves the DB" r
 | GddChart °F-native data + axis swap introduces off-by-one-scale bugs | MED | MED | GDD deltas convert by ×1.8 only (no +32) — already encoded in `gddCToF`/`gddFToC`; chart uses only those helpers; visual QA against known Winkler values (4,634 °F ≈ 2,574 °C). |
 | Migration on live tenant | LOW | LOW | Purely additive nullable columns + constraint *relaxations*; nothing enforced, nothing backfilled into a NOT NULL. |
 
+## Migration B — operational notes (post-apply; the SQL file is checksummed and must not change)
+
+- **Skipped-tenant asymmetry:** the hoist INNER JOINs `app_settings`, so a tenant with uniform
+  per-vineyard values but NO settings row was intentionally skipped (conservative preserve — its
+  display resolves byte-identically). Such a tenant configures the master via the settings card;
+  the migration will never hoist again. Also: because it runs once, `COUNT(DISTINCT)`'s
+  NULL-blindness is guarded only implicitly (both columns were NOT NULL until statement 1 of the
+  same transaction) — do NOT re-baseline this file onto a database where NULLs already exist.
+- **Cross-surface effect of the hoist:** setting the MASTER from weather+geometry signals flips
+  every dimension app-wide (volumes→gal, weights→lb) for the hoisted tenant. Only
+  `org_demo_winery` was hoisted (uniformly-imperial sandbox — desired); Bhutan preserved.
+- **Rollback is forward-only:** the hoist erases the explicit-vs-Auto distinction for matched
+  rows. To revert, copy the master back down BEFORE re-tightening or rolling app code back:
+  `UPDATE vineyard_weather_config c SET "unitSystem" = s."unitSystem" FROM app_settings s
+   WHERE s."tenantId" = c."tenantId" AND c."unitSystem" IS NULL AND s."unitSystem" IS NOT NULL;`
+  (likewise `vineyard_detail.defaultUnit` via the lowercase mapping). Old app code is null-safe
+  for both columns (verified against main), so a code-only rollback degrades display, not writes.
+- **Resolution grain (review decision):** the WEATHER family (card, forecast/rainfall loaders,
+  assistant climate payload, alert digests) follows the coarse tenant MASTER; non-weather
+  temperature/precip surfaces (ferment, field notes) follow their per-dimension prefs. The
+  settings card copy states this.
+
 ## Success Criteria
 
 - [ ] A US tenant sets "US customary" once and sees °F, inches, gallons, acres, feet,

@@ -74,10 +74,12 @@ export async function emitForecastAlertsForTenant(opts: { onlyVineyardIds?: stri
     ).map((c) => [c.vineyardId, c]),
   );
   const wineryTz = await getWineryTimeZone().catch(() => null);
-  // Plan 098 — digest prose renders in the tenant's display temperature (a digest is tenant-grain).
-  // Best-effort like the tz read; unconfigured stays °C, the pre-098 copy.
+  // Plan 098 — digest prose follows the WEATHER FAMILY's coarse rule (the tenant master), so a
+  // digest always speaks the same system as the weather card/assistant it references. Non-weather
+  // temperature surfaces (ferment, field notes) follow the temperature dimension instead — the
+  // documented grain split (see display.ts). Best-effort; unconfigured stays °C, the pre-098 copy.
   const prefs = await getUnitPrefs().catch(() => null);
-  const proseUnits = prefs?.temperature === "F" ? ("IMPERIAL" as const) : ("METRIC" as const);
+  const proseUnits = prefs?.configuredSystem === "IMPERIAL" ? ("IMPERIAL" as const) : ("METRIC" as const);
 
   // 1) Classify every vineyard's PRIMARY forecast series (C3 — never the secondary provider).
   const candidatesByVineyard = new Map<string, ForecastAlertCandidate[]>();

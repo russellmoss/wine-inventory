@@ -5,7 +5,7 @@
 // (resolveSo2Dose) that the print view does not have.
 
 import { computeDoseTotal } from "@/lib/cellar/additions-math";
-import { formatWeightToAdd, type WeightUnit } from "@/lib/units/display";
+import { weighOutSecondary, type WeightUnit } from "@/lib/units/display";
 import { resolveSo2Dose } from "@/lib/cellar/so2-dose";
 
 export type TaskSummaryRow = { label: string; value: string; emphasis?: boolean };
@@ -99,7 +99,7 @@ export function buildTaskSummary(task: TaskSummaryInput, pickers: TaskSummaryPic
       // Generic addition total (weigh-out), matching the print view.
       const est = vol > 0 ? computeDoseTotal(amount, doseUnit, vol) : null;
       if (est) {
-        const secondary = display?.weight === "LB" && est.unit === "g" ? ` (${formatWeightToAdd(est.total, "LB")})` : "";
+        const secondary = display ? weighOutSecondary(est.total, est.unit, display.weight) : "";
         rows.push({ label: "Total to weigh out", value: `≈ ${est.total.toLocaleString()} ${est.unit}${secondary} (at ${vol.toLocaleString()} L)`, emphasis: true });
       }
     }

@@ -7,6 +7,7 @@ import { formatWeightFromKg, fromKg, type Unit } from "@/lib/harvest/units";
 import type { VintageGroup } from "@/lib/harvest/aggregate";
 import { effectiveColor, withAlpha } from "@/lib/vineyard/colors";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
+import { weightLegacyUnit } from "@/lib/units/display";
 
 type Props = { vineyards: { id: string; name: string }[] };
 
@@ -268,7 +269,7 @@ export function HarvestDashboard({ vineyards }: Props) {
   const [selectedId, setSelectedId] = React.useState<string>(vineyards[0]?.id ?? "");
   // Plan 098: seeded from the winery display prefs; the in-page toggle stays (a scale reads what it reads).
   const prefs = useUnitPrefs();
-  const [unit, setUnit] = React.useState<Unit>(prefs.weight === "LB" ? "imperial" : "metric");
+  const [unit, setUnit] = React.useState<Unit>(weightLegacyUnit(prefs));
   // Result/error tagged with the vineyard id they belong to (codebase pattern:
   // everything derived at render, no setState in the effect body, stale ignored).
   const [result, setResult] = React.useState<{ id: string; data: VineyardHarvestDashboard } | null>(null);

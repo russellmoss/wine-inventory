@@ -42,7 +42,9 @@ export function detectWeatherAlertsCore(
 }
 
 /** Grower-facing copy for an alert — risk framing, never a damage claim. Prose renders in the
- *  site's resolved display units (plan 098); detection stays °C like everything stored. */
+ *  site's resolved display units (plan 098); detection stays °C like everything stored.
+ *  NOTE: only weatherAlertDigest renders notification prose in production today — this helper is
+ *  kept unit-aware (and tested) for the observed-alert path when it grows an emit. */
 export function alertMessage(a: WeatherAlert, vineyardName: string, unitSystem: UnitSystem = "METRIC"): string {
   if (a.kind === "FROST") {
     const severity = a.valueC <= -2 ? "killing-range" : "light";

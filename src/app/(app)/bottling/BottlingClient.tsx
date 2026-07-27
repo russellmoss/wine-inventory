@@ -112,7 +112,7 @@ function BottlingForm({
             })
           )}
         </div>
-        {picked.length > 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6 }}>{picked.length} vessel{picked.length > 1 ? "s" : ""} · {availableL} L available</div> : null}
+        {picked.length > 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6 }}>{picked.length} vessel{picked.length > 1 ? "s" : ""} · {formatVolume(availableL, vol)} available</div> : null}
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

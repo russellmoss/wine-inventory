@@ -3,7 +3,7 @@
 import React from "react";
 import { Button } from "@/components/ui";
 import { MaterialPicker } from "@/components/cellar/MaterialPicker";
-import { formatWeightToAdd } from "@/lib/units/display";
+import { weighOutSecondary } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import {
   computeAdditionTotal,
@@ -90,7 +90,7 @@ export function DoseForm({
       </FormShell>
       <div aria-live="polite" style={{ fontSize: 13, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
         {computed
-          ? `${rate} ${RATE_BASIS_LABELS[basis]} × ${vessel.totalL} L = ${computed.total} ${computed.unit}${weightPref === "LB" && computed.unit === "g" ? ` (${formatWeightToAdd(computed.total, "LB")})` : ""}`
+          ? `${rate} ${RATE_BASIS_LABELS[basis]} × ${vessel.totalL} L = ${computed.total} ${computed.unit}${weighOutSecondary(computed.total, computed.unit, weightPref)}`
           : vessel.totalL <= 0
             ? "This vessel is empty — nothing to dose."
             : "Enter a material and a rate to see the computed total."}

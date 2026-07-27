@@ -128,6 +128,15 @@ export async function setVineyardStation(vineyardId: string, station: StationOpt
 
 const dec = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
+/** Plan 098: the display system for a vineyard's weather surfaces — config override -> winery master ->
+ *  geo default. One owner for the loaders below; best-effort on the settings read. */
+async function resolveVineyardDisplaySystem(vineyardId: string, configUnitSystem: string | null | undefined): Promise<"METRIC" | "IMPERIAL"> {
+  const centroid = await resolveVineyardCentroid(vineyardId);
+  const prefs = await getUnitPrefs().catch(() => null);
+  return resolveWeatherUnitSystem(configUnitSystem, prefs?.configuredSystem ?? null, centroid?.lat, centroid?.lon);
+}
+
+
 /** Read the composed climate summary for a vineyard (offline — no live provider call). Null if not set up. */
 export async function loadVineyardClimateSummary(vineyardId: string, today?: string): Promise<ClimateSummary | null> {
   await requireReadyUser();
@@ -346,9 +355,7 @@ export async function loadVineyardForecastHours(
       { targetDate, frostWarnC: thresholds.frostWarnC, heatWatchC: thresholds.heatWatchC },
     );
     // Plan 098 — the modal must resolve the same chain as the strip, or the two disagree on a US site.
-    const centroid = await resolveVineyardCentroid(vineyardId);
-    const prefs = await getUnitPrefs().catch(() => null);
-    const unitSystem = resolveWeatherUnitSystem(configRow?.unitSystem, prefs?.configuredSystem ?? null, centroid?.lat, centroid?.lon);
+    const unitSystem = await resolveVineyardDisplaySystem(vineyardId, configRow?.unitSystem);
     return { ok: true, day, unitSystem, thresholds, nowLocalHour };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
@@ -418,9 +425,7 @@ export async function loadVineyardRainfallRange(
       endIso,
     });
     // Plan 098 — resolved chain, same as the card that hosts this section.
-    const centroid = await resolveVineyardCentroid(vineyardId);
-    const prefs = await getUnitPrefs().catch(() => null);
-    const unitSystem = resolveWeatherUnitSystem(configRow.unitSystem, prefs?.configuredSystem ?? null, centroid?.lat, centroid?.lon);
+    const unitSystem = await resolveVineyardDisplaySystem(vineyardId, configRow.unitSystem);
     return { ok: true, range, unitSystem };
   } catch (e) {
     return { ok: false, error: (e as Error).message };

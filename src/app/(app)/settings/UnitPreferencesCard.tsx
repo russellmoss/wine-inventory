@@ -210,8 +210,9 @@ export function UnitPreferencesCard({ initial }: { initial: UnitPrefsRow }) {
       </div>
 
       <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 10, lineHeight: 1.5 }}>
-        Wind speed and shoot length follow the master system. A vineyard&apos;s own weather or geometry
-        override, where set, still wins for that vineyard.
+        Wind speed, shoot length, and the weather &amp; climate pages (including alert notifications)
+        follow the master system. A vineyard&apos;s own weather or geometry override, where set, still
+        wins for that vineyard.
       </p>
 
       {error ? <div style={{ color: "var(--danger)", fontSize: 13, marginTop: 10 }}>{error}</div> : null}

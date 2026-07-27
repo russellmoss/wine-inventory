@@ -161,10 +161,12 @@ export function resolveAreaUnit(override: string | null | undefined, prefs: Unit
 
 // ── Raw converters (chart scales / numeric comparisons; formatting is below) ─────────────
 
+const KM_PER_MILE = 1.609344;
+
 export const cToF = (c: number): number => c * (9 / 5) + 32;
 export const fToC = (f: number): number => (f - 32) * (5 / 9);
 export const mmToInches = (mm: number): number => mm / 25.4;
-export const kphToMph = (kph: number): number => kph / 1.609344;
+export const kphToMph = (kph: number): number => kph / KM_PER_MILE;
 /** GDD are DEGREE-DAYS: a difference, not a point temperature — scale by 1.8, never offset by 32. */
 export const gddCToF = (gddC: number): number => gddC * C_TO_F_GDD;
 export const gddFToC = (gddF: number): number => gddF / C_TO_F_GDD;
@@ -174,7 +176,6 @@ export function cmToInches(cm: number): number {
   return cm * IN_PER_CM;
 }
 
-const KM_PER_MILE = 1.609344;
 const G_PER_OZ = KG_PER_LB * 1000 / 16; // 28.349523125 — derived, not a new constant
 const LITERS_PER_HL = 100;
 
@@ -274,12 +275,13 @@ export function formatVolume(liters: number | null | undefined, unit: VolumeUnit
 /**
  * A money rate per volume, converted for display only: cost/L × 3.785… = cost/gal, × 100 = cost/hL.
  * Reconciliation and every stored figure stay canonical $/L — this string is the ONLY place the
- * converted rate exists. Up to 3 fraction digits (min 2), matching the cost surfaces.
+ * converted rate exists. Up to 4 fraction digits (min 2) — a per-litre unit cost is small, and
+ * the cost trust surface must never render a nonzero component as zero.
  */
 export function formatCostPerVolume(costPerLiter: number | null | undefined, unit: VolumeUnit, symbol: string): string {
   if (costPerLiter == null || !Number.isFinite(costPerLiter)) return "—";
   const rate = costPerLiter * displayToLiters(1, unit);
-  const shown = rate.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+  const shown = rate.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   return `${symbol}${shown}/${volumeUnitLabel(unit)}`;
 }
 
@@ -290,9 +292,9 @@ export function formatLength(valueM: number | null | undefined, unit: LengthUnit
 }
 
 /** Distances in km (station distance): "2.4 km" / "1.5 mi". Null → "—". */
-export function formatDistance(valueKm: number | null | undefined, unit: LengthUnit): string {
+export function formatDistance(valueKm: number | null | undefined, system: UnitSystem): string {
   if (valueKm == null || !Number.isFinite(valueKm)) return "—";
-  return unit === "FT" ? `${fmt(valueKm / KM_PER_MILE, 1)}${NBSP}mi` : `${fmt(valueKm, 1)}${NBSP}km`;
+  return system === "IMPERIAL" ? `${fmt(valueKm / KM_PER_MILE, 1)}${NBSP}mi` : `${fmt(valueKm, 1)}${NBSP}km`;
 }
 
 /** An area from canonical hectares: "1.25 ha" / "3.09 acres". Null → "—". */
@@ -353,6 +355,32 @@ export function formatShootLengthRange(minCm: number, maxCm: number, unitSystem:
   const lo = unitSystem === "IMPERIAL" ? cmToInches(minCm) : minCm;
   const hi = unitSystem === "IMPERIAL" ? cmToInches(maxCm) : maxCm;
   return `${trim1(lo)}–${trim1(hi)} ${unit}`;
+}
+
+// ── Dimension → system bridges (ONE owner for the mapping call sites kept re-deriving) ──────
+
+/** The UnitSystem a temperature display uses (ferment charts, field-note weather, temp entry). */
+export function tempUnitSystem(prefs: UnitPrefs): UnitSystem {
+  return prefs.temperature === "F" ? "IMPERIAL" : "METRIC";
+}
+
+/** The UnitSystem a rainfall display uses (field-note weather readbacks). */
+export function precipUnitSystem(prefs: UnitPrefs): UnitSystem {
+  return prefs.precipitation === "IN" ? "IMPERIAL" : "METRIC";
+}
+
+/** The legacy harvest/geometry unit for the tenant's weight dimension (harvest toggles). */
+export function weightLegacyUnit(prefs: UnitPrefs): LegacyUnit {
+  return prefs.weight === "LB" ? "imperial" : "metric";
+}
+
+/**
+ * The imperial secondary weigh-out readout (" (2.00 lb)") for a computed dose TOTAL, or "" when it
+ * doesn't apply — only gram totals for an LB tenant get one (mL totals and metric tenants don't).
+ * Shared by DoseForm and the WO execute summary so the subtle condition has one owner.
+ */
+export function weighOutSecondary(total: number, unit: string, pref: WeightUnit): string {
+  return pref === "LB" && unit === "g" ? ` (${formatWeightToAdd(total, "LB")})` : "";
 }
 
 // ── Prose (assistant system prompt) ──────────────────────────────────────────────────────

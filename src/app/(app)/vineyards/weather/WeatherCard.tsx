@@ -318,7 +318,7 @@ export function WeatherCard({
                 {([
                   { value: "IMPERIAL" as UnitSystem | null, text: "°F / in" },
                   { value: "METRIC" as UnitSystem | null, text: "°C / mm" },
-                  { value: null as UnitSystem | null, text: `Auto (${unit === "IMPERIAL" ? "°F" : "°C"})` },
+                  { value: null as UnitSystem | null, text: `Auto (${(summary?.unitSystemAuto ?? "METRIC") === "IMPERIAL" ? "°F" : "°C"})` },
                 ]).map(({ value, text }) => (
                   <button
                     key={text}
@@ -334,7 +334,7 @@ export function WeatherCard({
               {summary.station.name && (
                 <div>
                   Active station: <strong>{summary.station.name}</strong>
-                  {summary.station.distanceM != null && ` · ${formatDistance(summary.station.distanceM / 1000, unit === "IMPERIAL" ? "FT" : "M")} away`}
+                  {summary.station.distanceM != null && ` · ${formatDistance(summary.station.distanceM / 1000, unit)} away`}
                   {summary.siteElevationM != null && ` · site ${formatLength(summary.siteElevationM, unit === "IMPERIAL" ? "FT" : "M")}`}
                 </div>
               )}

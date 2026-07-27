@@ -34,6 +34,14 @@ export function RackForm({
   );
   const [drawL, setDrawL] = React.useState(seededDraw?.display ?? "");
   const [landedL, setLandedL] = React.useState("");
+  // If the seed changes under a mounted form (unit prefs changed, or the vessel's volume moved),
+  // an UNTOUCHED field re-seeds — otherwise its stale string would re-parse in the new unit and
+  // silently mean a different volume (the HarvestRecordForm prevUnit pattern).
+  const [prevSeed, setPrevSeed] = React.useState(seededDraw?.display ?? "");
+  if ((seededDraw?.display ?? "") !== prevSeed) {
+    if (drawL === prevSeed) setDrawL(seededDraw?.display ?? "");
+    setPrevSeed(seededDraw?.display ?? "");
+  }
   const [useNewBlend, setUseNewBlend] = React.useState(false);
   const [token, setToken] = React.useState("");
 

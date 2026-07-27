@@ -92,7 +92,7 @@ export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskVi
     const abvNum = Number(abv);
     if (!(abvNum > 0)) return setError("Enter the wine's alcohol by volume (%) — required to classify the wine for TTB.");
     if (!destinationLocationId) return setError("Pick a destination location for the bottles.");
-    if (short) return setError(`Not enough wine: ${bottleCount} bottles need ${consumedL} L but only ${availableL} L is selected.`);
+    if (short) return setError(`Not enough wine: ${bottleCount} bottles need ${formatVolume(consumedL, vol)} but only ${formatVolume(availableL, vol)} is selected.`);
     if (missingPackaging.length > 0) return setError(`Add ${missingPackaging.map((m) => m.label).join(", ")} to the packaging — every bottling run needs a bottle, a closure and a label.`);
 
     const actualPayload: Record<string, unknown> = {
@@ -146,7 +146,7 @@ export function BottlingTaskForm({ task, data, onDone }: { task: WorkOrderTaskVi
         {vessels.map((v) => (
           <label key={v.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 15, padding: "6px 2px", cursor: "pointer" }}>
             <input type="checkbox" checked={selected.has(v.id)} onChange={() => toggle(v.id)} style={{ width: 20, height: 20 }} />
-            <span>{v.code} <span style={{ color: "var(--text-muted)", fontSize: 13 }}>· {v.volumeL} L · {v.lotSummary}</span></span>
+            <span>{v.code} <span style={{ color: "var(--text-muted)", fontSize: 13 }}>· {formatVolume(v.volumeL, vol)} · {v.lotSummary}</span></span>
           </label>
         ))}
       </div>

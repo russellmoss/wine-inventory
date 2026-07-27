@@ -13,7 +13,7 @@ import { BRIX_HARD_MIN, BRIX_HARD_MAX, TEMP_HARD_MIN, TEMP_HARD_MAX, toBrix } fr
 import { MATERIAL_KINDS, RATE_BASES, RATE_BASIS_LABELS, type MaterialKind, type RateBasis } from "@/lib/cellar/additions-math";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import { MaterialPicker } from "@/components/cellar/MaterialPicker";
-import { cToF, fToC } from "@/lib/units/display";
+import { cToF, fToC, tempUnitSystem } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Phase 6 (vessel-first): Fermentation monitoring. Log sugar (Brix/Baumé), pH and temperature
@@ -69,9 +69,11 @@ export function FermentMonitor({
   lotCode: string;
   materials?: CellarMaterialDTO[];
 }) {
-  // Plan 098: temp ENTRY in the winery's display unit — the registry normalizes °F→°C at write
-  // (analytes.ts TEMP convertToDefault); storage and hard bounds stay °C.
-  const tempF = useUnitPrefs().temperature === "F";
+  // Plan 098: temp ENTRY in the winery's display unit, converted to °C HERE at the boundary.
+  // The registry's convertToDefault is used only for range VALIDATION — normalizeReadings stores
+  // value+unit verbatim and the ferment series reader assumes °C — so a °F value must never be
+  // pushed downstream (a 75 °F reading stored raw would chart as 75 °C).
+  const tempF = tempUnitSystem(useUnitPrefs()) === "IMPERIAL";
   const { pending, attention, syncing, capture } = useSync();
   // Plan 060's "Record on: [Whole tank · N lots] [Just 24-CS]" toggle lived here. It existed because a
   // co-ferment was modelled as several lots sharing a tank, so a Brix reading had no single owner. The
@@ -151,13 +153,13 @@ export function FermentMonitor({
     }
     if (e.temp.trim()) {
       const v = Number(e.temp);
-      const vC = tempF ? fToC(v) : v; // bounds are °C-canonical; the typed value stays as entered
+      const vC = tempF ? Math.round(fToC(v) * 10) / 10 : v; // convert at the boundary; store °C always
       if (!Number.isFinite(v) || vC < TEMP_HARD_MIN || vC > TEMP_HARD_MAX) {
         return tempF
           ? `Temp must be ${Math.round(cToF(TEMP_HARD_MIN))}–${Math.round(cToF(TEMP_HARD_MAX))} °F.`
           : `Temp must be ${TEMP_HARD_MIN}–${TEMP_HARD_MAX} °C.`;
       }
-      readings.push({ analyte: "TEMP", value: v, unit: tempF ? "°F" : "°C" });
+      readings.push({ analyte: "TEMP", value: vC, unit: "°C" });
     }
     return readings.length ? { readings, iso } : "Enter sugar, pH or temp.";
   }

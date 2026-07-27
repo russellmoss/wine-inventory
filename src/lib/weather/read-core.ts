@@ -85,6 +85,8 @@ export interface ClimateSummary {
   unitSystem: "METRIC" | "IMPERIAL";
   /** The vineyard's EXPLICIT override, if any — null means "Auto" (following the tenant/geo chain). */
   unitSystemOverride: "METRIC" | "IMPERIAL" | null;
+  /** What "Auto" resolves to at this site (tenant -> geo, IGNORING the override) — labels the Auto toggle. */
+  unitSystemAuto: "METRIC" | "IMPERIAL";
   // Headline — the PRIMARY's numbers (R14).
   headline: {
     seasonGddC: number;
@@ -254,6 +256,7 @@ export function composeClimateSummaryCore(input: {
     lastRefreshAt: config.lastRefreshAt,
     unitSystem: resolveWeatherUnitSystem(config.unitSystem, input.tenantUnitSystem, latitude, input.longitude),
     unitSystemOverride: parseUnitSystem(config.unitSystem),
+    unitSystemAuto: resolveWeatherUnitSystem(null, input.tenantUnitSystem, latitude, input.longitude),
     headline: {
       seasonGddC: headlineGdd.gddTotal,
       gddCompletenessPct: Math.round(headlineComp.fraction * 100),

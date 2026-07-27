@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Eyebrow, Badge, Metric, Button, Modal, ConfirmButton } from "@/components/ui";
 import {
-  formatL,
   type TimelineEvent,
   type TimelineItem,
   type TimelineLeg,
@@ -307,7 +306,7 @@ function SplitLotControls({ lot }: { lot: LotDetail }) {
     <Card style={{ flex: "1 1 280px" }}>
       <Eyebrow tone="ink">Split</Eyebrow>
       <p style={{ marginTop: 10, color: "var(--text-secondary)", fontSize: 13.5 }}>
-        {formatVolume(lot.current.totalL, vol)} across {lot.current.locations.length} vessel{lot.current.locations.length === 1 ? "" : "s"}.
+        {formatVolume(lot.current.totalL, "L")} across {lot.current.locations.length} vessel{lot.current.locations.length === 1 ? "" : "s"}.
       </p>
       <Button variant="secondary" onClick={() => setOpen(true)} style={{ marginTop: 12 }}>
         Split lot
@@ -321,7 +320,7 @@ function SplitLotControls({ lot }: { lot: LotDetail }) {
               <select value={sourceVesselId} onChange={(e) => setSourceVesselId(e.target.value)} style={fieldStyle}>
                 {lot.current.locations.map((l) => (
                   <option key={l.vesselId} value={l.vesselId}>
-                    {l.label} · {formatVolume(l.volumeL, vol)}
+                    {l.label} · {formatVolume(l.volumeL, "L")}
                   </option>
                 ))}
               </select>

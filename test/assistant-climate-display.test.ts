@@ -52,12 +52,24 @@ describe("auto-inherit — the U6 chain flows into the tool payload", () => {
     expect(resolveWeatherUnitSystem(null, null, OREGON.lat, OREGON.lon)).toBe("IMPERIAL");
     expect(resolveWeatherUnitSystem(null, null, 27.4, 90.4)).toBe("METRIC"); // Bhutan
   });
+  it("no coordinates (legacy callers) → METRIC, the storage system", () => {
+    expect(resolveWeatherUnitSystem(null, null)).toBe("METRIC");
+    expect(resolveWeatherUnitSystem(null, null, 45.3)).toBe("METRIC"); // lon omitted
+  });
 });
 
 describe("imperial-tenant — display strings the model uses verbatim", () => {
   const s = composeClimateSummaryCore({
     vineyardId: "v1", rows, config: config(null), latitude: OREGON.lat, longitude: OREGON.lon,
     today: "2026-07-03", tenantUnitSystem: "IMPERIAL",
+  });
+  it("gddVsLastYear pins the sign and the null passthrough", () => {
+    const base = { ...s };
+    expect(climateDisplay({ ...base, headline: { ...base.headline, priorYear: null } }).gddVsLastYear).toBeNull();
+    const ahead = climateDisplay({ ...base, headline: { ...base.headline, priorYear: { seasonYear: 2025, seasonGddC: 100, deltaC: 50, completenessPct: 100 } } });
+    expect(ahead.gddVsLastYear).toBe(`+90${NBSP}°F-GDD vs 2025`);
+    const behind = climateDisplay({ ...base, headline: { ...base.headline, priorYear: { seasonYear: 2025, seasonGddC: 200, deltaC: -50, completenessPct: 100 } } });
+    expect(behind.gddVsLastYear).toBe(`−90${NBSP}°F-GDD vs 2025`);
   });
   it("climateDisplay speaks °F-GDD / °F / inches", () => {
     const d = climateDisplay(s);

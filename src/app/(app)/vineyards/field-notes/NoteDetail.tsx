@@ -9,7 +9,7 @@ import {
 } from "@/lib/fieldnotes/types";
 import { scoutingLabel } from "@/lib/phenology/labels";
 import { formatShootLength } from "@/lib/phenology/units";
-import { formatPrecip, formatTemp } from "@/lib/units/display";
+import { formatPrecip, formatTemp, precipUnitSystem, tempUnitSystem } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import type { ShootLengthBand } from "@/lib/phenology/observation-types";
 
@@ -177,8 +177,8 @@ export function NoteDetail({
   const w = note.weatherData;
   // Plan 098: the recorded weekly weather (stored metric) renders in the winery's display units.
   const prefs = useUnitPrefs();
-  const tempSys = prefs.temperature === "F" ? ("IMPERIAL" as const) : ("METRIC" as const);
-  const precipSys = prefs.precipitation === "IN" ? ("IMPERIAL" as const) : ("METRIC" as const);
+  const tempSys = tempUnitSystem(prefs);
+  const precipSys = precipUnitSystem(prefs);
   return (
     <div>
       <div style={{ display: "flex", gap: "var(--space-5)", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
