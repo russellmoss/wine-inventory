@@ -3,25 +3,26 @@
 **Program:** Spray Intelligence · [runbook](../SPRAY_ASSISTANT_RUNBOOK.md) §9 S2b
 **Depends on:** S2 (shipped + live, deploy `147b75c3`) · S3a (shipped, PR1–PR3 merged)
 **Unblocks:** S7a (legality + rotation), S8 (lot residue), S6 (protection budget), S7b (interlocks)
-**Status:** 🟨 **built — Units 0-9 DONE; Unit 10 (browser QA) is the only one left** ([council feedback](S2b-council-feedback.md))
-**Plan depth:** Deep (12 units) · **Date:** 2026-07-26
+**Status:** 🟨 **RESUMING 2026-07-27 — foundation merged+live (#535); five units remain: 1, 2, 3, 5, 10.**
+See §0 below for the resumption scope. ([council feedback](S2b-council-feedback.md))
+**Plan depth:** Deep (12 units) · **Date:** 2026-07-26 · **Resumed:** 2026-07-27
 
-> ## Build status (2026-07-26)
+> ## Build status (2026-07-26; updated 2026-07-27 — resumption)
 >
 > | Unit | State | Evidence |
 > |---|---|---|
 > | 0 · CDPR interval probe | ✅ done | [probe report](S2b-cdpr-interval-probe.md) |
-> | 1 · jurisdiction + per-block-line snapshot | 🟥 **SCHEMA ONLY** — `resolveJurisdiction` NOT built, no UI, and **nothing writes the block-line snapshot**, so council C3 (the rule §3.8 replay fix) is unimplemented | columns + migration only |
-> | 2 · curated facts master (global) | 🟥 **TABLES ONLY** — no `product-facts.json` artifact, no `seed-product-facts.ts`, no CDPR propose-seeder, **no artifact-discipline test**, so "every curated row carries source + as-of + reviewer" is unenforced | `verify:product-facts` 1, 2, 3 |
-> | 3 · separation rules + conditional PHI/REI | 🟥 **TABLES ONLY** — `separation.ts` (most-restrictive-wins) and the JMS oil↔sulfur goldens NOT built, so KD-2's direction-specificity is unproven | `verify:product-facts` 4 |
+> | 1 · jurisdiction + per-block-line snapshot | ✅ **built + DB-proven** — `resolveJurisdiction`/`resolveJurisdictionBatch`, propose-from-GPS + confirm UI, block-line snapshot written at record AND correction time (resolved before the tx opens — a P2028 latency finding, see plan §0/report) | `verify:spray-record` group 15, `test/pesticide-jurisdiction.test.ts` |
+> | 2 · curated facts master (global) | 🟨 **machinery built + live-tested; content NOT shipped** — `seed-product-facts.ts` (replay/--propose/--dry-run), the discipline validator, 1072 real CDPR proposals generated + spot-checked then **reverted to `[]`** (curated content needs a human's review signature; also a NEW finding that the resolver doesn't gate on `reviewedBy` — see report Finding 1) | `pesticide-facts-artifact.test.ts` 14/14, `pesticide-product-facts-derive.test.ts` 6/6, live `--propose` run |
+> | 3 · separation rules + conditional PHI/REI | ✅ **built + proven** — `separation.ts` (most-restrictive-wins, pure), 14 goldens on the JMS Stylet-Oil worked example incl. the CLASS-ambiguity case (council G5) | `test/pesticide-separation.test.ts` 14/14 |
 > | 4 · fifth source + fact-group provenance | ✅ built + wired | schema + `factsSnapshotColumns` |
-> | 5 · tenant grower-supplied override + RLS | 🟨 **table + RLS only** — no entry surface, so SAFE-19 (the flagship non-US gate item) is data-layer-only | `verify:product-facts` 5, 5b, 6 |
+> | 5 · tenant grower-supplied override + RLS | ✅ **built + DB-proven** — `/vineyards/sprays/products` entry surface, `tenantProductRef` on the spray form, SAFE-19's data half now has a UI to exercise (not yet clicked live) | `verify:tenant-isolation` +6 cases (RLS, WITH CHECK, mutable UPDATE, KD-3 composite upsert) |
 > | 6 · the real `ProductFactsResolver` | ✅ built + wired at the composition root | `verify:product-facts` 7-11 |
-> | 7 · coverage report | ✅ built | `report:product-facts-coverage` |
+> | 7 · coverage report | ✅ built; re-run 2026-07-27, still 0% (unchanged — needs real content) | `report:product-facts-coverage` |
 > | 7b · pest-code ingest | ✅ built + **run live** | 41 categories, 42,132 mappings |
 > | 8 · verify + invariant SPRAY-6 | ✅ built | 22 assertions · 48/48 invariants guarded |
 > | 9 · monthly drift detector | ✅ built | extends the existing pesticide cron step |
-> | 10 · browser QA + `qa/S2b-qa-report.md` | 🟥 **INCOMPLETE** — blocked on a dev-server restart (it is running pre-migration code); report not written | — |
+> | 10 · browser QA + `qa/S2b-qa-report.md` | 🟨 **report updated 2026-07-27** (script/DB-proven); **no live interactive browser session this pass** — still open | [qa/S2b-qa-report.md](../qa/S2b-qa-report.md), [phases/S2b-report.md](S2b-report.md) |
 >
 > ## ⛔ S2b is NOT done and NOT deployable as a feature
 >
@@ -81,6 +82,57 @@
 > deferred was run instead. It **reversed the deferral** and turned up a bigger finding — see §7 and
 > the new **Unit 0**. Pest codes are now an *ingest*, not a curation, and `prod_site.dat` may be a
 > free machine-readable source for the most expensive part of Unit 2.
+
+---
+
+## 0. Resumption scope (2026-07-27) — read this before touching a file
+
+Picking this phase back up one day after the foundation PR (#535) merged. Nothing else has touched
+`prisma/schema.prisma`, `src/lib/pesticide/`, or `src/lib/spray/` in the interim (verified against
+`git log` — the only spray-program commits since are S5a's, a disjoint lane). **No drift. The plan
+below is unchanged from v2.3 except for one load-bearing simplification this resumption pass found:**
+
+**Every table Units 1, 2, 3, and 5 need already exists.** Verified directly against the live schema:
+`PesticideProductFacts`, `PesticideSeparationRule`, `PesticideProductReiCondition`,
+`PesticideProductPhiCondition`, `PesticideProductCondition`, `TenantProductFacts`,
+`PesticidePestCategory`, `PesticideProductPest` are all in `prisma/schema.prisma` today, and
+`VineyardDetail.regulatoryCountry` / `jurisdictionConfirmedAt` and
+`spray_block_line.snapshotJurisdictionCountry` / `State` are already columns. **The remaining work
+for Units 1, 2, 3, and 5 is entirely application code, curated content, and tests — zero new
+migrations.** That collapses most of §9's schema-serialization risk (the shared-file map still
+applies to `src/lib/spray/actions.ts` / `record-core.ts` / `correction-core.ts`, which is real code
+contention, just not schema contention).
+
+**Scope of this resumption: Units 1, 2, 3, 5, 10 only.** Units 0, 4, 6, 7, 7b, 8, 9 are shipped and
+verified live (see the Build status table above) and are not touched here. Do not re-open them.
+
+**Recommended execution order**, reconciling the plan's dependency edges with the QA report's own
+recommendation (its "Recommendation" section: *"Unit 3's separation.ts + goldens... is the
+highest-value next step"*):
+
+1. **Unit 3's `separation.ts` module can be written and golden-tested now**, against synthetic
+   fixture rule-sets, independent of whether Unit 2's curated artifact exists yet — the pure function
+   takes rule objects as input, it does not read the DB. This de-risks the highest-uncertainty logic
+   first and cheaply. Wiring `separation.ts` to *real* curated `pesticide_separation_rule` rows still
+   needs Unit 2's seeded facts rows to exist (the FK target), so the seed step of Unit 3 waits on Unit 2.
+2. **Units 1 (jurisdiction) and 2 (curated artifact) run in parallel** — both have no dependency on
+   each other, touch disjoint files (`src/lib/vineyard/*` + the sprays UI vs. `src/lib/pesticide/data/*`
+   + `scripts/seed-product-facts.ts`), and neither needs a migration.
+3. **Unit 5 (tenant-scoped override + entry surface)** follows Unit 2 (shares `PesticideProductFacts`
+   shape for parity) — can start once Unit 2's artifact schema (not full content) is settled.
+4. **Unit 10 (QA + phase report) runs last**, per its own dependency on Units 1–9, from the MAIN
+   checkout per the standing QA protocol.
+
+**Unit 2's content-curation effort is still the open unknown** (§10's calibration spike was written
+but, per the Build status table, only the seeder plumbing shipped — no evidence the 10-product timing
+spike was actually run). **Run it first inside Unit 2**, before committing to curating the full top-60
+set, exactly as §10 specifies. If it comes back at ~3h/product rather than ~40min/product, escalate
+to Russell before sinking more time into curation — that changes the shape of the rest of the phase.
+
+**What "done" looks like this time**, restated from the QA report so it isn't re-litigated: all four
+gate items in `qa/S2b-qa-report.md` §4 pass, `report:product-facts-coverage` clears the pre-committed
+80%/60% bars **against the curated set** (not the corpus-wide 40.4%/64.0% Unit 0 already measured and
+rejected), and SAFE-19 and SAFE-6 both move from *deferred/not-run* to *pass* in a re-run QA report.
 
 ---
 

@@ -33,7 +33,9 @@ import {
   lookupRegistryIdentityBatch,
   lookupTenantProductFactsBatch,
   getPesticideFactsAsOf,
+  resolveJurisdictionBatch,
 } from "./lookup";
+import type { JurisdictionResolver } from "@/lib/spray/jurisdiction-port";
 import { parseRegistrationNumber } from "./reg-number";
 import type {
   CuratedFactsRow,
@@ -267,6 +269,36 @@ export function createProductFactsResolver(tenantId: string, opts?: { now?: Date
         // Never throw (the port's contract): a resolver failure must degrade the spray record to
         // UNKNOWN facts, not block the grower from recording what they actually applied.
         return keys.map(() => ({ ...UNRESOLVED_PRODUCT_FACTS }));
+      }
+    },
+  };
+}
+
+/**
+ * S2b Unit 1 — the real `JurisdictionResolver`, replacing S3a's null one at the same composition
+ * root as the facts resolver above. `resolveJurisdictionBatch` already returns unset/unconfirmed as
+ * `null` (KD-9); this factory only binds the tenantId and adapts the field names 1:1.
+ */
+export function createJurisdictionResolver(tenantId: string): JurisdictionResolver {
+  return {
+    async resolveMany(vineyardIds: string[]) {
+      try {
+        const byVineyard = await resolveJurisdictionBatch(tenantId, vineyardIds);
+        const out: Record<string, { country: string; state: string | null } | null> = {};
+        for (const id of vineyardIds) {
+          const j = byVineyard[id];
+          out[id] = j ? { country: j.country, state: j.state ?? null } : null;
+        }
+        return out;
+      } catch (e) {
+        // Never throw — the port's contract mirrors the facts resolver (rule §3.6: unknown, not a
+        // block). But a silent swallow here means a systemic outage (RLS misconfig, connection
+        // exhaustion) would null out jurisdiction for every spray recorded during it with no
+        // operational signal (adversarial review finding) — log it, still degrade to unknown.
+        console.error("createJurisdictionResolver.resolveMany failed, degrading to unknown:", e);
+        const out: Record<string, null> = {};
+        for (const id of vineyardIds) out[id] = null;
+        return out;
       }
     },
   };

@@ -8,11 +8,12 @@
 import { prisma } from "@/lib/prisma";
 import { requireReadyUser } from "@/lib/dal";
 import { runAsTenant } from "@/lib/tenant/context";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { revalidatePath } from "next/cache";
 import { recordSprayApplicationCore, type SprayRecordResult } from "./record-core";
 import { correctSprayApplicationCore, voidSprayApplicationCore, correctabilityOf, type Correctability } from "./correction-core";
-import { createProductFactsResolver } from "@/lib/pesticide/product-facts";
+import { createProductFactsResolver, createJurisdictionResolver } from "@/lib/pesticide/product-facts";
 import { blockApplicationFacts, foldCurrentApplications, type BlockApplicationFacts } from "./read-core";
 import { resolveDriedBeforeRain, type ResolvedDrying } from "./drying-core";
 import { recordDryingOverrideCore } from "./drying-override-core";
@@ -22,6 +23,7 @@ import type {
   SprayBlockLineRow,
   SprayDryingOverrideRow,
   SprayMaterialLineRow,
+  SprayMobilityClass,
 } from "./types";
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -262,7 +264,10 @@ export async function submitSprayRecord(input: RecordSprayInput): Promise<Action
   // nothing: existing records keep their frozen snapshots, and a clerical correction still copies
   // the predecessor verbatim (S3a council G1).
   const result = await withTenant((tenantId) =>
-    recordSprayApplicationCore(who, input, { factsResolver: createProductFactsResolver(tenantId) }),
+    recordSprayApplicationCore(who, input, {
+      factsResolver: createProductFactsResolver(tenantId),
+      jurisdictionResolver: createJurisdictionResolver(tenantId),
+    }),
   );
   if (result.ok) revalidatePath("/vineyards/sprays");
   return result;
@@ -274,7 +279,10 @@ export async function submitSprayCorrection(
 ): Promise<ActionResult<{ applicationId: string }>> {
   const who = await actor();
   const result = await withTenant((tenantId) =>
-    correctSprayApplicationCore(who, predecessorId, input, { factsResolver: createProductFactsResolver(tenantId) }),
+    correctSprayApplicationCore(who, predecessorId, input, {
+      factsResolver: createProductFactsResolver(tenantId),
+      jurisdictionResolver: createJurisdictionResolver(tenantId),
+    }),
   );
   if (result.ok) revalidatePath("/vineyards/sprays");
   return result;
@@ -337,6 +345,7 @@ export async function loadSprayFormInitial(applicationId: string): Promise<
         materials: materials.map((m) => ({
           productName: m.productName,
           epaRegistrationNumber: m.epaRegistrationNumber ?? "",
+          tenantProductRef: m.tenantProductRef ?? "",
           materialRole: m.materialRole,
           quantityEntered: str(m.quantityEntered),
           quantityUnit: m.quantityUnit,
@@ -373,4 +382,130 @@ export async function loadSprayFormInitial(applicationId: string): Promise<
       },
     };
   });
+}
+
+// ── S2b Unit 5 — the tenant-scoped grower-supplied product-facts entry surface ─────────────────
+//
+// KD-4: NOT behind isPesticideSourceEnabled — the toggle protects a registry source WE ship;
+// gating a grower's own typed-in facts would re-brick the non-US tenant through the back door.
+// KD-3: one row per (tenantId, productRef, factGroup) — a group is replaced whole, never blended.
+
+export interface TenantProductFactsRow {
+  id: string;
+  productRef: string;
+  productName: string;
+  epaRegistrationNumber: string | null;
+  factGroup: "REGULATORY" | "AGRONOMIC";
+  worstCasePhiDays: number | null;
+  worstCaseReiHours: number | null;
+  minRepeatIntervalDays: number | null;
+  maxApplicationsPerSeason: number | null;
+  rainfastHours: number | null;
+  mobilityClass: SprayMobilityClass | null;
+  agronomicClass: string[];
+  enteredBy: string;
+  enteredAt: string;
+  note: string | null;
+}
+
+export async function listTenantProductFacts(): Promise<ActionResult<TenantProductFactsRow[]>> {
+  return withTenant(async () => {
+    const rows = await prisma.tenantProductFacts.findMany({ orderBy: [{ productRef: "asc" }, { factGroup: "asc" }] });
+    return rows.map((r) => ({
+      id: r.id,
+      productRef: r.productRef,
+      productName: r.productName,
+      epaRegistrationNumber: r.epaRegistrationNumber,
+      factGroup: r.factGroup,
+      worstCasePhiDays: r.worstCasePhiDays,
+      worstCaseReiHours: r.worstCaseReiHours,
+      minRepeatIntervalDays: r.minRepeatIntervalDays,
+      maxApplicationsPerSeason: r.maxApplicationsPerSeason,
+      rainfastHours: r.rainfastHours,
+      mobilityClass: r.mobilityClass as SprayMobilityClass | null,
+      agronomicClass: r.agronomicClass,
+      enteredBy: r.enteredBy,
+      enteredAt: r.enteredAt.toISOString(),
+      note: r.note,
+    }));
+  });
+}
+
+function optNum(v: FormDataEntryValue | null): number | null {
+  const s = String(v ?? "").trim();
+  if (s === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** A day/hour interval can be zero (apply-up-to-harvest, no wait) but never negative — a negative
+ * PHI/REI/rainfast would make any future "elapsed >= minimum" legality check trivially pass
+ * (adversarial review finding). Returns a field-labeled error rather than silently clamping. */
+function optNonNegativeNum(v: FormDataEntryValue | null, label: string): { value: number | null; error: string | null } {
+  const value = optNum(v);
+  if (value != null && value < 0) return { value: null, error: `${label} cannot be negative.` };
+  return { value, error: null };
+}
+
+export async function upsertTenantProductFacts(formData: FormData): Promise<ActionResult<{ id: string }>> {
+  const who = await actor();
+  const productRef = String(formData.get("productRef") ?? "").trim();
+  const productName = String(formData.get("productName") ?? "").trim();
+  const factGroup = String(formData.get("factGroup") ?? "") as "REGULATORY" | "AGRONOMIC";
+  if (!productRef) return { ok: false, error: "A product reference is required — this is the handle you'll cite on a spray record." };
+  if (!productName) return { ok: false, error: "A product name is required." };
+  if (factGroup !== "REGULATORY" && factGroup !== "AGRONOMIC") return { ok: false, error: "Choose which group of facts this is: REGULATORY or AGRONOMIC." };
+
+  const epaRegistrationNumber = String(formData.get("epaRegistrationNumber") ?? "").trim() || null;
+  const mobilityClassRaw = String(formData.get("mobilityClass") ?? "").trim();
+  const mobilityClass: SprayMobilityClass | null =
+    mobilityClassRaw === "CONTACT_PROTECTANT" || mobilityClassRaw === "TRANSLAMINAR" || mobilityClassRaw === "LOCALLY_SYSTEMIC" || mobilityClassRaw === "MOBILE_SYSTEMIC"
+      ? mobilityClassRaw
+      : null;
+  const agronomicClass = String(formData.get("agronomicClass") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const note = String(formData.get("note") ?? "").trim() || null;
+
+  const phi = optNonNegativeNum(formData.get("worstCasePhiDays"), "PHI");
+  const rei = optNonNegativeNum(formData.get("worstCaseReiHours"), "REI");
+  const repeat = optNonNegativeNum(formData.get("minRepeatIntervalDays"), "Minimum repeat interval");
+  const maxApps = optNonNegativeNum(formData.get("maxApplicationsPerSeason"), "Max applications per season");
+  const rainfast = optNonNegativeNum(formData.get("rainfastHours"), "Rainfast");
+  const firstError = [phi, rei, repeat, maxApps, rainfast].find((r) => r.error)?.error;
+  if (firstError) return { ok: false, error: firstError };
+
+  const data = {
+    productRef,
+    productName,
+    epaRegistrationNumber,
+    factGroup,
+    worstCasePhiDays: phi.value,
+    worstCaseReiHours: rei.value,
+    minRepeatIntervalDays: repeat.value,
+    maxApplicationsPerSeason: maxApps.value,
+    rainfastHours: rainfast.value,
+    mobilityClass,
+    agronomicClass,
+    note,
+    enteredBy: who.email,
+  };
+
+  const result = await withTenant((tenantId) =>
+    runInTenantTx(async (tx) => {
+      // KD-3: one row per (tenantId, productRef, factGroup) — a native upsert on that composite
+      // key, not a find-then-create/update: the latter is a check-then-set race (two concurrent
+      // first-time submissions for the same productRef would both see "no existing row" and both
+      // attempt create(), so the loser would 500 on the unique constraint instead of updating).
+      const row = await tx.tenantProductFacts.upsert({
+        where: { tenantId_productRef_factGroup: { tenantId, productRef, factGroup } },
+        update: data,
+        create: data,
+      });
+      return { id: row.id };
+    }),
+  );
+  if (result.ok) revalidatePath("/vineyards/sprays/products");
+  return result;
 }

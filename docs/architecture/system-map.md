@@ -9,7 +9,7 @@
 - **Cellarhand** — the product's brand (renamed from "BWC Operating System"; assets in `design-system/assets/logos`, wired via `src/components/BrandMark.tsx` + `src/app/{icon.svg,apple-icon.png,manifest.ts}`).
 - **Next.js 16.2** (app router) + **React 19** + **TypeScript** — `src/app/…`
 - **Tailwind v4** — styling via design tokens (see [[DESIGN]]); `src/styles/print.css` for printable work orders.
-- **Prisma ORM → Neon serverless Postgres** — **115 models** in `prisma/schema.prisma` (~3.75k lines).
+- **Prisma ORM → Neon serverless Postgres** — **146 models** in `prisma/schema.prisma` (~4.74k lines).
 - **better-auth** — authentication (`@node-rs/argon2` for password hashing).
 - **Vercel** — hosting. `npm run build` runs `prisma migrate deploy` first, so **deploys apply migrations automatically**.
 - **Sentry** — error monitoring (`instrumentation.ts`, `sentry.*.config.ts`) → auto-opens GitHub issues.
@@ -49,10 +49,24 @@ state is *derived* from the ledger, not stored loosely.
 - `combine.ts` + `combine-state.ts` — `decideCombineRoute`, the ONE decision every combining operation
   (rack, crush, press, saignée, topping, blend) makes about identity: **KEEP** (destination empty),
   **ABSORB** (the resident wine grows, keeping its identity), **NEW_BLEND** (mint a new lot). Refuses
-  across ownership, bond, form, ferment state, and tax class — each refusal naming its legal escape.
+  across bond, form, ferment state, and tax class — each refusal naming its legal escape. A **cross-OWNER
+  combine is NO LONGER refused** (plan 093 Unit 6 / council C2): refusing it deadlocked the daily topping
+  op (facility wine into a client barrel), so the receiving owner now dominates the scalar result and the
+  consumed minority owner's fraction is captured as a pending `BillableWineConsumed` row at execution
+  (bill-don't-block); bond stays absolute (it blocks even the NEW_BLEND escape — a real TTB boundary).
 - `actions.ts` — the server actions the UI calls.
 - `reverse.ts` + `reverse-guard.ts` — the **universal Undo**: `reverseOperationCore` dispatches an undo for *every* operation family (rack, bottle, sparkling, crush, press, saignée, blend), unwinding in LIFO order with guardrails.
 - `math.ts`, `vocabulary.ts` — volume math + naming.
+- **Ownership projection (plan 093, custom-crush) — `src/lib/owner/`.** A lot's `ownerId` is a SCALAR,
+  MAINTAINED projection (NULL = Estate/facility), re-stampable like `VesselComponent` — NOT immutable
+  ledger truth. The immutable record is a **`CHANGE_OWNERSHIP`** op (`change-ownership-core.ts`),
+  CONDITIONAL on the bond delta: same bond = a title-only re-stamp posting **no ledger line** (respecting
+  LEDGER-2's no-noop rule); host↔AP (distinct BWN) = title + a symmetric transfer-in-bond pair (balanced,
+  LEDGER-6). Descendant rows carry their lot's CURRENT owner read from the column at the write chokepoint,
+  never re-walked from lineage (**OWNER-1** — re-deriving would resurrect a pre-change owner). Compliance
+  keys off BOND, not `ownerId`, but an AP owner's bond wins in `deriveBond` (`compliance/bond.ts`). ⚠️
+  `ownerId` is a data MODEL only — there is **no owner-scope RLS yet** (that is plan 092); see
+  [[security-register]]. Guarded by `npm run verify:owner-model` (OWNER-1).
 
 ### 2a. Identity presentation layer (Phase 1) — `src/lib/lot/`
 Separates durable identity from the human label (NAMING-1/2). `Lot.id` is the ONLY opaque identity and
@@ -136,6 +150,20 @@ geoman), export to PNG or WGS84 shapefile. Harvest: per-block Brix curve + yield
 **Brix / pH / TA** (`phAtPick`/`taAtPick`, ranges from the analyte registry). A pick is written one of three
 ways through the SAME `harvest/pick-core.ts`: the manager Add-a-pick form, the assistant `log_harvest_pick`
 weigh-in tool (resolve block by NL → draft→confirm), or a work-order `HARVEST_WEIGH_IN` block (§10).
+- **Custom-crush intake spine (plan 093) — `src/lib/grower/`, `src/lib/harvest/weigh-tag-core.ts`,
+  `src/lib/owner/`.** Three first-class parties/records fill the biggest both-incumbent gap: a **`Grower`**
+  (the party that farmed the fruit; `Vineyard`/`VineyardBlock.growerId` composite FKs replace the free-text
+  `manager`, `isEstate` flags the winery's own blocks), an **`Owner`** (the party that OWNS the wine —
+  a custom-crush client or AP proprietor; `kind` is a validated TEXT union, not a DB enum), and a per-TRUCK
+  **`WeighTag`** scale ticket (gross/tare/net; a **gap-free per-tenant monotonic** `tagNumber` allocated via
+  a `WeighTagCounter` counter-row + `SELECT … FOR UPDATE`, NOT `MAX()+1`; **voided, never deleted**, like
+  `LotTreatment`). Owner/grower/block attach at the **`WeighTagLine`** (bin) level, and a `HarvestPick`
+  links back via `weighTagLineId` — **receive-now-assign-later** (a NULL `ownerId` + `needsOwnerAssignment`
+  disambiguates "estate" from "unresolved"; crush refuses an unresolved line). `HarvestPick.sold` flags
+  fruit sold OUT (TTB Part IV removal). Surfaces: `/setup/clients` (Owners) + `/setup/growers` admin and
+  the `/vineyards/harvest/weigh-tags` weigh-in screen, all gated by `AppSettings.customCrushEnabled`
+  (default off, inert until opt-in — mirrors `sparklingEnabled`/K14). Assistant tools `change_ownership`
+  + `log_weigh_tag` (`src/lib/assistant/tools/`). Proof: `npm run verify:owner-model`.
 
 ### 8. Accounting integration (Phase 15) — `src/lib/accounting/` + `src/lib/crypto/`
 Two-way QuickBooks Online off the Phase-8b cost export seam (does NOT rebuild the GL). A
@@ -347,7 +375,20 @@ model names, tool `name` strings, committer keys and parity evidence paths are u
 4. Everything is reversible via the timeline **Undo** (`reverseOperationCore`) — the same path a WO **reject** uses.
 
 ---
-*Refreshed 2026-07-23 (brain auto-refresh; plans 088–091 + #472/#473): the **one-lot-per-vessel** refactor
+*Refreshed 2026-07-24 (brain auto-refresh; plan 093 custom-crush data foundation, #484–#487): a new
+**ownership + intake spine**. `Owner` (party that owns the wine; scalar `ownerId` projection added to ~25
+tables), `Grower` (party that farmed the fruit; `Vineyard`/`Block.growerId`), and a per-truck `WeighTag`
+scale ticket (gap-free monotonic number via `WeighTagCounter`; void-not-delete) with owner/grower/block on
+its `WeighTagLine`s — 5 new tables + a `CHANGE_OWNERSHIP` op (§2, conditional on the bond delta) + a
+`BillableWineConsumed` record (cross-owner blend is now allow-and-bill, NOT refused — §2/combine). All new
+tables took the full Phase-12 tenant-isolation checklist (`verify:tenant-isolation` green); the ~25
+`ownerId` columns are a data MODEL only — **no owner-scope RLS yet** (plan 092), so no client-facing read
+path until then ([[security-register]]). New invariant **OWNER-1** (`ownerId` is a maintained projection,
+never re-derived from lineage; `verify:owner-model`). Surfaces gated by `AppSettings.customCrushEnabled`
+(default off). The 26 drift-flagged invariant notes were reviewed and left intact — the new code was
+written to CONFORM to them (title-only ownership change posts no line per LEDGER-2; TIB pair is balanced
+per LEDGER-6); OWNER-1 is the one genuinely-new invariant and was already added. Prior refresh 2026-07-23
+(plans 088–091 + #472/#473): the **one-lot-per-vessel** refactor
 (plan 088, LEDGER-12 / [[0008-one-lot-per-vessel]]) was already captured in §2 by its own PR — a vessel holds
 AT MOST ONE lot (`(tenantId, vesselId)` unique + monotone `assertNoWorsenedCoResidence` + `decideCombineRoute`
 KEEP/ABSORB/NEW_BLEND), and every write folds `VesselComponent` composition via `composeLeaves`; this pass

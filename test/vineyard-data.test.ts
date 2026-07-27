@@ -74,11 +74,17 @@ describe("serializeDetail", () => {
       soilType: "schist",
       manager: "Dorji",
       defaultUnit: "imperial",
+      regulatoryCountry: "BT",
+      regulatoryState: null,
+      jurisdictionConfirmedAt: new Date("2026-07-01T00:00:00Z"),
+      jurisdictionConfirmedBy: "user1",
     });
     expect(s.gpsLat).toBeCloseTo(27.4726, 6);
     expect(s.gpsLng).toBeCloseTo(89.6392, 6);
     expect(s.elevationM).toBe(2300);
     expect(s.soilType).toBe("schist");
+    expect(s.regulatoryCountry).toBe("BT");
+    expect(s.jurisdictionConfirmedAt).toBe("2026-07-01T00:00:00.000Z");
   });
 
   it("handles all-null optional metadata", () => {
@@ -91,9 +97,15 @@ describe("serializeDetail", () => {
       soilType: null,
       manager: null,
       defaultUnit: "metric",
+      regulatoryCountry: null,
+      regulatoryState: null,
+      jurisdictionConfirmedAt: null,
+      jurisdictionConfirmedBy: null,
     });
     expect(s.gpsLat).toBeNull();
     expect(s.elevationM).toBeNull();
     expect(s.defaultUnit).toBe("metric");
+    expect(s.regulatoryCountry).toBeNull();
+    expect(s.jurisdictionConfirmedAt).toBeNull();
   });
 });

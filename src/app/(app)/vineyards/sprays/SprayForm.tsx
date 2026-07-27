@@ -31,6 +31,9 @@ export interface SprayFormBlock {
 export interface MaterialDraft {
   productName: string;
   epaRegistrationNumber: string;
+  /** S2b Unit 5 — a grower-defined product (rule §3.9): resolves via TenantProductFacts, never the
+   * EPA registry. Set this OR leave epaRegistrationNumber blank, not both — see /vineyards/sprays/products. */
+  tenantProductRef: string;
   materialRole: SprayMaterialLineInput["materialRole"];
   quantityEntered: string;
   quantityUnit: SprayQuantityUnit;
@@ -62,6 +65,7 @@ export interface BlockDraft {
 const emptyMaterial = (): MaterialDraft => ({
   productName: "",
   epaRegistrationNumber: "",
+  tenantProductRef: "",
   materialRole: "PESTICIDE",
   quantityEntered: "",
   quantityUnit: "OZ",
@@ -198,6 +202,7 @@ export function SprayForm({
     const materialLines: SprayMaterialLineInput[] = materials.map((m) => ({
       productName: m.productName.trim(),
       epaRegistrationNumber: m.epaRegistrationNumber.trim() || null,
+      tenantProductRef: m.tenantProductRef.trim() || null,
       materialRole: m.materialRole,
       quantityEntered: num(m.quantityEntered) ?? 0,
       quantityUnit: m.quantityUnit,
@@ -358,6 +363,16 @@ export function SprayForm({
               <div>
                 <label style={labelStyle} htmlFor={`sf-m${i}-epa`}>EPA reg. number</label>
                 <input id={`sf-m${i}-epa`} style={inputStyle} value={m.epaRegistrationNumber} onChange={(e) => setMaterial(i, { epaRegistrationNumber: e.target.value })} placeholder="blank = unknown, never an error" />
+              </div>
+              <div>
+                <label style={labelStyle} htmlFor={`sf-m${i}-tpr`}>Custom product ref</label>
+                <input
+                  id={`sf-m${i}-tpr`}
+                  style={inputStyle}
+                  value={m.tenantProductRef}
+                  onChange={(e) => setMaterial(i, { tenantProductRef: e.target.value })}
+                  placeholder="no EPA number? see /vineyards/sprays/products"
+                />
               </div>
               <div>
                 <label style={labelStyle} htmlFor={`sf-m${i}-role`}>Role</label>

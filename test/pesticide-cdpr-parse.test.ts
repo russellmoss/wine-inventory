@@ -64,19 +64,78 @@ describe("product.dat parsing (the verified cases)", () => {
 });
 
 describe("prod_site.dat parsing", () => {
-  it("parses real grape rows (site status at col 34)", () => {
+  it("parses real grape rows (site status at col 34) and their PHI/REI intervals (S2b Unit 0/2)", () => {
     expect(parseProdSiteLine("  62562 29143  0A00 0308  50D 12H A                                 ")).toEqual({
       ok: true,
       prodno: 62562,
       siteCode: 29143,
       siteActive: true,
+      phiDays: 50,
+      reiHours: 12,
     });
     expect(parseProdSiteLine("     37 77000  0A00        0   0  I                                 ")).toEqual({
       ok: true,
       prodno: 37,
       siteCode: 77000,
       siteActive: false,
+      phiDays: null,
+      reiHours: null,
     });
+  });
+
+  // Builds a prod_site.dat line at the EXACT byte offsets in CDPR_OFFSETS.prodSite, rather than
+  // hand-aligning fixed-width columns by eye (how the real fixtures above were captured, but that's
+  // error-prone for synthetic cases — this guarantees the offsets under test are the ones asserted).
+  function buildLine(opts: { phiValue: string; phiUnit: string; reiValue: string; reiUnit: string }): string {
+    const chars = new Array(35).fill(" ");
+    const put = (s: string, [start, end]: readonly [number, number]) => {
+      const padded = s.padStart(end - start, " ").slice(0, end - start);
+      for (let i = 0; i < padded.length; i++) chars[start + i] = padded[i];
+    };
+    put("1", [0, 7]);
+    put("1", [7, 13]);
+    put(opts.phiValue, [25, 28]);
+    chars[28] = opts.phiUnit;
+    put(opts.reiValue, [29, 32]);
+    chars[32] = opts.reiUnit;
+    chars[34] = "A";
+    return chars.join("");
+  }
+
+  it("THE unit-keyed nullity rule (probe §3) — blank unit is NOT RECORDED, never a zero interval", () => {
+    // Mancozeb oracle: 66-day PHI, 24-hour REI (probe §2).
+    const mancozeb = parseProdSiteLine(buildLine({ phiValue: "66", phiUnit: "D", reiValue: "24", reiUnit: "H" }));
+    expect(mancozeb.ok && mancozeb.phiDays).toBe(66);
+    expect(mancozeb.ok && mancozeb.reiHours).toBe(24);
+
+    // A legitimate 0-day interval (739 rows in the probe sample) — a REAL zero, because the unit
+    // is present. Reading the value alone (ignoring the unit) would be indistinguishable from "not
+    // recorded", which is exactly the failure this rule prevents.
+    const zeroButRecorded = parseProdSiteLine(buildLine({ phiValue: "0", phiUnit: "D", reiValue: "0", reiUnit: "H" }));
+    expect(zeroButRecorded.ok && zeroButRecorded.phiDays).toBe(0);
+    expect(zeroButRecorded.ok && zeroButRecorded.reiHours).toBe(0);
+
+    // Blank unit with a nonzero value (the probe's "4 ambiguous rows") — fails closed to null,
+    // never reads the stray digits as a real interval.
+    const ambiguous = parseProdSiteLine(buildLine({ phiValue: "66", phiUnit: " ", reiValue: "24", reiUnit: " " }));
+    expect(ambiguous.ok && ambiguous.phiDays).toBeNull();
+    expect(ambiguous.ok && ambiguous.reiHours).toBeNull();
+
+    // Blank unit AND blank value — the ordinary "not recorded" case (939,441 of 1.24M PHI rows).
+    const notRecorded = parseProdSiteLine(buildLine({ phiValue: "", phiUnit: " ", reiValue: "", reiUnit: " " }));
+    expect(notRecorded.ok && notRecorded.phiDays).toBeNull();
+    expect(notRecorded.ok && notRecorded.reiHours).toBeNull();
+  });
+
+  it("converts H/M units to whole days/hours, rounding UP toward the safer (longer) side", () => {
+    // 12 hours -> ceil(12/24) = 1 day, never truncated to 0.
+    const hoursToDay = parseProdSiteLine(buildLine({ phiValue: "12", phiUnit: "H", reiValue: "4", reiUnit: "H" }));
+    expect(hoursToDay.ok && hoursToDay.phiDays).toBe(1);
+    expect(hoursToDay.ok && hoursToDay.reiHours).toBe(4);
+
+    // 7 minutes REI -> ceil(7/60) = 1 hour.
+    const minutesToHour = parseProdSiteLine(buildLine({ phiValue: "0", phiUnit: "D", reiValue: "7", reiUnit: "M" }));
+    expect(minutesToHour.ok && minutesToHour.reiHours).toBe(1);
   });
 
   it("grape site-code set matches the verified vocabulary and excludes the traps", () => {

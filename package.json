@@ -50,6 +50,7 @@
     "verify:split-in-place": "tsx --conditions=react-server --env-file=.env scripts/verify-split-in-place.ts",
     "report:product-facts-coverage": "tsx --conditions=react-server --env-file=.env scripts/report-product-facts-coverage.ts",
     "verify:product-facts": "tsx --conditions=react-server --env-file=.env scripts/verify-product-facts.ts",
+    "seed:product-facts": "tsx --conditions=react-server --env-file=.env scripts/seed-product-facts.ts",
     "verify:spray-record": "tsx --conditions=react-server --env-file=.env scripts/verify-spray-record.ts",
     "verify:barrel-groups": "tsx --conditions=react-server --env-file=.env scripts/verify-barrel-groups.ts",
     "verify:group-maintenance": "tsx --conditions=react-server --env-file=.env scripts/verify-group-maintenance.ts",
