@@ -3,8 +3,9 @@
 **Program:** Spray Intelligence · [runbook](../SPRAY_ASSISTANT_RUNBOOK.md) §9 S2b
 **Depends on:** S2 (shipped + live, deploy `147b75c3`) · S3a (shipped, PR1–PR3 merged)
 **Unblocks:** S7a (legality + rotation), S8 (lot residue), S6 (protection budget), S7b (interlocks)
-**Status:** 🟨 **built — Units 0-9 DONE; Unit 10 (browser QA) is the only one left** ([council feedback](S2b-council-feedback.md))
-**Plan depth:** Deep (12 units) · **Date:** 2026-07-26
+**Status:** 🟨 **RESUMING 2026-07-27 — foundation merged+live (#535); five units remain: 1, 2, 3, 5, 10.**
+See §0 below for the resumption scope. ([council feedback](S2b-council-feedback.md))
+**Plan depth:** Deep (12 units) · **Date:** 2026-07-26 · **Resumed:** 2026-07-27
 
 > ## Build status (2026-07-26)
 >
@@ -81,6 +82,57 @@
 > deferred was run instead. It **reversed the deferral** and turned up a bigger finding — see §7 and
 > the new **Unit 0**. Pest codes are now an *ingest*, not a curation, and `prod_site.dat` may be a
 > free machine-readable source for the most expensive part of Unit 2.
+
+---
+
+## 0. Resumption scope (2026-07-27) — read this before touching a file
+
+Picking this phase back up one day after the foundation PR (#535) merged. Nothing else has touched
+`prisma/schema.prisma`, `src/lib/pesticide/`, or `src/lib/spray/` in the interim (verified against
+`git log` — the only spray-program commits since are S5a's, a disjoint lane). **No drift. The plan
+below is unchanged from v2.3 except for one load-bearing simplification this resumption pass found:**
+
+**Every table Units 1, 2, 3, and 5 need already exists.** Verified directly against the live schema:
+`PesticideProductFacts`, `PesticideSeparationRule`, `PesticideProductReiCondition`,
+`PesticideProductPhiCondition`, `PesticideProductCondition`, `TenantProductFacts`,
+`PesticidePestCategory`, `PesticideProductPest` are all in `prisma/schema.prisma` today, and
+`VineyardDetail.regulatoryCountry` / `jurisdictionConfirmedAt` and
+`spray_block_line.snapshotJurisdictionCountry` / `State` are already columns. **The remaining work
+for Units 1, 2, 3, and 5 is entirely application code, curated content, and tests — zero new
+migrations.** That collapses most of §9's schema-serialization risk (the shared-file map still
+applies to `src/lib/spray/actions.ts` / `record-core.ts` / `correction-core.ts`, which is real code
+contention, just not schema contention).
+
+**Scope of this resumption: Units 1, 2, 3, 5, 10 only.** Units 0, 4, 6, 7, 7b, 8, 9 are shipped and
+verified live (see the Build status table above) and are not touched here. Do not re-open them.
+
+**Recommended execution order**, reconciling the plan's dependency edges with the QA report's own
+recommendation (its "Recommendation" section: *"Unit 3's separation.ts + goldens... is the
+highest-value next step"*):
+
+1. **Unit 3's `separation.ts` module can be written and golden-tested now**, against synthetic
+   fixture rule-sets, independent of whether Unit 2's curated artifact exists yet — the pure function
+   takes rule objects as input, it does not read the DB. This de-risks the highest-uncertainty logic
+   first and cheaply. Wiring `separation.ts` to *real* curated `pesticide_separation_rule` rows still
+   needs Unit 2's seeded facts rows to exist (the FK target), so the seed step of Unit 3 waits on Unit 2.
+2. **Units 1 (jurisdiction) and 2 (curated artifact) run in parallel** — both have no dependency on
+   each other, touch disjoint files (`src/lib/vineyard/*` + the sprays UI vs. `src/lib/pesticide/data/*`
+   + `scripts/seed-product-facts.ts`), and neither needs a migration.
+3. **Unit 5 (tenant-scoped override + entry surface)** follows Unit 2 (shares `PesticideProductFacts`
+   shape for parity) — can start once Unit 2's artifact schema (not full content) is settled.
+4. **Unit 10 (QA + phase report) runs last**, per its own dependency on Units 1–9, from the MAIN
+   checkout per the standing QA protocol.
+
+**Unit 2's content-curation effort is still the open unknown** (§10's calibration spike was written
+but, per the Build status table, only the seeder plumbing shipped — no evidence the 10-product timing
+spike was actually run). **Run it first inside Unit 2**, before committing to curating the full top-60
+set, exactly as §10 specifies. If it comes back at ~3h/product rather than ~40min/product, escalate
+to Russell before sinking more time into curation — that changes the shape of the rest of the phase.
+
+**What "done" looks like this time**, restated from the QA report so it isn't re-litigated: all four
+gate items in `qa/S2b-qa-report.md` §4 pass, `report:product-facts-coverage` clears the pre-committed
+80%/60% bars **against the curated set** (not the corpus-wide 40.4%/64.0% Unit 0 already measured and
+rejected), and SAFE-19 and SAFE-6 both move from *deferred/not-run* to *pass* in a re-run QA report.
 
 ---
 

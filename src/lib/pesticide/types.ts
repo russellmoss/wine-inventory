@@ -111,6 +111,63 @@ export interface FederalStatusView {
   registrationStatus: string | null;
 }
 
+/* ─── Spray S2b Unit 3 — separation rules (KD-2). Structural, so `separation.ts` stays pure. ────── */
+
+export type PesticideSeparationTargetKindValue = "ACTIVE_INGREDIENT" | "AGRONOMIC_CLASS" | "PRODUCT";
+export type PesticideSeparationDirectionValue = "TARGET_AFTER_SUBJECT" | "TARGET_BEFORE_SUBJECT";
+
+/** A rule asserted BY `subjectEpaRegNumber`'s label ABOUT a target, in one direction (KD-2). Never
+ * inherited by category — two different oils carry two different rule sets. */
+export interface SeparationRuleRow {
+  subjectEpaRegNumber: string;
+  targetKind: PesticideSeparationTargetKindValue;
+  targetKey: string;
+  direction: PesticideSeparationDirectionValue;
+  minDays: number;
+  fruitPresentOnly: boolean;
+  /** verbatim label text, rendered as-is, never parsed for meaning */
+  condition: string | null;
+}
+
+export interface SeparationProductProfile {
+  epaRegNumber: string;
+  activeIngredientKeys: readonly string[];
+  /** KD-14: empty array means "not yet classified", distinct from a positively-tagged product that
+   * simply lacks this tag. A CLASS-target rule against an empty array is ambiguous, never a match
+   * and never a confirmed non-match (council G5 — a gap must not render as no restriction). */
+  agronomicClass: readonly string[];
+  rules: readonly SeparationRuleRow[];
+}
+
+export interface SeparationQuery {
+  /** applied first */
+  earlier: SeparationProductProfile;
+  /** applied second, `elapsedDays` after `earlier` */
+  later: SeparationProductProfile;
+  elapsedDays: number;
+  fruitPresent: boolean;
+}
+
+/** RESTRICTION_FOUND — a rule confidently matched. NO_RESTRICTION — every candidate rule confidently
+ * did not match. NO_EVIDENCE — a CLASS-targeted rule exists but the candidate is not yet classified,
+ * so the rule can neither be confirmed nor ruled out (council G5, KD-14). Distinct from NO_RESTRICTION
+ * on purpose: a gap must never render as "no restriction" (rule §3.6). */
+export type SeparationEvidenceStatus = "RESTRICTION_FOUND" | "NO_RESTRICTION" | "NO_EVIDENCE";
+
+/** Evidence, never a verdict (S7b decides what to do with it). */
+export interface SeparationEvidence {
+  status: SeparationEvidenceStatus;
+  /** the most restrictive minDays among every matched rule, or null if none matched */
+  minDays: number | null;
+  elapsedDays: number;
+  /** elapsedDays < minDays — a factual comparison, not an authorization decision */
+  belowMinimum: boolean;
+  /** every rule tied for most-restrictive, so a caller can cite all of them */
+  producingRules: SeparationRuleRow[];
+  /** verbatim label text from a producing rule, if any carried one */
+  condition: string | null;
+}
+
 export interface RegistrationRestrictionView {
   state: string;
   counties: string[];
