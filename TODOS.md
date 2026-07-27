@@ -2,6 +2,22 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
+## `verify:kb-boundary`'s FAIL doesn't distinguish a real leak from a working gate
+
+Found 2026-07-27 crawling `pnw-handbooks` (plan 100, first-ever enforcing source). Two documents
+verdicted `product-table` on live re-fetch (a PPE-equipment table page and a cultivar
+disease-susceptibility table page) and the script reported both as a **FAIL** — *"the inline gate
+should have made this impossible, so it LEAKED."* Direct query showed **zero stored chunks** for
+both: the ingest-time gate refused them correctly, and there is nothing retrievable. Not a leak.
+
+The script's "flagged on an enforcing source = leak" assumption doesn't hold for a document that is
+`status: active` with **0 chunks** — that is exactly what a working gate produces (the crawler
+persists the document row before `indexDocument` runs; the gate then clears/never-writes its
+chunks, but the row stays `active`). The auditor should either check chunk count before calling
+something a leak, or the shipped gate should flip a refused document to `status: "withdrawn"`
+instead of leaving it `active` with no content. Either fix removes a false alarm that currently
+requires manual SQL to distinguish from a real corpus leak.
+
 ## Deferred from plan 100 PR A (council-raised, deliberately out of scope)
 
 Four real defects found while fixing the chunker text-loss bug. None is a data-corruption risk on

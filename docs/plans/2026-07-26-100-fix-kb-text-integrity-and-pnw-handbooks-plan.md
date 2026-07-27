@@ -676,6 +676,48 @@ passages surface where they do not belong. **A reproduction of cross-region cont
 **Depends on:** Unit 10
 **Verification:** a written verdict with numbers. Flip `defaultEnabled` only on a clean result.
 
+#### Unit 11 RESULT — measured 2026-07-27
+
+Crawl: 64 discovered, 64 fetched, 59 documents persisted (5 reused from an earlier 5-doc smoke
+crawl, `notModified`), 142 chunks, 0 errors, 0 challenges.
+
+**KB-1 gate, live**: `verify:kb-boundary --source pnw-handbooks` — 64 active documents, 62 verdict
+`prose`, 2 verdict `product-table`. Both flagged documents confirmed **zero stored chunks** by direct
+query (a PPE-equipment table page and a cultivar/disease-susceptibility table page — both
+legitimately table-shaped, both correctly refused at ingest). No leak. Filed as a TODOS item that
+the auditor's "FAIL" wording doesn't distinguish "flagged with live chunks" from "flagged, 0 chunks,
+gate already worked" — a UX gap, not a correctness one.
+
+**Displacement** — `verify:kb-register` after enabling `pnw-handbooks` for **Demo Winery only**
+(one `KnowledgeSourceSubscription` row, mirroring how `ives-technical-reviews` was staged):
+
+> 0/120 slots changed hands; 0 went to publishers absent from the baseline (0%). DISPLACEMENT GATE
+> PASSED ✓
+
+Confirmed PNW is genuinely reachable, not merely absent from these 20 questions — 3 ad hoc probe
+queries returned PNW passages in 6 of 24 slots (e.g. `grape-vitis-spp-powdery-mildew` for "how do I
+control grape powdery mildew in Oregon vineyards"), integrating alongside existing sources rather
+than displacing any of the 20 practical-question baseline's answers.
+
+**Cross-region contamination** — 5 generic disease/pesticide queries (no PNW/Oregon keywords) run
+against `org_bhutan_wine_co`, which has **no** subscription row for `pnw-handbooks`:
+
+> 0 PNW passages / 40 total across 5 generic queries in Bhutan (non-subscribed tenant)
+
+Confirms `resolveEnabledSources`'s per-tenant subscription gate holds — the corpus-wide
+no-region-dimension risk council C7 flagged cannot manifest for a tenant that has not explicitly
+enabled the source, which is exactly the boundary `defaultEnabled: false` is supposed to provide.
+This test does **not** measure whether Demo Winery itself (once PNW-enabled) contaminates a
+non-Oregon query answer within its own corpus — that residual risk is what SKB Unit 9's regional
+filter is for, unchanged from the original plan.
+
+**Verdict: both required measurements are clean. The `defaultEnabled` flip is unblocked by the
+plan's own gate criteria.** Flipping it globally exposes the live `org_bhutan_wine_co` tenant to
+Oregon/PNW-specific extension content for the first time, which is a product decision about a real
+customer rather than a technical implementation choice — left for Russell to make explicitly rather
+than flipped automatically. As shipped: `pnw-handbooks` is `defaultEnabled: false` globally, enabled
+for Demo Winery only.
+
 > **PR C ends here** (Units 7-11).
 
 ---
