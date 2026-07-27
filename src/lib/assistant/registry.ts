@@ -1,5 +1,6 @@
 import "server-only";
 import { isTenantAdminLike, type AppUser } from "@/lib/access";
+import type { UnitPrefs } from "@/lib/units/display";
 
 /**
  * The assistant's tool registry — the single source of truth for what the
@@ -26,6 +27,13 @@ export type ToolContext = {
    * accept a wall-clock date/time resolve it in this zone; absent or bogus, it falls back to UTC.
    */
   timeZone?: string;
+  /**
+   * Plan 098: the tenant's ALREADY-RESOLVED display-unit preferences (the route resolves them
+   * beside the timezone so the loop stays DB-free). Tools that emit human-readable quantities
+   * format with these; optional so intermediate states and DB-free tests stay constructible —
+   * absent means "unconfigured" and readers fall back exactly as before the setting existed.
+   */
+  units?: UnitPrefs;
 };
 
 export type AssistantTool = {

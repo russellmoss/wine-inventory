@@ -6,8 +6,14 @@ import { rackVesselAction } from "@/lib/cellar/actions";
 import type { RackVesselResult } from "@/lib/vessels/rack-core";
 import { FormShell, fieldStyle, type CellarActionsVessel, type KegOption } from "./shared";
 import { VesselFilterPicker } from "@/components/cellar/VesselFilterPicker";
+import { VolumeInput } from "./VolumeInput";
+import { formatVolume, volumeInputToLiters, volumeInputValue } from "@/lib/units/display";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // ── Rack (move wine to another vessel; lees loss = out − measured-in) ──
+// Plan 098 U9: entry is in the winery's display unit (inline adornment); the ACTION still
+// receives canonical litres. The seeded "litres out" default carries a dirty check — an
+// untouched field submits the vessel's exact stored volume, never a re-converted round-trip.
 export function RackForm({
   vessel,
   kegOptions,
@@ -19,15 +25,28 @@ export function RackForm({
   pending: boolean;
   onSubmit: (fn: () => Promise<RackVesselResult>, label: string) => void;
 }) {
+  const unit = useUnitPrefs().volume;
   const destinations = kegOptions.filter((k) => k.id !== vessel.id);
   const [toVesselId, setToVesselId] = React.useState("");
-  const [drawL, setDrawL] = React.useState(String(vessel.totalL || ""));
+  const seededDraw = React.useMemo(
+    () => (vessel.totalL > 0 ? { display: volumeInputValue(vessel.totalL, unit), liters: vessel.totalL } : null),
+    [vessel.totalL, unit],
+  );
+  const [drawL, setDrawL] = React.useState(seededDraw?.display ?? "");
   const [landedL, setLandedL] = React.useState("");
+  // If the seed changes under a mounted form (unit prefs changed, or the vessel's volume moved),
+  // an UNTOUCHED field re-seeds — otherwise its stale string would re-parse in the new unit and
+  // silently mean a different volume (the HarvestRecordForm prevUnit pattern).
+  const [prevSeed, setPrevSeed] = React.useState(seededDraw?.display ?? "");
+  if ((seededDraw?.display ?? "") !== prevSeed) {
+    if (drawL === prevSeed) setDrawL(seededDraw?.display ?? "");
+    setPrevSeed(seededDraw?.display ?? "");
+  }
   const [useNewBlend, setUseNewBlend] = React.useState(false);
   const [token, setToken] = React.useState("");
 
-  const draw = Number(drawL);
-  const landed = landedL.trim() === "" ? null : Number(landedL);
+  const draw = volumeInputToLiters(drawL, unit, seededDraw) ?? Number.NaN;
+  const landed = landedL.trim() === "" ? null : volumeInputToLiters(landedL, unit) ?? Number.NaN;
   const drawValid = Number.isFinite(draw) && draw > 0 && draw <= vessel.totalL + 1e-9;
   const landedValid = landed == null || (Number.isFinite(landed) && landed >= 0 && landed <= draw + 1e-9);
   const lossL = landed == null ? 0 : Math.round((draw - landed) * 100) / 100;
@@ -54,8 +73,8 @@ export function RackForm({
         emptyHint="No other vessel to rack into."
       />
       <FormShell>
-      <input value={drawL} onChange={(e) => setDrawL(e.target.value)} inputMode="decimal" placeholder="Litres out" style={{ ...fieldStyle, width: 100 }} aria-label="Litres moved out of this vessel" title={`Out of ${vessel.code} (defaults to its full volume)`} />
-      <input value={landedL} onChange={(e) => setLandedL(e.target.value)} inputMode="decimal" placeholder="Litres in (measured)" style={{ ...fieldStyle, width: 140 }} aria-label="Measured litres into the destination" />
+      <VolumeInput value={drawL} onChange={setDrawL} unit={unit} placeholder="Out" width={110} ariaLabel="Volume moved out of this vessel" title={`Out of ${vessel.code} (defaults to its full volume)`} />
+      <VolumeInput value={landedL} onChange={setLandedL} unit={unit} placeholder="In (measured)" width={150} ariaLabel="Measured volume into the destination" />
       {newBlendActive ? (
         <input value={token} onChange={(e) => setToken(e.target.value.toUpperCase())} maxLength={4} placeholder="Tag (e.g. EST)" style={{ ...fieldStyle, width: 110 }} aria-label="New blend tag (2–4 letters)" />
       ) : null}
@@ -73,7 +92,7 @@ export function RackForm({
                 lossL,
                 ...(newBlendActive ? { newBlend: { token: token.trim() } } : {}),
               }),
-            `racked ${draw} L`,
+            `racked ${formatVolume(draw, unit)}`,
           )
         }
         style={{ minHeight: 44 }}
@@ -101,7 +120,7 @@ export function RackForm({
               )
               : landed == null
                 ? `Enter the measured volume landed to record lees loss (out − in). Leaving it blank logs no loss.`
-                : `Lees loss = ${lossL} L (out ${draw} − in ${landed}).`}
+                : `Lees loss = ${formatVolume(lossL, unit)} (out ${formatVolume(draw, unit)} − in ${formatVolume(landed, unit)})${unit !== "L" ? ` · recorded as ${formatVolume(lossL, "L")}` : ""}.`}
       </div>
     </div>
   );

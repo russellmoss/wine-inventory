@@ -6,13 +6,15 @@ import { getBlockSoilAction, pullBlockSoilAction } from "@/lib/soil/actions";
 import type { BlockSoilContext, SoilSnapshotView } from "@/lib/soil/read";
 import type { SoilComponent } from "@/lib/soil/schema";
 import type { Unit } from "@/lib/vineyard/units";
+import { formatAreaHa } from "@/lib/units/display";
 
 // VI-P4 — the block panel's NRCS soil section. Cards-only (no map components). Every soil map unit gets
 // its own property card (no blended block property — SOIL-1). Reads via getBlockSoilAction on mount and
 // after a pull; the pull itself is pullBlockSoilAction (audited, tenant-scoped, geometry-version CAS).
 
+// Plan 098 review: through the display authority (kills the twin inline conversion + the "ac" label).
 function areaLabel(sqM: number, unit: Unit): string {
-  return unit === "metric" ? `${(sqM / 10_000).toFixed(2)} ha` : `${(sqM / 4046.856).toFixed(2)} ac`;
+  return formatAreaHa(sqM / 10_000, unit === "metric" ? "HA" : "ACRES");
 }
 const pct = (n: number) => `${(n * 100).toFixed(n < 0.1 ? 1 : 0)}%`;
 

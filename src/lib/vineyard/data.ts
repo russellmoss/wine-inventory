@@ -69,7 +69,8 @@ export type RawDetail = {
   elevationM: DecimalLike;
   soilType: string | null;
   manager: string | null;
-  defaultUnit: string;
+  /** Plan 098: NULL = "Auto" — geometry displays follow the winery's unit prefs. */
+  defaultUnit: string | null;
 };
 
 export type SerializedDetail = {
@@ -80,7 +81,8 @@ export type SerializedDetail = {
   elevationM: number | null;
   soilType: string | null;
   manager: string | null;
-  defaultUnit: string;
+  /** The vineyard's EXPLICIT geometry-unit override; null = "Auto" (follow the winery). */
+  defaultUnit: string | null;
 };
 
 export type VineyardDetailPayload = {

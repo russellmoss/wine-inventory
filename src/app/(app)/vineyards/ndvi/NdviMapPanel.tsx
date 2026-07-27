@@ -12,6 +12,8 @@ import { listSpatialStylesAction, saveVineyardStyleAction, type SpatialStylePayl
 import { getVineyardSoilOverlaysAction } from "@/lib/soil/actions";
 import type { VineyardSoilOverlays } from "@/lib/soil/read";
 import { SoilUnitPanel } from "../maps/SoilUnitPanel";
+import { useUnitPrefs } from "@/components/units/UnitsProvider";
+import { resolveAreaUnit, resolveSpacingUnit } from "@/lib/units/display";
 
 type LayerId = "ndvi" | "soil";
 
@@ -44,6 +46,10 @@ export function NdviMapPanel({
   center: { lat: number; lng: number } | null;
   vineyardName: string;
 }) {
+  // Plan 098: the winery's display units replace the old hardcoded "imperial".
+  const prefs = useUnitPrefs();
+  const mapUnit = resolveSpacingUnit(null, prefs);
+  const areaUnit = resolveAreaUnit(null, prefs);
   const [datasetId, setDatasetId] = useState<string | null>(datasets[0]?.id ?? null);
   const [mode, setMode] = useState<ColorScaleMode>("VINEYARD_SCENE");
   const [paletteId, setPaletteId] = useState<string>("vigor-classic");
@@ -208,7 +214,7 @@ export function NdviMapPanel({
         lat={center?.lat ?? null}
         lng={center?.lng ?? null}
         blocks={blocks}
-        unit="imperial"
+        unit={mapUnit}
         overlays={overlays}
         onOverlayFeatureClick={soilShown ? (props) => setSelectedSoilMukey(props.mukey ? String(props.mukey) : null) : undefined}
         height={420}
@@ -226,7 +232,7 @@ export function NdviMapPanel({
           ))}
         </div>
       ) : null}
-      {selectedSoil ? <SoilUnitPanel unit={selectedSoil} displayUnit="imperial" onClose={() => setSelectedSoilMukey(null)} /> : null}
+      {selectedSoil ? <SoilUnitPanel unit={selectedSoil} displayUnit={areaUnit} onClose={() => setSelectedSoilMukey(null)} /> : null}
       {meta && <NdviLegend meta={meta} paletteId={paletteId} reverse={reverse} mode={mode} />}
     </>
   );
