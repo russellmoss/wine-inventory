@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-27T11:45:41.359Z",
+  "capturedAt": "2026-07-27T13:41:57.183Z",
   "entries": [
     {
       "query": "What is a good pre-infection fungicide I can use for downy mildew?",
@@ -254,9 +254,7 @@
           "dateSource": "published",
           "textHash": "a259f9a407b1"
         }
-      ],
-      "unstable": true,
-      "observedProfiles": 2
+      ]
     },
     {
       "query": "What is the most effective way to sanitize barrels against Brett?",
@@ -1191,9 +1189,7 @@
           "dateSource": "published",
           "textHash": "9cbfa16da564"
         }
-      ],
-      "unstable": true,
-      "observedProfiles": 2
+      ]
     },
     {
       "query": "What fungicide program controls Phomopsis and black rot in an eastern US vineyard?",
