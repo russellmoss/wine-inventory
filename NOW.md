@@ -481,6 +481,39 @@ per-tenant rules mean moving lexicon application into the speak route only.
 
 </details>
 
+🟨 **S5a (lane C — powdery index + latent-infection ledger): Unit 0 gate ANSWERED. The index is a
+NO-GO; the ledger proceeds.**
+[probe report](docs/spray_assistant/phases/S5a-diurnal-fidelity-probe.md) ·
+[plan v2](docs/spray_assistant/phases/S5a-powdery-index-latent-ledger-plan.md) ·
+[council](docs/spray_assistant/phases/S5a-council-feedback.md)
+
+⛔ **The pre-committed no-go TRIGGERED again — all 8 sites failed.** Gubler-Thomas point deltas were
+scored from Felber et al. 2018 reconstructions against **genuine station hourly METAR** (IEM ASOS,
+6 seasons/site, Wilson CIs), not ERA5 — council C2's methodological fix. The failure is **structural,
+not tuning**, on four independent lines: a sawtooth control performs as well as the calibrated model;
+our sites violate its shape assumptions *far less* than the sites it was calibrated on (0.2–1.4% vs
+Felber's own 27%); consecutive-hours-in-band MAE is **2.2–3.4 h against a rule thresholded at 6 h**;
+and Savalkar's monthly-station-statistics mitigation lifted no station-oracle site (it made Stoney
+Hill *worse*) because that >75% error reduction was for a smooth accumulator and this is a
+narrow-window threshold counter — plan §1.2 confirmed by measurement.
+
+**The error runs in the crop-loss direction:** G1 unsafe-miss breaches its 2% bar at six of eight
+sites, worst **13.6% at Madera** — the same site S0 flagged for reporting its highest confidence on
+its worst inputs. **Unlike ADR 0012 there is no regime split to narrow to:** the best oracle in the
+fleet (Russian River, 3.7 km) scored *worse* than a 9.8 km one.
+
+→ **S5a ships the LEDGER ONLY. The powdery index moves to S5b behind S1, which is now load-bearing
+for powdery mildew and not only for leaf wetness.** Units 3–4 (`diurnal-core`, `powdery-core`) do
+not ship as a risk engine; Units 1, 2, 5 (the ledger) are unaffected and proceed.
+
+⚠️ **Escalated out of the phase — Bhutan weather may be 8–9 °C wrong.** No station oracle exists for
+either Bhutan site, and NASA POWER vs ERA5 at the same coordinates differ by **9.26 °C (Bajo) /
+8.16 °C (Gortshalu)** against 0.31–1.44 °C at the US sites — lapse-rate-consistent with a grid-cell
+elevation mismatch in Himalayan terrain. That is a live-tenant data-quality question for **every**
+temperature-derived number already shown to that grower (Winkler class, GDD, frost/heat alerts), not
+just spray. Task chip raised; the index is explicitly disabled for that tenant regardless.
+
+
 ## 🔭 Also in flight
 
 **SPRAY INTELLIGENCE S3a (lane C) — plan written + council-reconciled, READY FOR `/work`
@@ -1470,7 +1503,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-26 (plan 098 tenant unit preferences built — all 12 units; QA + ship pending)_
+_Last updated: 2026-07-26 — **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness. Bhutan's daily series may be 8–9 °C off vs ERA5 — escalated as its own investigation.** Also this date: plan 098 tenant unit preferences built (all 12 units; QA + ship pending); S2b product-facts FOUNDATION merged + live (#535), phase still open._
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
