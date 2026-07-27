@@ -56,7 +56,7 @@ inputs.
 because its failure divided cleanly and physically. This one does not: the best oracle in the fleet
 (Russian River, **3.7 km**) scored *worse* than a 9.8 km one.
 
-### Escalated out of the phase — Bhutan may be 8–9 °C wrong
+### Escalated out of the phase — Bhutan was 8–9 °C off (since FIXED, PR #536)
 
 No station oracle exists for either Bhutan site; the nearest ASOS to Bajo sits **1,005 m above** the
 vineyard. NASA POWER and ERA5, sampled at the same coordinates, disagree by **9.26 °C (Bajo)** and
