@@ -12,10 +12,12 @@
 
 import "server-only";
 import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import { buildFactsSnapshot, factsSnapshotColumns } from "./facts-snapshot-core";
 import { NullProductFactsResolver, type ProductFactsKey, type ProductFactsResolver } from "./product-facts-port";
+import { NullJurisdictionResolver, type JurisdictionResolver } from "./jurisdiction-port";
 import {
   canonicalQuantityForBasis,
   computeRateBasis,
@@ -92,14 +94,23 @@ export async function resolveFactsSnapshots(
 export async function recordSprayApplicationCore(
   actor: SprayActor,
   input: RecordSprayInput,
-  deps?: { factsResolver?: ProductFactsResolver },
+  deps?: { factsResolver?: ProductFactsResolver; jurisdictionResolver?: JurisdictionResolver },
 ): Promise<SprayRecordResult> {
   const resolver = deps?.factsResolver ?? NullProductFactsResolver;
+  const jurisdictionResolver = deps?.jurisdictionResolver ?? NullJurisdictionResolver;
   const { errors, warnings } = validateSprayInput(input);
   if (errors.length) throw new SprayRecordError(`Invalid spray record: ${errors.join(" ")}`);
 
   const requestHash = input.commandId ? computeRequestHash({ ...input, commandId: input.commandId }) : null;
   const snapshots = await resolveFactsSnapshots(input.materialLines, resolver);
+
+  // S2b Unit 1 — resolved BEFORE the transaction opens, same reason resolveFactsSnapshots is above:
+  // an interactive tx has a 5s Prisma ceiling (runInTenantTx, unlike runInTenantRawTx, does not lift
+  // it), and a non-tx jurisdiction read run FROM INSIDE that window ate the budget and P2028'd on a
+  // cold Neon compute. One resolve per unique vineyard on the pass, never per block line.
+  const preBlockIds = [...new Set(input.blockLines.map((b) => b.blockId))];
+  const preBlocks = await prisma.vineyardBlock.findMany({ where: { id: { in: preBlockIds } }, select: { id: true, vineyardId: true } });
+  const jurisdictionByVineyard = await jurisdictionResolver.resolveMany([...new Set(preBlocks.map((b) => b.vineyardId))]);
 
   try {
     return await runInTenantTx(async (tx) => {
@@ -217,6 +228,7 @@ export async function recordSprayApplicationCore(
             "AREA_UNDERIVABLE",
           );
         const rate = computeRateBasis({ volumeUsedL: line.volumeUsedL, treatedAreaHa: area.treatedAreaHa }, input.sprayVolumePerHaL);
+        const jurisdiction = jurisdictionByVineyard[block.vineyardId] ?? null;
         await tx.sprayBlockLine.create({
           data: {
             applicationId: application.id,
@@ -238,6 +250,11 @@ export async function recordSprayApplicationCore(
             depositionAdequate: line.depositionAdequate ?? null,
             depositionCheckedAt: line.depositionCheckedAt ?? null,
             depositionNote: line.depositionNote ?? null,
+            // S2b Unit 1 (rule §3.8) — resolved from the BLOCK'S OWN vineyard at record time and
+            // frozen here. A later edit to that vineyard's regulatoryState never reaches back into
+            // this row; every downstream legality read consumes this column, never the live vineyard.
+            snapshotJurisdictionCountry: jurisdiction?.country ?? null,
+            snapshotJurisdictionState: jurisdiction?.state ?? null,
           },
         });
       }

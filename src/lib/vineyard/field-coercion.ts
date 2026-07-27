@@ -111,6 +111,80 @@ export function gpsLngToCanonical(v: unknown): number | null {
   return optFloat(v, "Longitude", { min: -180, max: 180 });
 }
 
+// ── Spray S2b Unit 1 — jurisdiction (KD-9) ─────────────────────────────────
+//
+// A country/state pair is farm metadata like any other field above; what makes jurisdiction
+// different is `jurisdictionConfirmedAt`, which `resolveJurisdictionUpdate` below governs so a
+// stored jurisdiction is ALWAYS one a human explicitly confirmed (rule §3.2 / council S6). The
+// UI may PROPOSE values (from GPS), but a proposal that is saved without the confirm box checked
+// must never silently count as confirmed.
+
+export function optCountryCode(v: unknown): string | null {
+  const s = String(v ?? "").trim().toUpperCase();
+  if (s === "") return null;
+  if (!/^[A-Z]{2}$/.test(s)) throw new ActionError("Country must be a 2-letter ISO code (e.g. US).");
+  return s;
+}
+
+export function optStateCode(v: unknown): string | null {
+  const s = String(v ?? "").trim().toUpperCase();
+  if (s === "") return null;
+  if (!/^[A-Z]{2}$/.test(s)) throw new ActionError("State must be a 2-letter code (e.g. CA).");
+  return s;
+}
+
+export interface JurisdictionRow {
+  regulatoryCountry: string | null;
+  regulatoryState: string | null;
+  jurisdictionConfirmedAt: Date | null;
+  jurisdictionConfirmedBy: string | null;
+}
+
+/**
+ * Decide the jurisdiction columns to write, given what's already stored, what was submitted, and
+ * whether the confirm box was checked THIS submit.
+ *
+ *  - Checked → the submitted values become confirmed, stamped now, attributed to the confirmer.
+ *  - Unchecked AND submitted values match what's already confirmed → PRESERVE the existing
+ *    confirmation (editing an unrelated field, e.g. soil type, must not silently unconfirm it).
+ *  - Unchecked AND submitted values DIFFER from what's confirmed (or nothing was ever confirmed)
+ *    → a PROPOSAL only. `jurisdictionConfirmedAt` stays/becomes null — an edited-but-unconfirmed
+ *    jurisdiction must never resolve (council S6).
+ */
+export function resolveJurisdictionUpdate(
+  before: JurisdictionRow | null,
+  submitted: { country: string | null; state: string | null },
+  confirmChecked: boolean,
+  confirmedByUserId: string | null,
+  now: Date,
+): JurisdictionRow {
+  if (confirmChecked) {
+    if (!submitted.country) throw new ActionError("A country is required to confirm the jurisdiction.");
+    return {
+      regulatoryCountry: submitted.country,
+      regulatoryState: submitted.state,
+      jurisdictionConfirmedAt: now,
+      jurisdictionConfirmedBy: confirmedByUserId,
+    };
+  }
+  const unchanged =
+    (before?.regulatoryCountry ?? null) === submitted.country && (before?.regulatoryState ?? null) === submitted.state;
+  if (unchanged && before?.jurisdictionConfirmedAt) {
+    return {
+      regulatoryCountry: submitted.country,
+      regulatoryState: submitted.state,
+      jurisdictionConfirmedAt: before.jurisdictionConfirmedAt,
+      jurisdictionConfirmedBy: before.jurisdictionConfirmedBy,
+    };
+  }
+  return {
+    regulatoryCountry: submitted.country,
+    regulatoryState: submitted.state,
+    jurisdictionConfirmedAt: null,
+    jurisdictionConfirmedBy: null,
+  };
+}
+
 /**
  * A vineyard abbreviation → the canonical uppercase lot-code token.
  *

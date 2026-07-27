@@ -10,6 +10,10 @@ import {
   gpsLatToCanonical,
   gpsLngToCanonical,
   normalizeAbbreviation,
+  optCountryCode,
+  optStateCode,
+  resolveJurisdictionUpdate,
+  type JurisdictionRow,
 } from "@/lib/vineyard/field-coercion";
 import { ftToM } from "@/lib/vineyard/units";
 
@@ -169,5 +173,72 @@ describe("normalizeAbbreviation", () => {
   });
   it("allows digits, which real vineyard tokens use", () => {
     expect(normalizeAbbreviation("B1")).toBe("B1");
+  });
+});
+
+// ── Spray S2b Unit 1 — jurisdiction (KD-9) ──────────────────────────────────
+
+describe("optCountryCode / optStateCode", () => {
+  it("uppercase and pass through a valid 2-letter code", () => {
+    expect(optCountryCode("us")).toBe("US");
+    expect(optStateCode("ca")).toBe("CA");
+  });
+  it("empty/absent never throws — unset is a valid state", () => {
+    expect(optCountryCode("")).toBeNull();
+    expect(optCountryCode(null)).toBeNull();
+    expect(optCountryCode(undefined)).toBeNull();
+  });
+  it("refuses anything that isn't exactly 2 letters", () => {
+    expect(() => optCountryCode("USA")).toThrow(/2-letter/);
+    expect(() => optCountryCode("1S")).toThrow(/2-letter/);
+    expect(() => optStateCode("California")).toThrow(/2-letter/);
+  });
+});
+
+describe("resolveJurisdictionUpdate", () => {
+  const now = new Date("2026-07-27T12:00:00Z");
+  const confirmedBefore: JurisdictionRow = {
+    regulatoryCountry: "US",
+    regulatoryState: "CA",
+    jurisdictionConfirmedAt: new Date("2026-06-01T00:00:00Z"),
+    jurisdictionConfirmedBy: "user-1",
+  };
+
+  it("checked confirm stamps now + the confirming user, from any prior state", () => {
+    const r = resolveJurisdictionUpdate(null, { country: "US", state: "OR" }, true, "user-2", now);
+    expect(r).toEqual({
+      regulatoryCountry: "US",
+      regulatoryState: "OR",
+      jurisdictionConfirmedAt: now,
+      jurisdictionConfirmedBy: "user-2",
+    });
+  });
+
+  it("checked confirm with no country throws — a confirmation needs a country", () => {
+    expect(() => resolveJurisdictionUpdate(null, { country: null, state: null }, true, "user-2", now)).toThrow(
+      /country is required/,
+    );
+  });
+
+  it("unchecked + unchanged values PRESERVE the existing confirmation (editing soil type must not silently unconfirm it)", () => {
+    const r = resolveJurisdictionUpdate(confirmedBefore, { country: "US", state: "CA" }, false, "user-2", now);
+    expect(r).toEqual(confirmedBefore);
+  });
+
+  it("unchecked + CHANGED values demote to a proposal — an edited-but-unconfirmed jurisdiction never resolves", () => {
+    const r = resolveJurisdictionUpdate(confirmedBefore, { country: "US", state: "OR" }, false, "user-2", now);
+    expect(r).toEqual({
+      regulatoryCountry: "US",
+      regulatoryState: "OR",
+      jurisdictionConfirmedAt: null,
+      jurisdictionConfirmedBy: null,
+    });
+  });
+
+  it("unchecked + never-confirmed-before stays a proposal, never resolves", () => {
+    const r = resolveJurisdictionUpdate(null, { country: "US", state: "CA" }, false, "user-2", now);
+    expect(r.jurisdictionConfirmedAt).toBeNull();
+    expect(r.jurisdictionConfirmedBy).toBeNull();
+    expect(r.regulatoryCountry).toBe("US"); // the proposal is still SAVED, just unconfirmed
   });
 });

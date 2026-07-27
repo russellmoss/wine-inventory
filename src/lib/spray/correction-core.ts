@@ -14,10 +14,12 @@
 
 import "server-only";
 import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { writeAudit } from "@/lib/audit";
 import { buildFactsSnapshot, factsSnapshotColumns, type FactsSnapshot } from "./facts-snapshot-core";
 import { NullProductFactsResolver, type ProductFactsResolver } from "./product-facts-port";
+import { NullJurisdictionResolver, type JurisdictionResolver } from "./jurisdiction-port";
 import { canonicalQuantityForBasis, computeRateBasis, snapshotBlockLine, validateSprayInput } from "./record-pure";
 import { SprayRecordError } from "./record-core";
 import type { RecordSprayInput, SprayActor, SprayProductIdentitySource, SprayWarning } from "./types";
@@ -81,11 +83,19 @@ export async function correctSprayApplicationCore(
   actor: SprayActor,
   predecessorId: string,
   input: RecordSprayInput & { correctionReason: string },
-  deps?: { factsResolver?: ProductFactsResolver },
+  deps?: { factsResolver?: ProductFactsResolver; jurisdictionResolver?: JurisdictionResolver },
 ): Promise<CorrectionResult> {
   const resolver = deps?.factsResolver ?? NullProductFactsResolver;
+  const jurisdictionResolver = deps?.jurisdictionResolver ?? NullJurisdictionResolver;
   const { errors, warnings } = validateSprayInput(input);
   if (errors.length) throw new SprayRecordError(`Invalid correction: ${errors.join(" ")}`);
+
+  // S2b Unit 1 — resolved BEFORE the transaction opens (see record-core.ts's identical comment):
+  // runInTenantTx's 5s Prisma ceiling is not lifted the way runInTenantRawTx's is, and a non-tx
+  // read run from inside that window can P2028 on a cold Neon compute.
+  const preBlockIds = [...new Set(input.blockLines.map((b) => b.blockId))];
+  const preBlocks = await prisma.vineyardBlock.findMany({ where: { id: { in: preBlockIds } }, select: { id: true, vineyardId: true } });
+  const jurisdictionByVineyard = await jurisdictionResolver.resolveMany([...new Set(preBlocks.map((b) => b.vineyardId))]);
 
   return runInTenantTx(async (tx) => {
     const predecessor = await tx.sprayApplication.findUnique({ where: { id: predecessorId } });
@@ -264,6 +274,7 @@ export async function correctSprayApplicationCore(
       if (area.treatedAreaHa == null)
         throw new SprayRecordError(`Block ${area.blockLabelSnapshot}: treated area is neither entered nor derivable.`, "AREA_UNDERIVABLE");
       const rate = computeRateBasis({ volumeUsedL: line.volumeUsedL, treatedAreaHa: area.treatedAreaHa }, input.sprayVolumePerHaL);
+      const jurisdiction = jurisdictionByVineyard[block.vineyardId] ?? null;
       await tx.sprayBlockLine.create({
         data: {
           applicationId: successor.id,
@@ -281,6 +292,8 @@ export async function correctSprayApplicationCore(
           volumeUsedL: line.volumeUsedL ?? null,
           computedVolumePerHaL: rate.computedVolumePerHaL,
           rateBasis: rate.rateBasis,
+          snapshotJurisdictionCountry: jurisdiction?.country ?? null,
+          snapshotJurisdictionState: jurisdiction?.state ?? null,
           depositionMethod: line.depositionMethod ?? null,
           depositionAdequate: line.depositionAdequate ?? null,
           depositionCheckedAt: line.depositionCheckedAt ?? null,

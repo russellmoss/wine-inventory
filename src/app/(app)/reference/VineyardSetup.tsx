@@ -122,6 +122,40 @@ export function VineyardSetup({
   const [draftUnit, setDraftUnit] = React.useState<Unit>(unit);
   const [viewId, setViewId] = React.useState<string | null>(null); // read-only detail open
 
+  // Spray S2b Unit 1 — jurisdiction propose/confirm. Controlled (unlike the plain fields above)
+  // because "Propose from GPS" fills these programmatically; the confirm box always starts
+  // unchecked so re-saving other fields never silently re-confirms an unreviewed value.
+  const [countryDraft, setCountryDraft] = React.useState(detail?.regulatoryCountry ?? "");
+  const [stateDraft, setStateDraft] = React.useState(detail?.regulatoryState ?? "");
+  const [confirmChecked, setConfirmChecked] = React.useState(false);
+  const [proposing, setProposing] = React.useState(false);
+  const [proposeNote, setProposeNote] = React.useState<string | null>(null);
+
+  async function proposeFromGps() {
+    if (detail?.gpsLat == null || detail?.gpsLng == null) return;
+    setProposing(true);
+    setProposeNote(null);
+    try {
+      const res = await fetch(`/api/geocode/reverse?lat=${detail.gpsLat}&lng=${detail.gpsLng}`);
+      const body = (await res.json()) as { proposal: { country: string; state: string | null } | null };
+      if (!body.proposal) {
+        setProposeNote("Could not propose a jurisdiction from this GPS pin — enter it manually.");
+      } else {
+        setCountryDraft(body.proposal.country);
+        setStateDraft(body.proposal.state ?? "");
+        setProposeNote(
+          body.proposal.state
+            ? `Proposed ${body.proposal.country}/${body.proposal.state} — review and confirm below.`
+            : `Proposed ${body.proposal.country} — no state resolved; enter it manually, then confirm below.`,
+        );
+      }
+    } catch {
+      setProposeNote("Could not reach the location lookup — enter the jurisdiction manually.");
+    } finally {
+      setProposing(false);
+    }
+  }
+
   const spLabel = spacingUnitLabel(unit);
 
   // When the unit toggles mid-edit, re-seed the draft's spacing from the block's
@@ -220,7 +254,7 @@ export function VineyardSetup({
           const fd = new FormData(e.currentTarget);
           fd.set("unit", unit);
           fd.set("unitOverride", unitOverride);
-          run(() => upsertVineyardDetail(vineyardId, fd));
+          run(() => upsertVineyardDetail(vineyardId, fd), () => setConfirmChecked(false));
         }}
         style={{ marginBottom: 24 }}
       >
@@ -248,6 +282,79 @@ export function VineyardSetup({
             <input name="manager" defaultValue={detailVal("manager")} placeholder="Name" style={fieldInput} />
           </Field>
         </div>
+
+        {/* ── Regulatory jurisdiction (S2b Unit 1) ──────────────────────── */}
+        <div
+          style={{
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-md)",
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginBottom: 8 }}>
+            Regulatory jurisdiction — required before any pesticide legality check can run for this
+            vineyard&apos;s blocks. Federal registration alone is never a clearance.
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 12,
+              marginBottom: 8,
+            }}
+          >
+            <Field label="Country (2-letter, e.g. US)">
+              <input
+                name="regulatoryCountry"
+                value={countryDraft}
+                onChange={(e) => setCountryDraft(e.target.value.toUpperCase())}
+                placeholder="US"
+                maxLength={2}
+                style={fieldInput}
+              />
+            </Field>
+            <Field label="State (2-letter, e.g. CA)">
+              <input
+                name="regulatoryState"
+                value={stateDraft}
+                onChange={(e) => setStateDraft(e.target.value.toUpperCase())}
+                placeholder="CA"
+                maxLength={2}
+                style={fieldInput}
+              />
+            </Field>
+            <div style={{ display: "flex", alignItems: "flex-end" }}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={proposing || detail?.gpsLat == null || detail?.gpsLng == null}
+                onClick={proposeFromGps}
+              >
+                {proposing ? "Looking up…" : "Propose from GPS"}
+              </Button>
+            </div>
+          </div>
+          {proposeNote ? (
+            <p style={{ fontSize: 12.5, color: "var(--text-secondary)", margin: "0 0 8px" }}>{proposeNote}</p>
+          ) : null}
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
+            <input
+              type="checkbox"
+              name="confirmJurisdiction"
+              checked={confirmChecked}
+              onChange={(e) => setConfirmChecked(e.target.checked)}
+            />
+            I confirm this jurisdiction is correct
+          </label>
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "6px 0 0" }}>
+            {detail?.jurisdictionConfirmedAt
+              ? `Confirmed ${new Date(detail.jurisdictionConfirmedAt).toLocaleDateString()}.`
+              : "Not yet confirmed — a proposed value never clears a legality check."}
+          </p>
+        </div>
+
         <Button type="submit" variant="secondary" size="sm" disabled={pending}>
           Save details
         </Button>

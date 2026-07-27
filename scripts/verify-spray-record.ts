@@ -22,6 +22,11 @@
  *  13  commandId retry — same payload returns the original; different payload rejected (C8)
  *  14  non-US path — null EPA number writes cleanly, resolves UNKNOWN (rule §3.9; Bhutan-SHAPED
  *      fixture inside Demo Winery, never the real Bhutan tenant)
+ *  15  jurisdiction snapshot (S2b Unit 1, KD-9) — a confirmed vineyard snapshots its country/state
+ *      onto the block line; a cross-site pass resolves each vineyard independently (an unconfirmed
+ *      sibling never inherits the confirmed one's jurisdiction); editing the vineyard's state AFTER
+ *      the spray never changes that spray's snapshot (rule §3.8), but a LATER pass picks up the
+ *      edit fresh; the pre-Unit-1 null-resolver default never fabricates a jurisdiction
  *
  * Run: npm run verify:spray-record   (from a checkout with .env)
  */
@@ -31,6 +36,7 @@ import { runInTenantRawTx } from "../src/lib/tenant/tx";
 import { prisma } from "../src/lib/prisma";
 import { recordSprayApplicationCore } from "../src/lib/spray/record-core";
 import { correctSprayApplicationCore, voidSprayApplicationCore } from "../src/lib/spray/correction-core";
+import { createJurisdictionResolver } from "../src/lib/pesticide/product-facts";
 import { recordDryingOverrideCore, recomputeDriedBeforeRainCore } from "../src/lib/spray/drying-override-core";
 import {
   currentPlannedHarvestDatesCore,
@@ -100,6 +106,11 @@ async function main() {
   const vineyardId = `qa-spray-vy-${runId}`;
   const blockIds = Array.from({ length: 10 }, (_, i) => `qa-spray-blk-${runId}-${i + 1}`);
   let fieldNoteId: string | null = null;
+
+  // S2b Unit 1 (assertion 15) — a dedicated vineyard so the jurisdiction toggle/edit doesn't
+  // interact with any other assertion's block-line reads on `vineyardId`.
+  const juriVineyardId = `qa-spray-juri-vy-${runId}`;
+  const juriBlockIds = [`qa-spray-juri-blk-${runId}-1`, `qa-spray-juri-blk-${runId}-2`];
 
   try {
     await runAsTenant(DEMO, async () => {
@@ -182,6 +193,73 @@ async function main() {
       check("per-block times survive", b2.startedAt?.toISOString() === "2026-07-10T07:00:00.000Z");
       const mixLines = await prisma.sprayMixOrderLine.findMany({ where: { applicationId: pass.applicationId }, orderBy: { sequence: "asc" } });
       check("mix order round-trips; water has NO material line, product lines are linked", mixLines.length === 3 && mixLines[0].materialLineId === null && mixLines[1].materialLineId !== null);
+
+      // ── 15. jurisdiction snapshot (S2b Unit 1, KD-9) ──
+      console.log("\n── 15. jurisdiction snapshot ──");
+      await prisma.vineyard.create({ data: { id: juriVineyardId, name: `QA-Spray-Juri-Vineyard-${runId}` } });
+      for (const id of juriBlockIds) {
+        await prisma.vineyardBlock.create({
+          data: { id, vineyardId: juriVineyardId, blockLabel: `QA-Juri-${id}`, rowSpacingM: 2.7432, vineSpacingM: 1.8288, vineCount: 807, updatedAt: new Date() },
+        });
+      }
+      await prisma.vineyardDetail.create({
+        data: {
+          vineyardId: juriVineyardId,
+          regulatoryCountry: "US",
+          regulatoryState: "CA",
+          jurisdictionConfirmedAt: new Date("2026-07-01T00:00:00Z"),
+          jurisdictionConfirmedBy: actor.email,
+        },
+      });
+      const jurisdictionResolver = createJurisdictionResolver(DEMO);
+
+      // Pass 1: confirmed jurisdiction (US/CA) on the FIRST juri block, plus an unconfirmed main-
+      // vineyard block (blockIds[7], never given a VineyardDetail row) in the SAME cross-site pass.
+      const juriPass1 = await recordSprayApplicationCore(
+        actor,
+        passInput({ blockLines: [{ blockId: juriBlockIds[0] }, { blockId: blockIds[7] }] }),
+        { jurisdictionResolver },
+      );
+      check("cross-vineyard pass is flagged cross-site", juriPass1.isCrossSite === true);
+      const juriLines1 = await prisma.sprayBlockLine.findMany({ where: { applicationId: juriPass1.applicationId } });
+      const confirmedLine = juriLines1.find((l) => l.blockId === juriBlockIds[0])!;
+      const unconfirmedLine = juriLines1.find((l) => l.blockId === blockIds[7])!;
+      check(
+        "the confirmed vineyard's block line snapshots US/CA",
+        confirmedLine.snapshotJurisdictionCountry === "US" && confirmedLine.snapshotJurisdictionState === "CA",
+      );
+      check(
+        "the OTHER vineyard in the SAME pass — no VineyardDetail at all — snapshots null/null, never CA (each vineyard resolves independently)",
+        unconfirmedLine.snapshotJurisdictionCountry === null && unconfirmedLine.snapshotJurisdictionState === null,
+      );
+
+      // Edit the vineyard's jurisdiction AFTER the spray was recorded.
+      await prisma.vineyardDetail.update({ where: { vineyardId: juriVineyardId }, data: { regulatoryState: "OR" } });
+      const confirmedLineReread = await prisma.sprayBlockLine.findUnique({ where: { id: confirmedLine.id } });
+      check(
+        "editing the vineyard's state AFTER the spray does NOT change that spray's snapshot (rule §3.8)",
+        confirmedLineReread!.snapshotJurisdictionState === "CA",
+      );
+
+      // A SECOND, later pass on the SAME (now-edited) vineyard picks up the new state fresh.
+      const juriPass2 = await recordSprayApplicationCore(
+        actor,
+        passInput({ blockLines: [{ blockId: juriBlockIds[1] }] }),
+        { jurisdictionResolver },
+      );
+      const juriLine2 = await prisma.sprayBlockLine.findFirst({ where: { applicationId: juriPass2.applicationId } });
+      check(
+        "a LATER pass resolves the vineyard's CURRENT jurisdiction, not a memoized old one",
+        juriLine2!.snapshotJurisdictionState === "OR",
+      );
+
+      // The null-resolver default (no deps passed) must never fabricate a jurisdiction either.
+      const noResolverPass = await recordSprayApplicationCore(actor, passInput({ blockLines: [{ blockId: blockIds[8] }] }));
+      const noResolverLine = await prisma.sprayBlockLine.findFirst({ where: { applicationId: noResolverPass.applicationId } });
+      check(
+        "with NO jurisdiction resolver wired (the pre-Unit-1 default), the snapshot is null, never a guess",
+        noResolverLine!.snapshotJurisdictionCountry === null,
+      );
 
       // ── 8. unknown product ⇒ UNKNOWN, never clear ──
       console.log("\n── 8. unknown-never-clear (null resolver) ──");
@@ -494,11 +572,12 @@ async function main() {
           await tx.$executeRaw`SELECT set_config('app.allow_spray_purge', 'on', true)`;
           // One statement for the whole chain (self-FKs are NO ACTION → end-of-statement checks);
           // lines + overrides go via ON DELETE CASCADE, their triggers see the same GUC.
-          await tx.sprayApplication.deleteMany({ where: { tenantId: DEMO, vineyardId } });
+          await tx.sprayApplication.deleteMany({ where: { tenantId: DEMO, vineyardId: { in: [vineyardId, juriVineyardId] } } });
           await tx.plannedHarvestDateEvent.deleteMany({ where: { tenantId: DEMO, blockId: { in: blockIds } } });
           if (fieldNoteId) await tx.fieldNote.deleteMany({ where: { tenantId: DEMO, id: fieldNoteId } });
-          await tx.vineyardBlock.deleteMany({ where: { tenantId: DEMO, id: { in: blockIds } } });
-          await tx.vineyard.deleteMany({ where: { tenantId: DEMO, id: vineyardId } });
+          await tx.vineyardDetail.deleteMany({ where: { tenantId: DEMO, vineyardId: juriVineyardId } });
+          await tx.vineyardBlock.deleteMany({ where: { tenantId: DEMO, id: { in: [...blockIds, ...juriBlockIds] } } });
+          await tx.vineyard.deleteMany({ where: { tenantId: DEMO, id: { in: [vineyardId, juriVineyardId] } } });
           await tx.organization.deleteMany({ where: { id: ORG_B } });
         },
         { timeout: 120_000, maxWait: 120_000 },
@@ -507,7 +586,7 @@ async function main() {
     console.log("  fixtures cleaned");
   }
 
-  console.log(failures === 0 ? "\nALL 14 SPRAY-RECORD ASSERTION GROUPS PASSED ✓" : `\n${failures} CHECK(S) FAILED ✗`);
+  console.log(failures === 0 ? "\nALL 15 SPRAY-RECORD ASSERTION GROUPS PASSED ✓" : `\n${failures} CHECK(S) FAILED ✗`);
   process.exit(failures === 0 ? 0 : 1);
 }
 

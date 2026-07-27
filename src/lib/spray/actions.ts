@@ -12,7 +12,7 @@ import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { revalidatePath } from "next/cache";
 import { recordSprayApplicationCore, type SprayRecordResult } from "./record-core";
 import { correctSprayApplicationCore, voidSprayApplicationCore, correctabilityOf, type Correctability } from "./correction-core";
-import { createProductFactsResolver } from "@/lib/pesticide/product-facts";
+import { createProductFactsResolver, createJurisdictionResolver } from "@/lib/pesticide/product-facts";
 import { blockApplicationFacts, foldCurrentApplications, type BlockApplicationFacts } from "./read-core";
 import { resolveDriedBeforeRain, type ResolvedDrying } from "./drying-core";
 import { recordDryingOverrideCore } from "./drying-override-core";
@@ -262,7 +262,10 @@ export async function submitSprayRecord(input: RecordSprayInput): Promise<Action
   // nothing: existing records keep their frozen snapshots, and a clerical correction still copies
   // the predecessor verbatim (S3a council G1).
   const result = await withTenant((tenantId) =>
-    recordSprayApplicationCore(who, input, { factsResolver: createProductFactsResolver(tenantId) }),
+    recordSprayApplicationCore(who, input, {
+      factsResolver: createProductFactsResolver(tenantId),
+      jurisdictionResolver: createJurisdictionResolver(tenantId),
+    }),
   );
   if (result.ok) revalidatePath("/vineyards/sprays");
   return result;
@@ -274,7 +277,10 @@ export async function submitSprayCorrection(
 ): Promise<ActionResult<{ applicationId: string }>> {
   const who = await actor();
   const result = await withTenant((tenantId) =>
-    correctSprayApplicationCore(who, predecessorId, input, { factsResolver: createProductFactsResolver(tenantId) }),
+    correctSprayApplicationCore(who, predecessorId, input, {
+      factsResolver: createProductFactsResolver(tenantId),
+      jurisdictionResolver: createJurisdictionResolver(tenantId),
+    }),
   );
   if (result.ok) revalidatePath("/vineyards/sprays");
   return result;
