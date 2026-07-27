@@ -518,12 +518,25 @@ table, so a narrow GRANT changes nothing. It needs an explicit **`REVOKE UPDATE,
 Caught only by test-applying the migration to a disposable Neon branch; `prisma validate` checks the
 Prisma schema, not the SQL. See [[append-only-needs-revoke-not-grant]].
 
-⚠️ **Escalated out of the phase — Bhutan weather may be 8–9 °C wrong.** No station oracle exists for
-either Bhutan site, and NASA POWER vs ERA5 at the same coordinates differ by **9.26 °C (Bajo) /
-8.16 °C (Gortshalu)** against 0.31–1.44 °C at the US sites — lapse-rate-consistent with a grid-cell
-elevation mismatch in Himalayan terrain. That is a live-tenant data-quality question for **every**
-temperature-derived number already shown to that grower (Winkler class, GDD, frost/heat alerts), not
-just spray. Task chip raised; the index is explicitly disabled for that tenant regardless.
+✅ **Bhutan's 8–9 °C weather gap — ESCALATED FROM S5a AND NOW FIXED (PR #536).** It was elevation,
+and it was resolvable. NASA POWER publishes the elevation of the grid cell it answers with
+(`geometry.coordinates[2]`) and the adapter was discarding it: **Bajo's cell sits at 3,038 m against
+a vineyard at 1,229 m.** Re-sampling ERA5 at POWER's own cell elevation collapsed the bias from
+**−9.71 °C to +1.80 °C** across all 8 sites at a 4.7–6.1 °C/km lapse rate. Two parts, because either
+alone would be wrong: an **ERA5 archive provider passing `elevation=`** (POWER rows are deliberately
+NOT lapse-corrected at ingest — that would put a derived number in a column contracted as "the
+SINGLE source of this row"), plus **`source-fidelity-core`**, which WITHHOLDS hard-boundary
+classifications when the source's own reported elevation is >300 m off the site, while still
+rendering the raw series, GDD and GST. Winkler classes are ~278 °C-days wide — 1 °C moves the label,
+so there is no "approximately right" region. Live: Bajo Region I "too cool" + fabricated April
+frosts → **Region V "very hot", 0 frosts**; three sites that read identically are now distinct.
+`nasa_power` rows kept as a second source, so it is reversible. **The guard proved itself
+mid-backfill** — Open-Meteo 429'd on Paro, ingest fell back to POWER, and the card withheld Paro's
+classifications instead of showing the old wrong ones.
+⚠️ **This does NOT reopen S5a's index NO-GO** — Bhutan was `consistency_only` tier, the gate is
+per-site and never averaged, and the six US sites failed independently against genuine station METAR.
+🪝 **Left alone, found in passing:** Gortshalu / Lingmethang / Norzinthang have NO forecast rows at
+all (`vineyard_forecast_daily` empty for them). Separate issue.
 
 
 ## 🔭 Also in flight

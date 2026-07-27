@@ -70,6 +70,20 @@ artifact in its purest form. This is a live-tenant data-quality question for eve
 temperature-derived number already shown to that grower (Winkler class and the frost/heat alert
 ladder most of all, both having hard boundaries). Raised as its own investigation.
 
+**✅ Resolved 2026-07-27 (PR #536), and the answer was elevation.** NASA POWER publishes the
+elevation of the grid cell it answers with (`geometry.coordinates[2]`) and the adapter was throwing
+it away — Bajo's cell sits at **3,038 m** against a vineyard at **1,229 m**. Re-sampling ERA5 at
+POWER's own cell elevation collapsed the bias from **−9.71 °C to +1.80 °C** across all eight sites.
+Fixed with an ERA5 archive provider passing `elevation=`, plus `source-fidelity-core`, which
+withholds hard-boundary classifications (Winkler, frost/heat) when a source's reported elevation is
+>300 m off the site while still rendering the raw series and GDD. Bajo moved from Region I
+"too cool" with fabricated April frosts to **Region V "very hot", zero frosts**.
+
+**It does not reopen the index NO-GO.** Bhutan was `consistency_only` tier, the gate is per site and
+never averaged, and the six US sites failed independently against genuine station METAR. The Bhutan
+arm was never evidence for the verdict — reporting it honestly as an artifact is what surfaced a
+real live-tenant data bug.
+
 ---
 
 ## What shipped
