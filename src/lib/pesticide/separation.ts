@@ -64,13 +64,14 @@ function candidatesFrom(
   return { matched, ambiguous };
 }
 
-const EMPTY_EVIDENCE = (status: SeparationEvidenceStatus, elapsedDays: number): SeparationEvidence => ({
+const EMPTY_EVIDENCE = (status: SeparationEvidenceStatus, elapsedDays: number, hasUnresolvedAmbiguity = false): SeparationEvidence => ({
   status,
   minDays: null,
   elapsedDays,
   belowMinimum: false,
   producingRules: [],
   condition: null,
+  hasUnresolvedAmbiguity,
 });
 
 /**
@@ -105,11 +106,14 @@ export function evaluateSeparation(query: SeparationQuery): SeparationEvidence {
       belowMinimum: elapsedDays < minDays,
       producingRules,
       condition: producingRules.find((r) => r.condition != null)?.condition ?? null,
+      // A confident match must never hide a DIFFERENT, unresolved CLASS rule that could be even
+      // more restrictive — surfaced regardless of which branch produced the confident match.
+      hasUnresolvedAmbiguity: ambiguous.length > 0,
     };
   }
 
   if (ambiguous.length > 0) {
-    return EMPTY_EVIDENCE("NO_EVIDENCE", elapsedDays);
+    return EMPTY_EVIDENCE("NO_EVIDENCE", elapsedDays, true);
   }
 
   return EMPTY_EVIDENCE("NO_RESTRICTION", elapsedDays);

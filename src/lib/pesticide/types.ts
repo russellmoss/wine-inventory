@@ -166,6 +166,11 @@ export interface SeparationEvidence {
   producingRules: SeparationRuleRow[];
   /** verbatim label text from a producing rule, if any carried one */
   condition: string | null;
+  /** A CLASS-targeted rule exists that could NOT be confirmed or ruled out (council G5), even
+   * though a DIFFERENT rule already produced a confident match. A confident match must never
+   * hide the possibility of an even-more-restrictive unresolved rule — the gap-as-no-restriction
+   * failure this module exists to prevent applies here too, not only when nothing matched. */
+  hasUnresolvedAmbiguity: boolean;
 }
 
 export interface RegistrationRestrictionView {

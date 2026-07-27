@@ -108,6 +108,11 @@ export async function recordSprayApplicationCore(
   // an interactive tx has a 5s Prisma ceiling (runInTenantTx, unlike runInTenantRawTx, does not lift
   // it), and a non-tx jurisdiction read run FROM INSIDE that window ate the budget and P2028'd on a
   // cold Neon compute. One resolve per unique vineyard on the pass, never per block line.
+  // ⚠️ INVARIANT this relies on: a block's `vineyardId` is immutable once created — nothing today
+  // reassigns a block to a different vineyard. This pre-tx read and the in-tx `blocks` read below
+  // are two independent queries; if block-reassignment is ever built, they could observe different
+  // vineyardIds for the same block and this map would key on the stale one. Re-derive jurisdiction
+  // from the in-tx `block` read instead, if that invariant ever changes.
   const preBlockIds = [...new Set(input.blockLines.map((b) => b.blockId))];
   const preBlocks = await prisma.vineyardBlock.findMany({ where: { id: { in: preBlockIds } }, select: { id: true, vineyardId: true } });
   const jurisdictionByVineyard = await jurisdictionResolver.resolveMany([...new Set(preBlocks.map((b) => b.vineyardId))]);

@@ -232,6 +232,60 @@ describe("evaluateSeparation — CLASS-target ambiguity (council G5, KD-14)", ()
     const evidence = evaluateSeparation({ earlier: a, later: b, elapsedDays: 30, fruitPresent: false });
     expect(evidence.status).toBe("NO_RESTRICTION");
   });
+
+  it("hasUnresolvedAmbiguity is false when nothing is ambiguous", () => {
+    const evidence = evaluateSeparation({
+      earlier: jmsStyletOil,
+      later: genericSulfur,
+      elapsedDays: 6,
+      fruitPresent: false,
+    });
+    expect(evidence.status).toBe("RESTRICTION_FOUND");
+    expect(evidence.hasUnresolvedAmbiguity).toBe(false);
+  });
+
+  it("a CONFIDENT match must never hide a DIFFERENT unresolved CLASS rule that could be even stricter (adversarial review finding)", () => {
+    // The subject asserts two independent rules against the same target: a confident PRODUCT-kind
+    // match (10 days) AND a CLASS-kind rule (21 days, stricter) the target isn't classified for yet.
+    // Before this fix, evaluateSeparation returned RESTRICTION_FOUND/10 and silently discarded the
+    // fact that a possibly-stricter rule existed but couldn't be confirmed — exactly the
+    // gap-renders-as-an-answer failure council G5/KD-14 exist to prevent.
+    const unclassifiedTarget = product("TEST-MIXED-TARGET");
+    const subjectWithBothRuleKinds = product("TEST-MIXED-SUBJECT", {
+      rules: [
+        rule({
+          subjectEpaRegNumber: "TEST-MIXED-SUBJECT",
+          targetKind: "PRODUCT",
+          targetKey: "TEST-MIXED-TARGET",
+          direction: "TARGET_AFTER_SUBJECT",
+          minDays: 10,
+        }),
+        rule({
+          subjectEpaRegNumber: "TEST-MIXED-SUBJECT",
+          targetKind: "AGRONOMIC_CLASS",
+          targetKey: "Some Unassessed Class",
+          direction: "TARGET_AFTER_SUBJECT",
+          minDays: 21,
+        }),
+      ],
+    });
+    const evidence = evaluateSeparation({
+      earlier: subjectWithBothRuleKinds,
+      later: unclassifiedTarget,
+      elapsedDays: 15,
+      fruitPresent: false,
+    });
+    expect(evidence.status).toBe("RESTRICTION_FOUND");
+    expect(evidence.minDays).toBe(10); // the confident match still wins the confirmed minDays…
+    expect(evidence.hasUnresolvedAmbiguity).toBe(true); // …but the caller is told a stricter rule may exist
+  });
+
+  it("hasUnresolvedAmbiguity is true on a pure NO_EVIDENCE result too", () => {
+    const unclassified = product("TEST-UNCLASSIFIED-2");
+    const evidence = evaluateSeparation({ earlier: jmsStyletOil, later: unclassified, elapsedDays: 1, fruitPresent: false });
+    expect(evidence.status).toBe("NO_EVIDENCE");
+    expect(evidence.hasUnresolvedAmbiguity).toBe(true);
+  });
 });
 
 describe("evaluateSeparation — PRODUCT and ACTIVE_INGREDIENT target kinds", () => {

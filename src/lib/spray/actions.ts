@@ -438,6 +438,15 @@ function optNum(v: FormDataEntryValue | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** A day/hour interval can be zero (apply-up-to-harvest, no wait) but never negative — a negative
+ * PHI/REI/rainfast would make any future "elapsed >= minimum" legality check trivially pass
+ * (adversarial review finding). Returns a field-labeled error rather than silently clamping. */
+function optNonNegativeNum(v: FormDataEntryValue | null, label: string): { value: number | null; error: string | null } {
+  const value = optNum(v);
+  if (value != null && value < 0) return { value: null, error: `${label} cannot be negative.` };
+  return { value, error: null };
+}
+
 export async function upsertTenantProductFacts(formData: FormData): Promise<ActionResult<{ id: string }>> {
   const who = await actor();
   const productRef = String(formData.get("productRef") ?? "").trim();
@@ -459,16 +468,24 @@ export async function upsertTenantProductFacts(formData: FormData): Promise<Acti
     .filter(Boolean);
   const note = String(formData.get("note") ?? "").trim() || null;
 
+  const phi = optNonNegativeNum(formData.get("worstCasePhiDays"), "PHI");
+  const rei = optNonNegativeNum(formData.get("worstCaseReiHours"), "REI");
+  const repeat = optNonNegativeNum(formData.get("minRepeatIntervalDays"), "Minimum repeat interval");
+  const maxApps = optNonNegativeNum(formData.get("maxApplicationsPerSeason"), "Max applications per season");
+  const rainfast = optNonNegativeNum(formData.get("rainfastHours"), "Rainfast");
+  const firstError = [phi, rei, repeat, maxApps, rainfast].find((r) => r.error)?.error;
+  if (firstError) return { ok: false, error: firstError };
+
   const data = {
     productRef,
     productName,
     epaRegistrationNumber,
     factGroup,
-    worstCasePhiDays: optNum(formData.get("worstCasePhiDays")),
-    worstCaseReiHours: optNum(formData.get("worstCaseReiHours")),
-    minRepeatIntervalDays: optNum(formData.get("minRepeatIntervalDays")),
-    maxApplicationsPerSeason: optNum(formData.get("maxApplicationsPerSeason")),
-    rainfastHours: optNum(formData.get("rainfastHours")),
+    worstCasePhiDays: phi.value,
+    worstCaseReiHours: rei.value,
+    minRepeatIntervalDays: repeat.value,
+    maxApplicationsPerSeason: maxApps.value,
+    rainfastHours: rainfast.value,
     mobilityClass,
     agronomicClass,
     note,
@@ -477,13 +494,15 @@ export async function upsertTenantProductFacts(formData: FormData): Promise<Acti
 
   const result = await withTenant((tenantId) =>
     runInTenantTx(async (tx) => {
-      // KD-3: one row per (tenantId, productRef, factGroup) — upsert by that composite, not by id.
-      const existing = await tx.tenantProductFacts.findUnique({
+      // KD-3: one row per (tenantId, productRef, factGroup) — a native upsert on that composite
+      // key, not a find-then-create/update: the latter is a check-then-set race (two concurrent
+      // first-time submissions for the same productRef would both see "no existing row" and both
+      // attempt create(), so the loser would 500 on the unique constraint instead of updating).
+      const row = await tx.tenantProductFacts.upsert({
         where: { tenantId_productRef_factGroup: { tenantId, productRef, factGroup } },
+        update: data,
+        create: data,
       });
-      const row = existing
-        ? await tx.tenantProductFacts.update({ where: { id: existing.id }, data })
-        : await tx.tenantProductFacts.create({ data });
       return { id: row.id };
     }),
   );

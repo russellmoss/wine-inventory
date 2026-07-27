@@ -290,8 +290,12 @@ export function createJurisdictionResolver(tenantId: string): JurisdictionResolv
           out[id] = j ? { country: j.country, state: j.state ?? null } : null;
         }
         return out;
-      } catch {
-        // Never throw — the port's contract mirrors the facts resolver (rule §3.6: unknown, not a block).
+      } catch (e) {
+        // Never throw — the port's contract mirrors the facts resolver (rule §3.6: unknown, not a
+        // block). But a silent swallow here means a systemic outage (RLS misconfig, connection
+        // exhaustion) would null out jurisdiction for every spray recorded during it with no
+        // operational signal (adversarial review finding) — log it, still degrade to unknown.
+        console.error("createJurisdictionResolver.resolveMany failed, degrading to unknown:", e);
         const out: Record<string, null> = {};
         for (const id of vineyardIds) out[id] = null;
         return out;

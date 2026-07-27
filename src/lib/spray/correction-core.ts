@@ -93,6 +93,7 @@ export async function correctSprayApplicationCore(
   // S2b Unit 1 — resolved BEFORE the transaction opens (see record-core.ts's identical comment):
   // runInTenantTx's 5s Prisma ceiling is not lifted the way runInTenantRawTx's is, and a non-tx
   // read run from inside that window can P2028 on a cold Neon compute.
+  // ⚠️ Relies on block.vineyardId being immutable — see record-core.ts's identical note.
   const preBlockIds = [...new Set(input.blockLines.map((b) => b.blockId))];
   const preBlocks = await prisma.vineyardBlock.findMany({ where: { id: { in: preBlockIds } }, select: { id: true, vineyardId: true } });
   const jurisdictionByVineyard = await jurisdictionResolver.resolveMany([...new Set(preBlocks.map((b) => b.vineyardId))]);
