@@ -27,6 +27,7 @@ export default async function SpraysPage({ searchParams }: { searchParams: Promi
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <Link href="/vineyards/sprays/products"><Button variant="secondary" size="sm">Custom products</Button></Link>
           <Link href="/vineyards/sprays/planned-harvest"><Button variant="secondary" size="sm">Planned harvest</Button></Link>
           <Link href="/vineyards/sprays/new"><Button size="sm">Record a spray</Button></Link>
         </div>

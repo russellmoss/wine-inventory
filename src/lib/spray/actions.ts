@@ -8,6 +8,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireReadyUser } from "@/lib/dal";
 import { runAsTenant } from "@/lib/tenant/context";
+import { runInTenantTx } from "@/lib/tenant/tx";
 import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { revalidatePath } from "next/cache";
 import { recordSprayApplicationCore, type SprayRecordResult } from "./record-core";
@@ -22,6 +23,7 @@ import type {
   SprayBlockLineRow,
   SprayDryingOverrideRow,
   SprayMaterialLineRow,
+  SprayMobilityClass,
 } from "./types";
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -343,6 +345,7 @@ export async function loadSprayFormInitial(applicationId: string): Promise<
         materials: materials.map((m) => ({
           productName: m.productName,
           epaRegistrationNumber: m.epaRegistrationNumber ?? "",
+          tenantProductRef: m.tenantProductRef ?? "",
           materialRole: m.materialRole,
           quantityEntered: str(m.quantityEntered),
           quantityUnit: m.quantityUnit,
@@ -379,4 +382,111 @@ export async function loadSprayFormInitial(applicationId: string): Promise<
       },
     };
   });
+}
+
+// ── S2b Unit 5 — the tenant-scoped grower-supplied product-facts entry surface ─────────────────
+//
+// KD-4: NOT behind isPesticideSourceEnabled — the toggle protects a registry source WE ship;
+// gating a grower's own typed-in facts would re-brick the non-US tenant through the back door.
+// KD-3: one row per (tenantId, productRef, factGroup) — a group is replaced whole, never blended.
+
+export interface TenantProductFactsRow {
+  id: string;
+  productRef: string;
+  productName: string;
+  epaRegistrationNumber: string | null;
+  factGroup: "REGULATORY" | "AGRONOMIC";
+  worstCasePhiDays: number | null;
+  worstCaseReiHours: number | null;
+  minRepeatIntervalDays: number | null;
+  maxApplicationsPerSeason: number | null;
+  rainfastHours: number | null;
+  mobilityClass: SprayMobilityClass | null;
+  agronomicClass: string[];
+  enteredBy: string;
+  enteredAt: string;
+  note: string | null;
+}
+
+export async function listTenantProductFacts(): Promise<ActionResult<TenantProductFactsRow[]>> {
+  return withTenant(async () => {
+    const rows = await prisma.tenantProductFacts.findMany({ orderBy: [{ productRef: "asc" }, { factGroup: "asc" }] });
+    return rows.map((r) => ({
+      id: r.id,
+      productRef: r.productRef,
+      productName: r.productName,
+      epaRegistrationNumber: r.epaRegistrationNumber,
+      factGroup: r.factGroup,
+      worstCasePhiDays: r.worstCasePhiDays,
+      worstCaseReiHours: r.worstCaseReiHours,
+      minRepeatIntervalDays: r.minRepeatIntervalDays,
+      maxApplicationsPerSeason: r.maxApplicationsPerSeason,
+      rainfastHours: r.rainfastHours,
+      mobilityClass: r.mobilityClass as SprayMobilityClass | null,
+      agronomicClass: r.agronomicClass,
+      enteredBy: r.enteredBy,
+      enteredAt: r.enteredAt.toISOString(),
+      note: r.note,
+    }));
+  });
+}
+
+function optNum(v: FormDataEntryValue | null): number | null {
+  const s = String(v ?? "").trim();
+  if (s === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function upsertTenantProductFacts(formData: FormData): Promise<ActionResult<{ id: string }>> {
+  const who = await actor();
+  const productRef = String(formData.get("productRef") ?? "").trim();
+  const productName = String(formData.get("productName") ?? "").trim();
+  const factGroup = String(formData.get("factGroup") ?? "") as "REGULATORY" | "AGRONOMIC";
+  if (!productRef) return { ok: false, error: "A product reference is required — this is the handle you'll cite on a spray record." };
+  if (!productName) return { ok: false, error: "A product name is required." };
+  if (factGroup !== "REGULATORY" && factGroup !== "AGRONOMIC") return { ok: false, error: "Choose which group of facts this is: REGULATORY or AGRONOMIC." };
+
+  const epaRegistrationNumber = String(formData.get("epaRegistrationNumber") ?? "").trim() || null;
+  const mobilityClassRaw = String(formData.get("mobilityClass") ?? "").trim();
+  const mobilityClass: SprayMobilityClass | null =
+    mobilityClassRaw === "CONTACT_PROTECTANT" || mobilityClassRaw === "TRANSLAMINAR" || mobilityClassRaw === "LOCALLY_SYSTEMIC" || mobilityClassRaw === "MOBILE_SYSTEMIC"
+      ? mobilityClassRaw
+      : null;
+  const agronomicClass = String(formData.get("agronomicClass") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const note = String(formData.get("note") ?? "").trim() || null;
+
+  const data = {
+    productRef,
+    productName,
+    epaRegistrationNumber,
+    factGroup,
+    worstCasePhiDays: optNum(formData.get("worstCasePhiDays")),
+    worstCaseReiHours: optNum(formData.get("worstCaseReiHours")),
+    minRepeatIntervalDays: optNum(formData.get("minRepeatIntervalDays")),
+    maxApplicationsPerSeason: optNum(formData.get("maxApplicationsPerSeason")),
+    rainfastHours: optNum(formData.get("rainfastHours")),
+    mobilityClass,
+    agronomicClass,
+    note,
+    enteredBy: who.email,
+  };
+
+  const result = await withTenant((tenantId) =>
+    runInTenantTx(async (tx) => {
+      // KD-3: one row per (tenantId, productRef, factGroup) — upsert by that composite, not by id.
+      const existing = await tx.tenantProductFacts.findUnique({
+        where: { tenantId_productRef_factGroup: { tenantId, productRef, factGroup } },
+      });
+      const row = existing
+        ? await tx.tenantProductFacts.update({ where: { id: existing.id }, data })
+        : await tx.tenantProductFacts.create({ data });
+      return { id: row.id };
+    }),
+  );
+  if (result.ok) revalidatePath("/vineyards/sprays/products");
+  return result;
 }

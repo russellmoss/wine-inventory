@@ -213,6 +213,11 @@ async function main() {
   const lieBase = { pathogen: "POWDERY_MILDEW" as const, hostOrgan: "LEAF" as const, status: "OPEN" as const, resolutionKind: "UNKNOWN" as const, infectionOccurredOn: new Date("2026-05-01T00:00:00Z"), symptomProjectionKind: "UNKNOWN" as const, infectiousProjectionKind: "UNKNOWN" as const, evidenceSource: "GROWER_REPORT" as const, requestHash: "0", enteredByEmail: "iso@test" };
   await owner.latentInfectionEvent.upsert({ where: { id: "iso_lie_a" }, update: {}, create: { ...lieBase, id: "iso_lie_a", tenantId: A, logicalEventId: "iso_lie_stream_a", seq: 1, blockId: "iso_blk_a", commandId: "iso_lie_cmd_a" } });
   await owner.latentInfectionEvent.upsert({ where: { id: "iso_lie_b" }, update: {}, create: { ...lieBase, id: "iso_lie_b", tenantId: B, logicalEventId: "iso_lie_stream_b", seq: 1, blockId: "iso_blk_b", commandId: "iso_lie_cmd_b" } });
+
+  // S2b Unit 5 — the grower-supplied tenant_product_facts override (KD-3/KD-4).
+  const tpfBase = { productName: "QA Isolation Fixture", factGroup: "REGULATORY" as const, worstCasePhiDays: 7, enteredBy: "iso@test" };
+  await owner.tenantProductFacts.upsert({ where: { id: "iso_tpf_a" }, update: {}, create: { ...tpfBase, id: "iso_tpf_a", tenantId: A, productRef: "ISO-TPF-A" } });
+  await owner.tenantProductFacts.upsert({ where: { id: "iso_tpf_b" }, update: {}, create: { ...tpfBase, id: "iso_tpf_b", tenantId: B, productRef: "ISO-TPF-B" } });
   // D9 vineyard MEMBERSHIP set. `user_vineyard` is tenant-scoped + RLS-forced even though `user`
   // itself is GLOBAL — the seam that silently emptied AppUser.vineyardIds. One membership per tenant.
   await owner.userVineyard.upsert({ where: { id: "iso_uv_a" }, update: {}, create: { id: "iso_uv_a", tenantId: A, userId: "iso_um_user_a", vineyardId: "iso_vy_a" } });
@@ -1081,6 +1086,39 @@ async function main() {
       await asTenant(A, (db) => db.latentInfectionEvent.delete({ where: { id: "iso_lie_a" } }));
     } catch { lieDeleteRaised = true; }
     check("latent_infection_event DELETE refused (no DELETE grant + trigger)", lieDeleteRaised);
+
+    // S2b Unit 5 — tenant_product_facts: RLS + WITH CHECK. Full DML is granted (not append-only —
+    // this is a mutable settings table, the grower revising their own entry, unlike a regulatory record).
+    check("tenant A sees its own tenant_product_facts", (await asTenant(A, (db) => db.tenantProductFacts.findFirst({ where: { id: "iso_tpf_a" } }))) !== null);
+    check("tenant A CANNOT see tenant B's tenant_product_facts (RLS)", (await asTenant(A, (db) => db.tenantProductFacts.findFirst({ where: { id: "iso_tpf_b" } }))) === null);
+    let tpfInsertRaised = false;
+    try {
+      await asTenant(A, (db) => db.tenantProductFacts.create({ data: { ...tpfBase, id: "iso_tpf_x", tenantId: B, productRef: "ISO-TPF-X" } }));
+    } catch { tpfInsertRaised = true; }
+    check("foreign-tenant tenant_product_facts INSERT raises (WITH CHECK)", tpfInsertRaised);
+    let tpfUpdateOk = false;
+    try {
+      await asTenant(A, (db) => db.tenantProductFacts.update({ where: { id: "iso_tpf_a" }, data: { note: "updated by A" } }));
+      tpfUpdateOk = true;
+    } catch { tpfUpdateOk = false; }
+    check("tenant A CAN update its own tenant_product_facts (mutable, unlike the append-only spray tables)", tpfUpdateOk);
+    let tpfCrossUpdateRaised = false;
+    try {
+      await asTenant(A, (db) => db.tenantProductFacts.update({ where: { id: "iso_tpf_b" }, data: { note: "hacked" } }));
+    } catch { tpfCrossUpdateRaised = true; }
+    check("tenant A CANNOT update tenant B's tenant_product_facts (RLS on UPDATE)", tpfCrossUpdateRaised);
+
+    // The composite unique (tenantId, productRef, factGroup) is what upsertTenantProductFacts keys
+    // its update-vs-create decision on (KD-3) — prove it resolves to the SAME row, never a duplicate.
+    const tpfUpsertKey = { tenantId_productRef_factGroup: { tenantId: A, productRef: "ISO-TPF-UPSERT", factGroup: "AGRONOMIC" as const } };
+    const tpfFirst = await asTenant(A, (db) =>
+      db.tenantProductFacts.upsert({ where: tpfUpsertKey, update: {}, create: { id: "iso_tpf_upsert", tenantId: A, productRef: "ISO-TPF-UPSERT", productName: "Iso Upsert", factGroup: "AGRONOMIC", rainfastHours: 4, enteredBy: "iso@test" } }),
+    );
+    const tpfSecond = await asTenant(A, (db) =>
+      db.tenantProductFacts.upsert({ where: tpfUpsertKey, update: { rainfastHours: 8 }, create: { id: "iso_tpf_upsert_dup", tenantId: A, productRef: "ISO-TPF-UPSERT", productName: "Iso Upsert", factGroup: "AGRONOMIC", rainfastHours: 8, enteredBy: "iso@test" } }),
+    );
+    check("composite-key upsert on (tenantId, productRef, factGroup) updates the SAME row, never a duplicate (KD-3)", tpfFirst.id === tpfSecond.id && Number(tpfSecond.rainfastHours) === 8);
+
     check("same-tenant op line succeeds (positive control)", sameTenantOk);
   } finally {
     // ── Teardown (owner). ──
@@ -1176,6 +1214,7 @@ async function main() {
     await owner.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.allow_spray_purge', 'on', true)`;
       await tx.latentInfectionEvent.deleteMany({ where: { id: { in: ["iso_lie_a", "iso_lie_b", "iso_lie_x", "iso_lie_fk"] } } });
+      await tx.tenantProductFacts.deleteMany({ where: { id: { in: ["iso_tpf_a", "iso_tpf_b", "iso_tpf_x", "iso_tpf_upsert", "iso_tpf_upsert_dup"] } } });
       await tx.sprayBlockLine.deleteMany({ where: { id: { in: ["iso_sbl_a", "iso_sbl_b", "iso_sbl_fk"] } } });
       await tx.sprayApplication.deleteMany({ where: { id: { in: ["iso_spray_a", "iso_spray_b", "iso_spray_x"] } } });
     });
