@@ -310,7 +310,7 @@ cellar as a residue flag — a thing no incumbent can do, because no incumbent o
 | S9 decision record | 4 | ⬜ not started | — | — | — | — | — |
 | S10 planner surface | 5A | ⬜ not started | — | — | — | — | — |
 | S11 assistant tools | 5B | ⬜ not started | — | — | — | — | — |
-| SKB knowledge sources | anytime | ⬜ not started | — | — | — | — | — |
+| SKB knowledge sources | anytime | 🟦 planning (plan written 2026-07-26; **2 of the 4 named candidates REJECTED on evidence** — NEWA is a SPA with ~2 KB of grape prose, ENTO-635-C is ~22/23 pages of rate tables. Replacements: PSU Extension + `virginiafruit.ento.vt.edu`. Awaiting `/council`) | [SKB plan](phases/SKB-knowledge-sources-plan.md) | — | — | — | — |
 
 Statuses: ⬜ not started → 🟦 planning → 🟨 building → 🟪 QA → 🟩 shipped.
 Update at every transition; link the plan, council feedback, PR(s), QA report, and phase report.
