@@ -50,6 +50,11 @@ export function summarizeInfectionStatus(dto: Awaited<ReturnType<typeof loadVine
       powderyRiskIndex: POWDERY_INDEX_UNAVAILABLE_REASON,
       scoutingCannotClear: SCOUTING_CANNOT_CLEAR_REASON,
       latentPeriodIsAnInterval: LATENT_INTERVAL_REASON,
+      // This tracker only watches model-driven, incubating powdery mildew. A disease or pest a
+      // scout SAW and logged in a weekly field report does not appear here at all — so a zero
+      // count is NEVER proof that no disease was recorded anywhere.
+      scoutedObservationsAreElsewhere:
+        "This tracker only covers model-driven incubating powdery mildew. Diseases/pests observed by a scout are recorded in the weekly field reports (query_field_reports), not here. A zero count here does NOT mean no disease was recorded.",
       ...(dto.honesty.notes.length ? { notes: dto.honesty.notes } : {}),
     },
   };
@@ -61,6 +66,9 @@ export const querySprayDecisionTool: AssistantTool = {
     "Report which latent (incubating) disease infections are currently being tracked on a vineyard's blocks, " +
     "when each may become infectious, and what is NOT known. Call this for questions about incubating or latent " +
     "infections, whether a block is a source of inoculum, or powdery-mildew disease pressure. " +
+    "NOTE: this tool only sees model-driven incubating powdery mildew — it does NOT see diseases or pests a scout " +
+    "observed and logged in a weekly field report; for those (and for any 'have we recorded/seen any disease' " +
+    "question) also call query_field_reports. " +
     "IMPORTANT: this tool CANNOT recommend a spray, a product, or a spray timing, and will refuse to — " +
     "legality, re-entry/pre-harvest intervals and resistance rotation are not available yet. " +
     "For weather, forecast, GDD or frost use query_climate instead; for label or extension guidance use " +
