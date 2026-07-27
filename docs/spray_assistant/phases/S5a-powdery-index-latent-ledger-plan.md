@@ -1,6 +1,26 @@
 # S5a — Powdery-mildew index and the latent-infection ledger (Wave 2, lane C)
 
-**Status:** 🟩 **plan v2 — council-reconciled 2026-07-26, READY FOR `/work`**
+> [!warning] READ THIS BEFORE THE PLAN — Unit 0's gate has FIRED and half this plan is cancelled.
+> **The powdery index is a NO-GO.** The probe ran 2026-07-26 and **all 8 sites failed** the
+> pre-committed gate: [S5a-diurnal-fidelity-probe.md](S5a-diurnal-fidelity-probe.md).
+> Consecutive-hours-in-band error is 2.2–3.4 h against a rule thresholded at **6 h**, and the
+> unsafe-miss rate breaches its 2% bar at six of eight sites. The failure is structural, not a
+> tuning problem, so **do not re-open it without S1**.
+>
+> - **Cancelled:** Units 3 and 4 (`diurnal-core.ts`, `powdery-core.ts`). The index moves to S5b
+>   behind S1 — which makes S1 load-bearing for powdery mildew, not just for leaf wetness.
+> - **Still ships, unchanged:** the latent-infection ledger (Units 1, 2, 5). It never depended on
+>   the index and is the durable half.
+> - **Read alongside:** [S5a-build-status.md](S5a-build-status.md) for what actually landed, what
+>   is blocked, and the append-only GRANT/REVOKE defect the schema work turned up.
+>
+> Sections below still describe the index as if it were shipping. They are left intact as the
+> reasoning that produced the gate, **not** as instructions. Corrections made during `/work` are
+> marked 🔴 in place — see Unit 10, which named an invariant id that was already taken by a shipped
+> critical invariant.
+
+**Status:** 🟨 **plan v2 — council-reconciled 2026-07-26; Unit 0 gate ANSWERED, index cancelled,
+ledger proceeding**
 **Depth:** Deep (12 units, 3 PRs)
 **Dependency edge:** `S5a←∅` (existing daily weather). Parallel with S2b (1B), S7a (2A), S8 (2B), S1 (2D).
 **Plan location note:** program convention §11 puts phase plans here, not in `docs/plans/`.
@@ -743,19 +763,50 @@ rule §3.9). **Report the NEWA comparison whatever it says** — `verify-phenolo
 #### Unit 10: Invariant, registers, and the runbook correction
 
 **Goal:** Make the phase's safety property enforceable and fix the record.
-**Files:** `docs/architecture/invariants/PEST-2-index-unknown-never-low.md`,
+
+🔴 **CORRECTED 2026-07-26 during `/work`. v2 named this invariant `PEST-2-index-unknown-never-low.md`.
+DO NOT CREATE THAT FILE — writing it would have silently overwritten a shipped critical invariant.**
+Three independent problems with the original line, any one of them disqualifying:
+
+1. **The number is already taken.** `docs/architecture/invariants/PEST-2-exact-match-product-resolution.md`
+   exists and shipped with S2 ("product resolution is exact-match only, and no negative result is a
+   clearance", severity critical, guarded by `verify:pesticide`). The register is keyed by filename;
+   there is no collision check. **Always `ls docs/architecture/invariants/` before claiming an id** —
+   the counter is shared across lanes exactly like the ADR counter this same unit warns about.
+2. **The rule already exists.** `SPRAY-3-gap-renders-unknown.md` already carries "a coverage gap
+   renders as UNKNOWN, never as clear", generically and guarded by `verify:spray-record`. The
+   proposed invariant was a narrower restatement of one the repo already enforces.
+3. **Its subject no longer ships.** The Unit 0 gate ruled out the index
+   ([S5a-diurnal-fidelity-probe.md](S5a-diurnal-fidelity-probe.md)), so "an index with missing
+   inputs is UNKNOWN, never LOW" would guard code that does not exist — and `verify:invariants`
+   fails on an invariant whose `verify:` command is missing.
+
+**Ship instead: `SPRAY-6-clean-scout-never-closes.md`** (SPRAY-5 is the current high-water mark) —
+**a clean scouting pass never closes an open infection event.** This is the ledger's actual safety
+property, it is the one thing nothing in the register currently guards, and it is empirically
+grounded rather than asserted: Fedele et al. 2020 (*Plant Disease* 104(5):1291-1297) scored a
+Botrytis model at 65% against field assessment but **>87% against post-harvest incubation assays of
+symptomless berries** — the model was right about infections scouting could not see. Without this
+rule, a diligent scout walking a clean row is precisely what silently clears a real latent
+infection. `severity: critical`, `enforcedBy: app-code`, `verify: "npm run verify:latent-infection"`,
+`appliesTo: src/lib/spray/`.
+
+**Files:** `docs/architecture/invariants/SPRAY-6-clean-scout-never-closes.md`,
 `docs/architecture/scale-register.md`, `docs/architecture/security-register.md`,
 `docs/spray_assistant/SPRAY_ASSISTANT_RUNBOOK.md`, `docs/architecture/ux-principles.md`,
 `docs/architecture/decisions/00NN-*.md`.
-**Approach:** The invariant is **"an index with missing inputs is UNKNOWN, never LOW"** — currently
-only a gate sentence. Add its `verify:` guard, since `verify:invariants` fails on an invariant
-whose guard does not exist. Scale register gets a row for the per-vineyard-per-day index table
-(rows = vineyards × days × seasons, unbounded without a retention statement) — no existing row
-covers time-series volume. **Runbook: correct the §9 S5a "temperature-only" line against S0's §7.1
-correction** (KD-10), and record the Unit 0 measurement in the ledger row. `ux-principles.md` has
-**no rule about presenting risk or uncertainty** — add one, since S5a is the first phase to render
-a risk state. **Claim the ADR number at SHIP time, not now** — 0012 is the current high-water mark
-and the counter is shared.
+**Approach:** Add the SPRAY-6 note above plus its `verify:` guard, since `verify:invariants` fails
+on an invariant whose guard does not exist — so this unit stays sequenced behind Unit 9. Scale
+register gets a row for the **ledger's** growth (append-only rows = blocks × infection episodes ×
+appends, unbounded without a retention statement) — no existing row covers append-only event volume.
+⚡ *The v2 text asked for a row on the per-vineyard-per-day index table; that table is not being
+built.* **Runbook: correct the §9 S5a "temperature-only" line against S0's §7.1 correction** (KD-10)
+— ✅ **DONE**, landed in commit `e0d3c6c8`, along with the Unit 0 outcome in the ledger row.
+`ux-principles.md` has **no rule about presenting risk or uncertainty** — the original reason to add
+one was that S5a would be the first phase to render a risk state, which it no longer is; keep the
+addition anyway, narrowed to how an *unknown* / incubating ledger state is presented.
+**Claim the ADR number at SHIP time, not now** — 0012 is the current high-water mark and the counter
+is shared, the same hazard as problem (1) above.
 **Depends on:** Unit 9.
 **Verification:** `npm run verify:invariants`.
 
