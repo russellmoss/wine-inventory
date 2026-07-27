@@ -9,6 +9,7 @@ import { computeProportionalDraw, round2 } from "@/lib/bottling/draw";
 import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import { nextLotCode, isUniqueViolation } from "@/lib/lot/generate";
+import { planComponentVolumeUpdate } from "@/lib/bulk/component-adjust";
 import { normalizeToken } from "@/lib/lot/code";
 
 const PATH = "/bulk";
@@ -170,18 +171,32 @@ export const updateComponentVolume = action(async ({ actor }, componentId: strin
   const comp = await prisma.vesselComponent.findUnique({ where: { id: componentId }, include: { vessel: true } });
   if (!comp) throw new ActionError("Component not found.");
 
-  const capacity = Number(comp.vessel.capacityL);
   const lots = await lotsForTuple(comp.vesselId, comp.varietyId, comp.vineyardId, comp.vintage);
-  if (lots.length === 0) throw new ActionError("Can't adjust: no lot backs this wine anymore.");
-
   const tupleTotal = round2(lots.reduce((a, r) => a + Number(r.volumeL), 0));
+
+  // The editor displayed the component PROJECTION, but an ADJUST moves the tuple's LOTS — on a
+  // blend those differ, and treating the displayed number as a lot target silently drew real
+  // wine (Demo T5: saving the untouched 6370 pulled 625 L out of the vessel). The plan decides:
+  // no-op on the displayed number, refuse blend shares, adjust only when the two agree.
+  const plan = planComponentVolumeUpdate({ targetL: target, projectionL: Number(comp.volumeL), tupleTotalL: tupleTotal });
+  if (plan.kind === "NO_OP") return;
+  if (lots.length === 0) throw new ActionError("Can't adjust: no lot backs this wine anymore.");
+  if (plan.kind === "BLOCKED_BLEND_SHARE") {
+    throw new ActionError(
+      `This row is a blend share: the lot backing it holds ${plan.tupleTotalL} L in ${comp.vessel.code}, ` +
+        `of which ${plan.projectionL} L traces to this wine, and drawing from the vessel moves every ` +
+        `component proportionally. Adjust the vessel's total with a cellar action (Top, Add, Dump, Long-tail) instead.`,
+      "CONFLICT",
+    );
+  }
+
+  const capacity = Number(comp.vessel.capacityL);
   const others = round2((await vesselTotal(comp.vesselId)) - tupleTotal);
   if (others + target > capacity + EPS) {
     throw new ActionError(`That would exceed the ${capacity} L capacity.`, "CONFLICT");
   }
 
-  const delta = round2(target - tupleTotal);
-  if (Math.abs(delta) < EPS) return; // no change
+  const delta = plan.deltaL;
 
   // Distribute the change across the tuple's lots proportionally to current volume.
   const shares = computeProportionalDraw(

@@ -1016,6 +1016,11 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **/bulk composition-editor phantom ADJUST fixed (2026-07-26):** `updateComponentVolume` targeted the
+  lot-tuple total while the editor displayed the component PROJECTION — on a blend (Demo T5, 2026-SY-2:
+  6995 L tuple vs 6370 L Syrah share) saving the untouched value drew 625 L. Now: untouched save = no-op,
+  blend-share edits refused with guidance, single-origin edits unchanged. Pure plan fn + regression test
+  (`src/lib/bulk/component-adjust.ts`). Server-side only — no conflict with plan 098's unit-input work.
 - **🔴 RELEASE BLOCKER FOUND + FIXED (2026-07-26): `AppUser.vineyardIds` was ALWAYS `[]` under
   `app_rls`.** Surfaced during S4 browser QA (it blocked the pass) but pre-existing and unrelated to S4.
   **[PR #530](https://github.com/russellmoss/wine-inventory/pull/530)** (branch
