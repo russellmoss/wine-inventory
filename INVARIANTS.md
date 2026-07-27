@@ -369,3 +369,24 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   own finish time + hourly precip through an injected port, or UNKNOWN; the human correction is an
   attributed append-only override row. A null block `finishedAt` yields REI/residual UNKNOWN and never
   borrows the header timestamp (G2/C14 — worker safety, not data quality).
+
+## Knowledge base — the corpus/relational boundary (SKB)
+
+> Machine-readable note: [[KB-1-product-table-is-not-corpus]]. Guarded by `npm run verify:kb-boundary`.
+
+- **A product→fact table is never corpus content (KB-1, critical, pure-code).** The corpus/relational
+  line is **tabular vs prose**, not mentions-FRAC vs does-not. A table or matrix keyed by product or
+  active ingredient (product × FRAC group, × efficacy, × rate, × REI/PHI) must never be indexed for an
+  enforcing source; disease biology and advisory prose that names FRAC groups as context while deferring
+  rates to the label both pass. The failure it prevents is a corpus table quoted as authoritative while
+  `pesticide_resistance_assignment` says `GAP` — a coverage gap rendering as a confident answer from the
+  WRONG ENGINE (runbook §3.6, [[PEST-1-gap-is-not-a-clearance]] from the other side).
+  **Three mechanics are load-bearing and none is optional.** The detector reads **raw HTML / PDF
+  pre-chunk lines, never post-extraction text** (`extract/pdf.ts` emits no pipe tables and no headings,
+  so extracted text disarms it on exactly the documents that matter). The gate is **inline in
+  `index-documents.ts`, before both extraction and the idempotency short-circuit**, and signals by
+  **returned field, never a throw** — a throw there is read by the re-crawl tombstone pass as "the page
+  was removed" and would mass-tombstone a source. And `uncertain` **skips for an enforcing source**
+  (fail closed) while being **admitted and counted for a report-only one**, where nothing is gated.
+  Enforcement is the DEFAULT; the 25 pre-SKB sources are a frozen report-only census whose deletion is
+  how the grandfather clause closes.
