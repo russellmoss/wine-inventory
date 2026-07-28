@@ -78,43 +78,16 @@ export const NAV_MODEL: NavGroup[] = [
       // sparkling toggles and base currency, which is not what the label promises.
       // `/setup` is a new grouped index; `/settings` is now one of its eight children
       // (src/lib/nav/sections.ts). Nothing moved: /settings is still at /settings.
-      { href: "/setup", label: "Setup", admin: true },
+      // NOT `admin: true`, and that is a deliberate change from the entry it replaces.
+      // `/settings` was admin-only and could be, because it is one admin screen. `/setup`
+      // is a HUB, and four of its eight children — Vessels, Locations, Varieties &
+      // vineyards, Vendors — are `requireActiveTenant()` only and sat UNGATED in the
+      // legacy sidebar. Gating the hub would have taken all four away from the cellar
+      // hand who uses them today, with Ctrl-K (desktop-only) as the sole fallback. The
+      // hub is open; each child keeps its own guard and `sections.ts` filters the cards.
+      { href: "/setup", label: "Setup" },
     ],
   },
-];
-
-/**
- * Destinations removed from the sidebar but still reachable (doc 01 §4).
- *
- * **This records an INTENTION, not a state.** It carries no label and no role flags,
- * so it cannot render a link or filter one, and thirteen of its `reachedFrom` claims
- * were false the day plan 104 measured them. The second level of the IA — the thing
- * that actually makes these reachable — is `src/lib/nav/sections.ts`, and the thing
- * that proves it is `test/route-reachability.test.ts`. Read those, not this.
- */
-export const CONTEXTUAL_DESTINATIONS: { href: string; reachedFrom: string }[] = [
-  { href: "/assistant", reachedFrom: "the dock's expand control, and Ctrl-K" },
-  { href: "/help/feedback", reachedFrom: "the user menu in the sidebar footer" },
-  { href: "/reports", reachedFrom: "an Accounting sub-tab" },
-  { href: "/ferment/process", reachedFrom: "the Fermentations page primary action" },
-  { href: "/winemaking-calculator", reachedFrom: "any addition form, and Ctrl-K" },
-  { href: "/samples", reachedFrom: "a Lots sub-tab" },
-  { href: "/cellar/en-tirage", reachedFrom: "a Bottling sub-tab when sparkling is enabled" },
-  { href: "/vessels", reachedFrom: "Setup, and the cellar-floor vessel browser" },
-  { href: "/inbox", reachedFrom: "the avatar in the sidebar footer" },
-  { href: "/blend/trials", reachedFrom: "a Blends sub-tab" },
-  { href: "/finished-goods", reachedFrom: "an Inventory sub-tab" },
-  { href: "/bottled", reachedFrom: "an Inventory sub-tab" },
-  { href: "/work-orders/review", reachedFrom: "the Work orders header and sub-tab" },
-  { href: "/work-orders/templates", reachedFrom: "the Work orders header and sub-tab" },
-  { href: "/work-orders/task-types", reachedFrom: "Setup → Work orders" },
-  { href: "/setup/equipment", reachedFrom: "Setup" },
-  { href: "/vineyards/planting-setup", reachedFrom: "Setup → Vineyards" },
-  { href: "/vineyards/sprays/products", reachedFrom: "the Spray records sub-nav" },
-  { href: "/vineyards/maps", reachedFrom: "a Vineyard rounds sub-tab" },
-  { href: "/vineyards/weather", reachedFrom: "a Vineyard rounds sub-tab" },
-  { href: "/vineyards/sprays", reachedFrom: "a Vineyard rounds sub-tab" },
-  { href: "/vineyards/harvest/weigh-tags", reachedFrom: "a Fruit intake sub-tab" },
 ];
 
 /** Every global destination, flattened. */

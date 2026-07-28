@@ -6,7 +6,6 @@ import { getCommerce7Dashboard } from "@/lib/commerce/dashboard";
 import { getDtcMargin } from "@/lib/commerce/margin";
 import { getTenantCurrency } from "@/lib/settings/data";
 import { formatMoney } from "@/lib/money/currency";
-import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 export const metadata = { title: "Accounting" };
 export const dynamic = "force-dynamic";
@@ -41,9 +40,6 @@ export default async function AccountingPage() {
 
   return (
     <div>
-      {/* Plan 104 Unit 8 — /reports had no way in under the v2 sidebar. doc 01 §4
-          always said "an Accounting sub-tab"; this is that sub-tab. */}
-      <HubSectionNav hub="/accounting" />
       <Eyebrow rule>Winery</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Accounting</h1>
       <p style={{ color: "var(--text-secondary)", marginBottom: 24, maxWidth: "60ch" }}>

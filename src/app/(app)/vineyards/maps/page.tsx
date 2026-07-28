@@ -5,11 +5,12 @@ import { Eyebrow } from "@/components/ui";
 import { loadVineyardDetail } from "@/lib/vineyard/actions";
 import type { SerializedBlock } from "@/lib/vineyard/data";
 import { NdviConsole, type NdviJobRow, type NdviBlockRow, type NdviDatasetRow } from "../ndvi/NdviConsole";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 // Map Explorer — the ONE vineyard map surface (VI). Pick a vineyard, see the satellite map with a
 // toggleable/reorderable LAYER STACK: blocks + NDVI (vigor) + soil (NRCS). Consolidates the old NDVI
 // console and the old block-summary map into a single explorer (the /vineyards/ndvi route redirects here).
-export default async function MapExplorerPage({ searchParams }: { searchParams: Promise<{ vineyard?: string }> }) {
+async function MapExplorerPageBody({ searchParams }: { searchParams: Promise<{ vineyard?: string }> }) {
   const user = await requireReadyUser();
   await requireActiveTenant();
   const sp = await searchParams;
@@ -72,5 +73,16 @@ export default async function MapExplorerPage({ searchParams }: { searchParams: 
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: "10px 0 16px" }}>Map Explorer</h1>
       <NdviConsole vineyards={vineyards} selectedId={selected?.id ?? null} selectedName={selected?.name ?? null} jobs={jobs} blocks={blocks} mapBlocks={mapBlocks} center={center} datasets={datasets} />
     </div>
+  );
+}
+
+/** Plan 104 — this is a SECTION of /vineyards/field-notes, so it carries the same strip as its hub.
+    Without it the strip is a one-way door: you use it once and it disappears. */
+export default async function MapExplorerPage(props: { searchParams: Promise<{ vineyard?: string }> }) {
+  return (
+    <>
+      <HubSectionNav hub="/vineyards/field-notes" current="/vineyards/maps" />
+      <MapExplorerPageBody {...props} />
+    </>
   );
 }

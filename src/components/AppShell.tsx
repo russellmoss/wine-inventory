@@ -321,9 +321,11 @@ function SidebarContent({
         {/* doc 01 §4 puts Help / feedback in the sidebar footer. It said so before this
             phase too; the link just never existed, so under NAV_V2 the only way to
             report a bug was to know the URL. */}
-        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
-          <Link href="/help/feedback" onClick={onNavigate} style={{ fontSize: 12.5, color: "var(--text-accent)", fontFamily: "var(--font-body)", textDecoration: "none" }}>Help / feedback</Link>
-          <button onClick={onSignOut} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 12.5, color: "var(--text-accent)", fontFamily: "var(--font-body)" }}>Sign out</button>
+        {/* Both clear --touch-min. This row renders in the mobile drawer too, where
+            Help / feedback is the only route to bug reporting on a phone. */}
+        <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+          <Link href="/help/feedback" onClick={onNavigate} style={{ display: "inline-flex", alignItems: "center", minHeight: "var(--touch-min)", padding: "0 8px", marginLeft: -8, fontSize: 12.5, color: "var(--text-accent)", fontFamily: "var(--font-body)", textDecoration: "none" }}>Help / feedback</Link>
+          <button onClick={onSignOut} style={{ display: "inline-flex", alignItems: "center", minHeight: "var(--touch-min)", padding: "0 8px", background: "none", border: "none", cursor: "pointer", fontSize: 12.5, color: "var(--text-accent)", fontFamily: "var(--font-body)" }}>Sign out</button>
         </div>
       </div>
     </>
@@ -513,7 +515,10 @@ export function AppShell({
             { href: "/work-orders", label: "Work", glyph: "☑", badge: pendingWorkOrders },
             { href: "/bulk", label: "Cellar", glyph: "◍" },
             ...(hasVineyard ? [{ href: "/vineyards/field-notes", label: "Vineyard", glyph: "❧" }] : []),
-            { href: "/inbox", label: "Find", glyph: "⌕" },
+            // Gated on the same flag the desktop avatar link uses. /inbox calls
+            // notFound() when the inbox is off, so an ungated tab is a 404 sitting in
+            // the phone's primary navigation.
+            ...(inboxEnabled ? [{ href: "/inbox", label: "Find", glyph: "⌕" }] : []),
           ]}
         />
       ) : null}

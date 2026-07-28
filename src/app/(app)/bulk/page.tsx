@@ -6,6 +6,7 @@ import { tankState } from "@/lib/vessels/tank-state";
 import { listMaterials } from "@/lib/cellar/materials";
 import { listGroups } from "@/lib/vessels/groups";
 import { BulkClient, type VesselWithContents, type Option, type BlockOption, type SubblockOption } from "./BulkClient";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 /** Staleness only looks back 24h, so a 30-day window cannot change any answer. */
 const READING_WINDOW_DAYS = 30;
@@ -160,6 +161,11 @@ export default async function BulkPage() {
   data.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
 
   return (
+    <>
+      {/* The winemaking calculator's only documented entry point ("any addition
+          form") does not exist in source, and Ctrl-K needs a keyboard — so on a
+          phone it had no way in at all. The cellar floor is where the numbers are. */}
+      <HubSectionNav hub="/bulk" />
     <BulkClient
       vessels={data}
       varieties={varieties as Option[]}
@@ -169,5 +175,6 @@ export default async function BulkPage() {
       materials={materials}
       groups={groups}
     />
+    </>
   );
 }

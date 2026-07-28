@@ -17,16 +17,17 @@
  * A new page with nothing linking to it fails CI by name.
  *
  * **It reads the live file system, not `test/fixtures/routes.json`.** The fixture is
- * a baseline for the removal check and lags reality by design (additions only log) —
- * `/ferment` has been missing from it since Phase 3. Reading it here would mean a
+ * a baseline for the removal check and lags reality by design: additions only log,
+ * so `/ferment` sat outside it from Phase 3 until this branch. Reading it here would mean a
  * brand-new orphan route stays invisible until somebody remembers to refresh the
  * fixture, which is the failure mode this test exists to end.
  */
 import { describe, expect, it } from "vitest";
 import { allDestinations } from "@/lib/nav/model";
-import { allSectionItems, sectionHubs, UTILITY_DESTINATIONS } from "@/lib/nav/sections";
+import { SECTIONS, allSectionItems, sectionHubs, UTILITY_DESTINATIONS } from "@/lib/nav/sections";
 import { CONTEXTUAL_ENTRY_POINTS, INTENTIONALLY_UNNAVIGABLE } from "@/lib/nav/unnavigable";
 import { linksTo, pageSource, srcFile, staticRoutes } from "./helpers/routes";
+import { code } from "./helpers/code";
 
 type Source =
   | "sidebar"
@@ -118,8 +119,10 @@ describe("the exemptions are checked, not trusted", () => {
   });
 
   it("keeps the exemption list from quietly becoming the answer", () => {
-    // If most of the app is "intentionally unnavigable", the IA is the problem.
-    expect(INTENTIONALLY_UNNAVIGABLE.length).toBeLessThan(ROUTES.length / 3);
+    // An ABSOLUTE cap, not `ROUTES.length / 3`. A ceiling that scales with the route
+    // count means adding three orphan pages and exempting all three stays green — the
+    // escape hatch widening itself every time it is used.
+    expect(INTENTIONALLY_UNNAVIGABLE.length).toBeLessThanOrEqual(15);
   });
 });
 
@@ -144,6 +147,22 @@ describe("a section is only reachable if its hub RENDERS the sub-nav", () => {
     ).toEqual([]);
   });
 
+  it("renders the strip on every SECTION page too, not just the hub", () => {
+    // A strip that only exists on the hub is a one-way door: you click "Samples",
+    // the strip you just used disappears, and the way back is browser-back. Each
+    // section page passes its OWN href as `current`, so the strip highlights where
+    // you actually are instead of the hub you came from.
+    const missing = allSectionItems()
+      // The card hub is an index page, not a strip; its children are reached from it.
+      .filter((i) => SECTIONS[i.hub].render !== "cards")
+      .filter((i) => !pageSource(i.href).includes(`<HubSectionNav hub="${i.hub}" current="${i.href}"`))
+      .map((i) => `${i.href} (section of ${i.hub})`);
+    expect(
+      missing,
+      `these section pages drop the strip that led to them:\n` + missing.map((m) => `  ${m}`).join("\n"),
+    ).toEqual([]);
+  });
+
   it("renders the strip from the model, never from a hand-written item list", () => {
     const nav = srcFile("src/components/nav/HubSectionNav.tsx") ?? "";
     expect(nav).toContain("sectionsFor(hub,");
@@ -160,7 +179,20 @@ describe("a section is only reachable if its hub RENDERS the sub-nav", () => {
     // A layout.tsx would wrap every nested route, putting section tabs on
     // /work-orders/[id]/execute — a wet-hands capture surface with a sticky action
     // bar and single-column fields (doc 04 §130).
-    expect(srcFile("src/app/(app)/work-orders/[id]/execute/page.tsx")).not.toContain("SectionNav");
+    // `code()` per test/helpers/code.ts: this repo's static guards keep failing on
+    // their own documentation, and a comment saying "deliberately no SectionNav
+    // here" would trip a raw not.toContain.
+    for (const child of [
+      "src/app/(app)/work-orders/[id]/execute/page.tsx",
+      "src/app/(app)/work-orders/[id]/print/page.tsx",
+      "src/app/(app)/work-orders/[id]/page.tsx",
+      "src/app/(app)/lots/[id]/page.tsx",
+      "src/app/(app)/vineyards/sprays/[id]/page.tsx",
+    ]) {
+      const src = srcFile(child);
+      if (src === null) continue;
+      expect(code(src), `${child} grew a section strip — it is a detail/capture screen`).not.toContain("SectionNav");
+    }
     for (const hub of HUBS) {
       const seg = hub.split("/").filter(Boolean);
       expect(

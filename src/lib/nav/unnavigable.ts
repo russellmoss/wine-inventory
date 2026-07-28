@@ -8,12 +8,17 @@
  * ## Why both carry proof rather than prose
  * The lesson of the gap this phase closes is that `route-stability` had two
  * hard-coded lists which both asserted "this page exists" and neither noticed that
- * nothing linked to it. So neither list here is taken on trust:
+ * nothing linked to it. So the two claims that CAN be checked mechanically are:
  *
  *   - a contextual entry point names the FILE that links to it, and the guard reads
  *     that file and looks for the link. Delete the link, CI goes red.
  *   - a `redirect` exemption is checked against the page's own source for a
  *     `redirect(` call, so a real page cannot be waved through as a stub.
+ *
+ * The `auth` and `dev-tool` exemptions are the honest gap: nothing can prove a page
+ * "should have no way in", so those 8 entries rest on their `reason` string and on
+ * review. That is also why the total is capped at an absolute 15 rather than a share
+ * of the route count — an escape hatch that widens as the app grows is not a hatch.
  *
  * Adding an entry here is the one way to make an unreachable route pass. Make the
  * reason one a reviewer would accept out loud.

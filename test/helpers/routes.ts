@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { code } from "./code";
 
 const APP = fileURLToPath(new URL("../../src/app", import.meta.url));
 
@@ -69,17 +70,22 @@ export function srcFile(relPath: string): string | null {
  * It also does not match `revalidatePath("/x")`, which is a cache call, not a link.
  */
 export function linksTo(source: string, route: string): boolean {
+  // Comments are stripped first: a commented-out link is a DELETED link, and
+  // `{/* <Link href="/reports"/> — removed */}` used to satisfy this check.
+  const src = code(source);
   const patterns = [
     `href="${route}"`,
     `href={"${route}"}`,
     "href={`" + route + "`}",
-    "href={`" + route + "?", // template link carrying a query string
-    "href={`" + route + "/", // template link carrying a path segment
+    // A template link carrying a QUERY string still lands on this route.
+    "href={`" + route + "?",
     `push("${route}")`,
     "push(`" + route + "`)",
     "push(`" + route + "?",
-    "push(`" + route + "/",
     `replace("${route}")`,
   ];
-  return patterns.some((p) => source.includes(p));
+  // Deliberately NOT `href={\`${route}/…\`}`: a link to a CHILD is not a link to the
+  // parent. Accepting it meant `href={\`/work-orders/new/${id}\`}` proved
+  // `/work-orders/new`, which is how a parent route quietly goes missing.
+  return patterns.some((p) => src.includes(p));
 }

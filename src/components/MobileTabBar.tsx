@@ -11,7 +11,11 @@ export interface MobileTab {
 }
 
 /**
- * MobileTabBar — four labelled bottom tabs, ≤1023px (doc 01 §9, v2 §B3).
+ * MobileTabBar — three or four labelled bottom tabs, ≤1023px (doc 01 §9, v2 §B3).
+ *
+ * The count is not fixed: Vineyard rounds drops out for a user with no vineyard
+ * membership, and Find drops out when the inbox is disabled. The grid sizes itself
+ * off `tabs.length`.
  *
  * Replaces the `☰` drawer, whose trigger measured 38×32px: the single most
  * important control on the phone, below the minimum target size.

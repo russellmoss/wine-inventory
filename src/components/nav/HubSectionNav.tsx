@@ -27,11 +27,22 @@ import { navContext } from "@/lib/nav/server-context";
  * Renders nothing when the hub has no visible sections for this user — a strip whose
  * only entry is "you are here" is noise.
  */
-export async function HubSectionNav({ hub }: { hub: keyof typeof SECTIONS | string }) {
+export async function HubSectionNav({
+  hub,
+  current,
+}: {
+  hub: keyof typeof SECTIONS | string;
+  /**
+   * The route being rendered. Defaults to the hub, which is right on the hub's own
+   * index. **Section pages must pass their own href** — a strip that only appears on
+   * the hub is a one-way door: click "Samples" and the strip you used vanishes.
+   */
+  current?: string;
+}) {
   if (!NAV_V2_ENABLED) return null;
   const def = SECTIONS[hub];
   if (!def) return null;
   const items = sectionsFor(hub, await navContext());
   if (items.length === 0) return null;
-  return <SectionNav items={items} current={hub} label={def.label} />;
+  return <SectionNav items={items} current={current ?? hub} label={def.label} />;
 }

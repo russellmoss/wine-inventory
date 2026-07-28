@@ -3,11 +3,12 @@ import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { Badge, Button, Eyebrow } from "@/components/ui";
 import { loadSpraySeasonList } from "@/lib/spray/actions";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 // S3a Unit 13 — the spray record season list. Summary-first, one nav entry (the P8 lesson).
 // Honesty rendering is the point: a record whose facts are not KNOWN carries a visible
 // "facts unknown" badge, distinct from a clear state (rule §3.6).
-export default async function SpraysPage({ searchParams }: { searchParams: Promise<{ vineyard?: string }> }) {
+async function SpraysPageBody({ searchParams }: { searchParams: Promise<{ vineyard?: string }> }) {
   await requireReadyUser();
   await requireActiveTenant();
   const sp = await searchParams;
@@ -87,5 +88,16 @@ export default async function SpraysPage({ searchParams }: { searchParams: Promi
         </div>
       )}
     </div>
+  );
+}
+
+/** Plan 104 — this is a SECTION of /vineyards/field-notes, so it carries the same strip as its hub.
+    Without it the strip is a one-way door: you use it once and it disappears. */
+export default async function SpraysPage(props: { searchParams: Promise<{ vineyard?: string }> }) {
+  return (
+    <>
+      <HubSectionNav hub="/vineyards/field-notes" current="/vineyards/sprays" />
+      <SpraysPageBody {...props} />
+    </>
   );
 }

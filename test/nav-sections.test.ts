@@ -42,12 +42,29 @@ describe("shape", () => {
     }
   });
 
-  it("gives every item a label and every hub a landmark name + self-link label", () => {
+  it("gives every item a label and every hub a landmark name", () => {
     for (const i of [...allSectionItems(), ...UTILITY_DESTINATIONS]) expect(i.label.length).toBeGreaterThan(0);
     for (const [hub, def] of Object.entries(SECTIONS)) {
       expect(def.label.length, `${hub} has no nav landmark name`).toBeGreaterThan(0);
-      expect(def.hubLabel.length, `${hub} has no self-link label`).toBeGreaterThan(0);
     }
+  });
+
+  it("names the self-link from the destination, so one page never has three names", () => {
+    // There is no `hubLabel`. An earlier draft had one and it drifted immediately:
+    // the strip said "Field notes" and "Harvest" — the two labels doc 01 §5 RETIRED —
+    // directly under a sidebar saying "Vineyard rounds" and "Fruit intake".
+    for (const hub of sectionHubs()) {
+      const items = sectionsFor(hub, ADMIN);
+      if (items.length === 0) continue;
+      const dest = allDestinations().find((d) => d.href === hub)!;
+      expect(items[0], `${hub}'s self-link is not the destination`).toEqual({ href: hub, label: dest.label });
+    }
+  });
+
+  it("never uses a label doc 01 §5 retired", () => {
+    const RETIRED = ["Field notes", "Harvest", "Lot timeline", "Wine in-progress"];
+    const shown = sectionHubs().flatMap((h) => sectionsFor(h, ADMIN).map((i) => i.label));
+    expect(shown.filter((l) => RETIRED.includes(l))).toEqual([]);
   });
 
   it("never lists the same href in two sections", () => {
@@ -123,8 +140,11 @@ describe("role and capability visibility", () => {
     }
   });
 
-  it("gates the vineyard sections on membership, exactly like the hub above them", () => {
-    for (const h of ["/vineyards/maps", "/vineyards/weather", "/vineyards/sprays"]) {
+  it("gates Map Explorer and Weather on membership — they scope their picker by it", () => {
+    // NOT /vineyards/sprays: that page lists every active vineyard to any ready user,
+    // so it is genuinely theirs and carries no flag. Flagging it would have taken a
+    // surface the legacy sidebar gave every cellar hand.
+    for (const h of ["/vineyards/maps", "/vineyards/weather"]) {
       expect(isSectionVisible(find(h), USER)).toBe(false);
       expect(isSectionVisible(find(h), VINEYARD_USER)).toBe(true);
       expect(isSectionVisible(find(h), ADMIN)).toBe(true);
@@ -147,7 +167,9 @@ describe("role and capability visibility", () => {
 describe("hubForRoute — the sidebar still says where you are on a section route", () => {
   it("maps every section route back to its hub", () => {
     expect(hubForRoute("/samples")).toBe("/lots");
-    expect(hubForRoute("/reports")).toBe("/accounting");
+    // /reports moved out of admin-only /accounting: its own h1 reads "Inventory
+    // reports", and parking an ungated page under an admin hub hid it from everyone else.
+    expect(hubForRoute("/reports")).toBe("/inventory");
     expect(hubForRoute("/vessels")).toBe("/setup");
     expect(hubForRoute("/settings")).toBe("/setup");
     expect(hubForRoute("/cellar/en-tirage")).toBe("/bottling");
@@ -185,7 +207,7 @@ describe("the palette subtitle is its own disclosure surface", () => {
     // tenant user — but "under Accounting" / "under Setup" would tell them an
     // admin-only destination exists. The hit stays; the name goes.
     expect(sectionParentLabel("/accounting", USER)).toBeUndefined();
-    expect(sectionParentLabel("/setup", USER)).toBeUndefined();
+    expect(sectionParentLabel("/compliance", USER)).toBeUndefined();
   });
 
   it("still shows those hits — hiding them would cost five surfaces their last way in", () => {
@@ -227,7 +249,8 @@ describe("sectionsFor — what actually renders", () => {
   });
 
   it("returns nothing for a route with no sub-navigation", () => {
-    expect(sectionsFor("/inventory", ADMIN)).toEqual([]);
+    expect(sectionsFor("/audit", ADMIN)).toEqual([]);
+    expect(sectionsFor("/compliance", ADMIN)).toEqual([]);
     expect(sectionsFor("/nope", ADMIN)).toEqual([]);
   });
 });

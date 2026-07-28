@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/dal";
+import { requireActiveTenant, requireReadyUser } from "@/lib/dal";
 import { PageHeader } from "@/components/ui";
 import { SECTIONS, isSectionVisible } from "@/lib/nav/sections";
 import { navContext } from "@/lib/nav/server-context";
@@ -16,22 +16,26 @@ export const dynamic = "force-dynamic";
  * toggles and base currency, not about setting the winery up. Eight surfaces had
  * no way in at all once the v2 sidebar dropped to 13 destinations.
  *
- * Admin-gated to match the destination's own `admin: true`. Individual children
- * keep their OWN guards; the flags in `sections.ts` mirror them so the hub never
- * shows a card that leads to a `notFound()`.
+ * NOT admin-gated. Four of the eight children (Vessels, Locations, Varieties &
+ * vineyards, Vendors) are `requireActiveTenant()` only and were ungated in the
+ * legacy sidebar; locking the hub would have taken them away from every non-admin
+ * and left Ctrl-K — which needs a keyboard — as the only way back. Each card is
+ * filtered by the same role/program rules the sub-navs and the palette use, and
+ * every child still enforces its own guard, so an admin-only screen stays
+ * admin-only whether or not its card was ever drawn.
  */
 export default async function SetupPage() {
-  await requireAdmin();
+  await requireReadyUser();
+  await requireActiveTenant();
   const ctx = await navContext();
   const items = SECTIONS["/setup"].items.filter((i) => isSectionVisible(i, ctx));
 
   return (
     <div>
-      <PageHeader
-        eyebrow="The business"
-        title="Setup"
-        summary="Reference data and configuration. Everything here is set once and used everywhere else."
-      />
+      {/* No `summary`: PageHeader's contract says the summary is "one sentence about
+          what needs attention — NOT a description of the page", and an index has
+          nothing needing attention. The cards carry the orientation instead. */}
+      <PageHeader eyebrow="The business" title="Setup" />
       <SetupHub items={items} />
     </div>
   );

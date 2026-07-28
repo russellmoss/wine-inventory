@@ -85,11 +85,16 @@ describe("role filtering reaches BOTH nav surfaces (plan 104 D5)", () => {
   });
 
   it("uses the same admin predicate in search as in the shell", () => {
-    // actions.ts hand-rolled `role === "admin" || role === "owner"`, which misses
+    // The palette hand-rolled `role === "admin" || role === "owner"`, which misses
     // `developer` — so a developer's palette hid destinations their sidebar showed.
-    expect(SEARCH_ACTIONS).toContain("isTenantAdminLike(user)");
+    // Both the fix and the guard now point at navContext(), the single server-side
+    // answer; the action must delegate rather than keep a second copy.
+    const CONTEXT = read("lib/nav/server-context.ts");
+    expect(CONTEXT).toContain("isTenantAdminLike(user)");
+    expect(CONTEXT).toContain("user.vineyardIds.length > 0 || isAdmin");
+    expect(SEARCH_ACTIONS).toContain("navContext()");
     expect(code(SEARCH_ACTIONS)).not.toContain('role === "admin" || role === "owner"');
-    expect(code(SEARCH_ACTIONS)).not.toContain("hasVineyard: isAdmin");
+    expect(code(SEARCH_ACTIONS)).not.toContain("hasVineyard:");
   });
 
   it("gives the brand mark and Help / feedback a real link", () => {

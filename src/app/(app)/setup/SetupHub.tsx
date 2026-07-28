@@ -33,7 +33,7 @@ export function SetupHub({ items }: { items: SectionItem[] }) {
           <h2
             style={{
               fontFamily: "var(--font-heading)",
-              fontSize: 18,
+              fontSize: "var(--text-body-lg)",
               margin: "0 0 var(--space-3)",
               color: "var(--text-primary)",
             }}
@@ -48,7 +48,7 @@ export function SetupHub({ items }: { items: SectionItem[] }) {
             }}
           >
             {group.items.map((item) => (
-              <Card key={item.href} as="div" padding="0" style={{ overflow: "hidden" }}>
+              <Card key={item.href} as="div" padding="0" interactive>
                 <Link
                   href={item.href}
                   style={{
@@ -65,9 +65,9 @@ export function SetupHub({ items }: { items: SectionItem[] }) {
                     style={{
                       display: "block",
                       fontFamily: "var(--font-heading)",
-                      fontSize: 16,
-                      color: "var(--text-accent)",
-                      marginBottom: item.blurb ? 4 : 0,
+                      fontSize: "var(--text-body)",
+                      color: "var(--text-primary)",
+                      marginBottom: item.blurb ? "var(--space-1)" : 0,
                     }}
                   >
                     {item.label}
