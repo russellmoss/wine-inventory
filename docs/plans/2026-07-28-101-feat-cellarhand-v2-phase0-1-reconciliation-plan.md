@@ -1216,7 +1216,7 @@ Phase 0 + Phase 1 built on `claude/cellarhand-v2-phase-reconciliation-a926e3`
 - [x] Unit 2 — next/font self-hosting (`b2c350b3`)
 - [x] Unit 3 — focus-ring refinement + DESIGN.md/styleguide (`e94e4549`)
 - [x] Unit 4 — Button re-baseline (`66178f44`)
-- [x] Unit 5 — StatusChip + status remap (`6e6d4cbd`)
+- [x] Unit 5 — StatusChip + status remap (`d82ba61d`)
 - [x] Unit 6 — Badge gold→wine + status out of Badge (`afa65d5b`)
 - [x] Unit 7 — ConfirmButton + 4 new primitives (`73d476d0`)
 - [x] Unit 8 — AppShell skip link / aria-current / aria-expanded (`7a426be6`)
