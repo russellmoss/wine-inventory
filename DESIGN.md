@@ -32,9 +32,13 @@
   button labels. One accent color, used sparingly and meaningfully.
 
 ## Typography
-Tokens: `src/styles/tokens/typography.css`, `fonts.css`. Inter + Inter Tight load from
-Google Fonts at the top of `globals.css` (must precede Tailwind). Big Caslon ships
-locally from `/assets/fonts/`.
+Tokens: `src/styles/tokens/typography.css`, `fonts.css`. Inter + Inter Tight are
+**self-hosted by `next/font`** in `src/app/layout.tsx` and reach the type system through
+`--font-inter` / `--font-inter-tight`, which `typography.css` consumes at the head of the
+`--font-body` / `--font-heading` stacks. (Until 2026-07-28 they arrived via a
+render-blocking `@import` of fonts.googleapis.com at the top of `globals.css`; on poor
+cellar wifi that stalled the whole type system. A static guard now fails if any Google
+Fonts URL reappears.) Big Caslon ships locally from `/assets/fonts/`.
 
 - **Display/Hero:** `Big Caslon` (serif) — `--font-display`. Brand moments, hero
   headings, the `.ds-serif` / `Quote` voice. Falls back to Hoefler Text → Times → Georgia.
@@ -175,6 +179,12 @@ Metric · Quote · ConfirmButton · Modal · Collapsible · Tabs · InfoHint · 
   Geometry lives in `src/components/ui/button-sizes.ts`.
 - **Badge** tones: neutral · **wine** (was `gold`) · green · blue · maroon · red; variants
   soft/solid/outline. **Category labels only** — a status value goes through `StatusChip`.
+- **Input** sizes sm/md/lg/**floor** — heights **44/48/56/60** (v2 §B8; was 36/44/52, `sm` sat under
+  the touch floor). The hint and error are wired with `aria-describedby`; an error sets `aria-invalid`
+  and announces via `role="alert"`; a required field carries a visible marker **and** an `.sr-only`
+  "(required)". `adornmentRight` puts a unit in its own box at field height — never inside the value.
+  Disabled is a real surface (`--paper-200`), never `opacity`. Geometry in `src/components/ui/input-sizes.ts`.
+- **Checkbox** 20px visual inside a **44px** target (v2 §B11).
 - **StatusChip** the six-value status ramp (`neutral`/`active`/`held`/`done`/`attention`/
   `review`), glyph + mandatory text, sizes sm 24 / md 30. It replaced seven independent
   status→colour maps, including two that were hand-rolled ternaries inside a JSX attribute.

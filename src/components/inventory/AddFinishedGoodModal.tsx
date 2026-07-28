@@ -121,7 +121,7 @@ export function AddFinishedGoodModal({
         </Field>
 
         <Field label={isWine ? "Category (optional)" : "Category"}>
-          <select style={selectStyle} value={categoryId} onChange={(e) => { setCategoryId(e.target.value); if (e.target.value) setNewCategory(""); }}>
+          <select aria-label="Category" style={selectStyle} value={categoryId} onChange={(e) => { setCategoryId(e.target.value); if (e.target.value) setNewCategory(""); }}>
             <option value="">{categoryId === "" && newCategory ? "— using new category —" : "— choose —"}</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -150,7 +150,7 @@ export function AddFinishedGoodModal({
           {qty > 0 ? (
             <>
               <Field label="Location">
-                <select style={selectStyle} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+                <select aria-label="Location" style={selectStyle} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
                   {locations.length === 0 ? <option value="">No locations</option> : null}
                   {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>

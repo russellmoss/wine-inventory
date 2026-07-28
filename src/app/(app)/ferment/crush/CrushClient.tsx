@@ -112,7 +112,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
       <h1 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 26 }}>De-stem</h1>
 
       <label style={label}>Block (vintage)</label>
-      <select value={blockId} onChange={(e) => setBlockId(e.target.value)} style={{ ...field, width: "100%" }}>
+      <select aria-label="Block (vintage)" value={blockId} onChange={(e) => setBlockId(e.target.value)} style={{ ...field, width: "100%" }}>
         {blocks.map((b) => (
           <option key={b.blockId} value={b.blockId}>
             {b.label} — {b.vintageYear}
@@ -142,7 +142,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
       <div style={{ display: "flex", gap: 16, marginTop: 16, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 240px" }}>
           <label style={label}>Destination vessel</label>
-          <select value={destVesselId} onChange={(e) => setDestVesselId(e.target.value)} style={{ ...field, width: "100%" }}>
+          <select aria-label="Destination vessel" value={destVesselId} onChange={(e) => setDestVesselId(e.target.value)} style={{ ...field, width: "100%" }}>
             {vessels.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.code} ({v.capacityL} L)
@@ -152,7 +152,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
         </div>
         <div style={{ flex: "1 1 240px" }}>
           <label style={label}>Target lot</label>
-          <select value={effMode === "ADD" ? addLotId : "NEW"} onChange={(e) => { if (e.target.value === "NEW") setMode("NEW"); else { setMode("ADD"); setAddLotId(e.target.value); } }} style={{ ...field, width: "100%" }}>
+          <select aria-label="Target lot" value={effMode === "ADD" ? addLotId : "NEW"} onChange={(e) => { if (e.target.value === "NEW") setMode("NEW"); else { setMode("ADD"); setAddLotId(e.target.value); } }} style={{ ...field, width: "100%" }}>
             <option value="NEW">New must lot</option>
             {dest?.mustLots.map((l) => (
               <option key={l.lotId} value={l.lotId}>

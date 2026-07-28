@@ -136,17 +136,17 @@ export function FinishedGoodsSection({ categories, items, locations, onHand }: {
               <input type="hidden" name="kind" value={selKind} />
               <input type="hidden" name="itemId" value={selId} />
               <input type="hidden" name="mode" value={mode} />
-              <select value={itemRef} onChange={(e) => setItemRef(e.target.value)} style={sel} required>
+              <select aria-label="Item" value={itemRef} onChange={(e) => setItemRef(e.target.value)} style={sel} required>
                 <option value="" disabled>Choose item</option>
                 {items.map((it) => <option key={`${it.kind}:${it.id}`} value={`${it.kind}:${it.id}`}>{it.label} — {it.category}</option>)}
               </select>
               {mode === "TRANSFER" ? (
                 <div style={{ display: "flex", gap: 8 }}>
-                  <select name="fromLocationId" style={sel} required defaultValue=""><option value="" disabled>From</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-                  <select name="toLocationId" style={sel} required defaultValue=""><option value="" disabled>To</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                  <select aria-label="From location" name="fromLocationId" style={sel} required defaultValue=""><option value="" disabled>From</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                  <select aria-label="To location" name="toLocationId" style={sel} required defaultValue=""><option value="" disabled>To</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
                 </div>
               ) : (
-                <select name="locationId" style={sel} required defaultValue=""><option value="" disabled>Location</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                <select aria-label="Location" name="locationId" style={sel} required defaultValue=""><option value="" disabled>Location</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
               )}
               <div style={{ display: "flex", gap: 8 }}>
                 <Input name={mode === "ADJUST" ? "delta" : "qty"} type="number" placeholder={mode === "ADJUST" ? "Change (+/-)" : "Quantity"} required style={{ flex: 1 }} />
@@ -238,13 +238,13 @@ export function FinishedGoodsSection({ categories, items, locations, onHand }: {
                         </div>
                       </td>
                       <td style={{ padding: "12px 16px" }}>
-                        <select value={draft.categoryId} onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })} style={edSel}>
+                        <select aria-label="Category" value={draft.categoryId} onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })} style={edSel}>
                           {r.kind === "BOTTLED_WINE" ? <option value="">— none —</option> : <option value="" disabled>Category</option>}
                           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </td>
                       <td style={{ padding: "12px 16px" }}>
-                        <select value={draft.locationId} onChange={(e) => setDraft({ ...draft, locationId: e.target.value })} style={edSel}>
+                        <select aria-label="Location" value={draft.locationId} onChange={(e) => setDraft({ ...draft, locationId: e.target.value })} style={edSel}>
                           {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                         </select>
                       </td>

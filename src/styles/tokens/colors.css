@@ -70,6 +70,10 @@
      ring disappears. */
   --focus-ring-on-dark: rgba(255, 248, 241, 0.65);
 
+  /* Rail tooltip (doc 13 §6) — ink surface, cream text. */
+  --tooltip-bg: var(--ink-900);
+  --tooltip-fg: var(--cream);
+
   /* ---- Text-safe darkened variants (v2 §A2) -------------- */
   /* The raw editorial hues are decorative-only: --golden-yellow is 2.1:1 on cream
      and cannot legally carry text. These are their text-carrying counterparts. */

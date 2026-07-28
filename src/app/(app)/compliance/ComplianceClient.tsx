@@ -244,7 +244,7 @@ export function ComplianceClient(props: {
                         <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{l.abv == null ? "—" : `${l.abv}%`}</td>
                         <td style={{ padding: "6px 8px" }}>{CLASS_LABEL[l.taxClass] ?? l.taxClass}{l.overridden ? <span style={{ color: "var(--warning)" }}> (overridden)</span> : null}</td>
                         <td style={{ padding: "6px 8px" }}>
-                          <select
+                          <select aria-label="Tax class override"
                             disabled={view.status === "FILED" || pending}
                             value={overrides[l.lotId] ?? ""}
                             onChange={(e) => setOverrides((o) => { const n = { ...o }; if (e.target.value) n[l.lotId] = e.target.value; else delete n[l.lotId]; return n; })}

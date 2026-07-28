@@ -201,7 +201,7 @@ function MappingPanel({ detail, proofMappings, entitySources, reference }: Pick<
               style={{ display: "grid", gridTemplateColumns: "140px minmax(180px, 1fr) auto", gap: 10, alignItems: "center" }}
             >
               <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{row.sourceObjectType}:{row.sourceKey}</span>
-              <select name="targetId" defaultValue="" style={{ height: 36, border: "1px solid var(--border-strong)", borderRadius: 6, padding: "0 8px", background: "var(--surface-raised)" }}>
+              <select aria-label="Target record" name="targetId" defaultValue="" style={{ height: 36, border: "1px solid var(--border-strong)", borderRadius: 6, padding: "0 8px", background: "var(--surface-raised)" }}>
                 <option value="">Select target</option>
                 {row.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>

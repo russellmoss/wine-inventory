@@ -13,6 +13,13 @@ import {
   Quote,
   StatusChip,
   STATUS_VARIANTS,
+  INPUT_SIZES,
+  Select,
+  NumericUnitInput,
+  DateTimeControl,
+  PageHeader,
+  Breadcrumbs,
+  IconButton,
   ConfirmButton,
   Skeleton,
   EmptyState,
@@ -44,6 +51,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function StyleguidePage() {
   const [checked, setChecked] = React.useState(true);
+  const [dose, setDose] = React.useState("2");
 
   return (
     <div style={{ maxWidth: "var(--container-lg)", margin: "0 auto", padding: "48px 40px" }}>
@@ -276,20 +284,175 @@ export default function StyleguidePage() {
         </Card>
       </Section>
 
+      <Section title="Select — an accessible name is not optional (v2 §B10)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            <code>label</code> is a required prop. <code>hideLabel</code> moves it to{" "}
+            <code>.sr-only</code> for dense filter rows — it changes the label&rsquo;s visibility,
+            never its existence. Still a native select: the OS picker is the best control on a phone
+            in a cellar.
+          </p>
+        </div>
+        <div style={{ width: 240 }}>
+          <Select label="Variety" defaultValue="pn">
+            <option value="pn">Pinot Noir</option>
+            <option value="ch">Chardonnay</option>
+          </Select>
+        </div>
+        <div style={{ width: 240 }}>
+          <Select label="Destination vessel" required defaultValue="">
+            <option value="" disabled>Choose a vessel</option>
+            <option value="t4">T-04</option>
+          </Select>
+        </div>
+        <div style={{ width: 240 }}>
+          <Select label="Tax class" error="Pick a class before filing" defaultValue="">
+            <option value="">(derived)</option>
+            <option value="a5">§A5</option>
+          </Select>
+        </div>
+        <div style={{ width: 240 }}>
+          <Select label="Grower" hideLabel defaultValue="g1" hint="Label is sr-only here">
+            <option value="g1">Bajo Vineyard</option>
+          </Select>
+        </div>
+      </Section>
+
+      <Section title="NumericUnitInput (v2 §B9)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            The unit sits in its own box, never inside the value. The live derived readout is the
+            single best error-prevention device in the product — it is what catches a 10× dosing slip
+            before it reaches the ledger. Out of tolerance is a quiet note, never a block: the wine is
+            already moving.
+          </p>
+        </div>
+        <NumericUnitInput
+          label="Dose rate"
+          value={dose}
+          onValueChange={setDose}
+          unit="g/hL"
+          planned={{ value: "2", label: "Planned: 2 g/hL" }}
+          nudges={[-1, 1, 5]}
+          derived={`${dose || 0} g/hL × 218 L = ${((Number(dose) || 0) * 2.18).toFixed(2)} g`}
+          tolerance={{ ok: Number(dose) <= 10, note: "Above the usual range for this additive — recorded anyway." }}
+          style={{ width: 340 }}
+        />
+      </Section>
+
+      <Section title="DateTimeControl (v2 §B12)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            Still the native input — typed entry keeps working, which a hand-rolled picker usually
+            breaks. This only normalises the box so it stops being a visible seam beside DS fields.
+          </p>
+        </div>
+        <div style={{ width: 220 }}>
+          <DateTimeControl label="From" defaultValue="2026-07-01" />
+        </div>
+        <div style={{ width: 220 }}>
+          <DateTimeControl label="Pulled at" mode="datetime-local" />
+        </div>
+      </Section>
+
+      <Section title="PageHeader + Breadcrumbs (v2 §B4, §B5)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 16, maxWidth: "70ch" }}>
+            One header for every screen, replacing <strong>nine</strong> distinct hand-set{" "}
+            <code>h1</code> sizes across 61 headings (the handoff said four). 34px desktop / 30px
+            below. The summary is plain text, never a heading — otherwise it lands in the heading
+            outline and the page reads as two titles.
+          </p>
+          <div style={{ border: "1px dashed var(--border-strong)", borderRadius: "var(--radius-md)", padding: 20 }}>
+            <PageHeader
+              breadcrumbs={[
+                { label: "Today", href: "/" },
+                { label: "Work orders", href: "/work-orders" },
+                { label: "#253" },
+              ]}
+              eyebrow="Cellar"
+              title="Top up Hall C"
+              summary="9 of 60 barrels recorded. Two are flagged for a volume that looks high."
+              meta="Issued by you · due today"
+              actions={
+                <>
+                  <Button size="sm" variant="secondary">Edit</Button>
+                  <Button size="sm">Execute</Button>
+                </>
+              }
+            />
+          </div>
+          <p style={{ color: "var(--text-meta)", fontSize: 12, marginTop: 10 }}>
+            Breadcrumbs collapse the middle past 4 crumbs; the last is never a link and carries
+            <code> aria-current=&quot;page&quot;</code>.
+          </p>
+          <div style={{ marginTop: 10 }}>
+            <Breadcrumbs
+              items={[
+                { label: "Cellar floor", href: "/bulk" },
+                { label: "Hall C" },
+                { label: "Rack 4" },
+                { label: "CH-NEUTRAL-14" },
+                { label: "C-1410" },
+              ]}
+            />
+          </div>
+        </div>
+      </Section>
+
+      <Section title="IconButton (v2 §B7)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            44×44, 20px icon, <code>aria-label</code> required by the type. Universal actions only —
+            close, expand, more. <strong>Never a domain action:</strong> &ldquo;Rack&rdquo; and
+            &ldquo;Press&rdquo; are words a cellar hand must be able to read.
+          </p>
+        </div>
+        <IconButton aria-label="Close">✕</IconButton>
+        <IconButton aria-label="More actions" variant="outline">⋯</IconButton>
+        <IconButton aria-label="Expand" variant="outline">⤢</IconButton>
+        <IconButton aria-label="Close" disabled>✕</IconButton>
+      </Section>
+
       <Section title="Avatars">
         <Avatar name="Bhutan Wine" />
         <Avatar name="Russell Moss" tone="green" />
         <Avatar name="Cellar Master" tone="maroon" size={52} />
       </Section>
 
-      <Section title="Forms">
+      <Section title="Forms — 44 / 48 / 56 / 60">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            The hint and the error are wired to the field with <code>aria-describedby</code>; an error
+            also sets <code>aria-invalid</code> and announces via <code>role=&quot;alert&quot;</code>; a
+            required field carries a visible marker plus a screen-reader word. None of that existed
+            before 2026-07-28, across 165 call sites.
+          </p>
+        </div>
         <div style={{ width: 280 }}>
           <Input label="Wine name" placeholder="Ser Kem Marp Reserve" hint="As it appears on the label" />
         </div>
         <div style={{ width: 280 }}>
           <Input label="Vintage" defaultValue="2025" error="Must be a 4-digit year" />
         </div>
-        <Checkbox checked={checked} onChange={setChecked} label="Active in dropdowns" />
+        <div style={{ width: 280 }}>
+          <Input label="Lot code" required placeholder="25-PN-04" hint="Required" />
+        </div>
+        <div style={{ width: 280 }}>
+          <Input label="Volume" size="floor" defaultValue="218" adornmentRight="L" inputMode="decimal" />
+        </div>
+        <div style={{ width: 280 }}>
+          <Input label="Disabled" defaultValue="Not editable" disabled hint="A real surface, not opacity" />
+        </div>
+        <div style={{ width: "100%", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+          {(["sm", "md", "lg", "floor"] as const).map((sz) => (
+            <div key={sz} style={{ width: 150 }}>
+              <Input label={`${sz} ${INPUT_SIZES[sz].px}`} size={sz} defaultValue="000" />
+            </div>
+          ))}
+        </div>
+        <Checkbox checked={checked} onChange={setChecked} label="Active in dropdowns (44px target)" />
+        <Checkbox checked={false} disabled label="Disabled" />
       </Section>
 
       <Section title="Metrics">

@@ -54,7 +54,7 @@ export function ClientsAdmin({ owners }: { owners: Owner[] }) {
           <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Smith Family Cellars" style={{ flex: 1, minWidth: 200 }} />
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: "var(--text-caption)", color: "var(--text-secondary)", fontWeight: "var(--weight-medium)" as unknown as number }}>Kind</span>
-            <select style={selectStyle} value={kind} onChange={(e) => setKind(e.target.value as Owner["kind"])}>
+            <select aria-label="Client kind" style={selectStyle} value={kind} onChange={(e) => setKind(e.target.value as Owner["kind"])}>
               <option value="CUSTOM_CRUSH_CLIENT">Custom-crush client</option>
               <option value="AP_PROPRIETOR">Alternating proprietor</option>
             </select>

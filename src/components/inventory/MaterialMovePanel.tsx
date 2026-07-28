@@ -198,7 +198,7 @@ export function MaterialMovePanel({
   }
 
   const locationSelect = (value: string, onChange: (v: string) => void, opts: LocationOpt[]) => (
-    <select style={selectStyle} value={value} onChange={(e) => onChange(e.target.value)}>
+    <select aria-label="Location" style={selectStyle} value={value} onChange={(e) => onChange(e.target.value)}>
       {opts.length === 0 ? <option value="">No locations</option> : null}
       {opts.map((l) => (
         <option key={l.id} value={l.id}>

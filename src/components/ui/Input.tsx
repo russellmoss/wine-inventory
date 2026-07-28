@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
+import { inputMetrics, type InputSize } from "./input-sizes";
 
-type Size = "sm" | "md" | "lg";
+type Size = InputSize;
 
 export interface InputProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size" | "style"> {
@@ -12,6 +13,11 @@ export interface InputProps
   size?: Size;
   iconLeft?: React.ReactNode;
   iconRight?: React.ReactNode;
+  /**
+   * A non-editable unit or suffix box at the field's own height, outside the value
+   * (v2 §B8 adornment slot). The unit never goes *inside* the value.
+   */
+  adornmentRight?: React.ReactNode;
   style?: React.CSSProperties;
   inputStyle?: React.CSSProperties;
 }
@@ -19,6 +25,14 @@ export interface InputProps
 /**
  * Input — labeled text field. Calm white field, sand border, soft wine focus
  * ring. Label + optional hint/error sit with the field.
+ *
+ * The hint and the error are wired to the field with `aria-describedby`, the
+ * error also sets `aria-invalid` and is announced via `role="alert"`, and a
+ * required field carries a VISIBLE marker, not just the `required` attribute
+ * (v2 §B8). None of that existed before 2026-07-28: across 165 call sites the
+ * hint and error text rendered on screen but was never associated with the
+ * input, so a screen-reader user heard the label and nothing else — including
+ * on validation failure.
  */
 export function Input({
   label,
@@ -29,7 +43,9 @@ export function Input({
   size = "md",
   iconLeft,
   iconRight,
+  adornmentRight,
   disabled = false,
+  required,
   style,
   inputStyle,
   ...rest
@@ -37,19 +53,22 @@ export function Input({
   const [focus, setFocus] = React.useState(false);
   const reactId = React.useId();
   const inputId = id || reactId;
+  const hintId = `${inputId}-hint`;
+  const errorId = `${inputId}-error`;
 
-  const sizes: Record<Size, { h: number; fs: number; px: number }> = {
-    sm: { h: 36, fs: 14, px: 12 },
-    md: { h: 44, fs: 15, px: 14 },
-    lg: { h: 52, fs: 16, px: 16 },
-  };
-  const s = sizes[size] || sizes.md;
+  const s = inputMetrics(size);
 
   const borderColor = error
     ? "var(--danger)"
     : focus
       ? "var(--wine-primary)"
       : "var(--border-strong)";
+
+  // Only the message actually rendered is described — describing a hidden node
+  // makes a screen reader read stale text.
+  const describedBy = [error ? errorId : null, !error && hint ? hintId : null]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, ...style }}>
@@ -64,6 +83,18 @@ export function Input({
           }}
         >
           {label}
+          {/* The asterisk is VISUAL only. The `required` attribute already tells
+              assistive tech the field is required, so an extra sr-only
+              "(required)" inside the label lands in the accessible NAME and the
+              user hears "Email required, required". */}
+          {required ? (
+            <>
+              {" "}
+              <span aria-hidden="true" style={{ color: "var(--danger)" }}>
+                *
+              </span>
+            </>
+          ) : null}
         </label>
       ) : null}
       <div
@@ -71,17 +102,24 @@ export function Input({
           display: "flex",
           alignItems: "center",
           gap: 8,
-          height: s.h,
-          padding: `0 ${s.px}px`,
-          background: disabled ? "var(--paper-100)" : "var(--surface-raised)",
-          border: `1px solid ${borderColor}`,
+          height: s.height,
+          padding: `0 ${s.padX}px`,
+          // A real disabled surface, not an opacity wash — same correction Button
+          // took in Phase 1 (v2 §B6/§B8).
+          background: disabled ? "var(--paper-200)" : "var(--surface-raised)",
+          border: `1px solid ${disabled ? "var(--paper-300)" : borderColor}`,
           borderRadius: "var(--radius-md)",
           boxShadow: focus ? "var(--shadow-focus)" : "none",
           transition:
             "border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard)",
-          opacity: disabled ? 0.6 : 1,
+          cursor: disabled ? "not-allowed" : "text",
         }}
       >
+        {/* NOT aria-hidden. These slots can hold INTERACTIVE content — the login
+            page passes a show/hide-password button through iconRight — and
+            aria-hidden around a focusable element is a WCAG failure (axe:
+            aria-hidden-focus). A purely decorative <svg> with no accessible name
+            contributes nothing to the tree anyway, so hiding it bought nothing. */}
         {iconLeft ? (
           <span style={{ display: "inline-flex", color: "var(--text-muted)" }}>{iconLeft}</span>
         ) : null}
@@ -89,6 +127,9 @@ export function Input({
           id={inputId}
           type={type}
           disabled={disabled}
+          required={required}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy || undefined}
           onFocus={() => setFocus(true)}
           onBlur={() => setFocus(false)}
           style={{
@@ -97,8 +138,8 @@ export function Input({
             outline: "none",
             background: "transparent",
             fontFamily: "var(--font-body)",
-            fontSize: s.fs,
-            color: "var(--text-primary)",
+            fontSize: s.fontSize,
+            color: disabled ? "var(--ink-600)" : "var(--text-primary)",
             minWidth: 0,
             ...inputStyle,
           }}
@@ -107,13 +148,41 @@ export function Input({
         {iconRight ? (
           <span style={{ display: "inline-flex", color: "var(--text-muted)" }}>{iconRight}</span>
         ) : null}
+        {adornmentRight ? (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              alignSelf: "stretch",
+              marginRight: -s.padX,
+              padding: `0 ${s.padX}px`,
+              borderLeft: "1px solid var(--border-strong)",
+              background: "var(--paper-100)",
+              color: "var(--text-secondary)",
+              fontFamily: "var(--font-body)",
+              fontSize: s.fontSize - 1,
+              whiteSpace: "nowrap",
+              borderTopRightRadius: "var(--radius-md)",
+              borderBottomRightRadius: "var(--radius-md)",
+            }}
+          >
+            {adornmentRight}
+          </span>
+        ) : null}
       </div>
       {error ? (
-        <span style={{ fontFamily: "var(--font-body)", fontSize: 12.5, color: "var(--danger)" }}>
+        <span
+          id={errorId}
+          role="alert"
+          style={{ fontFamily: "var(--font-body)", fontSize: 12.5, color: "var(--danger)" }}
+        >
           {error}
         </span>
       ) : hint ? (
-        <span style={{ fontFamily: "var(--font-body)", fontSize: 12.5, color: "var(--text-muted)" }}>
+        <span
+          id={hintId}
+          style={{ fontFamily: "var(--font-body)", fontSize: 12.5, color: "var(--text-muted)" }}
+        >
           {hint}
         </span>
       ) : null}

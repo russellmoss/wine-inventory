@@ -59,6 +59,14 @@
   font-size: 14px;
 }
 
+/* PageHeader's h1 (v2 §B4): 34px desktop / 30px below. One size for every page,
+   replacing NINE distinct hand-set sizes (22/24/26/30/32/34/36/40/52 measured
+   across 61 headings). */
+.ds-page-title { font-size: 34px; }
+@media (max-width: 767px) {
+  .ds-page-title { font-size: 30px; }
+}
+
 /* Skeleton pulse (v2 §B29). A CSS animation on purpose, not a JS loop — the global
    reduced-motion rule below then switches it off with no per-component check. */
 @keyframes ds-skeleton-pulse {
@@ -94,16 +102,61 @@
   .bw-desktop-sidebar { display: flex; }
 }
 
+/* Phase 3: when the bottom tab bar is present it replaces the mobile top bar, and
+   the main region needs clearance so the last row is not sitting under the tabs. */
+.bw-tabbar { display: grid; }
+@media (min-width: 1024px) {
+  .bw-tabbar { display: none; }
+}
+@media (max-width: 1023px) {
+  .app-main:has(~ .bw-tabbar) { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+}
+
 /* Mobile: wide tables scroll horizontally instead of breaking the layout. */
 @media (max-width: 767px) {
-  .app-main table {
+  /* LEGACY mobile table treatment. `display: block` destroys table semantics —
+     rows and cells stop being rows and cells, so a screen reader loses the
+     row/column relationships and reads a flat run of text. It is scoped OFF any
+     table owned by <ResponsiveTable>, which stamps `data-rt` on itself and
+     handles its own overflow properly.
+
+     This is a shrink-to-zero migration, not a flag day: each migrated table opts
+     itself out, a partly-migrated app is always correct, and no table can end up
+     with neither treatment. DELETE this rule once no `table:not([data-rt])`
+     remains under .app-main. */
+  .app-main table:not([data-rt]) {
     display: block;
     overflow-x: auto;
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
   }
-  /* Tame oversized display headings on small screens. */
-  .app-main h1 {
+
+  /* Transform "stack" (doc 04 §4): rows become labelled blocks. Semantics are
+     preserved because the ARIA roles are restored explicitly. */
+  .app-main table[data-rt="stack"] thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .app-main table[data-rt="stack"],
+  .app-main table[data-rt="stack"] tbody,
+  .app-main table[data-rt="stack"] tr,
+  .app-main table[data-rt="stack"] td {
+    display: block;
+    width: 100%;
+  }
+  .app-main table[data-rt="stack"] tr {
+    padding: var(--space-2) 0;
+    border-top: 1px solid var(--border-strong);
+  }
+  /* Tame oversized display headings on small screens. Scoped OFF the new
+     PageHeader, which sets its own responsive size — otherwise this !important
+     would win and PageHeader could never control its own type. Delete this rule
+     entirely once every page has migrated to PageHeader. */
+  .app-main h1:not(.ds-page-title) {
     font-size: 30px !important;
   }
 }

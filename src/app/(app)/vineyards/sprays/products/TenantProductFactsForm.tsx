@@ -5,7 +5,7 @@
 // and marked grower-supplied everywhere it resolves. Two independent groups (REGULATORY vs
 // AGRONOMIC) so a rainfast override never shadows a PHI value it didn't touch (KD-3).
 
-import { useState, useTransition } from "react";
+import { cloneElement, isValidElement, useId, useState, useTransition, type ReactElement } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card } from "@/components/ui";
 import { upsertTenantProductFacts } from "@/lib/spray/actions";
@@ -20,11 +20,26 @@ const inputStyle: React.CSSProperties = {
   fontSize: 14,
 };
 
+/**
+ * Field — label + control.
+ *
+ * The label used to be a bare `<label style={labelStyle}>` with no `htmlFor`, so all
+ * 12 controls in this form had label text on screen that assistive tech never
+ * associated with anything: a screen-reader user heard "combo box, REGULATORY" with
+ * no idea what it set. `useId` + `htmlFor` + cloning the id onto the child fixes all
+ * 12 at the wrapper instead of 12 times at the call sites.
+ */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const id = useId();
+  const child = isValidElement(children)
+    ? cloneElement(children as ReactElement<{ id?: string }>, { id })
+    : children;
   return (
     <div>
-      <label style={labelStyle}>{label}</label>
-      {children}
+      <label htmlFor={id} style={labelStyle}>
+        {label}
+      </label>
+      {child}
     </div>
   );
 }

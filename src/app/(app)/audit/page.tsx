@@ -43,7 +43,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
       </p>
 
       <form method="get" style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
-        <select name="entityType" defaultValue={entityType} style={inputStyle}>
+        <select aria-label="Entity type" name="entityType" defaultValue={entityType} style={inputStyle}>
           <option value="">All types</option>
           {entityTypes.map((e) => <option key={e.entityType} value={e.entityType}>{e.entityType}</option>)}
         </select>
