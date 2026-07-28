@@ -46,9 +46,14 @@ export function FillIndicator({
       aria-hidden="true"
       style={{
         position: "relative",
-        width: 10,
+        width: 13,
         height: track,
-        background: "var(--paper-200)",
+        // The track needs to read as a VESSEL, not as a border artifact. On
+        // `--surface-raised` a bare `--paper-200` fill is nearly invisible, and an
+        // invisible gauge cannot do the one job §B22 gives it: let you compare fills
+        // across the board at a glance, without reading a single number.
+        background: "var(--surface-sunken, var(--paper-200))",
+        border: "1px solid var(--border-strong)",
         borderRadius: "var(--radius-sm)",
         overflow: "hidden",
         flex: "0 0 auto",

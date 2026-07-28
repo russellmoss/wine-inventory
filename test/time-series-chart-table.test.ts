@@ -30,6 +30,13 @@ describe("AC-S25 — the data table is reachable, not only announceable", () => 
     expect(CHART.match(/tableVisibility === "disclosure" \? undefined : "sr-only"/g) ?? []).toHaveLength(2);
   });
 
+  it("keeps the trailing zero, so the table and the stated fact read identically", () => {
+    // Number(v.toFixed(1)) renders 17.0 as "17". Beside a metric stating "17.0 Bx" that is
+    // the same value shown two ways, inside the one disclosure AC-S27 asks them to agree in.
+    expect(CHART).toContain("{p.value.toFixed(s.precision ?? 1)}");
+    expect(code(CHART)).not.toContain("Number(p.value.toFixed");
+  });
+
   it("keeps data-rt so the global mobile table rule still cannot maul it", () => {
     expect(CHART).toContain('data-rt="scroll"');
   });

@@ -161,6 +161,20 @@ describe("AC-S27 — the sentence and the stated facts cannot disagree", () => {
     );
   });
 
+  it("never says 'between 27 July and 27 July'", () => {
+    // Two readings an hour apart have different observedAt but the same day. Comparing
+    // timestamps instead of day labels produced a sentence no person would write.
+    const sameDay = [r("2026-07-27T08:00:00.000Z", 18.0, 24.0), r("2026-07-27T15:00:00.000Z", 17.0, 29.4)];
+    const s = tankDetailFacts(sameDay).ariaSentence;
+    expect(s).toContain("on 27 July");
+    expect(s).not.toMatch(/between (.+) and \1/);
+  });
+
+  it("still spans two days when the readings really are on two days", () => {
+    const s = tankDetailFacts(FERMENT).ariaSentence;
+    expect(s).toContain("between 16 July and 27 July");
+  });
+
   it("is deterministic — no clock, no locale drift between calls", () => {
     expect(tankDetailFacts(FERMENT).ariaSentence).toBe(tankDetailFacts(FERMENT).ariaSentence);
   });

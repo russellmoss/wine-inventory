@@ -180,11 +180,16 @@ function composeSentence(a: {
     }
   }
 
+  // Compare the DAY LABELS, not the timestamps. Two readings taken an hour apart have
+  // different `observedAt` but the same day, and "between 27 July and 27 July" is a sentence
+  // no person would write.
+  const firstDay = a.firstAt ? dayLabel(a.firstAt) : null;
+  const lastDay = a.lastAt ? dayLabel(a.lastAt) : null;
   const span =
-    a.firstAt && a.lastAt && a.firstAt !== a.lastAt
-      ? ` between ${dayLabel(a.firstAt)} and ${dayLabel(a.lastAt)}`
-      : a.lastAt
-        ? ` on ${dayLabel(a.lastAt)}`
+    firstDay && lastDay && firstDay !== lastDay
+      ? ` between ${firstDay} and ${lastDay}`
+      : lastDay
+        ? ` on ${lastDay}`
         : "";
 
   return `${clauses.join(" and ")}${span}.`;

@@ -186,7 +186,10 @@ export function TimeSeriesChart({
               <th scope="row">{s.label}</th>
               <td>{fmtDate(p.date)}</td>
               <td>
-                {Number(p.value.toFixed(s.precision ?? 1))}
+                {/* Keep the trailing zero. `Number(...)` stripped it, so a series stated as
+                    "17.0 Bx" beside the chart appeared as "17 Bx" inside the table — the same
+                    value rendered two ways, in the one place AC-S27 asks them to agree. */}
+                {p.value.toFixed(s.precision ?? 1)}
                 {s.unit ? ` ${s.unit}` : ""}
               </td>
             </tr>
