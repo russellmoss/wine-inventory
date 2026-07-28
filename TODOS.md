@@ -753,3 +753,25 @@ script and import that resolves `@prisma/client`, and would collide with all thr
 lanes if attempted mid-wave.
 **Context:** S2 council finding C11, accepted as a known limitation for that lane rather than fixed
 unilaterally. **Do this between waves, not inside one**, and land it alone.
+
+## Migrate WorkOrdersTabs / InventoryTabs off the tablist anti-pattern (plan 104 D6)
+
+**What:** `src/app/(app)/work-orders/WorkOrdersTabs.tsx:24-35` and
+`src/app/(app)/inventory/InventoryTabs.tsx:32-55` both put `role="tablist"` / `role="tab"` on real
+`<Link>`s, at `minHeight: 36` — under the 44px touch floor.
+
+**Why:** `test/shell-nav.test.ts:22-24` prohibits exactly this **in `SectionNav`**, with the reason
+spelled out: tab semantics promise a screen-reader user that arrow keys swap a panel in place, and
+then the page navigates out from under them. Two shipped components do the thing the guard forbids,
+and the guard never looked at them.
+
+**Why it was NOT done in plan 104:** these are **query-param view switchers on one route**, not
+sibling-route navigation. They are a different control from the sub-nav that phase was building, and
+migrating them means changing what they DO, not just what they render — so it would have been scope
+creep dressed as consistency. Explicitly deferred as D6.
+
+**Pros:** closes a real a11y defect on two high-traffic surfaces; lets the `role="tablist"` ban be
+enforced repo-wide instead of on one component.
+**Cons:** either they become real tabs (client panels, arrow-key handling, no URL) or real links (no
+tab semantics, keep the URL) — that is a product decision, not a rename.
+**Context:** the 44px fix is independent of the semantics question and could land first, alone.

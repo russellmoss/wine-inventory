@@ -215,7 +215,7 @@ function SidebarContent({
             13 destinations nor the contextual list, so before this it had no way in
             at all under NAV_V2 — the app's home page, unreachable. No aria-current:
             this is a home link outside the nav landmark, not a nav item. */}
-        <Link href="/" onClick={onNavigate} aria-label="Cellarhand — dashboard" style={{ display: "block", textDecoration: "none" }}>
+        <Link href="/" onClick={onNavigate} aria-label="Cellarhand — dashboard" style={{ display: "inline-flex", alignItems: "center", minHeight: "var(--touch-min)", textDecoration: "none" }}>
           <BrandMark />
         </Link>
       </div>
@@ -435,7 +435,10 @@ export function AppShell({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <Link href="/" aria-label="Cellarhand — dashboard" style={{ display: "block", textDecoration: "none" }}>
+          {/* minHeight from --touch-min: the lockup art is 34px tall, and on a phone
+              this is a real navigation control, so it has to clear the 44px floor
+              (AC-F1) rather than inherit the image's height. */}
+          <Link href="/" aria-label="Cellarhand — dashboard" style={{ display: "inline-flex", alignItems: "center", minHeight: "var(--touch-min)", textDecoration: "none" }}>
             <BrandMark />
           </Link>
         </div>

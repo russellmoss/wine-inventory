@@ -33,6 +33,7 @@ export const AUDITED_ROUTES: readonly string[] = [
   "/reports",
   "/samples",
   "/settings",
+  "/setup", // plan 104 D4 — the new admin hub
   "/setup/equipment",
   "/setup/expendables",
   "/setup/growers",
