@@ -1,6 +1,8 @@
 "use server";
 
 import { requireReadyUser } from "@/lib/dal";
+import { isTenantAdminLike } from "@/lib/access";
+import { isCustomCrushEnabled, isSparklingEnabled } from "@/lib/settings/data";
 import { searchEverything } from "./query";
 import { groupHits, looksLikeQuestion, type SearchGroup } from "./rank";
 
@@ -21,15 +23,31 @@ export interface PaletteResult {
 export async function paletteSearchAction(query: string): Promise<PaletteResult> {
   const user = await requireReadyUser();
 
+  // `isTenantAdminLike`, not a hand-rolled role compare: this used to miss
+  // `developer`, so a developer's palette silently hid the admin destinations the
+  // sidebar was showing them at the same moment. One predicate, one answer.
   const role = String(user.role ?? "").toLowerCase();
-  const isAdmin = role === "admin" || role === "owner";
+  const isAdmin = isTenantAdminLike(user);
+  const isDeveloper = role === "developer";
+
+  // The two capability gates, so the palette hides exactly what the sub-navs hide.
+  // Without them Ctrl-K would offer "En Tirage" to a winery with no sparkling
+  // program — a search hit that lands on a 404 (K14).
+  const tenantId = user.supportOrganizationId ?? user.activeOrganizationId;
+  const [sparkling, customCrush] = await Promise.all([
+    tenantId ? isSparklingEnabled() : Promise.resolve(false),
+    tenantId ? isCustomCrushEnabled() : Promise.resolve(false),
+  ]);
 
   const hits = await searchEverything(query, {
     isAdmin,
-    isDeveloper: Boolean((user as { isDeveloper?: boolean }).isDeveloper),
-    // Admins see vineyard destinations regardless; a non-admin's membership is
-    // resolved by the destination filter itself.
-    hasVineyard: isAdmin,
+    isDeveloper,
+    // Admins reach every vineyard; a manager's real membership set decides the rest.
+    // It was hard-coded to `isAdmin`, which is why a vineyard manager could not find
+    // their own vineyard surfaces in search either (D5).
+    hasVineyard: user.vineyardIds.length > 0 || isAdmin,
+    sparkling,
+    customCrush,
   });
 
   return { groups: groupHits(hits), question: looksLikeQuestion(query) };

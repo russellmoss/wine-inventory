@@ -67,6 +67,39 @@ describe("MobileTabBar (doc 01 §9)", () => {
   });
 });
 
+describe("role filtering reaches BOTH nav surfaces (plan 104 D5)", () => {
+  const SEARCH_ACTIONS = read("lib/search/actions.ts");
+
+  it("derives hasVineyard from real membership, not from isAdmin", () => {
+    // `hasVineyard: isAdmin` was a live bug the flag was hiding: with NAV_V2 on, a
+    // non-admin vineyard manager with real memberships lost "Vineyard rounds" from
+    // the sidebar entirely — the destination hidden from the person it exists for.
+    expect(code(SHELL)).not.toContain("hasVineyard: isAdmin");
+    expect(SHELL).toContain("const hasVineyard = (user.vineyardIds?.length ?? 0) > 0 || isAdmin;");
+  });
+
+  it("filters the mobile tab bar through the same value", () => {
+    // The other half: the tab bar showed Vineyard to everyone, unfiltered, while the
+    // desktop hid it. Two surfaces, two different answers, same user.
+    expect(SHELL).toContain("...(hasVineyard ? [{ href: \"/vineyards/field-notes\"");
+  });
+
+  it("uses the same admin predicate in search as in the shell", () => {
+    // actions.ts hand-rolled `role === "admin" || role === "owner"`, which misses
+    // `developer` — so a developer's palette hid destinations their sidebar showed.
+    expect(SEARCH_ACTIONS).toContain("isTenantAdminLike(user)");
+    expect(code(SEARCH_ACTIONS)).not.toContain('role === "admin" || role === "owner"');
+    expect(code(SEARCH_ACTIONS)).not.toContain("hasVineyard: isAdmin");
+  });
+
+  it("gives the brand mark and Help / feedback a real link", () => {
+    // Neither `/` nor `/help/feedback` is in the 13 destinations. Before this both
+    // were URL-only under the flag: the home page and the bug report, unreachable.
+    expect(SHELL).toContain('<Link href="/" onClick={onNavigate} aria-label="Cellarhand — dashboard"');
+    expect(SHELL).toContain('<Link href="/help/feedback"');
+  });
+});
+
 describe("the flag contract", () => {
   it("defaults OFF", () => {
     expect(FLAG).toContain('process.env.NEXT_PUBLIC_NAV_V2 === "1"');

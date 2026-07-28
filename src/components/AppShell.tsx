@@ -157,6 +157,7 @@ function SidebarContent({
   isActive,
   isAdmin,
   isDeveloper,
+  hasVineyard,
   wineryOpen,
   setWineryOpen,
   vineyardsOpen,
@@ -177,6 +178,8 @@ function SidebarContent({
   isActive: (href: string) => boolean;
   isAdmin: boolean;
   isDeveloper: boolean;
+  /** Real vineyard membership, NOT `isAdmin` — see the AppShell prop for why. */
+  hasVineyard: boolean;
   wineryOpen: boolean;
   setWineryOpen: (fn: (o: boolean) => boolean) => void;
   vineyardsOpen: boolean;
@@ -208,7 +211,13 @@ function SidebarContent({
   return (
     <>
       <div style={{ padding: "20px 20px 12px" }}>
-        <BrandMark />
+        {/* OD-3b-2: the brand mark is the way to the dashboard. `/` is in neither the
+            13 destinations nor the contextual list, so before this it had no way in
+            at all under NAV_V2 — the app's home page, unreachable. No aria-current:
+            this is a home link outside the nav landmark, not a nav item. */}
+        <Link href="/" onClick={onNavigate} aria-label="Cellarhand — dashboard" style={{ display: "block", textDecoration: "none" }}>
+          <BrandMark />
+        </Link>
       </div>
       <nav aria-label="Main" style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", flex: 1, overflowY: "auto" }}>
       {/* Phase 3 (doc 01 §2): 3 groups, 13 destinations, ordered by frequency of
@@ -217,7 +226,7 @@ function SidebarContent({
             and a restart, not a revert commit while the crew is mid-harvest. */}
       {NAV_V2_ENABLED ? (
         NAV_MODEL.map((group) => {
-          const ctx = { isAdmin, isDeveloper, hasVineyard: isAdmin };
+          const ctx = { isAdmin, isDeveloper, hasVineyard };
           const visible = group.items.filter((d) => navVisible(d, ctx));
           if (visible.length === 0) return null;
           const badgeFor = (kind?: string) =>
@@ -308,7 +317,13 @@ function SidebarContent({
             </>
           )}
         </div>
-        <button onClick={onSignOut} style={{ marginTop: 8, background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 12.5, color: "var(--text-accent)", fontFamily: "var(--font-body)" }}>Sign out</button>
+        {/* doc 01 §4 puts Help / feedback in the sidebar footer. It said so before this
+            phase too; the link just never existed, so under NAV_V2 the only way to
+            report a bug was to know the URL. */}
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
+          <Link href="/help/feedback" onClick={onNavigate} style={{ fontSize: 12.5, color: "var(--text-accent)", fontFamily: "var(--font-body)", textDecoration: "none" }}>Help / feedback</Link>
+          <button onClick={onSignOut} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 12.5, color: "var(--text-accent)", fontFamily: "var(--font-body)" }}>Sign out</button>
+        </div>
       </div>
     </>
   );
@@ -327,7 +342,14 @@ export function AppShell({
   unreadMessages = 0,
   diagnosticsTenantName = null,
 }: {
-  user: { name?: string | null; email: string; role?: string | null; supportOrganizationId?: string | null; supportOrganizationName?: string | null; supportExpiresAt?: string | null };
+  /**
+   * `vineyardIds` is the user's real vineyard MEMBERSHIP set. It was already on
+   * `AppUser` and already computed by `requireReadyUser()` (dal.ts) — it just was
+   * not on this prop type, so the shell fell back to `hasVineyard: isAdmin`. With
+   * NAV_V2 on, that hid "Vineyard rounds" from the vineyard manager the destination
+   * exists for, while the mobile tab bar showed it to everyone unfiltered (D5).
+   */
+  user: { name?: string | null; email: string; role?: string | null; vineyardIds?: string[]; supportOrganizationId?: string | null; supportOrganizationName?: string | null; supportExpiresAt?: string | null };
   children: React.ReactNode;
   pendingSamples?: number;
   pendingWorkOrders?: number;
@@ -344,6 +366,10 @@ export function AppShell({
   const router = useRouter();
   const isAdmin = isTenantAdminLike(user);
   const isDeveloper = user.role === "developer";
+  // D5. Admins reach every vineyard, so they keep the destination; a manager keeps it
+  // when they actually have a membership. Everyone else loses it, on BOTH the desktop
+  // sidebar and the mobile tab bar, which is the half that was never filtered at all.
+  const hasVineyard = (user.vineyardIds?.length ?? 0) > 0 || isAdmin;
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const wineryActive = isActive(EN_TIRAGE_NAV.href) || WINERY.some((s) => isActive(s.href));
   const vineyardsActive = VINEYARDS.some((s) => isActive(s.href));
@@ -409,7 +435,9 @@ export function AppShell({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <BrandMark />
+          <Link href="/" aria-label="Cellarhand — dashboard" style={{ display: "block", textDecoration: "none" }}>
+            <BrandMark />
+          </Link>
         </div>
         <button
           type="button"
@@ -429,7 +457,7 @@ export function AppShell({
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
       <aside className="bw-desktop-sidebar" style={{ ...sidebarBox, position: "sticky", top: 0, height: "100vh" }}>
-        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} customCrushEnabled={customCrushEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
+        <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} hasVineyard={hasVineyard} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => {}} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} customCrushEnabled={customCrushEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
       </aside>
 
       {/* Mobile drawer */}
@@ -450,7 +478,7 @@ export function AppShell({
             >
               ×
             </button>
-            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} customCrushEnabled={customCrushEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
+            <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} hasVineyard={hasVineyard} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} customCrushEnabled={customCrushEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
           </aside>
         </div>
       ) : null}
@@ -466,10 +494,14 @@ export function AppShell({
       {NAV_V2_ENABLED ? (
         <MobileTabBar
           isActive={isActive}
+          // Conflict #7's mobile half. The desktop sidebar filters Vineyard rounds by
+          // role; the tab bar did not, so the phone showed it to every cellar hand
+          // while the desktop hid it from the manager who owns it. Same ctx, same
+          // answer, both surfaces. The grid sizes itself off tabs.length.
           tabs={[
             { href: "/work-orders", label: "Work", glyph: "☑", badge: pendingWorkOrders },
             { href: "/bulk", label: "Cellar", glyph: "◍" },
-            { href: "/vineyards/field-notes", label: "Vineyard", glyph: "❧" },
+            ...(hasVineyard ? [{ href: "/vineyards/field-notes", label: "Vineyard", glyph: "❧" }] : []),
             { href: "/inbox", label: "Find", glyph: "⌕" },
           ]}
         />

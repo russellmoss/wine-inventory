@@ -1,6 +1,12 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { NAV_MODEL, isVisible } from "@/lib/nav/model";
+import {
+  SECTIONS,
+  UTILITY_DESTINATIONS,
+  isSectionVisible,
+  type SectionContext,
+} from "@/lib/nav/sections";
 import { rankHits, type SearchHit } from "./rank";
 
 /**
@@ -28,11 +34,12 @@ import { rankHits, type SearchHit } from "./rank";
 
 const PER_KIND = 8; // fetch slightly above the display cap so ranking has room
 
-export interface SearchContext {
-  isAdmin: boolean;
-  isDeveloper: boolean;
-  hasVineyard: boolean;
-}
+/**
+ * Same context the sidebar and the sub-navs use (D2). Aliased rather than
+ * re-declared so the palette cannot drift into a laxer idea of "admin-only" than
+ * the nav — which is the exact shape of the leak the comment above warns about.
+ */
+export type SearchContext = SectionContext;
 
 export async function searchEverything(query: string, ctx: SearchContext): Promise<SearchHit[]> {
   const q = query.trim();
@@ -60,6 +67,34 @@ export async function searchEverything(query: string, ctx: SearchContext): Promi
         });
       }
     }
+  }
+
+  // --- Section routes (no DB, role-filtered) -------------------------------
+  // D2: the sub-navs and the palette read the SAME module, so a surface cannot be
+  // reachable in one and invisible in the other. The role filter is `isSectionVisible`,
+  // which delegates to the very same `isVisible` used two blocks up — an admin-only
+  // section must never surface here for a plain `user`, for any query string.
+  for (const [hub, def] of Object.entries(SECTIONS)) {
+    const hubLabel = NAV_MODEL.flatMap((g) => g.items).find((d) => d.href === hub)?.label ?? def.hubLabel;
+    for (const item of def.items) {
+      if (!isSectionVisible(item, ctx)) continue;
+      if (!item.label.toLowerCase().includes(lower)) continue;
+      hits.push({
+        kind: "destination",
+        id: item.href,
+        label: item.label,
+        // Naming the parent is what makes "Reports" and "Review" tellable apart.
+        subtitle: `under ${hubLabel}`,
+        href: item.href,
+      });
+    }
+  }
+
+  // Palette-only destinations: no nav item exists for these, so search IS the way in.
+  for (const util of UTILITY_DESTINATIONS) {
+    if (!isSectionVisible(util, ctx)) continue;
+    if (!util.label.toLowerCase().includes(lower)) continue;
+    hits.push({ kind: "destination", id: util.href, label: util.label, subtitle: "Tools", href: util.href });
   }
 
   const [vessels, lots, workOrders, blocks, materials, groups] = await Promise.all([

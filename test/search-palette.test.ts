@@ -16,6 +16,7 @@ import {
   type SearchHit,
 } from "@/lib/search/rank";
 import { KEY_HINT, isAskShortcut, isPaletteShortcut } from "@/lib/nav/shortcuts";
+import { allSectionItems, isSectionVisible, type SectionContext } from "@/lib/nav/sections";
 import { code } from "./helpers/code";
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
@@ -190,6 +191,65 @@ describe("tenancy — the real risk in this phase (AC-P4)", () => {
   it("filters destinations by role before returning them", () => {
     // Otherwise search leaks the existence of admin-only destinations to a `user`.
     expect(QUERY).toContain("if (!isVisible(d, ctx)) continue;");
+  });
+});
+
+describe("section coverage — the second way a surface goes missing (plan 104 D2)", () => {
+  it("iterates SECTIONS alongside NAV_MODEL", () => {
+    // A surface reachable from a sub-nav but not findable in Ctrl-K is half-lost.
+    // One module feeds both so the two cannot disagree.
+    expect(QUERY).toContain('from "@/lib/nav/sections"');
+    expect(QUERY).toContain("for (const [hub, def] of Object.entries(SECTIONS))");
+    expect(QUERY).toContain("for (const util of UTILITY_DESTINATIONS)");
+  });
+
+  it("role-filters section hits with the SAME predicate the sub-navs use", () => {
+    // query.ts:18-20 — search must never become a side channel that reveals an
+    // admin-only destination to a `user`. That now applies to 19 more routes.
+    expect(QUERY).toContain("if (!isSectionVisible(item, ctx)) continue;");
+    expect(QUERY).toContain("if (!isSectionVisible(util, ctx)) continue;");
+  });
+
+  it("names the parent hub, so Reports and Review are tellable apart", () => {
+    expect(QUERY).toContain("`under ${hubLabel}`");
+  });
+
+  it("takes its context type from the nav model rather than re-declaring it", () => {
+    // A locally-declared SearchContext is how the palette drifts into a laxer idea
+    // of "admin-only" than the sidebar.
+    expect(QUERY).toContain("export type SearchContext = SectionContext;");
+  });
+
+  it("passes the capability gates in, so Ctrl-K cannot offer a 404", () => {
+    // En Tirage 404s when the sparkling program is off (K14).
+    expect(ACTIONS).toContain("isSparklingEnabled()");
+    expect(ACTIONS).toContain("isCustomCrushEnabled()");
+  });
+});
+
+describe("no admin section leaks to a plain user (the query.ts:18-20 rule)", () => {
+  const USER: SectionContext = { isAdmin: false, isDeveloper: false, hasVineyard: false, sparkling: true, customCrush: true };
+  const ADMIN: SectionContext = { ...USER, isAdmin: true, hasVineyard: true };
+
+  it("hides every admin-flagged section item from a plain user", () => {
+    const leaked = allSectionItems()
+      .filter((i) => i.admin)
+      .filter((i) => isSectionVisible(i, USER))
+      .map((i) => i.href);
+    expect(leaked, "these would appear in a plain user's palette").toEqual([]);
+  });
+
+  it("still shows them to an admin — the filter is not just 'hide everything'", () => {
+    const shown = allSectionItems().filter((i) => i.admin && isSectionVisible(i, ADMIN));
+    expect(shown.length).toBeGreaterThan(0);
+  });
+
+  it("hides vineyard sections from a user with no membership", () => {
+    const leaked = allSectionItems()
+      .filter((i) => i.vineyard)
+      .filter((i) => isSectionVisible(i, USER))
+      .map((i) => i.href);
+    expect(leaked).toEqual([]);
   });
 });
 
