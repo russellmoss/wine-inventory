@@ -792,7 +792,51 @@ is two decisions that are Russell's, not code:
    the five "do NOT re-derive" findings are preserved in the archived block under "Also in flight".
 
 
-1. ✅ **POPPED 2026-07-28 — the corpus repair campaign (plan 100 Unit 2) is DONE, and it found a
+1. ✅ **POPPED 2026-07-28 — assistant false-source-denial (Gironde) + the eval-fixture gap it led to,
+   both FIXED and merged.** Grew directly out of entry 2 below (the corpus-repair campaign): Russell
+   live-tested the assistant post-repair and it told him **"I don't have anything from the Chambre
+   d'Agriculture de la Gironde"** — a real, live, `defaultEnabled` French source with 17 documents.
+   Calling `search_knowledge_base` for the SAME question returned `found: true` with that exact
+   publisher's passages in 4 of the top 6 results, correctly cited. Retrieval was never the bug — the
+   model was handed good, on-topic, cited passages and told the user it had none, apparently
+   over-indexing on well-known English sources (Cornell/UC Davis/OWRI/AWRI) and treating anything
+   unfamiliar or non-English as "not in this app." Two follow-up test questions Russell tried live
+   both still failed before the fix landed.
+   Fixed in **[#556](https://github.com/russellmoss/wine-inventory/pull/556)** (merged `bbc3a087`): a
+   new deterministic runtime guard (`retrieval-overclaim-guard.ts`, mirrors the existing write
+   over-claim guard) detects a "no KB coverage" claim in the model's text when
+   `search_knowledge_base` actually returned results that turn, injects a one-shot repair prompt
+   (look again, translate/cite non-English passages rather than discarding them), and a `finally`
+   correction backstop if the repair doesn't land. Plus tool-description rule 10: "if a passage came
+   back, you have that source — do not deny it." Verified 5/5 × 3 negative controls live against the
+   real Anthropic API; confirmed (via `git stash`-isolating the change) no regression in the adjacent
+   legality-refusal eval.
+   That isolation test surfaced a SEPARATE, pre-existing bug in that same legality-refusal golden:
+   its `biology-no-spurious-refusal` negative control was ALSO failing live (0–40%) because its
+   fixture only stubbed `search_knowledge_base` — the live model, with `query_climate` /
+   `query_field_reports` / `query_spray_decision` now in its tool registry, reasonably called those
+   too for a disease-pressure question, fell through the eval harness's nonsense `{found:false}`
+   default (a shape none of those tools actually return), and derailed before ever citing the corpus.
+   Fixed in **[#558](https://github.com/russellmoss/wine-inventory/pull/558)** (merged `f8723293`):
+   stubbed all three tools in their REAL return shapes; added a description cross-reference on
+   `query_climate`/`query_field_reports` telling the model to still consult `search_knowledge_base`
+   for the underlying biology even when the tenant's own data shows nothing; tightened
+   `query_spray_decision`'s description to lead with its POWDERY-MILDEW-ONLY scope so it stops
+   getting called on downy-mildew questions; added a floor to `search_knowledge_base` rule 9 so the
+   model stops volunteering its legality caveat unprompted on an answer nobody asked a legality
+   question about. Verified 5/5 live, ×3 runs.
+   Follow-on in **[#559](https://github.com/russellmoss/wine-inventory/pull/559)** (merged `aad690f8`):
+   the OTHER three legality-refusal cases (`captan-clearance`, `refuses-the-verdict-not-the-
+   information`, `rei-no-results`) were separately regex-brittle in their own `mustMention` checks —
+   e.g. "I can't give you a yes/no" didn't match the narrow verb alternation, a real live paraphrase
+   scored as a false failure. Extracted one shared `DECLINES_TO_CERTIFY` regex instead of three
+   independently-drifting copies (same root cause as the fixture gap, just in the assertions). All 4
+   legality-refusal cases now score 5/5 in one full run against the real API.
+   ⚠️ **Pattern worth remembering**: this is the second time in this same session a golden's STUBBED
+   tool set went stale as soon as the live tool registry grew past what the golden anticipated. Adding
+   a new assistant tool is a silent hazard to every OLDER eval that doesn't stub it.
+
+2. ✅ **POPPED 2026-07-28 — the corpus repair campaign (plan 100 Unit 2) is DONE, and it found a
    second, separate bug.** ~3,270 of ~3,312 candidate documents re-fetched + re-chunked on the
    fixed splitter across all 22 affected sources (`awri`, `ifv-france`, `wine-australia`,
    `osu-owri`, `lvwo`, `ifv-occitanie`, `ives-technical-reviews`, `umc`, `vt-enology-notes`,
@@ -826,7 +870,7 @@ is two decisions that are Russell's, not code:
    design, not a content bug. Filed in TODOS as its own item with full repro.
    Full suite green (409 files / 4,967 tests), tsc clean, after the campaign.
 
-2. ✅ **POPPED 2026-07-27 — all three PRs MERGED, PNW Handbooks is chunked + embedded + LIVE FOR
+3. ✅ **POPPED 2026-07-27 — all three PRs MERGED, PNW Handbooks is chunked + embedded + LIVE FOR
    EVERY TENANT.** [#544](https://github.com/russellmoss/wine-inventory/pull/544) (chunker fix) +
    [#545](https://github.com/russellmoss/wine-inventory/pull/545) (PNW source, staged dark) +
    [#547](https://github.com/russellmoss/wine-inventory/pull/547) (`defaultEnabled` flip, its own
@@ -1268,6 +1312,13 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   parallel). Next: register CDO token + run the ~45-min point-API spike (de-risks the providers), then `/work`.
 
 ## ✅ Done recently
+
+- **✅ Assistant false-source-denial (Gironde) + the legality-refusal eval-fixture gap it exposed —
+  BOTH FIXED (2026-07-28), see tangent-stack entry 1 above for the full write-up.** Merged
+  [#556](https://github.com/russellmoss/wine-inventory/pull/556) (retrieval-overclaim guard),
+  [#558](https://github.com/russellmoss/wine-inventory/pull/558) (tool-fixture + tool-description
+  fixes), [#559](https://github.com/russellmoss/wine-inventory/pull/559) (shared regex, killed the
+  brittle per-case duplication). All 4 legality-refusal cases now score 5/5 live.
 
 - **✅ Cellarhand UI/UX v2 Phase 0 + Phase 1 BUILT (2026-07-28) — 10 units, 10 commits, not PR'd.**
   See the Current objective above for the full picture. The parts worth remembering even after the PR
@@ -1998,3 +2049,18 @@ without a reset. Prior: plan 085 CLOSED, MSU unreachable and DORMANT (#422); the
 fix (#418) that un-broke the monthly refresh for all 21 sources._
 
 _Last updated: 2026-07-28 — product design audit landed (docs/audits/product-design-audit-2026-07-28.md); spray Wave 1 objective unchanged._
+
+Also this date, from the KB/assistant session on `grape-kb-ingestion-a530f9`: _Last updated: 2026-07-28 —
+**Tangent stack entry 1 POPPED: assistant false-source-denial (Gironde) + the legality-refusal
+eval-fixture gap it exposed, both fixed and merged** ([#556](https://github.com/russellmoss/wine-inventory/pull/556),
+[#558](https://github.com/russellmoss/wine-inventory/pull/558), [#559](https://github.com/russellmoss/wine-inventory/pull/559)).
+Full write-up is the tangent-stack entry itself — short version: Russell live-tested the assistant
+after the corpus repair campaign and it falsely denied having any Chambre d'Agriculture de la
+Gironde content, even though `search_knowledge_base` returned it correctly cited; fixed with a new
+deterministic retrieval-overclaim guard + a tool-description rule. Isolating that change surfaced a
+SEPARATE pre-existing gap in the same legality-refusal golden (its biology negative control's
+fixture never stubbed `query_climate`/`query_field_reports`/`query_spray_decision`, so the live
+model's now-broader tool calls fell through to a nonsense default and derailed the answer) — fixed
+with real-shaped stubs plus three tool-description cross-references, then a shared regex fix for
+brittle paraphrase-matching in the other three cases. All 4 legality-refusal cases score 5/5 live
+against the real Anthropic API. Spray Wave 1 and Cellarhand v2 objectives unchanged by this work._
