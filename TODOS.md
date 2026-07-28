@@ -2,6 +2,55 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
+## 🔴 An oversized heading silently deletes real content — `chunk.ts` treats heading text as pure breadcrumb material
+
+Found 2026-07-28 while diagnosing why plan 100's `numeric-loss` guard kept refusing ~20 documents
+during the corpus repair campaign (`ives-technical-reviews`, `lvwo`, `osu-owri`). **This is a
+different bug from the PR #544 `String.match(/g)` regex** — it is a separate, still-open defect.
+
+**Repro** (IVES article `https://ives-technicalreviews.eu/article/view/7758`): the page's `##`
+heading is not a short label — it is a ~400-character sentence, because IVES's template renders the
+full citation blurb as the H2: *"Mortality and vigour based indicators for an early diagnosis of
+vineyard decline Sourced from the research article: … (Vol. 57 No. 1 (2023): OENO One - DOI:
+https://doi.org/10.20870/oeno-one.2023.57.1.5575). Original language of the article: English."*
+
+`parseSegments` (`chunk.ts`) treats a markdown `#`-line purely as breadcrumb material: it pushes the
+heading text onto `stack`, recomputes `crumb = breadcrumb()`, and `continue`s — **the heading's raw
+text is never pushed into `blocks` and never re-emitted as body content.** The only place that text
+survives is the breadcrumb string prepended to every chunk. `capBreadcrumb` then truncates any
+breadcrumb over 140 chars on a word boundary with an ellipsis. For this document the truncated
+breadcrumb is *"Mortality and vigour based indicators for an early diagnosis of vineyard decline
+Sourced from the research article: "A systemic approach…"* — cut off well before the DOI.
+
+**Confirmed as genuine deletion, not a chunk-boundary artifact**: the DOI substring
+`oeno-one.2023.57.1.5575` exists once in the raw extracted markdown and in **zero of the 22 output
+chunks**. It is not split across two adjacent chunks (checked directly) — the entire sentence
+containing it is simply gone, because the heading line that carried it was consumed into a
+breadcrumb that got truncated before reaching it.
+
+**Blast radius, roughly**: any source whose HTML/CMS template renders a long caption, subtitle, or
+citation string as an `<h1>`/`<h2>` rather than a `<p>`. Confirmed hit on `ives-technical-reviews`
+(2 docs blocked in the repair campaign) and very likely the same mechanism on `lvwo`/`osu-owri`'s
+remaining ~15 documents (PDF-extracted tables/reports where a long caption becomes a heading-like
+line) — not independently confirmed per-document, but the numeric-loss signature matches.
+
+**Why not fixed here:** `claude/grape-guide-pdf-kb-87c8d8` (plan 099) is *already* actively reworking
+`chunk.ts`'s breadcrumb logic for a related-but-distinct symptom (title-repeats-as-first-heading
+collapse on Cornell's PDF guide). Patching the same function concurrently from two sessions risks a
+collision. Left for that work to land first, or its own follow-up.
+
+**Candidate fix shapes** (not decided): (a) when a heading's raw text exceeds some length threshold,
+treat it as a PARAGRAPH block (re-emit it into `blocks`) in addition to or instead of consuming it
+purely as breadcrumb; (b) never silently drop the truncated tail of a heading — append it as a
+follow-on text block instead of discarding past the cap. Whichever ships needs the same lossless
+guarantee `splitIntoSentences` has: prove nothing at all is discarded, not just cap the visible
+symptom.
+
+**Currently held safe by the numeric-loss guard** (plan 100 Unit 3b): these ~20 documents keep their
+pre-existing (older-chunker) chunks rather than being overwritten with worse, silently-truncated
+content. Nothing is being served wrong right now; they are just stuck on old content until this
+lands.
+
 ## `verify:kb-boundary`'s FAIL doesn't distinguish a real leak from a working gate
 
 Found 2026-07-27 crawling `pnw-handbooks` (plan 100, first-ever enforcing source). Two documents
