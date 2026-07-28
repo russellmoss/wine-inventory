@@ -14,7 +14,7 @@ Phase 0/1 shipped as [#555](https://github.com/russellmoss/wine-inventory/pull/5
 **Phase 4 — Ctrl-K command palette + global search.** Spans vessels, lots, work orders, blocks,
 materials, vessel groups and nav destinations. Deterministic, never LLM-backed: search works with
 the assistant off, and a question puts **Ask LAST**, never first. Tenancy is the risk and gets two
-tested rules — every read через the tenant-EXTENDED prisma client (no bare `$queryRaw`, which
+tested rules — every read goes through the tenant-EXTENDED prisma client (no bare `$queryRaw`, which
 bypasses the extension), and the role comes from the SESSION not the client, so search cannot become
 a privilege-escalation path. Every branch bounded by `take`.
 
