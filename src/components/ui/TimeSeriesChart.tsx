@@ -64,6 +64,18 @@ export interface TimeSeriesChartProps {
   emptyMessage?: string;
   /** Names the chart for assistive tech. Required. */
   caption: string;
+  /**
+   * Where the data table lives.
+   *
+   * `sr-only` (default) is the historical behaviour: a complete table, present for assistive
+   * tech, invisible to everyone else. `disclosure` renders the SAME table inside a
+   * `<details>` so a sighted reader can reach the numbers too — which is what AC-S25 and
+   * doc 10 §9 actually ask for ("followed by a complete data table", "in a disclosure
+   * titled 'Readings as a table'"). Defaulted, so existing consumers are untouched.
+   */
+  tableVisibility?: "sr-only" | "disclosure";
+  /** The disclosure's summary text. Doc 10 §9 names it; overridable for a lineage table. */
+  tableSummary?: string;
   style?: React.CSSProperties;
 }
 
@@ -73,7 +85,9 @@ const PAD = { top: 16, right: 52, bottom: 34, left: 48 };
 /** Dash + marker per series slot. The non-colour half of the encoding (v2 §A6). */
 const ENCODING: { dash: string; marker: "circle" | "square" | "triangle" | "diamond" | "cross" | "plus" }[] = [
   { dash: "", marker: "circle" },
-  { dash: "", marker: "square" },
+  // Slot 2 was solid+square, identical to slot 1 except for a 3.2px marker. With colour
+  // removed (AC-S26) that is not a distinction anyone can see, so slot 2 now dashes too.
+  { dash: "10 4", marker: "square" },
   { dash: "6 3", marker: "triangle" },
   { dash: "2 3", marker: "diamond" },
   { dash: "8 3 2 3", marker: "cross" },
@@ -123,6 +137,8 @@ export function TimeSeriesChart({
   rightUnit,
   emptyMessage = "No readings yet.",
   caption,
+  tableVisibility = "sr-only",
+  tableSummary = "Readings as a table",
   style,
 }: TimeSeriesChartProps) {
   const tableId = React.useId();
@@ -151,6 +167,39 @@ export function TimeSeriesChart({
 
   const colorFor = (s: ChartSeries, i: number) => s.color ?? `var(--viz-${s.viz ?? ((i % 6) + 1)})`;
   const encFor = (s: ChartSeries, i: number) => ENCODING[(s.viz ? s.viz - 1 : i) % ENCODING.length];
+
+  // ONE table node, rendered either sr-only or inside a disclosure. Never two: the svg's
+  // `aria-describedby` points at this id, and a duplicate id would break that association
+  // and read the whole series out twice.
+  const table = (
+    <table id={tableId} className={tableVisibility === "disclosure" ? undefined : "sr-only"} data-rt="scroll">
+      <caption className={tableVisibility === "disclosure" ? undefined : "sr-only"}>{caption}</caption>
+      <thead>
+        <tr>
+          <th scope="col">Series</th>
+          <th scope="col">Date</th>
+          <th scope="col">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {withPoints.flatMap((s) =>
+          s.points.map((p) => (
+            <tr key={`${s.id}-${p.date}`}>
+              <th scope="row">{s.label}</th>
+              <td>{fmtDate(p.date)}</td>
+              <td>
+                {/* Keep the trailing zero. `Number(...)` stripped it, so a series stated as
+                    "17.0 Bx" beside the chart appeared as "17 Bx" inside the table — the same
+                    value rendered two ways, in the one place AC-S27 asks them to agree. */}
+                {p.value.toFixed(s.precision ?? 1)}
+                {s.unit ? ` ${s.unit}` : ""}
+              </td>
+            </tr>
+          )),
+        )}
+      </tbody>
+    </table>
+  );
 
   return (
     <div style={style}>
@@ -277,30 +326,29 @@ export function TimeSeriesChart({
 
       {/* The accessible equivalent. A chart with no textual form is unreadable to
           a screen reader, so this is a real table of every plotted value. */}
-      <table id={tableId} className="sr-only" data-rt="scroll">
-        <caption>{caption}</caption>
-        <thead>
-          <tr>
-            <th scope="col">Series</th>
-            <th scope="col">Date</th>
-            <th scope="col">Value</th>
-          </tr>
-        </thead>
-        <tbody>
-          {withPoints.flatMap((s) =>
-            s.points.map((p) => (
-              <tr key={`${s.id}-${p.date}`}>
-                <th scope="row">{s.label}</th>
-                <td>{fmtDate(p.date)}</td>
-                <td>
-                  {Number(p.value.toFixed(s.precision ?? 1))}
-                  {s.unit ? ` ${s.unit}` : ""}
-                </td>
-              </tr>
-            )),
-          )}
-        </tbody>
-      </table>
+      {tableVisibility === "disclosure" ? (
+        <details style={{ marginTop: 10 }}>
+          {/* This is the mandated accessible path to the chart's numbers (doc 10 §9), so it
+              is the last control that may be a hairline. 44px target, doc 10 §12. */}
+          <summary
+            style={{
+              cursor: "pointer",
+              minHeight: "var(--touch-min)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "0 4px",
+              fontSize: 13,
+              color: "var(--text-secondary)",
+            }}
+          >
+            {tableSummary}
+          </summary>
+          {table}
+        </details>
+      ) : (
+        table
+      )}
     </div>
   );
 }

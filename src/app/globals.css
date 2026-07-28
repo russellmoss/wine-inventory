@@ -294,3 +294,18 @@
 .leaflet-pm-toolbar .leaflet-pm-actions-container .leaflet-pm-action:hover {
   background-color: var(--accent-hover);
 }
+
+/* Phase 6: the tank board (doc 04 §7). Column counts live here so the grid owns its own
+   breakpoints and inline styles do not fight them, the same contract `.bw-shell` uses.
+   `src/lib/vessels/board-layout.ts` mirrors this table as data so it stays unit-testable. */
+.bw-tank-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 768px) {
+  .bw-tank-board { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+}
+@media (min-width: 1024px) {
+  .bw-tank-board { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}

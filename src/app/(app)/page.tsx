@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireReadyUser, isTenantAdminLike, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { casesAndLoose } from "@/lib/bottling/draw";
-import { Card, Eyebrow, Metric, Badge } from "@/components/ui";
+import { Card, Eyebrow, Metric, Badge, ResponsiveTable } from "@/components/ui";
 import { openDeadlinesForTenant } from "@/lib/compliance/reminders";
 import { deadlineWhen, deadlineBadgeTone, deadlineTitle } from "@/lib/compliance/deadline-display";
 import { operationalAuditWhere } from "@/lib/audit";
@@ -80,7 +80,12 @@ export default async function DashboardPage() {
 
       <Eyebrow rule>Recent activity</Eyebrow>
       <Card padding="0" style={{ marginTop: 14 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+        {/* Migrated to ResponsiveTable (v2 §B15). As a raw table it fell under the legacy
+            global `display: block` mobile rule, which turns it into a horizontally scrollable
+            region with no keyboard access — axe `scrollable-region-focusable`, WCAG 2.1.1, on
+            the app's landing page. ResponsiveTable owns the scroll container and gives it
+            role="region", a name, and tabIndex={0}. */}
+        <ResponsiveTable caption="Recent activity">
           <tbody>
             {recent.length === 0 ? (
               <tr><td style={{ padding: "16px", color: "var(--text-muted)" }}>No activity yet. Start by adding vessels and varieties.</td></tr>
@@ -98,7 +103,7 @@ export default async function DashboardPage() {
               ))
             )}
           </tbody>
-        </table>
+        </ResponsiveTable>
       </Card>
     </div>
   );
