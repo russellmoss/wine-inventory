@@ -11,32 +11,23 @@
  * Adding a route is fine and expected — the fixture is updated. REMOVING or
  * RENAMING one is what this catches, because that is what breaks a bookmark, a
  * QR code on a barrel, or a link in someone's email.
+ *
+ * **It answers "does this page still exist", and nothing more.** That is not the
+ * same question as "can anyone get there", which is `test/route-reachability.test.ts`
+ * (plan 104 D3). Both of this file's route lists used to be hand-typed and had
+ * already drifted — `CONTEXTUAL` held 17 entries against the model's 22, included
+ * `/work-orders/new` which the model did not, and omitted six the model did, with
+ * nothing reconciling them. They are DERIVED now, so that drift cannot recur.
  */
 import { describe, expect, it } from "vitest";
-import { readdirSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
-import { join, sep } from "node:path";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { allDestinations } from "@/lib/nav/model";
+import { allSectionItems, UTILITY_DESTINATIONS } from "@/lib/nav/sections";
+import { CONTEXTUAL_ENTRY_POINTS } from "@/lib/nav/unnavigable";
+import { currentRoutes } from "./helpers/routes";
 
-const APP = fileURLToPath(new URL("../src/app", import.meta.url));
 const FIXTURE = fileURLToPath(new URL("./fixtures/routes.json", import.meta.url));
-
-/** Every route the app serves, derived from the file system. */
-export function currentRoutes(): string[] {
-  const out: string[] = [];
-  (function walk(dir: string) {
-    for (const name of readdirSync(dir)) {
-      const p = join(dir, name);
-      if (statSync(p).isDirectory()) walk(p);
-      else if (name === "page.tsx") {
-        const rel = p.slice(APP.length + 1).split(sep).join("/").replace(/\/page\.tsx$/, "");
-        // Route groups like `(app)` are organisational and not part of the URL.
-        const url = "/" + rel.replace(/\((?:[^)]+)\)\/?/g, "");
-        out.push(url === "/" ? "/" : url.replace(/\/$/, ""));
-      }
-    }
-  })(APP);
-  return [...new Set(out)].sort();
-}
 
 const routes = currentRoutes();
 
@@ -68,53 +59,28 @@ describe("every URL that existed still exists", () => {
     expect(Array.isArray(added)).toBe(true);
   });
 
-  it("keeps the destinations the new nav model points at", () => {
-    // doc 01 §2's 13 global destinations. `/ferment` is in this list because
-    // Phase 3 CREATES it — the handoff listed it as an existing destination when
-    // only /ferment/crush, /press and /process existed.
-    const DESTINATIONS = [
-      "/work-orders",
-      "/bulk",
-      "/vineyards/field-notes",
-      "/vineyards/harvest",
-      "/lots",
-      "/ferment",
-      "/blend",
-      "/bottling",
-      "/inventory",
-      "/compliance",
-      "/accounting",
-      "/audit",
-      "/settings",
-    ];
-    const missing = DESTINATIONS.filter((d) => !routes.includes(d));
+  it("keeps the destinations the nav model points at", () => {
+    // Derived from model.ts, not re-typed. A destination whose page does not exist
+    // is a top-level nav item on a 404 — which is exactly what /ferment would have
+    // been if Phase 3 had shipped the handoff verbatim.
+    const missing = allDestinations()
+      .map((d) => d.href)
+      .filter((d) => !routes.includes(d));
     expect(missing, `nav destination(s) with no page: ${missing.join(", ")}`).toEqual([]);
   });
 
-  it("keeps every contextual route doc 01 §4 says is still reachable", () => {
-    const CONTEXTUAL = [
-      "/work-orders/review",
-      "/work-orders/templates",
-      "/work-orders/task-types",
-      "/work-orders/new",
-      "/blend/trials",
-      "/finished-goods",
-      "/bottled",
-      "/setup/equipment",
-      "/vineyards/sprays/products",
-      "/inbox",
-      "/ferment/process",
-      "/samples",
-      "/winemaking-calculator",
-      "/reports",
-      "/help/feedback",
-      "/assistant",
-      "/vessels",
+  it("keeps every second-level route the IA promises stays reachable", () => {
+    // Derived from sections.ts + unnavigable.ts, the two lists that actually drive
+    // the sub-navs, the palette and the reachability guard.
+    const contextual = [
+      ...allSectionItems().map((i) => i.href),
+      ...UTILITY_DESTINATIONS.map((u) => u.href),
+      ...CONTEXTUAL_ENTRY_POINTS.map((c) => c.href),
     ];
-    const missing = CONTEXTUAL.filter((r) => !routes.includes(r));
+    const missing = [...new Set(contextual)].filter((r) => !routes.includes(r));
     expect(
       missing,
-      `doc 01 §4 promises these stay reachable, but they have no page: ${missing.join(", ")}`,
+      `the IA promises these stay reachable, but they have no page: ${missing.join(", ")}`,
     ).toEqual([]);
   });
 });
