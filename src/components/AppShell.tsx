@@ -10,6 +10,7 @@ import { Avatar, Button, LocalTime } from "@/components/ui";
 import { NAV_MODEL, isVisible as navVisible } from "@/lib/nav/model";
 import { NAV_V2_ENABLED } from "@/lib/nav/flag";
 import { MobileTabBar } from "./MobileTabBar";
+import { CommandPalette } from "./CommandPalette";
 import { BrandMark } from "@/components/BrandMark";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
 import { DevDiagnostics } from "@/components/observability/DevDiagnostics";
@@ -453,6 +454,10 @@ export function AppShell({
           </aside>
         </div>
       ) : null}
+
+      {/* Phase 4: Ctrl-K global search. Mounted at the shell so it is reachable
+          from every route. Renders nothing until opened. */}
+      {NAV_V2_ENABLED ? <CommandPalette /> : null}
 
       {/* Phase 3 (doc 01 §9): four labelled bottom tabs replace the drawer, whose
           trigger was 38x32px — the most important control on the phone, under the

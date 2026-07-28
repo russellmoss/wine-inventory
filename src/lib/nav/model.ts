@@ -81,11 +81,11 @@ export const NAV_MODEL: NavGroup[] = [
 
 /** Destinations removed from the sidebar but still reachable (doc 01 §4). */
 export const CONTEXTUAL_DESTINATIONS: { href: string; reachedFrom: string }[] = [
-  { href: "/assistant", reachedFrom: "the dock's expand control, and ⌘K" },
+  { href: "/assistant", reachedFrom: "the dock's expand control, and Ctrl-K" },
   { href: "/help/feedback", reachedFrom: "the user menu in the sidebar footer" },
   { href: "/reports", reachedFrom: "an Accounting sub-tab" },
   { href: "/ferment/process", reachedFrom: "the Fermentations page primary action" },
-  { href: "/winemaking-calculator", reachedFrom: "any addition form, and ⌘K" },
+  { href: "/winemaking-calculator", reachedFrom: "any addition form, and Ctrl-K" },
   { href: "/samples", reachedFrom: "a Lots sub-tab" },
   { href: "/cellar/en-tirage", reachedFrom: "a Bottling sub-tab when sparkling is enabled" },
   { href: "/vessels", reachedFrom: "Setup, and the cellar-floor vessel browser" },
