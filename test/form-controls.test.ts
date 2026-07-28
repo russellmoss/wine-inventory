@@ -47,9 +47,13 @@ describe("Select — an accessible name is not optional (v2 §B10)", () => {
 });
 
 describe("NumericUnitInput — the capture-screen rules (v2 §B9)", () => {
-  it("keeps the unit OUT of the value", () => {
+  it("keeps the unit OUT of the value, and does NOT hide it from assistive tech", () => {
     expect(NUM).toContain("borderLeft:");
-    expect(NUM).toContain('aria-hidden="true"');
+    // The unit box was briefly aria-hidden. That meant a screen-reader user
+    // editing "218" never learned it was litres — on a dosing screen, the
+    // difference between a correct entry and a 1000x error.
+    const unitBlock = code(NUM).slice(code(NUM).indexOf("{unit ? ("), code(NUM).indexOf("{nudges?.length"));
+    expect(unitBlock).not.toContain("aria-hidden");
   });
 
   it("uses the decimal keypad and does not round a real measurement", () => {

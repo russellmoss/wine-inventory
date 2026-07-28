@@ -184,9 +184,12 @@ export function NumericUnitInput({
               color: disabled ? "var(--ink-600)" : "var(--text-primary)",
             }}
           />
+          {/* NOT aria-hidden: the unit is MEANINGFUL. Hiding it means a
+              screen-reader user editing "218" never learns it is litres — which
+              on a dosing screen is the difference between a correct entry and a
+              1000x error. */}
           {unit ? (
             <span
-              aria-hidden="true"
               style={{
                 display: "inline-flex",
                 alignItems: "center",

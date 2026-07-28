@@ -18,11 +18,20 @@ export default defineConfig({
   },
   projects: [
     { name: "setup", testMatch: /auth\.setup\.ts/ },
+    // Public routes need no session, so they must NOT depend on the setup project.
+    // Otherwise a machine with no seeded Demo tenant cannot run any a11y check at
+    // all — which is exactly the situation that left the axe gate unrun for a phase.
+    {
+      name: "public",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: /public-.*\.spec\.ts/,
+    },
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: authFile },
       dependencies: ["setup"],
       testMatch: /.*\.spec\.ts/,
+      testIgnore: /public-.*\.spec\.ts/,
     },
   ],
   webServer: {

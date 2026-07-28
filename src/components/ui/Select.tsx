@@ -88,13 +88,14 @@ export function Select({
         }
       >
         {label}
+        {/* Visual only — `required` already conveys the state, and an sr-only
+            "(required)" inside the label would pollute the accessible name. */}
         {required && !hideLabel ? (
           <>
             {" "}
             <span aria-hidden="true" style={{ color: "var(--danger)" }}>
               *
             </span>
-            <span className="sr-only">(required)</span>
           </>
         ) : null}
       </label>

@@ -83,13 +83,16 @@ export function Input({
           }}
         >
           {label}
+          {/* The asterisk is VISUAL only. The `required` attribute already tells
+              assistive tech the field is required, so an extra sr-only
+              "(required)" inside the label lands in the accessible NAME and the
+              user hears "Email required, required". */}
           {required ? (
             <>
               {" "}
               <span aria-hidden="true" style={{ color: "var(--danger)" }}>
                 *
               </span>
-              <span className="sr-only">(required)</span>
             </>
           ) : null}
         </label>
@@ -112,10 +115,13 @@ export function Input({
           cursor: disabled ? "not-allowed" : "text",
         }}
       >
+        {/* NOT aria-hidden. These slots can hold INTERACTIVE content — the login
+            page passes a show/hide-password button through iconRight — and
+            aria-hidden around a focusable element is a WCAG failure (axe:
+            aria-hidden-focus). A purely decorative <svg> with no accessible name
+            contributes nothing to the tree anyway, so hiding it bought nothing. */}
         {iconLeft ? (
-          <span aria-hidden="true" style={{ display: "inline-flex", color: "var(--text-muted)" }}>
-            {iconLeft}
-          </span>
+          <span style={{ display: "inline-flex", color: "var(--text-muted)" }}>{iconLeft}</span>
         ) : null}
         <input
           id={inputId}
@@ -140,9 +146,7 @@ export function Input({
           {...rest}
         />
         {iconRight ? (
-          <span aria-hidden="true" style={{ display: "inline-flex", color: "var(--text-muted)" }}>
-            {iconRight}
-          </span>
+          <span style={{ display: "inline-flex", color: "var(--text-muted)" }}>{iconRight}</span>
         ) : null}
         {adornmentRight ? (
           <span

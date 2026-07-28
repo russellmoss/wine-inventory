@@ -70,11 +70,14 @@ describe("Input a11y wiring — all four were absent before this", () => {
     expect(SRC).toContain('role="alert"');
   });
 
-  it("gives a required field a VISIBLE marker plus a screen-reader word", () => {
-    // The `required` attribute alone is invisible; an asterisk alone is meaningless
-    // to a screen reader.
+  it("gives a required field a VISIBLE marker, and does NOT duplicate it in the name", () => {
+    // The asterisk is visual only. `required`/`aria-required` already conveys the
+    // state, so an sr-only "(required)" inside the <label> lands in the accessible
+    // NAME and the user hears "Email required, required". Caught live in a
+    // Playwright accessibility snapshot, which showed the name as "Email (required)".
     expect(SRC).toContain('aria-hidden="true"');
-    expect(SRC).toContain('<span className="sr-only">(required)</span>');
+    expect(SRC).toContain("required={required}");
+    expect(SRC).not.toContain('<span className="sr-only">(required)</span>');
   });
 
   it("keeps the unit adornment OUTSIDE the value", () => {
