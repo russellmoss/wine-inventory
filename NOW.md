@@ -7,64 +7,28 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PHASE 6 (TANKS) IS OPEN AS [#562](https://github.com/russellmoss/wine-inventory/pull/562), NOT MERGED.**
-All 13 units of [plan 103](docs/plans/2026-07-28-103-feat-cellarhand-v2-phase6-tanks-plan.md), 18
-commits. **The pre-landing review halted the first ship attempt with 23 criticals** — four
-reviewers, ~64 findings, none visible in 5,450 passing tests. Worst: °F readings plotted as °C
-(TEMP.units is ["°C","°F"]; `toDefaultUnit` existed and was never called). All 23 fixed. Suite 438 files / 5440 tests green, `tsc` clean, lint 0 errors, `prisma/`
-untouched, `AssistantDock` diff empty, no route added or renamed.
-**QA RUN 2026-07-28 against the live Demo Winery tenant on :3007 — `/bulk` passes axe with ZERO
-violations at 390px AND 1440px with the board ON.** Getting there needed a real fix: Better Auth
-trusted only `BETTER_AUTH_URL`, so login on any other port died with `Invalid origin` — that is why
-the authed sweep went unrun for a whole phase. Now localhost is trusted on any port outside prod.
-The sweep also found three board defects a browser alone could show (invisible fill gauge,
-"between 27 July and 27 July", `17.0 Bx` stated beside `17 Bx` plotted) and one PRE-EXISTING
-keyboard trap on the dashboard, all fixed.
-Phase 0/1 shipped as [#555](https://github.com/russellmoss/wine-inventory/pull/555); Phase 2/3 as
-[#557](https://github.com/russellmoss/wine-inventory/pull/557) (`f3018c0e`); Phase 4/5 as
-[#561](https://github.com/russellmoss/wine-inventory/pull/561) (`043fe931`, merged 2026-07-28).
+**CELLARHAND UI/UX v2 — PHASE 3b: FINISH THE IA. Planned as
+[plan 104](docs/plans/2026-07-28-104-feat-cellarhand-v2-phase3b-ia-completion-plan.md), not started.**
 
-Phase 4/5 merged as #561. A `/ship` attempted for Phase 6 earlier the same day found nothing to
-ship, so it was planned and then built from scratch in this session.
+Phase 6 (tanks) MERGED as [#562](https://github.com/russellmoss/wine-inventory/pull/562) (`2613a828`) —
+board + five-tab detail, zero schema changes. Phases 0/1 [#555], 2/3 [#557], 4/5 [#561].
 
-**PLAN →** [plan 103](docs/plans/2026-07-28-103-feat-cellarhand-v2-phase6-tanks-plan.md):
-13 units in 4 PRs (#6a primitives · #6b the board · #6c chart/facts · #6d detail tabs), zero schema
-changes, behind `NAV_V2_ENABLED` with the accordions kept in the else arm. Ten handoff claims
-failed verification (`Vessel` has no location / no `volumeL` / no `status`; `TimeSeriesChart`'s
-data table is `sr-only` with no prop to reveal it, so **AC-S25 is not met by the component as
-shipped**; `StageIndicator` is work-order-specific and not reusable). AC-S27 is satisfied
-structurally — ONE pure derivation (`tank-detail-facts.ts`) feeds the chart, the stated facts and
-the aria sentence, so agreement is a unit test rather than a review item.
-**All four owner decisions ratified and implemented:** modal only (no new route) · Export in
-`PageHeader`'s actions · `listVesselAnalyses`' panel-sourcing rule is canonical for a vessel ·
-identity block shows `VesselGroup`, omits location (no column exists).
+⚠️ **The v2 nav cannot be turned on yet, and that is now the blocking item.** Measured by crawling
+the running app with `NEXT_PUBLIC_NAV_V2=1` against the live Demo tenant: **17 of 56 static routes
+are reachable.** Phase 3 shipped 13 destinations and planned sub-navigation for the rest; the
+sub-navigation was never built. `SectionNav` shipped in Phase 2 with **zero consumers**. Nothing is
+deleted (route-stability guards that) — there is simply no way in to Vessels, Locations, Users,
+Vendors, Growers, Varieties & vineyards, Map Explorer, Weather, Spray records, Samples, Bottled,
+Finished goods, Reports and ~15 more. Ctrl-K does not rescue it: `search/query.ts` iterates
+`NAV_MODEL` only. **Production is safe because the flag is unset.**
 
-**Phase 4 — Ctrl-K command palette + global search.** Spans vessels, lots, work orders, blocks,
-materials, vessel groups and nav destinations. Deterministic, never LLM-backed: search works with
-the assistant off, and a question puts **Ask LAST**, never first. Tenancy is the risk and gets two
-tested rules — every read goes through the tenant-EXTENDED prisma client (no bare `$queryRaw`, which
-bypasses the extension), and the role comes from the SESSION not the client, so search cannot become
-a privilege-escalation path. Every branch bounded by `take`.
-
-**Phase 5 — SavedViews + Narrow, and a DERIVED StageIndicator.** The 7-field filter bar is replaced:
-common case is one click, current narrowing is visible as removable chips, applies live, URL-synced.
-Stage is computed from recorded ops — a stored `stage` column would be a second source of truth that
-drifts the moment anything is corrected, which would quietly undo the append-only ledger.
-
-⚠️ **`Ctrl`, never `⌘` — owner instruction, and a deliberate deviation from the handoff**, which
-writes ⌘K throughout. This winery runs Windows; that glyph points at a key the crew's keyboards do
-not have. The handler still MATCHES Cmd so a Mac user is not broken — we just never advertise it.
-Three ⌘ glyphs already in `src/` were scrubbed and a permanent guard now fails if any returns.
-
-**Also fixed:** `playwright.config.ts`'s `webServer` ignored `E2E_BASE_URL`, so on a box running
-2-3 worktree dev servers it either failed to start or silently REUSED another branch's server and
-reported results for code you did not write.
-
-**Standing debt carried forward from Phases 0-5 (none of this is done):** the collapsible rail's UI
-chrome (logic + tokens shipped, chrome not wired) · the 61-heading PageHeader migration · 47
-unlabelled `<input>`/`<textarea>` (`npm run verify:a11y-labels -- --all` prints the count each run) ·
-the authed 40-route axe sweep (needs a Demo Winery credential; seeding writes to prod) · Phase 6 tank
-board · Phases 7-10 behind the ⛔ domain gate.
+**Plan 104 — 13 units.** One data module (`nav/sections.ts`) feeds BOTH the sub-navs and the
+palette, so a surface cannot be reachable in one and invisible in the other. The deliverable is an
+**orphan guard**: a new route with nothing linking to it fails CI. Eleven handoff claims failed
+verification, including a live flag-gated bug — `hasVineyard` is hard-coded to `isAdmin`, so a real
+vineyard manager loses "Vineyard rounds" while mobile shows it to everyone.
+**Both ODs ratified:** Setup gets its own `/setup` hub with grouped cards; the brand mark links to
+`/`. A four-reviewer adversarial pass is scheduled INTO the work, before the PR.
 
 ## 🔭 Also in flight
 
