@@ -7,6 +7,8 @@ import { signOut } from "@/lib/auth-client";
 import { exitSupportTenant } from "@/lib/developer/actions";
 import { isTenantAdminLike } from "@/lib/access";
 import { Avatar, Button, LocalTime } from "@/components/ui";
+import { NAV_MODEL, isVisible as navVisible } from "@/lib/nav/model";
+import { NAV_V2_ENABLED } from "@/lib/nav/flag";
 import { BrandMark } from "@/components/BrandMark";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
 import { DevDiagnostics } from "@/components/observability/DevDiagnostics";
@@ -189,6 +191,11 @@ function SidebarContent({
   inboxEnabled: boolean;
   unreadMessages: number;
 }) {
+  // v2 group open/closed state. Local to the sidebar rather than threaded through
+  // props: the legacy groups keep their existing hoisted state, so the two nav
+  // models never share state and turning the flag off cannot leave a stale value.
+  const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>({});
+
   const gate = (n: NavItem) => (!n.admin || isAdmin) && (!n.developer || isDeveloper) && (!n.customCrush || customCrushEnabled);
   const visibleSetup = SETUP.filter(gate);
   const visibleVineyards = VINEYARDS.filter(gate);
@@ -202,31 +209,58 @@ function SidebarContent({
         <BrandMark />
       </div>
       <nav aria-label="Main" style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", flex: 1, overflowY: "auto" }}>
-        {MAIN.filter((n) => (!n.admin || isAdmin) && (!n.developer || isDeveloper)).map((n) => {
-          const active = isActive(n.href);
-          const count = n.href === "/compliance" ? complianceDeadlines.count : 0;
-          if (count <= 0) {
-            return <Link key={n.href} href={n.href} onClick={onNavigate} aria-current={active ? "page" : undefined} style={linkStyle(active)}>{n.label}</Link>;
-          }
+      {/* Phase 3 (doc 01 §2): 3 groups, 13 destinations, ordered by frequency of
+            use. The legacy 4-group / 31-entry sidebar is kept verbatim in the else
+            branch — both paths ship in the same build, so rollback is an env change
+            and a restart, not a revert commit while the crew is mid-harvest. */}
+      {NAV_V2_ENABLED ? (
+        NAV_MODEL.map((group) => {
+          const ctx = { isAdmin, isDeveloper, hasVineyard: isAdmin };
+          const visible = group.items.filter((d) => navVisible(d, ctx));
+          if (visible.length === 0) return null;
+          const badgeFor = (kind?: string) =>
+            kind === "workOrders" ? pendingWorkOrders : kind === "compliance" ? complianceDeadlines.count : 0;
           return (
-            <Link key={n.href} href={n.href} onClick={onNavigate} aria-current={active ? "page" : undefined} style={{ ...linkStyle(active), display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span>{n.label}</span>
-              <span
-                aria-label={`${count} filing deadline${count === 1 ? "" : "s"} due soon`}
-                style={{
-                  ...badgePill,
-                  background: complianceDeadlines.urgent ? "var(--danger)" : active ? "var(--accent-on)" : "var(--accent-soft)",
-                  color: complianceDeadlines.urgent ? "#fff" : "var(--wine-primary)",
-                }}
-              >
-                {count}
-              </span>
-            </Link>
+            <CollapsibleNavGroup
+              key={group.id}
+              label={group.label}
+              items={visible.map((d) => ({ href: d.href, label: d.label, badge: badgeFor(d.badge) }))}
+              open={openGroups[group.id] ?? group.defaultOpen}
+              setOpen={(fn) => setOpenGroups((prev) => ({ ...prev, [group.id]: fn(prev[group.id] ?? group.defaultOpen) }))}
+              isActive={isActive}
+              onNavigate={onNavigate}
+            />
           );
-        })}
-        <CollapsibleNavGroup label="Winery" items={winery} open={wineryOpen} setOpen={setWineryOpen} isActive={isActive} onNavigate={onNavigate} />
-        <CollapsibleNavGroup label="Vineyards" items={visibleVineyards} open={vineyardsOpen} setOpen={setVineyardsOpen} isActive={isActive} onNavigate={onNavigate} />
-        <CollapsibleNavGroup label="Setup" items={visibleSetup} open={setupOpen} setOpen={setSetupOpen} isActive={isActive} onNavigate={onNavigate} />
+        })
+      ) : (
+        <>
+          {MAIN.filter((n) => (!n.admin || isAdmin) && (!n.developer || isDeveloper)).map((n) => {
+            const active = isActive(n.href);
+            const count = n.href === "/compliance" ? complianceDeadlines.count : 0;
+            if (count <= 0) {
+              return <Link key={n.href} href={n.href} onClick={onNavigate} aria-current={active ? "page" : undefined} style={linkStyle(active)}>{n.label}</Link>;
+            }
+            return (
+              <Link key={n.href} href={n.href} onClick={onNavigate} aria-current={active ? "page" : undefined} style={{ ...linkStyle(active), display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>{n.label}</span>
+                <span
+                  aria-label={`${count} filing deadline${count === 1 ? "" : "s"} due soon`}
+                  style={{
+                    ...badgePill,
+                    background: complianceDeadlines.urgent ? "var(--danger)" : active ? "var(--accent-on)" : "var(--accent-soft)",
+                    color: complianceDeadlines.urgent ? "#fff" : "var(--wine-primary)",
+                  }}
+                >
+                  {count}
+                </span>
+              </Link>
+            );
+          })}
+          <CollapsibleNavGroup label="Winery" items={winery} open={wineryOpen} setOpen={setWineryOpen} isActive={isActive} onNavigate={onNavigate} />
+          <CollapsibleNavGroup label="Vineyards" items={visibleVineyards} open={vineyardsOpen} setOpen={setVineyardsOpen} isActive={isActive} onNavigate={onNavigate} />
+          <CollapsibleNavGroup label="Setup" items={visibleSetup} open={setupOpen} setOpen={setSetupOpen} isActive={isActive} onNavigate={onNavigate} />
+        </>
+      )}
       </nav>
       <div style={{ borderTop: "1px solid var(--border-strong)", padding: "14px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
