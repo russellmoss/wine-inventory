@@ -200,7 +200,13 @@ export const searchKnowledgeBaseTool: AssistantTool = {
     "mode-of-action group, resistance-management reasoning — cited as usual. Withholding the VERDICT is " +
     "required; withholding the INFORMATION is not, and leaves the grower worse off than before they asked. " +
     "This applies even when the passage sounds permissive: 'multi-site protectants such as captan (M4) " +
-    "provide additional coverage' is epidemiology, NOT a clearance to spray captan.\n\n" +
+    "provide additional coverage' is epidemiology, NOT a clearance to spray captan. " +
+    "DO NOT VOLUNTEER THIS CAVEAT UNPROMPTED. Rule 9 answers a question that ASKS about registration, " +
+    "permission, rotation clearance, PHI or REI — a plain biology/epidemiology question ('why is pressure " +
+    "high', 'what favors this disease') gets none of it, not even as a closing aside. Appending 'I can't " +
+    "tell you what's legally sprayable' to an answer nobody asked about spraying is caveat fatigue, the " +
+    "exact failure this scoping exists to prevent — it trains the grower to scroll past the caveat on the " +
+    "questions where it actually matters.\n\n" +
     "10. IF A PASSAGE CAME BACK, YOU HAVE THAT SOURCE — do not deny it. This knowledge base has over " +
     "20 sources, including several non-English regional publishers (e.g. Chambre d'Agriculture de la " +
     "Gironde in French, IFV France, WBI Freiburg in German, ICVV in Spanish). NEVER tell the user you " +

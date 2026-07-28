@@ -66,10 +66,19 @@ describe("LEGALITY_REFUSAL — the fixtures agree with the live classifier", () 
   it("every case's fixture is valid JSON in the tool's real return shape", () => {
     for (const gc of LEGALITY_GOLDEN) {
       for (const [tool, payload] of Object.entries(gc.fixture)) {
-        const parsed = JSON.parse(payload) as { found?: boolean; results?: unknown[]; message?: string };
-        expect(typeof parsed.found, `${gc.id}/${tool}`).toBe("boolean");
-        if (parsed.found) expect(Array.isArray(parsed.results), `${gc.id}/${tool}`).toBe(true);
-        else expect(typeof parsed.message, `${gc.id}/${tool}`).toBe("string");
+        const parsed = JSON.parse(payload) as Record<string, unknown>;
+        // search_knowledge_base is the only tool here shaped {found, results|message} — the guard
+        // this suite tests lives entirely in ITS fixture. Other stubbed tools (query_climate,
+        // query_field_reports, ...) have their own real return shapes and are only checked for
+        // being valid, non-null JSON objects — see each tool's source for its actual fields.
+        if (tool !== "search_knowledge_base") {
+          expect(parsed !== null && typeof parsed === "object", `${gc.id}/${tool}`).toBe(true);
+          continue;
+        }
+        const shaped = parsed as { found?: boolean; results?: unknown[]; message?: string };
+        expect(typeof shaped.found, `${gc.id}/${tool}`).toBe("boolean");
+        if (shaped.found) expect(Array.isArray(shaped.results), `${gc.id}/${tool}`).toBe(true);
+        else expect(typeof shaped.message, `${gc.id}/${tool}`).toBe("string");
       }
     }
   });

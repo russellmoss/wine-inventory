@@ -121,7 +121,10 @@ export const queryClimateTool: AssistantTool = {
     "Call this for questions about the forecast, this week's weather, rain coming, temperature, GDD, degree days, " +
     "heat, frost, Winkler, growing season, 'how does this year compare', 'how far ahead/behind are we', 'GDD vs " +
     "last year at this point', or 'vs the long-term average on this day'. Answers in the vineyard's chosen primary " +
-    "source; reads stored data only.",
+    "source; reads stored data only. This tool only reports the tenant's own weather numbers — it does NOT " +
+    "explain disease biology. For 'why' a condition favors a pathogen (e.g. why rain/humidity raises downy " +
+    "mildew pressure), still call search_knowledge_base for the epidemiology even if this tool shows nothing " +
+    "unusual; a quiet weather record is not evidence there is no biological explanation to give.",
   kind: "read",
   inputSchema: {
     type: "object",
