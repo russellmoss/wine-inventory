@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Button, Modal, StatusChip } from "@/components/ui";
+import { Card, Eyebrow, Button, Modal, StatusChip, ResponsiveTable, DataRow, DataCell, DataHeadCell } from "@/components/ui";
 import type { StatusVariant } from "@/components/ui";
 import { ReadingRows, emptyReadingRow, toReadingInputs, readingsValid, type ReadingRow } from "@/components/chemistry/ReadingRows";
 import { attachSampleResultsAction, markSampleSentAction, cancelSampleAction } from "@/lib/chemistry/actions";
@@ -80,53 +80,56 @@ export function SamplesClient({ samples }: { samples: OpenSampleRow[] }) {
         </Card>
       ) : (
         <Card>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          {/* First table migrated behind ResponsiveTable. It stamps `data-rt`, which
+              opts this table out of the legacy global `display:block` mobile rule —
+              the rule that destroys row/column semantics for screen readers. */}
+          <ResponsiveTable caption="Open samples awaiting results">
             <thead>
-              <tr style={{ textAlign: "left", color: "var(--text-muted)", fontSize: 12.5 }}>
-                <th style={{ padding: "8px 6px" }}>Lot</th>
-                <th style={{ padding: "8px 6px" }}>Source</th>
-                <th style={{ padding: "8px 6px" }}>Lab</th>
-                <th style={{ padding: "8px 6px" }}>Status</th>
-                <th style={{ padding: "8px 6px" }}>Age</th>
-                <th style={{ padding: "8px 6px" }} />
+              <tr>
+                <DataHeadCell>Lot</DataHeadCell>
+                <DataHeadCell>Source</DataHeadCell>
+                <DataHeadCell>Lab</DataHeadCell>
+                <DataHeadCell>Status</DataHeadCell>
+                <DataHeadCell>Age</DataHeadCell>
+                <DataHeadCell><span className="sr-only">Actions</span></DataHeadCell>
               </tr>
             </thead>
             <tbody>
               {samples.map((s) => (
-                <tr key={s.id} style={{ borderTop: "1px solid var(--border-strong)" }}>
-                  <td style={{ padding: "10px 6px" }}>
+                <DataRow key={s.id}>
+                  <DataCell identity>
                     <Link href={`/lots/${s.lotId}`} style={{ color: "var(--text-accent)" }}>
                       {s.lotCode}
                     </Link>
                     {s.varietyName ? <span style={{ color: "var(--text-muted)" }}> · {s.varietyName}</span> : null}
-                  </td>
-                  <td style={{ padding: "10px 6px", color: "var(--text-secondary)" }}>{s.source || "—"}</td>
-                  <td style={{ padding: "10px 6px", color: "var(--text-secondary)" }}>{s.lab || "—"}</td>
-                  <td style={{ padding: "10px 6px" }}>
+                  </DataCell>
+                  <DataCell style={{ color: "var(--text-secondary)" }}>{s.source || "—"}</DataCell>
+                  <DataCell style={{ color: "var(--text-secondary)" }}>{s.lab || "—"}</DataCell>
+                  <DataCell>
                     <StatusChip variant={STATUS_TONE[s.status] ?? "neutral"}>
                       {statusWord(s.status)}
                     </StatusChip>
-                  </td>
-                  <td style={{ padding: "10px 6px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{relAge(s.pulledAt)}</td>
-                  <td style={{ padding: "10px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                  </DataCell>
+                  <DataCell style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>{relAge(s.pulledAt)}</DataCell>
+                  <DataCell numeric style={{ whiteSpace: "nowrap" }}>
                     <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                       {s.status === "PULLED" ? (
-                        <Button variant="ghost" size="sm" disabled={pending} onClick={() => act(() => markSampleSentAction({ sampleId: s.id }))} style={{ minHeight: 36 }}>
+                        <Button variant="ghost" size="sm" disabled={pending} onClick={() => act(() => markSampleSentAction({ sampleId: s.id }))}>
                           Mark sent
                         </Button>
                       ) : null}
-                      <Button variant="secondary" size="sm" disabled={pending} onClick={() => setAttaching(s)} style={{ minHeight: 36 }}>
+                      <Button variant="secondary" size="sm" disabled={pending} onClick={() => setAttaching(s)}>
                         Attach results
                       </Button>
-                      <Button variant="ghost" size="sm" disabled={pending} onClick={() => act(() => cancelSampleAction(s.id))} style={{ minHeight: 36 }}>
+                      <Button variant="ghost" size="sm" disabled={pending} onClick={() => act(() => cancelSampleAction(s.id))}>
                         Cancel
                       </Button>
                     </span>
-                  </td>
-                </tr>
+                  </DataCell>
+                </DataRow>
               ))}
             </tbody>
-          </table>
+          </ResponsiveTable>
         </Card>
       )}
 

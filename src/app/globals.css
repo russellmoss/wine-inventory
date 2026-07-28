@@ -104,11 +104,43 @@
 
 /* Mobile: wide tables scroll horizontally instead of breaking the layout. */
 @media (max-width: 767px) {
-  .app-main table {
+  /* LEGACY mobile table treatment. `display: block` destroys table semantics —
+     rows and cells stop being rows and cells, so a screen reader loses the
+     row/column relationships and reads a flat run of text. It is scoped OFF any
+     table owned by <ResponsiveTable>, which stamps `data-rt` on itself and
+     handles its own overflow properly.
+
+     This is a shrink-to-zero migration, not a flag day: each migrated table opts
+     itself out, a partly-migrated app is always correct, and no table can end up
+     with neither treatment. DELETE this rule once no `table:not([data-rt])`
+     remains under .app-main. */
+  .app-main table:not([data-rt]) {
     display: block;
     overflow-x: auto;
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* Transform "stack" (doc 04 §4): rows become labelled blocks. Semantics are
+     preserved because the ARIA roles are restored explicitly. */
+  .app-main table[data-rt="stack"] thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .app-main table[data-rt="stack"],
+  .app-main table[data-rt="stack"] tbody,
+  .app-main table[data-rt="stack"] tr,
+  .app-main table[data-rt="stack"] td {
+    display: block;
+    width: 100%;
+  }
+  .app-main table[data-rt="stack"] tr {
+    padding: var(--space-2) 0;
+    border-top: 1px solid var(--border-strong);
   }
   /* Tame oversized display headings on small screens. Scoped OFF the new
      PageHeader, which sets its own responsive size — otherwise this !important
