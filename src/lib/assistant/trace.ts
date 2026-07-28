@@ -30,6 +30,9 @@ export type AssistantTrace = {
   turns: number;
   /** Plan 083 U5: whether the over-claim repair turn ran, and whether it rescued the write. */
   overclaimRepair?: "attempted" | "recovered" | "failed";
+  /** Gironde repro 2026-07-28: whether the retrieval-denial repair turn ran, and whether it worked —
+   *  same shape as overclaimRepair, for the model denying KB coverage it was actually handed. */
+  kbDenialRepair?: "attempted" | "recovered" | "failed";
 };
 
 export function newAssistantTrace(args: {

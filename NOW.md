@@ -780,7 +780,7 @@ is two decisions that are Russell's, not code:
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
 
-1. 🔴 **PUSHED 2026-07-28 — SPRAY INTELLIGENCE Wave 1 landing, paused for Cellarhand UI/UX v2.**
+0. 🔴 **PUSHED 2026-07-28 — SPRAY INTELLIGENCE Wave 1 landing, paused for Cellarhand UI/UX v2.**
    Where it stood: S0 complete (gate did NOT pass, deliverable is the narrowing — S1 is eastern-sites-
    only, California needs station blending) · S2 built, 3 PRs · S3a SHIPPED · S4 built · S2b Units
    1/2/3/5 merged as [#552](https://github.com/russellmoss/wine-inventory/pull/552) and live.
@@ -792,7 +792,41 @@ is two decisions that are Russell's, not code:
    the five "do NOT re-derive" findings are preserved in the archived block under "Also in flight".
 
 
-0. ✅ **POPPED 2026-07-27 — all three PRs MERGED, PNW Handbooks is chunked + embedded + LIVE FOR
+1. ✅ **POPPED 2026-07-28 — the corpus repair campaign (plan 100 Unit 2) is DONE, and it found a
+   second, separate bug.** ~3,270 of ~3,312 candidate documents re-fetched + re-chunked on the
+   fixed splitter across all 22 affected sources (`awri`, `ifv-france`, `wine-australia`,
+   `osu-owri`, `lvwo`, `ifv-occitanie`, `ives-technical-reviews`, `umc`, `vt-enology-notes`,
+   `cornell-grapes`, `wsu`, `uc-ipm`, `wbi`, `ets`, `osu-extension`, `icvv`, `scott-labs`,
+   `chambre-gironde`, `incavi`, `enartis`, `laffort`, `mapa`). Ran across a real overnight internet
+   outage and a Claude-account switch (background `tsx` processes are OS-level, not tied to any
+   Claude session — survived both once reconnected); resumed repeatedly via `--stale-before`
+   dry-runs with zero data loss each time (every write is transactional per document). One resume
+   attempt genuinely STALLED (22 min with zero writes anywhere in the corpus while still reporting
+   "running") — caught by checking `max(embeddedAt)` directly against wall-clock time rather than
+   trusting the process status, `TaskStop`'d, and resumed clean.
+   `ets` needed its OWN dedicated `crawl:ets` script, not the generic `reindex:knowledge` tool — it's
+   a JSON-API source (`webapi.etslabs.com`) whose canonical URLs are React-SPA shells; the generic
+   tool was fetching 903-byte empty pages and correctly refusing them as `low-confidence`. Fixed via
+   `npm run crawl:ets` (48 docs / 318 chunks / 0 errors).
+   🔴 **~20-document residual is INTENTIONALLY left un-reindexed, correctly blocked by the NEW
+   `numeric-loss` guard (Unit 3b) — and diagnosing why surfaced a real, PRE-EXISTING, SEPARATE bug.**
+   `ives-technical-reviews`, `lvwo`, `osu-owri` all have documents whose "heading" is not a short
+   label but a full citation blurb (IVES: `## Mortality and vigour…` — a ~400-char sentence including
+   the paper's own DOI). `parseSegments` treats HEADING TEXT AS PURE BREADCRUMB MATERIAL — it is
+   NEVER re-emitted as body content — so when `capBreadcrumb`'s 140-char cap truncates an oversized
+   heading, whatever falls past the cap is discarded with no trace anywhere in the corpus (confirmed:
+   the DOI `oeno-one.2023.57.1.5575` exists in the raw extracted markdown, in ZERO of 22 output
+   chunks). This is NOT the `String.match(/g)` bug from PR #544 — it is a different defect in how
+   `chunk.ts` treats abnormally-long headings, in the exact area
+   `claude/grape-guide-pdf-kb-87c8d8`/`plan 099`'s breadcrumb-collapse work is already active in, so
+   deliberately NOT patched here to avoid two sessions colliding on the same function. `awri`'s
+   `s2100.pdf` and `uc-ipm`'s pesticide-checklist page are a THIRD, unrelated, pre-existing gap
+   (confirmed `lowConfidence: true`, zero extractable markdown — always been unindexable, nothing to
+   do with tonight). `umc`'s last doc is a `skippedRedirectDenied` `/en/` variant — out of scope by
+   design, not a content bug. Filed in TODOS as its own item with full repro.
+   Full suite green (409 files / 4,967 tests), tsc clean, after the campaign.
+
+2. ✅ **POPPED 2026-07-27 — all three PRs MERGED, PNW Handbooks is chunked + embedded + LIVE FOR
    EVERY TENANT.** [#544](https://github.com/russellmoss/wine-inventory/pull/544) (chunker fix) +
    [#545](https://github.com/russellmoss/wine-inventory/pull/545) (PNW source, staged dark) +
    [#547](https://github.com/russellmoss/wine-inventory/pull/547) (`defaultEnabled` flip, its own
@@ -1247,6 +1281,23 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   unclaimed (the vineyard variety palette in `src/lib/vineyard/colors.ts` uses their exact hexes), so
   DESIGN.md backlog item 3 is closed as "keep", not "prune".
 
+- **✅ Product design audit — whole-app, read-only (2026-07-28).**
+  [docs/audits/product-design-audit-2026-07-28.md](docs/audits/product-design-audit-2026-07-28.md).
+  Owner-requested detour from the spray lane (spray objective above is UNCHANGED). Senior-product-designer
+  pass over DESIGN.md, `/styleguide`, `AppShell` nav, the 21-component `ui/` barrel, and representative
+  screens for cellar / vineyard / manager / admin / accounting — plus a live headless sweep of 24 routes ×
+  2 viewports on Demo Winery with an in-page a11y probe. **No code changed.**
+  Headlines: work-order Execute hides actuals behind "Edit" **and shows "Offline — will retry" with no
+  outbox**; undo exists on `/bulk` but not on Execute for the same act; **TTB filing is irreversible with
+  no confirm** (breaks the product's own rule 6); no global search / breadcrumbs / skip link (13-21 tab
+  stops before content, `aria-current` on 0 nav links); **78% of controls (293/376) under 44px** because
+  `Button` hardcodes 34/42/50; `/bulk` renders fully collapsed (no wine visible); 1 `loading.tsx` and
+  0 `not-found.tsx` across 57 routes. Recommended slice: **work order → Execute → recorded**
+  (runner-up `/bulk`, sequenced right after). `/compliance` is the best-designed screen in the product.
+  ⚠️ Two env traps cost real time and are worth fixing: **`localhost:3000` is squatted by another project
+  ("Savvy Labs")** and `.env` pins `BETTER_AUTH_URL=http://localhost:3000`, so any other port fails login
+  with "Invalid origin". Demo creds `demo@demo.com / demo1234` are valid (CLAUDE.md correct);
+  `owner@demowinery.test / DemoWinery!2026` is a second valid owner.
 - **✅ Cornell NY/PA Grape Guide is LIVE in the KB (2026-07-27) + the breadcrumb defect it exposed.
   Plan 099, [#543](https://github.com/russellmoss/wine-inventory/pull/543) MERGED (`64db4cd9`),
   crawled, measured, `defaultEnabled:true` for all tenants.**
@@ -1785,6 +1836,22 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
 _Last updated: 2026-07-28 — **Phase 2 + Phase 3 BUILT (15 commits, `claude/cellarhand-v2-phase-2-3`), plan 102 `completed`.** The redesign is now visible: 3-group nav behind a flag, `/ferment` worksheet, PageHeader, ResponsiveTable, TimeSeriesChart, the form-control layer. Biggest finds: `Input` had NONE of its four a11y attributes across 165 call sites; three greps gave three different unlabelled-select counts until a tokenising detector settled it at 32; and **running the axe gate found two defects I had introduced myself**, one of them hiding the login page's password toggle from assistive tech. Suite 425 files / 5,219 passing (one documented flake). Spray Wave 1 remains PUSHED on the tangent stack.
+
+Also this date, from the KB session on `main`: _Last updated: 2026-07-28 — **Plan 100 corpus repair campaign DONE**: ~3,270 of ~3,312 documents
+re-chunked across all 22 affected sources; ~20 correctly refused by the numeric-loss guard, which
+surfaced a SEPARATE pre-existing bug (long headings-as-citation-blurbs silently truncated by
+`capBreadcrumb`, discarding real content — not the PR #544 bug, filed in TODOS, deliberately not
+patched here since another session is actively in `chunk.ts`'s breadcrumb logic). Also this date:
+**Cellarhand UI/UX v2 Phase 0 + Phase 1 BUILT (10 units, 10 commits) on
+`claude/cellarhand-v2-phase-reconciliation-a926e3`, not PR'd and not axe/browser-verified.** Plan
+[101](docs/plans/2026-07-28-101-feat-cellarhand-v2-phase0-1-reconciliation-plan.md) is `completed`
+and carries an Execution record of the eight places the plan was wrong about the repo. Green:
+`tsc --noEmit`, `eslint` (0 errors), 5,068 vitest tests / 418 files, 6 new suites. Not green because
+not run: `qa:a11y` + `qa:visual` (need a dev server with `.env` on THIS branch) and `npm run build`
+(needs `DATABASE_URL`). The Spray Wave 1 objective is PUSHED onto the tangent stack, verbatim, under
+"Also in flight" — nothing lost.
+Prior: **Plan 100
+SHIPPED IN FULL, all three PRs merged** ([#544](https://github.com/russellmoss/wine-inventory/pull/544) chunker fix, [#545](https://github.com/russellmoss/wine-inventory/pull/545) PNW Handbooks source, [#547](https://github.com/russellmoss/wine-inventory/pull/547) `defaultEnabled` flip — Russell's call, live for every tenant): the chunker was silently DELETING text (`splitBySentences` used `String.match(/g)`, which skips spans it cannot match, so `0.5 lb ai` indexed as `5 lb ai`). Fixed, with a lossless scanner + a standing ingest-time numeric-integrity guard + `CHUNKER_VERSION` folded unconditionally into `deriveIndexHash`. Measured read-only: **~630 of 3,299 corpus documents corrupted, about 1 in 5** (candidates 44/64; random non-candidates 16/90 = 18.2%) — the monthly sweep now progressively repairs what it re-fetches; a dedicated repair campaign for the rest is NOT run and needs a go-ahead. PNW Handbooks is live for all tenants: 59 documents / 142 chunks, KB-1-clean. Task branches pruned (local + remote). Correction to the note below: **SKB PR 1 has since MERGED as #538**, so the KB-1 gate is on main. Also this date: **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness. Bhutan's daily series may be 8–9 °C off vs ERA5 — escalated as its own investigation.** Also this date: plan 098 tenant unit preferences built (all 12 units; QA + ship pending); S2b product-facts FOUNDATION merged + live (#535), phase still open. And: **SKB PR 1 + Unit 5 BUILT AND QA'd on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
@@ -1929,3 +1996,5 @@ the CampusPress CDN, #427 the dropped canonicalTitle. En route: main was found t
 publication dates from junk metadata, and a newly-allowlisted crawl target proved undiscoverable
 without a reset. Prior: plan 085 CLOSED, MSU unreachable and DORMANT (#422); the sweep fail-closed
 fix (#418) that un-broke the monthly refresh for all 21 sources._
+
+_Last updated: 2026-07-28 — product design audit landed (docs/audits/product-design-audit-2026-07-28.md); spray Wave 1 objective unchanged._
