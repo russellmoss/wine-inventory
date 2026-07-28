@@ -74,12 +74,24 @@ export const NAV_MODEL: NavGroup[] = [
       // OD-1: `Records` stays visible to every role. The handoff's role matrix and
       // the shipped code already agreed on this, so it is a ratification, not a change.
       { href: "/audit", label: "Records" },
-      { href: "/settings", label: "Setup", admin: true },
+      // Plan 104 D4 (OD-3b-1): this used to point at `/settings` — a page about
+      // sparkling toggles and base currency, which is not what the label promises.
+      // `/setup` is a new grouped index; `/settings` is now one of its eight children
+      // (src/lib/nav/sections.ts). Nothing moved: /settings is still at /settings.
+      { href: "/setup", label: "Setup", admin: true },
     ],
   },
 ];
 
-/** Destinations removed from the sidebar but still reachable (doc 01 §4). */
+/**
+ * Destinations removed from the sidebar but still reachable (doc 01 §4).
+ *
+ * **This records an INTENTION, not a state.** It carries no label and no role flags,
+ * so it cannot render a link or filter one, and thirteen of its `reachedFrom` claims
+ * were false the day plan 104 measured them. The second level of the IA — the thing
+ * that actually makes these reachable — is `src/lib/nav/sections.ts`, and the thing
+ * that proves it is `test/route-reachability.test.ts`. Read those, not this.
+ */
 export const CONTEXTUAL_DESTINATIONS: { href: string; reachedFrom: string }[] = [
   { href: "/assistant", reachedFrom: "the dock's expand control, and Ctrl-K" },
   { href: "/help/feedback", reachedFrom: "the user menu in the sidebar footer" },

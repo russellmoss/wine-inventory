@@ -57,8 +57,10 @@ describe("role visibility (doc 01 §3, OD-1)", () => {
   });
 
   it("keeps Setup admin-only", () => {
-    expect(isVisible(byHref("/settings"), user)).toBe(false);
-    expect(isVisible(byHref("/settings"), admin)).toBe(true);
+    // Plan 104 D4: the destination repointed from /settings to the new /setup hub.
+    // /settings did not move — it is one of /setup's eight children now.
+    expect(isVisible(byHref("/setup"), user)).toBe(false);
+    expect(isVisible(byHref("/setup"), admin)).toBe(true);
   });
 
   it("keeps Compliance, Accounting and Blends admin-only", () => {
