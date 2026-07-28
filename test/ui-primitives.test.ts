@@ -53,6 +53,30 @@ function openingTags(text: string, tag: string): string[] {
   return out;
 }
 
+describe("AC-F1 — no call site overrides a Button below the 44px floor", () => {
+  /**
+   * The size map is only half the guarantee. `style` is spread LAST in Button, so a
+   * call site passing `style={{ height: 38 }}` wins outright and silently puts that
+   * control back under the floor. Ten call sites on the two field-notes manager
+   * screens were doing exactly that — which would have made this phase's headline
+   * claim false on those screens while every other test still passed.
+   *
+   * `minHeight` under 44 is NOT flagged: it cannot shrink a fixed `height`, so those
+   * overrides are redundant rather than harmful.
+   */
+  it("no <Button> passes a literal height under 44px", () => {
+    const offenders: string[] = [];
+    for (const f of ALL_SRC) {
+      for (const tag of openingTags(f.text, "Button")) {
+        for (const m of tag.matchAll(/(?<!min)\bheight\s*:\s*(\d+)/g)) {
+          if (Number(m[1]) < 44) offenders.push(`${f.rel}: height: ${m[1]}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("AC-C7 — ConfirmButton never auto-disarms", () => {
   const src = read("ConfirmButton.tsx");
 
