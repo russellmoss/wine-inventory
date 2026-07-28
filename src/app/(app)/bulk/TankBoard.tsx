@@ -12,6 +12,7 @@ import {
   toQueryString,
   toggleState,
   withoutChip,
+  EMPTY_FILTERS,
   type BoardFilters,
 } from "@/lib/vessels/board-filters";
 import { TankTile, TankTileSkeleton, type TankTileData } from "./TankTile";
@@ -39,8 +40,11 @@ export function TankBoard({
   const router = useRouter();
   const pathname = usePathname();
 
+  // `replace`, not `push`. Search-as-you-type with push mints a history entry per debounce
+  // commit, so Back walks the user character-by-character through their own search instead
+  // of returning to the page they came from — unusable on a cellar tablet.
   const go = React.useCallback(
-    (next: BoardFilters) => router.push(`${pathname}${toQueryString(next)}`, { scroll: false }),
+    (next: BoardFilters) => router.replace(`${pathname}${toQueryString(next)}`, { scroll: false }),
     [router, pathname],
   );
 
@@ -50,13 +54,25 @@ export function TankBoard({
   const currentState = filters.state;
   const [draft, setDraft] = React.useState(currentQ);
   const [syncedQ, setSyncedQ] = React.useState(currentQ);
+  // What we last asked the router for. /bulk is a heavy server render, so a navigation can
+  // land several keystrokes later; re-syncing the input from the URL then DELETED the
+  // characters typed in the meantime and left the board filtered on a prefix. That is the
+  // normal case for anyone typing faster than the server, not an edge case.
+  const [dispatchedQ, setDispatchedQ] = React.useState(currentQ);
 
   // Adjusted during render, not in an effect. The URL can change under us (a chip removed,
   // the back button), and an effect for this would setState synchronously and cascade an
   // extra render pass on every navigation.
   if (syncedQ !== currentQ) {
     setSyncedQ(currentQ);
-    setDraft(currentQ);
+    // Only adopt the URL when the change came from SOMEWHERE ELSE. Our own landing
+    // navigation must never overwrite what the user has kept typing.
+    // State, not a ref: React forbids touching a ref during render, and adjusting state
+    // during render is the sanctioned pattern for "a prop changed under us".
+    if (currentQ !== dispatchedQ) {
+      setDraft(currentQ);
+      setDispatchedQ(currentQ);
+    }
   }
 
   React.useEffect(() => {
@@ -65,24 +81,29 @@ export function TankBoard({
     // Primitive deps only. `filters` is rebuilt from search params every render, so
     // depending on the object would clear and restart this timer on each pass and the
     // search would never commit.
-    const t = setTimeout(
-      () => go({ state: currentState, q: next.length > 0 ? next : null }),
-      300,
-    );
+    const t = setTimeout(() => {
+      setDispatchedQ(next);
+      go({ state: currentState, q: next.length > 0 ? next : null });
+    }, 300);
     return () => clearTimeout(t);
   }, [draft, currentQ, currentState, go]);
 
   const shown = applyBoardFilters(tiles, filters);
   const chips = filterChips(filters);
+  // Counted over the TEXT-filtered set, state-independent, so each chip predicts exactly
+  // what clicking it will show. Counting over every tile promised "Fermenting 12" and
+  // delivered one whenever a search was active, contradicting the summary line below it.
   const counts = React.useMemo(() => {
     const m = new Map<string, number>();
-    for (const t of tiles) m.set(t.state, (m.get(t.state) ?? 0) + 1);
+    for (const t of applyBoardFilters(tiles, { state: null, q: filters.q })) {
+      m.set(t.state, (m.get(t.state) ?? 0) + 1);
+    }
     return m;
-  }, [tiles]);
+  }, [tiles, filters.q]);
 
   if (tiles.length === 0) {
     return (
-      <EmptyState title="No tanks set up yet.">
+      <EmptyState title="No tanks set up yet">
         Register tanks in <strong>Setup &rarr; Vessels</strong> and they appear here.
       </EmptyState>
     );
@@ -160,8 +181,8 @@ export function TankBoard({
               type="button"
               onClick={() => go(withoutChip(filters, c.key))}
               style={{
-                minHeight: 32,
-                padding: "0 10px",
+                minHeight: "var(--touch-min)",
+                padding: "0 12px",
                 borderRadius: "var(--radius-pill)",
                 border: "1px solid var(--wine-primary)",
                 background: "transparent",
@@ -183,8 +204,30 @@ export function TankBoard({
       </p>
 
       {shown.length === 0 ? (
-        <EmptyState title="No tanks match this narrowing.">
-          {hasAnyFilter(filters) ? "Clear a filter above to see the rest of the cellar." : null}
+        <EmptyState
+          title="No tanks match this narrowing"
+          actions={
+            hasAnyFilter(filters) ? (
+              <button
+                type="button"
+                onClick={() => go(EMPTY_FILTERS)}
+                style={{
+                  minHeight: "var(--touch-min)",
+                  padding: "0 14px",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--surface-raised)",
+                  fontFamily: "var(--font-body)",
+                  fontSize: 14,
+                  cursor: "pointer",
+                }}
+              >
+                Clear narrowing
+              </button>
+            ) : null
+          }
+        >
+          {null}
         </EmptyState>
       ) : (
         <div className="bw-tank-board">

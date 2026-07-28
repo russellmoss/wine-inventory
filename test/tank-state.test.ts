@@ -16,8 +16,7 @@ const STALE = "2026-07-26T09:00:00.000Z"; // 51h ago
 function input(over: Partial<TankStateInput> = {}): TankStateInput {
   return {
     hasWine: true,
-    afState: "NONE",
-    mlfState: "NONE",
+    lots: [{ afState: "NONE", mlfState: "NONE" }],
     over: false,
     lastReadingAt: FRESH,
     now: NOW,
@@ -27,24 +26,24 @@ function input(over: Partial<TankStateInput> = {}): TankStateInput {
 
 describe("tankState", () => {
   it("an unoccupied vessel is empty", () => {
-    expect(tankState(input({ hasWine: false, afState: null, mlfState: null, lastReadingAt: null }))).toBe("empty");
+    expect(tankState(input({ hasWine: false, lots: [], lastReadingAt: null }))).toBe("empty");
   });
 
   it("empty wins even when stale readings and a finished ferment are on the record", () => {
     // A vessel that was racked out yesterday still has its old panels. It is empty, not aging.
-    expect(tankState(input({ hasWine: false, afState: "DRY", lastReadingAt: STALE }))).toBe("empty");
+    expect(tankState(input({ hasWine: false, lots: [{ afState: "DRY", mlfState: "NONE" }], lastReadingAt: STALE }))).toBe("empty");
   });
 
   it("an active alcoholic ferment with a fresh reading is fermenting", () => {
-    expect(tankState(input({ afState: "ACTIVE" }))).toBe("fermenting");
+    expect(tankState(input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }] }))).toBe("fermenting");
   });
 
   it("an active malolactic ferment counts as fermenting too", () => {
-    expect(tankState(input({ afState: "DRY", mlfState: "ACTIVE" }))).toBe("fermenting");
+    expect(tankState(input({ lots: [{ afState: "DRY", mlfState: "ACTIVE" }] }))).toBe("fermenting");
   });
 
   it("wine that is not fermenting is aging", () => {
-    expect(tankState(input({ afState: "DRY", mlfState: "COMPLETE" }))).toBe("aging");
+    expect(tankState(input({ lots: [{ afState: "DRY", mlfState: "COMPLETE" }] }))).toBe("aging");
   });
 
   it("over capacity is attention", () => {
@@ -53,42 +52,63 @@ describe("tankState", () => {
 
   it("attention beats fermenting when both fire", () => {
     // The precedence that matters: a person is needed before a description is.
-    expect(tankState(input({ afState: "ACTIVE", over: true }))).toBe("attention");
+    expect(tankState(input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }], over: true }))).toBe("attention");
   });
 
   it("a fermenting tank with no reading in 24h needs attention", () => {
-    expect(tankState(input({ afState: "ACTIVE", lastReadingAt: STALE }))).toBe("attention");
+    expect(tankState(input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }], lastReadingAt: STALE }))).toBe("attention");
   });
 
   it("a fermenting tank with NO reading at all needs attention, not a shrug", () => {
-    expect(tankState(input({ afState: "ACTIVE", lastReadingAt: null }))).toBe("attention");
+    expect(tankState(input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }], lastReadingAt: null }))).toBe("attention");
   });
 
   it("an aging tank with no readings is still just aging", () => {
     // Staleness only matters during a ferment. A barrel-aged wine is not overdue for Brix.
-    expect(tankState(input({ afState: "DRY", lastReadingAt: null }))).toBe("aging");
+    expect(tankState(input({ lots: [{ afState: "DRY", mlfState: "NONE" }], lastReadingAt: null }))).toBe("aging");
   });
 
   it("honours a caller-supplied staleness window", () => {
-    const i = input({ afState: "ACTIVE", lastReadingAt: FRESH, staleReadingHours: 1 });
+    const i = input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }], lastReadingAt: FRESH, staleReadingHours: 1 });
     expect(tankState(i)).toBe("attention");
     expect(tankState({ ...i, staleReadingHours: 48 })).toBe("fermenting");
   });
 
   it("is exactly at, not over, the boundary at the window edge", () => {
     const exactly = new Date(Date.parse(NOW) - STALE_READING_HOURS * 3_600_000).toISOString();
-    expect(tankState(input({ afState: "ACTIVE", lastReadingAt: exactly }))).toBe("fermenting");
+    expect(tankState(input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }], lastReadingAt: exactly }))).toBe("fermenting");
     const oneMsPast = new Date(Date.parse(exactly) - 1).toISOString();
-    expect(tankState(input({ afState: "ACTIVE", lastReadingAt: oneMsPast }))).toBe("attention");
+    expect(tankState(input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }], lastReadingAt: oneMsPast }))).toBe("attention");
   });
 
-  it("an unparseable timestamp does not silently flag every tank", () => {
-    // Garbage in should not manufacture a cellar-wide alarm.
-    expect(tankState(input({ afState: "ACTIVE", lastReadingAt: "not-a-date" }))).toBe("fermenting");
+  it("an unparseable timestamp asks a human to look, rather than staying quiet", () => {
+    // Fail TOWARDS attention. A garbage timestamp means we do not know when this tank was
+    // last sampled, and "we don't know" on an active ferment is a reason to go and look.
+    expect(tankState(input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }], lastReadingAt: "not-a-date" }))).toBe("attention");
+  });
+
+  it("a FUTURE-dated reading does not silence the tank forever", () => {
+    // now - last is negative for a fat-fingered year or a skewed tablet clock. That used to
+    // read as "not stale", permanently, so a stalled ferment kept a calm green chip.
+    const future = new Date(Date.parse(NOW) + 86_400_000).toISOString();
+    expect(tankState(input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }], lastReadingAt: future }))).toBe("attention");
+  });
+
+  it("ANY resident lot fermenting makes the tank fermenting", () => {
+    // A 1000 L DRY lot beside a 900 L ACTIVE one is not "aging". Taking vesselLots[0] only
+    // (the largest) reported an actively fermenting tank as resting.
+    const i = input({ lots: [{ afState: "DRY", mlfState: "COMPLETE" }, { afState: "ACTIVE", mlfState: "NONE" }] });
+    expect(tankState(i)).toBe("fermenting");
+  });
+
+  it("a vessel the ledger cannot account for is attention, never 'empty'", () => {
+    // Composition on record with no occupancy, or an unusable capacity. Filing it under
+    // Empty hands it to someone hunting for a free tank.
+    expect(tankState(input({ hasWine: false, lots: [], unknown: true }))).toBe("attention");
   });
 
   it("is pure — same input, same answer, no clock read", () => {
-    const i = input({ afState: "ACTIVE" });
+    const i = input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }] });
     expect(tankState(i)).toBe(tankState(i));
   });
 });
@@ -113,8 +133,8 @@ describe("AC-S24 — greyscale distinguishability", () => {
   it("covers every state the deriver can return", () => {
     const produced = new Set<string>([
       tankState(input({ hasWine: false })),
-      tankState(input({ afState: "ACTIVE" })),
-      tankState(input({ afState: "DRY" })),
+      tankState(input({ lots: [{ afState: "ACTIVE", mlfState: "NONE" }] })),
+      tankState(input({ lots: [{ afState: "DRY", mlfState: "NONE" }] })),
       tankState(input({ over: true })),
     ]);
     expect([...produced].sort()).toEqual([...TANK_STATES].sort());

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { tankDetailFacts, type TankReading } from "@/lib/vessels/tank-detail-facts";
+import { tankDetailFacts, toTankReadings, type TankReading } from "@/lib/vessels/tank-detail-facts";
 
 function r(observedAt: string, brix: number | null, tempC: number | null): TankReading {
   return { observedAt, brix, tempC };
@@ -11,6 +11,83 @@ const FERMENT: TankReading[] = [
   r("2026-07-23T08:00:00.000Z", 9.4, 21.0),
   r("2026-07-27T08:00:00.000Z", 4.8, 14.2),
 ];
+
+describe("toTankReadings — the prisma to facts seam", () => {
+  const at = new Date("2026-07-27T08:00:00.000Z");
+
+  it("picks each analyte by name, not by position", () => {
+    // Order is not guaranteed by the query. Picking by index would silently swap Brix
+    // and temperature and plot a confident, wrong curve.
+    const out = toTankReadings([{ observedAt: at, readings: [{ analyte: "TEMP", value: 29.4, unit: "°C" }, { analyte: "BRIX", value: 17, unit: "°Bx" }] }]);
+    expect(out[0].brix).toBe(17);
+    expect(out[0].tempC).toBe(29.4);
+  });
+
+  it("converts Decimal-like values, not just numbers", () => {
+    // Prisma hands back Decimal objects, not primitives.
+    const decimal = { toString: () => "17.5", valueOf: () => 17.5 };
+    const out = toTankReadings([{ observedAt: at, readings: [{ analyte: "BRIX", value: decimal, unit: "°Bx" }] }]);
+    expect(out[0].brix).toBe(17.5);
+  });
+
+  it("a missing analyte becomes null, never 0", () => {
+    // 0 Bx is a real, meaningful reading. Coercing "absent" to it would invent a dry ferment.
+    const out = toTankReadings([{ observedAt: at, readings: [{ analyte: "BRIX", value: 17, unit: "°Bx" }] }]);
+    expect(out[0].tempC).toBeNull();
+  });
+
+  it("keeps a panel with neither analyte, so the reading count stays honest", () => {
+    const out = toTankReadings([{ observedAt: at, readings: [{ analyte: "PH", value: 3.4, unit: "pH" }] }]);
+    expect(out).toHaveLength(1);
+    expect(out[0].brix).toBeNull();
+    expect(out[0].tempC).toBeNull();
+  });
+
+  it("an unparseable value is null rather than NaN", () => {
+    const out = toTankReadings([{ observedAt: at, readings: [{ analyte: "BRIX", value: "not a number", unit: "°Bx" }] }]);
+    expect(out[0].brix).toBeNull();
+  });
+
+  it("preserves an explicit zero", () => {
+    const out = toTankReadings([{ observedAt: at, readings: [{ analyte: "BRIX", value: 0, unit: "°Bx" }] }]);
+    expect(out[0].brix).toBe(0);
+  });
+
+  it("emits an ISO timestamp the facts module can parse", () => {
+    expect(toTankReadings([{ observedAt: at, readings: [] }])[0].observedAt).toBe("2026-07-27T08:00:00.000Z");
+  });
+
+  it("converts FAHRENHEIT to Celsius before anything plots it", () => {
+    // TEMP.units is ["°C","°F"] and validateMeasurement range-checks AFTER converting, so
+    // value:68 unit:"°F" is a valid stored row. Reading value alone put a US cellar's
+    // ferment curve at 68-85 °C against an axis labelled °C.
+    const out = toTankReadings([{ observedAt: at, readings: [{ analyte: "TEMP", value: 68, unit: "°F" }] }]);
+    expect(out[0].tempC).toBeCloseTo(20, 6);
+  });
+
+  it("states the converted value, not the raw one", () => {
+    const f = tankDetailFacts(toTankReadings([{ observedAt: at, readings: [{ analyte: "TEMP", value: 68, unit: "°F" }] }]));
+    expect(f.formatted.latestTemp).toBe("20.0 °C");
+    expect(f.ariaSentence).toContain("20.0 °C");
+    expect(f.ariaSentence).not.toContain("68");
+  });
+
+  it("refuses to plot a unit it cannot convert, rather than plotting it raw", () => {
+    const out = toTankReadings([{ observedAt: at, readings: [{ analyte: "TEMP", value: 300, unit: "K" }] }]);
+    expect(out[0].tempC).toBeNull();
+  });
+
+  it("round-trips into tankDetailFacts", () => {
+    const facts = tankDetailFacts(
+      toTankReadings([
+        { observedAt: new Date("2026-07-16T08:00:00.000Z"), readings: [{ analyte: "BRIX", value: 24, unit: "°Bx" }] },
+        { observedAt: at, readings: [{ analyte: "BRIX", value: 17, unit: "°Bx" }, { analyte: "TEMP", value: 29.4, unit: "°C" }] },
+      ]),
+    );
+    expect(facts.formatted.lastBrix).toBe("17.0 Bx");
+    expect(facts.formatted.latestTemp).toBe("29.4 °C");
+  });
+});
 
 describe("series", () => {
   it("plots Brix on the left axis and temperature on the right", () => {
@@ -173,6 +250,25 @@ describe("AC-S27 — the sentence and the stated facts cannot disagree", () => {
   it("still spans two days when the readings really are on two days", () => {
     const s = tankDetailFacts(FERMENT).ariaSentence;
     expect(s).toContain("between 16 July and 27 July");
+  });
+
+  it("day labels use the SAME timezone convention as the chart's own axis", () => {
+    // TimeSeriesChart's fmtDate is local (d.getDate()). If the sentence used UTC, a reading
+    // at 02:00Z would render as one day in the data table and the next day in the sentence
+    // beside it, for every winery west of Greenwich. Machine-independent: both sides local.
+    const iso = "2026-07-28T02:00:00.000Z";
+    const expectedDay = new Date(iso).getDate();
+    const s = tankDetailFacts([r(iso, 12.0, 20.0)]).ariaSentence;
+    expect(s).toContain(` on ${expectedDay} `);
+  });
+
+  it("direction is computed from the ROUNDED values the sentence quotes", () => {
+    // 21.42 -> 21.44 rounds to 21.4 both ends. Comparing raw values produced
+    // "Brix rising from 21.4 Bx to 21.4 Bx" beside a delta card reading 0.0 Bx.
+    const f = tankDetailFacts([r("2026-07-26T08:00:00.000Z", 21.42, 20), r("2026-07-27T08:00:00.000Z", 21.44, 20)]);
+    expect(f.formatted.firstBrix).toBe(f.formatted.lastBrix);
+    expect(f.ariaSentence).toContain("flat");
+    expect(f.ariaSentence).not.toMatch(/rising|falling/);
   });
 
   it("is deterministic — no clock, no locale drift between calls", () => {

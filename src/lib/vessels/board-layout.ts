@@ -3,13 +3,13 @@
  * lays the board out; this module is the same table as data so the breakpoints are
  * unit-testable and so the two cannot silently disagree.
  *
- * | Width | Columns |
- * |-------|---------|
- * | 390   | 2       |
- * | 430   | 2 (larger type) |
- * | 768   | 4       |
- * | 1024  | 6       |
- * | 1440+ | 6 (wider tiles) |
+ * | Width | Columns | Implemented |
+ * |-------|---------|-------------|
+ * | 390   | 2       | yes |
+ * | 430   | 2       | yes (the doc's "larger type" ramp is NOT implemented) |
+ * | 768   | 4       | yes |
+ * | 1024  | 6       | yes |
+ * | 1440+ | 6       | yes (the doc's "wider tiles" step is NOT implemented) |
  */
 
 export type BoardBreakpoint = { minWidth: number; columns: number };
@@ -21,7 +21,12 @@ export const BOARD_BREAKPOINTS: readonly BoardBreakpoint[] = [
   { minWidth: 1024, columns: 6 },
 ] as const;
 
-/** Doc 04 §7: "Tile minimum 132×86px so the lot code never truncates below 8 characters". */
+/**
+ * Doc 04 §7's tile minimum. Only the HEIGHT is applied: a min-width on a `minmax(0, 1fr)`
+ * grid item overflows its track rather than widening it, so identity text clips with a
+ * tooltip instead (doc 04 §164). `TILE_MIN_WIDTH` is kept as the documented intent and is
+ * what the skeleton reserves.
+ */
 export const TILE_MIN_WIDTH = 132;
 export const TILE_MIN_HEIGHT = 86;
 

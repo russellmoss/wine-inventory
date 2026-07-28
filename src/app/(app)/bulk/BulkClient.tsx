@@ -3,9 +3,9 @@
 import React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Card, Button, Badge, Eyebrow, Modal, ExportCsvButton, PageHeader } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, Modal, ExportCsvButton, PageHeader, FillIndicator } from "@/components/ui";
 import { NAV_V2_ENABLED } from "@/lib/nav/flag";
-import { parseBoardFilters } from "@/lib/vessels/board-filters";
+import { parseBoardFilters, boardSummary } from "@/lib/vessels/board-filters";
 import type { TankState } from "@/lib/vessels/tank-state";
 import { TankBoard } from "./TankBoard";
 import type { TankTileData } from "./TankTile";
@@ -61,16 +61,15 @@ function WineBadge({ v }: { v: VesselWithContents }) {
   );
 }
 
+/** Delegates to the shared §B22 component — this used to be a third hand-rolled copy. */
 function FillBar({ v }: { v: VesselWithContents }) {
+  const vol = useUnitPrefs().volume;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 160, flex: 1 }}>
-      <div style={{ flex: 1, height: 8, background: "var(--paper-200)", borderRadius: 999, overflow: "hidden" }}>
-        <div style={{ width: `${Math.min(100, v.fill.pct)}%`, height: "100%", background: v.fill.over ? "var(--danger)" : "var(--accent)" }} />
-      </div>
-      <span style={{ fontSize: 12.5, color: v.fill.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>
-        {formatVolume(v.fill.filledL, useUnitPrefs().volume)} / {formatVolume(v.capacityL, useUnitPrefs().volume)}{v.fill.over ? " ⚠" : ""}
-      </span>
-    </div>
+    <FillIndicator
+      fill={v.fill}
+      orientation="horizontal"
+      text={`${formatVolume(v.fill.filledL, vol)} / ${formatVolume(v.capacityL, vol)}${v.fill.over ? " ⚠" : ""}`}
+    />
   );
 }
 
@@ -314,7 +313,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
         <PageHeader
           eyebrow="In-process wine · Winery"
           title="Wine in-progress"
-          summary="Every tank, what is in it, and what needs you."
+          summary={boardSummary(tankTiles, (l) => formatVolume(l, vol))}
           actions={exportButton}
         />
       ) : (

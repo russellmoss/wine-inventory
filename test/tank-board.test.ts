@@ -62,12 +62,16 @@ describe("the CSS and the data table agree", () => {
     expect(CSS).toContain(".bw-tank-board");
   });
 
-  it("every breakpoint in the data has a matching column count in the CSS", () => {
-    for (const bp of BOARD_BREAKPOINTS) {
-      expect(CSS).toContain(`repeat(${bp.columns}, minmax(0, 1fr))`);
-    }
-    expect(CSS).toContain("@media (min-width: 768px)");
-    expect(CSS).toContain("@media (min-width: 1024px)");
+  it("each breakpoint's column count sits INSIDE its own media block", () => {
+    // Asserting the strings appear "somewhere" let the 4 and the 6 be swapped between the
+    // two blocks — precisely the drift this data mirror exists to catch.
+    const board = CSS.slice(CSS.indexOf(".bw-tank-board"));
+    const base = board.slice(0, board.indexOf("@media"));
+    const at768 = board.slice(board.indexOf("@media (min-width: 768px)"), board.indexOf("@media (min-width: 1024px)"));
+    const at1024 = board.slice(board.indexOf("@media (min-width: 1024px)"));
+    expect(base).toContain("repeat(2, minmax(0, 1fr))");
+    expect(at768).toContain("repeat(4, minmax(0, 1fr))");
+    expect(at1024).toContain("repeat(6, minmax(0, 1fr))");
   });
 
   it("the board uses the class rather than fighting it with an inline grid", () => {
@@ -82,9 +86,11 @@ describe("tile contract", () => {
     expect(TILE_MIN_HEIGHT).toBe(86);
   });
 
-  it("the tile applies those minimums", () => {
-    expect(TILE).toContain("minWidth: TILE_MIN_WIDTH");
+  it("the tile applies the HEIGHT minimum but never a width one", () => {
     expect(TILE).toContain("minHeight: TILE_MIN_HEIGHT");
+    // A min-width larger than a `minmax(0, 1fr)` track overflows into the neighbouring tile
+    // rather than widening the track — the board spilled sideways at 768-891 and 1024-1179.
+    expect(TILE).toContain("minWidth: 0");
   });
 
   it("AC-S22 — the tile renders the lot code, not just the tank code", () => {

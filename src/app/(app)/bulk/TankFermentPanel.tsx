@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { TimeSeriesChart, Metric, EmptyState, Skeleton } from "@/components/ui";
+import { TimeSeriesChart, Metric, EmptyState, Skeleton, Button } from "@/components/ui";
 import type { TankDetailFacts } from "@/lib/vessels/tank-detail-facts";
 
 /**
@@ -19,11 +19,14 @@ import type { TankDetailFacts } from "@/lib/vessels/tank-detail-facts";
 export function TankFermentPanel({
   facts,
   loading,
-  onRecordReading,
+  error = false,
+  onRetry,
 }: {
   facts: TankDetailFacts | null;
   loading: boolean;
-  onRecordReading?: () => void;
+  /** A failed read is NOT an empty tank. See the error branch below. */
+  error?: boolean;
+  onRetry?: () => void;
 }) {
   // The chart area reserves its exact height while loading (SC-11), so the panel does not
   // jump when the curve arrives.
@@ -35,20 +38,23 @@ export function TankFermentPanel({
     );
   }
 
-  if (!facts || facts.series.length === 0) {
+  // A failed read must never render as "no readings". One is a fact about the cellar, the
+  // other is a fact about the network, and on a ferment screen the difference is whether a
+  // winemaker believes nobody has sampled this tank.
+  if (error) {
     return (
       <EmptyState
-        title="No readings yet for this tank"
-        actions={
-          onRecordReading ? (
-            <button type="button" onClick={onRecordReading} style={{ minHeight: "var(--touch-min)" }}>
-              Record a reading
-            </button>
-          ) : null
-        }
+        title="Couldn't load this tank's readings"
+        actions={onRetry ? <Button size="sm" onClick={onRetry}>Try again</Button> : null}
       >
-        Record one and the curve appears here.
+        The Brix and temperature history could not be read. This is not the same as there being none.
       </EmptyState>
+    );
+  }
+
+  if (!facts || facts.series.length === 0) {
+    return (
+      <EmptyState title="No readings yet for this tank">Record one and the curve appears here.</EmptyState>
     );
   }
 

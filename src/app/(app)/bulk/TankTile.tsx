@@ -3,7 +3,7 @@
 import React from "react";
 import { StatusChip, FillIndicator, VesselIdentityBlock } from "@/components/ui";
 import { TANK_STATE_LABEL, TANK_STATE_VARIANT, type TankState } from "@/lib/vessels/tank-state";
-import { TILE_MIN_HEIGHT, TILE_MIN_WIDTH } from "@/lib/vessels/board-layout";
+import { TILE_MIN_HEIGHT } from "@/lib/vessels/board-layout";
 import type { Fill } from "@/lib/vessels/fill";
 import { formatVolume } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
@@ -51,7 +51,13 @@ export function TankTile({ tile, onOpen }: { tile: TankTileData; onOpen: (id: st
         display: "flex",
         alignItems: "stretch",
         gap: 10,
-        minWidth: TILE_MIN_WIDTH,
+        // No minWidth. The grid uses fixed `repeat(N, minmax(0, 1fr))` tracks, and an item
+        // with a min-width larger than its track does not widen the track — it overflows
+        // into its neighbour. At 768-891px the 4-col tracks are ~101px and at 1024-1179px
+        // the 6-col tracks are ~106px, both under the 132px this used to demand, so the
+        // board spilled sideways at two of doc 04 §7's own breakpoints. Identity text clips
+        // with a tooltip instead, which is what doc 04 §164 actually asks for.
+        minWidth: 0,
         minHeight: TILE_MIN_HEIGHT,
         padding: 10,
         textAlign: "left",
@@ -83,7 +89,15 @@ export function TankTile({ tile, onOpen }: { tile: TankTileData; onOpen: (id: st
         <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <StatusChip variant={TANK_STATE_VARIANT[tile.state]}>{TANK_STATE_LABEL[tile.state]}</StatusChip>
         </span>
-        <span style={{ fontSize: 11.5, color: tile.fill.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>
+        <span
+          style={{
+            fontSize: 12,
+            color: tile.fill.over ? "var(--red-ink, var(--danger))" : "var(--text-muted)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
           {filled} / {capacity}
         </span>
       </span>
@@ -101,7 +115,7 @@ export function TankTileSkeleton() {
     <div
       aria-hidden="true"
       style={{
-        minWidth: TILE_MIN_WIDTH,
+        minWidth: 0,
         minHeight: TILE_MIN_HEIGHT,
         border: "1px solid var(--border-subtle, var(--border-strong))",
         borderRadius: "var(--radius-md)",

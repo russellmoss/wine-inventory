@@ -22,10 +22,14 @@ describe("SC-11 — the five tabs", () => {
     // Single-line fragments only: core.autocrlf=true checks .tsx out as CRLF on Windows, so
     // an assertion spanning a newline passes in CI and is vacuous locally. That is exactly
     // how test/shell-nav.test.ts's tab-bar guard went silently dead.
-    expect(ACTIONS).toContain("tabs={");
-    expect(ACTIONS).toContain("NAV_V2_ENABLED");
-    expect(ACTIONS).toContain('{ id: "actions", label: "Actions", content: actionsTab },');
-    expect(ACTIONS).toContain('{ id: "history", label: "History", content: historyTab },');
+    // COUNT, do not merely detect. Both arms contain these exact lines, so a presence
+    // assertion stays green after the legacy arm is deleted — which is the one thing this
+    // guard exists to prevent. Two occurrences means both arms are still there.
+    expect(ACTIONS.match(/id: "actions", label: "Actions"/g) ?? []).toHaveLength(2);
+    expect(ACTIONS.match(/id: "history", label: "History"/g) ?? []).toHaveLength(2);
+    // The v2-only tabs appear exactly once, in the flag-on arm.
+    expect(ACTIONS.match(/id: "fermentation"/g) ?? []).toHaveLength(1);
+    expect(ACTIONS.match(/id: "tasting"/g) ?? []).toHaveLength(1);
   });
 
   it("reuses Tabs, so every panel stays mounted", () => {

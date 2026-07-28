@@ -2,6 +2,28 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
+## 🟡 Ferment chart dates are browser-local, not winery-local
+
+Found 2026-07-28 in the plan-103 (Phase 6 tanks) pre-landing review.
+
+`TimeSeriesChart`'s `fmtDate` (`src/components/ui/TimeSeriesChart.tsx:96`) formats the x-axis and
+the data-table Date column with `d.getMonth()` / `d.getDate()` — the **viewer's browser**
+timezone. `dayLabel` in `src/lib/vessels/tank-detail-facts.ts` was written in UTC and has now been
+changed to match local, so the chart, its data table and its sentence all agree with each other.
+
+**They agree, but they may all be wrong together.** The app already has a winery operating timezone
+(`AppSettings.timeZone`, see #473) which is meant to beat the viewer's. A ferment reading recorded
+at 23:30 winery-local can render on the next calendar day for a winemaker travelling in another
+timezone, on a screen whose whole job is "what happened on which day".
+
+**Fix:** thread the winery timezone into `TimeSeriesChart` (a `timeZone?: string` prop, defaulted to
+the current local behaviour so existing consumers are untouched), then pass it from the ferment
+panel and from `AnalyteTrendChart`/`BrixChart`. Not done in plan 103 because it changes a shipped
+Phase-2 component used by three surfaces, and the Phase-6 diff only needed internal consistency.
+
+**Priority:** P2. Cosmetic until someone reads a ferment chart from another timezone, at which point
+it is a date that quietly disagrees with the cellar log.
+
 ## 🔴 An oversized heading silently deletes real content — `chunk.ts` treats heading text as pure breadcrumb material
 
 Found 2026-07-28 while diagnosing why plan 100's `numeric-loss` guard kept refusing ~20 documents

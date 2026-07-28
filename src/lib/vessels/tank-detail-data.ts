@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { dedupeByPhysicalReading } from "@/lib/chemistry/fanout-plan";
-import { tankDetailFacts, type TankDetailFacts, type TankReading } from "./tank-detail-facts";
+import { tankDetailFacts, toTankReadings, type TankDetailFacts } from "./tank-detail-facts";
 
 /**
  * The Brix + temperature series for one tank (DM-43).
@@ -31,7 +31,8 @@ const MAX_NOTES = 50;
 export type TankTastingNote = {
   id: string;
   observedAt: string;
-  enteredByEmail: string;
+  /** The person, in winery language. Never a raw email (doc 09 §12 names that as a leak). */
+  taster: string;
   score: number | null;
   appearance: string | null;
   aroma: string | null;
@@ -66,7 +67,9 @@ export async function loadTankDetail(vesselId: string): Promise<TankDetail> {
         id: true,
         vesselReadingGroupId: true,
         observedAt: true,
-        readings: { where: { analyte: { in: ["BRIX", "TEMP"] } }, select: { analyte: true, value: true } },
+        // `unit` is NOT optional: TEMP can legitimately be stored in °F, and plotting the raw
+        // number against a °C axis produced a ferment curve at 68-85 °C.
+        readings: { where: { analyte: { in: ["BRIX", "TEMP"] } }, select: { analyte: true, value: true, unit: true } },
       },
     }),
     residentLotIds.length
@@ -74,22 +77,22 @@ export async function loadTankDetail(vesselId: string): Promise<TankDetail> {
           where: { lotId: { in: residentLotIds }, voidedAt: null },
           orderBy: { observedAt: "desc" },
           take: MAX_NOTES,
-          select: { id: true, observedAt: true, enteredByEmail: true, score: true, appearance: true, aroma: true, flavor: true, notes: true },
+          select: { id: true, observedAt: true, enteredById: true, enteredByEmail: true, score: true, appearance: true, aroma: true, flavor: true, notes: true },
         })
       : Promise.resolve([]),
   ]);
 
+  // Resolve authors to display names. `user` is a GLOBAL table (no tenant scope), and the
+  // ids come from rows this tenant can already read, so this adds no cross-tenant surface.
+  const authorIds = [...new Set(noteRows.map((n) => n.enteredById).filter((v): v is string => !!v))];
+  const authors = authorIds.length
+    ? await prisma.user.findMany({ where: { id: { in: authorIds } }, select: { id: true, name: true } })
+    : [];
+  const nameById = new Map(authors.map((u) => [u.id, u.name] as const));
+
   const panels = dedupeByPhysicalReading(rows);
 
-  const readings: TankReading[] = panels.map((p) => {
-    const brix = p.readings.find((r) => r.analyte === "BRIX");
-    const temp = p.readings.find((r) => r.analyte === "TEMP");
-    return {
-      observedAt: p.observedAt.toISOString(),
-      brix: brix ? Number(brix.value) : null,
-      tempC: temp ? Number(temp.value) : null,
-    };
-  });
+  const readings = toTankReadings(panels);
 
   // `tankDetailFacts` sorts oldest-first per analyte, so the newest-first read order above
   // (which is what the cap needs to keep the RECENT panels) does not leak into the chart.
@@ -99,7 +102,8 @@ export async function loadTankDetail(vesselId: string): Promise<TankDetail> {
     tastingNotes: noteRows.map((n) => ({
       id: n.id,
       observedAt: n.observedAt.toISOString(),
-      enteredByEmail: n.enteredByEmail,
+      // Name, else the local part. Never the full address in prose.
+      taster: (n.enteredById ? nameById.get(n.enteredById) : null) || n.enteredByEmail.split("@")[0],
       score: n.score,
       appearance: n.appearance,
       aroma: n.aroma,

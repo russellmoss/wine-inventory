@@ -90,7 +90,11 @@ export function VesselIdentityBlock({
           fontWeight: detail ? 400 : 500,
           lineHeight: 1.1,
           color: "var(--text-primary)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
         }}
+        title={code}
       >
         {code}
       </span>
@@ -102,6 +106,10 @@ export function VesselIdentityBlock({
           fontFamily: "var(--font-mono, monospace)",
           fontSize: detail ? 15 : 12.5,
           color: lotCode ? "var(--text-secondary)" : "var(--text-muted)",
+          // Clip rather than overflow into the next tile (doc 04 §164: a longer lot code
+          // truncates WITH a tooltip; the `title` below supplies it).
+          overflow: "hidden",
+          textOverflow: "ellipsis",
           whiteSpace: "nowrap",
         }}
         title={lotCode ?? undefined}

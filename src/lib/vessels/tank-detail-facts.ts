@@ -21,6 +21,7 @@
  */
 
 import type { ChartSeries, SeriesPoint } from "@/components/ui/TimeSeriesChart";
+import { toDefaultUnit } from "@/lib/chemistry/analytes";
 
 /** One physical reading on the vessel. Both analytes are optional — panels are partial. */
 export type TankReading = {
@@ -29,6 +30,50 @@ export type TankReading = {
   brix: number | null;
   tempC: number | null;
 };
+
+/** One analysis panel as the DB hands it back, before it becomes a `TankReading`. */
+export type RawPanel = {
+  observedAt: Date;
+  readings: { analyte: string; value: unknown; unit: string }[];
+};
+
+/**
+ * The prisma → facts seam, extracted so it is testable.
+ *
+ * This is the point where `Decimal` becomes `number` and a missing analyte becomes `null`,
+ * and it is exactly the kind of mapping that fails silently: pick the wrong row and the
+ * chart plots a confident, wrong curve. `worksheet-data.ts` records the same lesson in its
+ * own comments — "silent wrong numbers on a ferment screen are worse than slow ones".
+ *
+ * A panel carrying neither analyte still yields a reading with two nulls rather than being
+ * dropped, so `readingCount` stays honest about how many times someone actually sampled.
+ */
+export function toTankReadings(panels: RawPanel[]): TankReading[] {
+  /**
+   * Convert into the analyte's CANONICAL unit before anything plots it.
+   *
+   * `TEMP.units` is `["°C", "°F"]` and `validateMeasurement` range-checks after converting,
+   * so `value: 68, unit: "°F"` is a perfectly valid stored row. Reading `value` alone and
+   * labelling the axis °C put a US cellar's ferment curve at 68-85 °C, and stated
+   * "68.0 °C" on the metric card, while the Analyses tab one click away (which does carry
+   * `unit`) showed it correctly. `toDefaultUnit` exists for exactly this and was not called.
+   *
+   * A unit we cannot convert yields null rather than a raw number: refusing to plot beats
+   * plotting the wrong thing confidently.
+   */
+  const canonical = (analyte: string, r: { value: unknown; unit: string } | undefined): number | null => {
+    if (!r || r.value == null) return null;
+    const n = Number(r.value);
+    if (!Number.isFinite(n)) return null;
+    const converted = toDefaultUnit(analyte, n, r.unit);
+    return converted != null && Number.isFinite(converted) ? converted : null;
+  };
+  return panels.map((p) => ({
+    observedAt: p.observedAt.toISOString(),
+    brix: canonical("BRIX", p.readings.find((r) => r.analyte === "BRIX")),
+    tempC: canonical("TEMP", p.readings.find((r) => r.analyte === "TEMP")),
+  }));
+}
 
 export type TankDetailFacts = {
   /** Chart input. Empty when nothing was measured. */
@@ -79,15 +124,34 @@ function fmtDelta(v: number | null, places: number, unit: string): string | null
   return `${sign}${Math.abs(r).toFixed(places)}${unit}`;
 }
 
+/**
+ * LOCAL time, deliberately, because `TimeSeriesChart`'s own `fmtDate` is local
+ * (`d.getMonth()` / `d.getDate()`) and both render on the same page. Formatting this in UTC
+ * put a reading at 2026-07-28T02:00Z in the data table as "Jul 27" and in the sentence
+ * beside it as "28 July" for any winery west of Greenwich: an annotation contradicting the
+ * series it describes, which is exactly what AC-S27 forbids.
+ *
+ * Neither is winery-timezone aware yet (the app has `AppSettings.timeZone`). Making the
+ * whole chart honour it is a separate change to a shipped Phase-2 component; matching its
+ * existing convention is the correct move here, and the drift is logged in TODOS.md.
+ */
 function dayLabel(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return `${d.getUTCDate()} ${d.toLocaleString("en-GB", { month: "long", timeZone: "UTC" })}`;
+  return `${d.getDate()} ${d.toLocaleString("en-GB", { month: "long" })}`;
 }
 
-function direction(first: number, last: number): string {
-  if (last < first) return "falling";
-  if (last > first) return "rising";
+/**
+ * Compare the ROUNDED values, because those are the ones the sentence quotes. Comparing raw
+ * values let 21.42 -> 21.44 render as "Brix rising from 21.4 Bx to 21.4 Bx" beside a metric
+ * card reading "0.0 Bx" — prose contradicting the numbers it was built from, which is the
+ * one thing this module exists to make impossible.
+ */
+function direction(first: number, last: number, places: number): string {
+  const a = round(first, places);
+  const b = round(last, places);
+  if (b < a) return "falling";
+  if (b > a) return "rising";
   return "flat";
 }
 
@@ -109,10 +173,12 @@ export function tankDetailFacts(readings: TankReading[]): TankDetailFacts {
 
   const series: ChartSeries[] = [];
   if (brixPoints.length > 0) {
-    series.push({ id: "brix", label: "Brix", unit: " Bx", points: brixPoints, axis: "left", precision: BRIX_PRECISION, viz: 1 });
+    series.push({ id: "brix", label: "Brix", unit: "Bx", points: brixPoints, axis: "left", precision: BRIX_PRECISION, viz: 1 });
   }
   if (tempPoints.length > 0) {
-    series.push({ id: "temp", label: "Temperature", unit: " °C", points: tempPoints, axis: "right", precision: TEMP_PRECISION, viz: 3 });
+    // viz 2 is temperature's slot in v2 §A6. Slot 3 is pH — borrowing it would make the two
+    // indistinguishable the moment a pH series joins this chart.
+    series.push({ id: "temp", label: "Temperature", unit: "°C", points: tempPoints, axis: "right", precision: TEMP_PRECISION, viz: 2 });
   }
 
   const last = <T,>(a: T[]): T | null => (a.length > 0 ? a[a.length - 1] : null);
@@ -166,7 +232,7 @@ function composeSentence(a: {
   if (a.brixPoints.length === 1 && a.formatted.lastBrix) {
     clauses.push(`Brix ${a.formatted.lastBrix} from a single reading`);
   } else if (a.brixPoints.length > 1 && a.formatted.firstBrix && a.formatted.lastBrix) {
-    const dir = direction(a.brixPoints[0].value, a.brixPoints[a.brixPoints.length - 1].value);
+    const dir = direction(a.brixPoints[0].value, a.brixPoints[a.brixPoints.length - 1].value, BRIX_PRECISION);
     clauses.push(`Brix ${dir} from ${a.formatted.firstBrix} to ${a.formatted.lastBrix}`);
   }
 
@@ -175,7 +241,7 @@ function composeSentence(a: {
     if (t.length === 1) {
       clauses.push(`temperature ${a.formatted.latestTemp}`);
     } else {
-      const dir = direction(t[0].value, t[t.length - 1].value);
+      const dir = direction(t[0].value, t[t.length - 1].value, TEMP_PRECISION);
       clauses.push(`temperature ${dir} to ${a.formatted.latestTemp}`);
     }
   }

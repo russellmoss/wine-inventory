@@ -40,8 +40,14 @@ function googleSocialProviders() {
  * matters, and the CSRF protection origin-checking provides is untouched on the deployed app.
  */
 export function devTrustedOrigins(nodeEnv = process.env.NODE_ENV): string[] {
-  if (nodeEnv === "production") return [];
-  return ["http://localhost:*", "http://127.0.0.1:*"];
+  // FAIL CLOSED. An earlier version excluded only "production", which meant every
+  // unexpected value kept the wildcard: an explicitly exported NODE_ENV=staging, an empty
+  // string, or `next build --debug-prerender` (which hard-sets NODE_ENV=development and
+  // would bake the wildcard into a production bundle, since Next inlines NODE_ENV). Only
+  // the two values that genuinely mean "a developer's machine" open the door.
+  return nodeEnv === "development" || nodeEnv === "test"
+    ? ["http://localhost:*", "http://127.0.0.1:*"]
+    : [];
 }
 
 export const auth = betterAuth({

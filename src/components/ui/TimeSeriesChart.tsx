@@ -85,7 +85,9 @@ const PAD = { top: 16, right: 52, bottom: 34, left: 48 };
 /** Dash + marker per series slot. The non-colour half of the encoding (v2 §A6). */
 const ENCODING: { dash: string; marker: "circle" | "square" | "triangle" | "diamond" | "cross" | "plus" }[] = [
   { dash: "", marker: "circle" },
-  { dash: "", marker: "square" },
+  // Slot 2 was solid+square, identical to slot 1 except for a 3.2px marker. With colour
+  // removed (AC-S26) that is not a distinction anyone can see, so slot 2 now dashes too.
+  { dash: "10 4", marker: "square" },
   { dash: "6 3", marker: "triangle" },
   { dash: "2 3", marker: "diamond" },
   { dash: "8 3 2 3", marker: "cross" },
@@ -326,7 +328,22 @@ export function TimeSeriesChart({
           a screen reader, so this is a real table of every plotted value. */}
       {tableVisibility === "disclosure" ? (
         <details style={{ marginTop: 10 }}>
-          <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--text-secondary)" }}>{tableSummary}</summary>
+          {/* This is the mandated accessible path to the chart's numbers (doc 10 §9), so it
+              is the last control that may be a hairline. 44px target, doc 10 §12. */}
+          <summary
+            style={{
+              cursor: "pointer",
+              minHeight: "var(--touch-min)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "0 4px",
+              fontSize: 13,
+              color: "var(--text-secondary)",
+            }}
+          >
+            {tableSummary}
+          </summary>
           {table}
         </details>
       ) : (

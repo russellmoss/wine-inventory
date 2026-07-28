@@ -9,19 +9,23 @@ export interface FillIndicatorProps {
   /** Track length in px: height when vertical, thickness when horizontal. */
   track?: number;
   /**
-   * The volume in words. Mandatory — §B22: "volume text always accompanies it". Passed in
-   * rather than formatted here so the tenant's unit preference stays at the call site.
+   * The volume in words, rendered beside the bar. §B22 requires the text to accompany the
+   * gauge, but not necessarily to live INSIDE this component: a tile that prints its own
+   * "2,140 / 5,000 L" line passes `null` here rather than showing it twice. Passed in rather
+   * than formatted internally so the tenant's unit preference stays at the call site.
    */
   text: React.ReactNode;
   style?: React.CSSProperties;
 }
 
 /**
- * FillIndicator (v2 §B22) — one fill bar, app-wide.
+ * FillIndicator (v2 §B22) — the shared fill bar.
  *
- * Before this there were two hand-rolled copies with different markup: the private `FillBar`
- * in `/bulk` and an inline `<span style={{ width: pct% }}>` in `/vessels`. Doc 06 §65 only
- * knew about one of them.
+ * There were two hand-rolled copies with different markup: the private `FillBar` in `/bulk`
+ * (now migrated onto this) and an inline `<span style={{ width: pct% }}>` in `/vessels`.
+ * Doc 06 §65 only knew about one of them. **The `/vessels` copy is NOT yet migrated** — that
+ * screen builds its own row shape and is out of Phase 6's scope; it is logged in TODOS.md
+ * rather than left implied as done.
  *
  * Height encodes volume, a hairline marks the level, and the volume text always accompanies
  * it. The bar itself is `aria-hidden` because the text carries the meaning, the same
@@ -38,7 +42,7 @@ export function FillIndicator({
   style,
 }: FillIndicatorProps) {
   const vertical = orientation === "vertical";
-  const filledPx = fillHeightPx(fill.pct, vertical ? track : 0);
+  const filledPx = fillHeightPx(fill.pct, track);
   const colour = fill.over ? "var(--danger)" : "var(--accent)";
 
   const bar = vertical ? (
@@ -71,7 +75,7 @@ export function FillIndicator({
       aria-hidden="true"
       style={{ flex: 1, height: track, background: "var(--paper-200)", borderRadius: 999, overflow: "hidden", minWidth: 60 }}
     >
-      <div style={{ width: `${Math.min(100, Math.max(0, fill.pct))}%`, height: "100%", background: colour }} />
+      <div style={{ width: `${fillHeightPx(fill.pct, 100)}%`, height: "100%", background: colour }} />
     </div>
   );
 
@@ -89,7 +93,7 @@ export function FillIndicator({
       <span
         style={{
           fontSize: 12.5,
-          color: fill.over ? "var(--danger)" : "var(--text-muted)",
+          color: fill.over ? "var(--red-ink, var(--danger))" : "var(--text-muted)",
           whiteSpace: "nowrap",
         }}
       >

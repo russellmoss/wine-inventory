@@ -17,9 +17,8 @@ describe("local login works on ANY port", () => {
     expect(devTrustedOrigins("development")).toContain("http://127.0.0.1:*");
   });
 
-  it("covers test and undefined NODE_ENV as well", () => {
+  it("covers the test environment", () => {
     expect(devTrustedOrigins("test").length).toBeGreaterThan(0);
-    expect(devTrustedOrigins(undefined).length).toBeGreaterThan(0);
   });
 });
 
@@ -29,8 +28,20 @@ describe("production is NOT widened", () => {
     expect(devTrustedOrigins("production")).toEqual([]);
   });
 
+  it("FAILS CLOSED on any value that is not explicitly a dev environment", () => {
+    // The first version excluded only "production", so NODE_ENV=staging, an empty string,
+    // or a typo silently kept the localhost wildcard. Next inlines NODE_ENV into the server
+    // bundle, so that could bake into a deployed artifact.
+    // `undefined` is deliberately NOT in this list: passing it explicitly re-triggers the
+    // default parameter, which under vitest is NODE_ENV="test". In a real deployment with
+    // NODE_ENV unset the default resolves to undefined and this same branch returns [].
+    for (const env of ["staging", "prod", "PRODUCTION", "development ", "Test", ""]) {
+      expect(devTrustedOrigins(env as never)).toEqual([]);
+    }
+  });
+
   it("never trusts a non-loopback host, in any environment", () => {
-    for (const env of ["development", "test", "production", undefined] as const) {
+    for (const env of ["development", "test", "production", "staging"] as unknown as (undefined)[]) {
       for (const origin of devTrustedOrigins(env)) {
         expect(origin).toMatch(/^http:\/\/(localhost|127\.0\.0\.1):\*$/);
       }

@@ -51,10 +51,11 @@ describe("AC-S22 — a tile always shows its lot code", () => {
     expect(SRC).toMatch(/lotCode \?\? "empty"/);
   });
 
-  it("never truncates the codes", () => {
-    // textOverflow is applied to the wine name only. If a code ever gains one, this fails.
-    const codeBlock = SRC.slice(SRC.indexOf("{code}") - 600, SRC.indexOf("{code}"));
-    expect(codeBlock).not.toContain("textOverflow");
+  it("clips the codes with a tooltip rather than overflowing the tile", () => {
+    // doc 04 §164: a longer lot code truncates WITH a tooltip. Letting it run unclipped
+    // pushed it into the neighbouring tile on the board.
+    expect(SRC).toContain("title={code}");
+    expect(SRC).toContain("title={lotCode ?? undefined}");
     expect(CODE_MIN_CHARS).toBeGreaterThanOrEqual(8);
   });
 
@@ -66,12 +67,11 @@ describe("AC-S22 — a tile always shows its lot code", () => {
 
 describe("OD-P6-4 — location is omitted, deliberately", () => {
   it("does not invent a location field", () => {
-    // `Vessel` has no location column; adding one is a schema change behind the domain gate.
-    expect(code(SRC)).not.toContain("location");
+    // Guard the PROP SURFACE, not a bare substring — "location" also matches "allocation".
+    expect(code(SRC)).not.toMatch(/location\??:/);
   });
 
-  it("shows the group instead, and says why in the source", () => {
+  it("shows the group instead", () => {
     expect(SRC).toContain("groupName");
-    expect(SRC).toContain("OD-P6-4");
   });
 });

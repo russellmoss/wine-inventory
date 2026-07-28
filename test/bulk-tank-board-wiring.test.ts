@@ -73,7 +73,9 @@ describe("the server read", () => {
   it("sources fill from the ledger projection, never from components", () => {
     // A lot with no recorded origin has zero component rows, so summing components reports
     // a full tank as empty. This is the single most expensive mistake available here.
-    expect(PAGE).toContain("computeFill(v.vesselLots.map((vl) => Number(vl.volumeL)), Number(v.capacityL))");
+    // Assert the load-bearing token only, not the surrounding punctuation, so a rename or a
+    // Prettier line-wrap does not fail a guard that is about WHICH TABLE the volumes come from.
+    expect(PAGE).toContain("computeFill(v.vesselLots");
     expect(code(PAGE)).not.toContain("computeFill(comps");
   });
 
@@ -100,8 +102,10 @@ describe("the server read", () => {
   });
 
   it("reads the clock exactly once and injects it, so tiles cannot disagree", () => {
-    expect(PAGE.match(/new Date\(\)\.toISOString\(\)/g) ?? []).toHaveLength(1);
-    expect(PAGE).toContain("now,");
+    // `new Date()` with no argument is the clock. Other `new Date(x)` calls convert a known
+    // epoch and are not clock reads.
+    expect(PAGE.match(/new Date\(\)/g) ?? []).toHaveLength(1);
+    expect(PAGE).toContain("now: nowIso,");
   });
 
   it("uses the tenant-extended client and no raw SQL", () => {

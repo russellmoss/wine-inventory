@@ -54,10 +54,20 @@ export const STALE_READING_HOURS = 24;
 export type TankStateInput = {
   /** Does the vessel hold wine? Sourced from `VesselLot`, never from `VesselComponent`. */
   hasWine: boolean;
-  afState: "NONE" | "ACTIVE" | "DRY" | null;
-  mlfState: "NONE" | "ACTIVE" | "COMPLETE" | null;
+  /**
+   * The ferment vectors of EVERY resident lot, not just the largest. LEDGER-12 says a vessel
+   * holds one lot, but nothing in the read path enforces it and this repo has real
+   * co-resident fan-out history — so a 1000 L DRY lot beside a 900 L ACTIVE one must not
+   * report "aging".
+   */
+  lots: { afState: "NONE" | "ACTIVE" | "DRY" | null; mlfState: "NONE" | "ACTIVE" | "COMPLETE" | null }[];
   /** `computeFill().over` — filled beyond nominal capacity. */
   over: boolean;
+  /**
+   * The ledger cannot confirm what is in this vessel (composition on record, no occupancy),
+   * or its capacity is unusable. Either way a person should look: it is NOT a free tank.
+   */
+  unknown?: boolean;
   /** ISO timestamp of the newest non-voided reading on this vessel, or null. */
   lastReadingAt: string | null;
   /** Injected, never read from the clock inside — the caller owns "now" so this stays pure. */
@@ -66,17 +76,31 @@ export type TankStateInput = {
 };
 
 function isFermenting(i: TankStateInput): boolean {
-  return i.afState === "ACTIVE" || i.mlfState === "ACTIVE";
+  return i.lots.some((l) => l.afState === "ACTIVE" || l.mlfState === "ACTIVE");
 }
 
+/**
+ * FAIL TOWARDS A HUMAN. Every uncertain case returns "stale", because the cost of asking a
+ * winemaker to glance at a tank is a glance, and the cost of not asking is a stuck ferment
+ * nobody looked at.
+ *
+ * Two shapes previously failed OPEN: an unparseable timestamp returned false, and a
+ * FUTURE-dated reading made `now - last` negative so the tank was never stale again for the
+ * rest of the vintage. `observedAt` is user-entered and `deviceObservedAt` comes from tablet
+ * clocks the schema itself says can be wrong, so one fat-fingered year permanently silenced
+ * the attention flag on that vessel.
+ */
 function readingIsStale(i: TankStateInput): boolean {
   const limit = i.staleReadingHours ?? STALE_READING_HOURS;
   // No reading at all on an active ferment is the worst case, not an unknown one.
   if (i.lastReadingAt == null) return true;
   const last = Date.parse(i.lastReadingAt);
   const now = Date.parse(i.now);
-  if (Number.isNaN(last) || Number.isNaN(now)) return false;
-  return now - last > limit * 3_600_000;
+  if (Number.isNaN(last) || Number.isNaN(now)) return true;
+  const age = now - last;
+  // A reading from the future is a clock or data-entry fault, not a fresh sample.
+  if (age < 0) return true;
+  return age > limit * 3_600_000;
 }
 
 /**
@@ -85,6 +109,9 @@ function readingIsStale(i: TankStateInput): boolean {
  * is doing. Empty wins outright, because an empty vessel cannot be over or fermenting.
  */
 export function tankState(i: TankStateInput): TankState {
+  // Unknown outranks empty. Filing a vessel whose contents the ledger cannot confirm under
+  // "Empty" hands it to a cellar hand hunting for a free tank.
+  if (i.unknown) return "attention";
   if (!i.hasWine) return "empty";
   if (i.over) return "attention";
   if (isFermenting(i)) return readingIsStale(i) ? "attention" : "fermenting";

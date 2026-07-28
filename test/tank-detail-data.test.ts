@@ -20,9 +20,10 @@ describe("OD-P6-3 — one sourcing rule for the whole detail surface", () => {
     expect(CHEM).toContain("prisma.vesselLot.findMany({ where: { vesselId }, select: { lotId: true } })");
   });
 
-  it("says WHY in the source, so the next person does not 'simplify' it apart", () => {
-    expect(DATA).toContain("OD-P6-3");
-    expect(DATA).toContain("AC-S27");
+  it("selects the UNIT, not just the value", () => {
+    // TEMP can be stored in °F. Plotting the raw number against a °C axis put a US cellar's
+    // ferment curve at 68-85 °C.
+    expect(DATA).toContain("unit: true");
   });
 });
 

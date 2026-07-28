@@ -106,6 +106,30 @@ function plural(n: number): string {
 }
 
 /**
+ * The PageHeader summary (doc 09 §2). Real numbers about what needs attention, in winery
+ * language — "the summary sentence says what needs attention, in winery language, with real
+ * numbers. It is never a slogan."
+ */
+export function boardSummary(
+  tiles: { state: TankState; fill: { filledL: number } }[],
+  formatVolume: (l: number) => string,
+): string {
+  const holding = tiles.filter((t) => t.state !== "empty").length;
+  const attention = tiles.filter((t) => t.state === "attention").length;
+  const totalL = tiles.reduce((sum, t) => sum + t.fill.filledL, 0);
+  const parts = [
+    `${tiles.length} ${plural(tiles.length)}`,
+    `${holding} holding wine`,
+    formatVolume(Math.round(totalL * 100) / 100),
+  ];
+  if (attention > 0) parts.push(`${TANK_STATE_GLYPH_ATTENTION} ${attention} need attention`);
+  return parts.join(" · ");
+}
+
+/** The attention glyph, so the summary matches the chip a reader is about to scan for. */
+const TANK_STATE_GLYPH_ATTENTION = "▲";
+
+/**
  * The count line above the board. Says what was narrowed, in winery language, with the real
  * numbers (doc 09: "the summary sentence says what needs attention… It is never a slogan").
  */
