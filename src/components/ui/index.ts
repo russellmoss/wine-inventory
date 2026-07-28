@@ -1,5 +1,7 @@
 export { Button } from "./Button";
 export type { ButtonProps } from "./Button";
+export { BUTTON_SIZES, buttonMetrics } from "./button-sizes";
+export type { ButtonSize, ButtonMetrics } from "./button-sizes";
 export { Card } from "./Card";
 export type { CardProps } from "./Card";
 export { Badge } from "./Badge";

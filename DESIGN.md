@@ -167,7 +167,11 @@ Button · Card · Badge · Avatar · Input · Checkbox · Eyebrow · Metric · Q
 ConfirmButton · Modal · ExportCsvButton. Preview them live at `/styleguide`.
 
 - **Button** variants: primary (wine solid) · secondary (outline) · ghost (wine, quiet) ·
-  inverse · link. Sizes sm/md/lg (heights 34/42/50).
+  inverse · link. Sizes sm/md/lg/xl — heights **44/48/56/68** (v2 §B6; was 34/42/50).
+  `link` shares the sibling height and carries a persistent underline. Disabled gets a
+  real surface (`--paper-200` on `--ink-600`), never `opacity`. `pending` sets
+  `aria-busy`, blocks pointer + keyboard activation, and holds the button's width.
+  Geometry lives in `src/components/ui/button-sizes.ts`.
 - **Badge** tones: neutral · gold · green · blue · maroon · red; variants soft/solid/outline.
 
 ## Known drift / cleanup backlog
@@ -178,10 +182,12 @@ component API or many call sites — fix deliberately, not in a doc pass):
    The real `--golden-yellow` is used for `--warning`. The token name and the API name
    disagree. Rename candidate: `tone="gold"` → `tone="wine"`, update call sites
    (`/styleguide` at minimum).
-2. **Component sizing bypasses the scale tokens.** `Button`/`Badge` use raw values
-   (`fontSize: 14.5`, heights `34/42/50`, padding `"11px 20px"`, tracking `0.005em`)
-   instead of `--text-*`, `--space-*`, `--tracking-*`. The scale exists; consume it so
-   resizing the system stays single-source.
+2. **Component sizing bypasses the scale tokens.** ~~`Button`~~ **RESOLVED for `Button`
+   2026-07-28** — heights now come from `--touch-*`, padding/tracking/size from
+   `--space-*`/`--tracking-*`/`--text-*` where a step exists (see `button-sizes.ts`; the
+   few remaining raw values — 48px, 15px, 16.5px, 19px, 10px, 20px, 26px, 18px — have no
+   token on the 8px/type scale and are documented as such rather than rounded to fit).
+   Still open for `Badge`, which continues to use raw `fontSize: 12.5` / `padding: "5px 11px"`.
 3. ~~**`--golden-yellow`, `--lavender`, `--orange`, `--bright-mauve`** are defined but
    lightly used.~~ **RESOLVED 2026-07-28 — keep all four.** They map to a real domain
    category: `src/lib/vineyard/colors.ts` uses their exact hexes as the 8-hue vineyard

@@ -149,11 +149,23 @@ export default function StyleguidePage() {
         <Button variant="primary" disabled>
           Disabled
         </Button>
-        <Button variant="primary" size="sm">
-          Small
+        <Button variant="primary" pending pendingLabel="Saving…">
+          Save
         </Button>
-        <Button variant="primary" size="lg">
-          Large
+      </Section>
+
+      <Section title="Button sizes — 44 / 48 / 56 / 68">
+        <Button variant="secondary" size="sm">
+          sm 44
+        </Button>
+        <Button variant="secondary" size="md">
+          md 48
+        </Button>
+        <Button variant="secondary" size="lg">
+          lg 56
+        </Button>
+        <Button variant="secondary" size="xl">
+          xl 68
         </Button>
       </Section>
 
