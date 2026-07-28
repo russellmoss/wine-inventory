@@ -14,6 +14,9 @@ import {
   StatusChip,
   STATUS_VARIANTS,
   INPUT_SIZES,
+  Select,
+  NumericUnitInput,
+  DateTimeControl,
   ConfirmButton,
   Skeleton,
   EmptyState,
@@ -45,6 +48,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function StyleguidePage() {
   const [checked, setChecked] = React.useState(true);
+  const [dose, setDose] = React.useState("2");
 
   return (
     <div style={{ maxWidth: "var(--container-lg)", margin: "0 auto", padding: "48px 40px" }}>
@@ -275,6 +279,77 @@ export default function StyleguidePage() {
             the moment someone drafts it.
           </EmptyState>
         </Card>
+      </Section>
+
+      <Section title="Select — an accessible name is not optional (v2 §B10)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            <code>label</code> is a required prop. <code>hideLabel</code> moves it to{" "}
+            <code>.sr-only</code> for dense filter rows — it changes the label&rsquo;s visibility,
+            never its existence. Still a native select: the OS picker is the best control on a phone
+            in a cellar.
+          </p>
+        </div>
+        <div style={{ width: 240 }}>
+          <Select label="Variety" defaultValue="pn">
+            <option value="pn">Pinot Noir</option>
+            <option value="ch">Chardonnay</option>
+          </Select>
+        </div>
+        <div style={{ width: 240 }}>
+          <Select label="Destination vessel" required defaultValue="">
+            <option value="" disabled>Choose a vessel</option>
+            <option value="t4">T-04</option>
+          </Select>
+        </div>
+        <div style={{ width: 240 }}>
+          <Select label="Tax class" error="Pick a class before filing" defaultValue="">
+            <option value="">(derived)</option>
+            <option value="a5">§A5</option>
+          </Select>
+        </div>
+        <div style={{ width: 240 }}>
+          <Select label="Grower" hideLabel defaultValue="g1" hint="Label is sr-only here">
+            <option value="g1">Bajo Vineyard</option>
+          </Select>
+        </div>
+      </Section>
+
+      <Section title="NumericUnitInput (v2 §B9)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            The unit sits in its own box, never inside the value. The live derived readout is the
+            single best error-prevention device in the product — it is what catches a 10× dosing slip
+            before it reaches the ledger. Out of tolerance is a quiet note, never a block: the wine is
+            already moving.
+          </p>
+        </div>
+        <NumericUnitInput
+          label="Dose rate"
+          value={dose}
+          onValueChange={setDose}
+          unit="g/hL"
+          planned={{ value: "2", label: "Planned: 2 g/hL" }}
+          nudges={[-1, 1, 5]}
+          derived={`${dose || 0} g/hL × 218 L = ${((Number(dose) || 0) * 2.18).toFixed(2)} g`}
+          tolerance={{ ok: Number(dose) <= 10, note: "Above the usual range for this additive — recorded anyway." }}
+          style={{ width: 340 }}
+        />
+      </Section>
+
+      <Section title="DateTimeControl (v2 §B12)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            Still the native input — typed entry keeps working, which a hand-rolled picker usually
+            breaks. This only normalises the box so it stops being a visible seam beside DS fields.
+          </p>
+        </div>
+        <div style={{ width: 220 }}>
+          <DateTimeControl label="From" defaultValue="2026-07-01" />
+        </div>
+        <div style={{ width: 220 }}>
+          <DateTimeControl label="Pulled at" mode="datetime-local" />
+        </div>
       </Section>
 
       <Section title="Avatars">

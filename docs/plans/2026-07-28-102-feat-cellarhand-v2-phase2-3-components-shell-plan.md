@@ -68,7 +68,7 @@ states still retire in Phase 5 and Phase 12 respectively — not here.
 
 ## Reconciliation Conflicts (handoff claim vs verified repo state)
 
-Six new ones. Each was checked by reading the source, not inferred.
+Eight now. Each was checked by reading the source, not inferred.
 
 1. **`/ferment` does not exist. Doc 01 lists it as one of the 13 destinations.**
    `src/app/(app)/ferment/` contains only `crush/`, `press/` and `process/` — there is no
@@ -97,10 +97,20 @@ Six new ones. Each was checked by reading the source, not inferred.
 
 4. **`<select>` is an ocean, not a lake.** 174 occurrences across 63 files. Doc 06's
    sequencing step 3 lists "Select" as if it were one component swap. **Resolution:** build
-   `Select`/`Combobox`, then migrate **only the 31 selects across 18 files that have neither
-   a `<label>` nor an `aria-label`** — those are real WCAG failures. The other 143 are
-   labelled and working; they migrate opportunistically as later phases touch their screens.
-   Stated explicitly so the coverage number does not silently imply 174.
+   `Select`, then fix only the ones with no accessible name — those are the real WCAG 4.1.2
+   failures. The rest are labelled and working; they migrate opportunistically as later
+   phases touch their screens. Stated explicitly so the coverage number does not imply 174.
+
+   ⚠️ **Correction, 2026-07-28: the count of unlabelled selects in this plan was wrong, twice.**
+   A naive "is there a `<label>` within 400 chars" grep said 31/18 files. A stricter pass said
+   71. A third, correct pass — one that scans the opening tag with brace depth (a `>` inside
+   `(e) => …` is not the end of a JSX tag), skips comment mentions, and resolves
+   `id`↔`htmlFor` including template-literal ids — says **34 unlabelled, 136 correctly
+   labelled, 4 comment mentions**. Even that produced at least one false positive
+   (`WeatherCard.tsx:167` already carries `aria-label="Vineyard"`).
+   **Consequence for Unit 2:** do NOT bulk-edit call sites from an ad-hoc grep. The migration
+   needs a committed, reviewable detector whose own correctness is testable, because three
+   different greps gave three different answers and two of them would have produced wrong edits.
 
 5. **`/ferment/process` has zero `<select>` elements.** Doc 05 §B10 names it as the flagship
    violation: "three unlabelled principal selects on a core harvest workflow". The file is a
@@ -114,6 +124,14 @@ Six new ones. Each was checked by reading the source, not inferred.
    `reports/page.tsx:73`, `BulkClient.tsx:262` and `src/lib/work-orders/template-vocabulary.ts:66`.
    **Resolution:** Unit 9 fixes the call sites and the shared vocabulary. Editing the
    component would have been a no-op that looked like a fix.
+
+8. **Some "unlabelled" controls have visible label text that is simply not associated.**
+   `PressClient.tsx:125`, `BlockCard.tsx:209/228` and every control inside
+   `TenantProductFactsForm`'s local `Field` wrapper render a styled `<label>` with **no
+   `htmlFor`**. Sighted users see a perfectly good label; assistive tech gets nothing. This is
+   a different defect from "no label at all" and it has a much better fix: associate the
+   existing text rather than invent a new name. `Field` was the highest-leverage instance —
+   one wrapper fix gave **12** controls their names at once (shipped in Unit 2).
 
 **Claims that verified TRUE** (recorded so nobody re-checks them): 31 sidebar entries exactly;
 `Tabs` is already correct (`role="tablist"`, roving `tabIndex={isActive ? 0 : -1}`,
