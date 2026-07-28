@@ -17,6 +17,9 @@ import {
   Select,
   NumericUnitInput,
   DateTimeControl,
+  PageHeader,
+  Breadcrumbs,
+  IconButton,
   ConfirmButton,
   Skeleton,
   EmptyState,
@@ -350,6 +353,65 @@ export default function StyleguidePage() {
         <div style={{ width: 220 }}>
           <DateTimeControl label="Pulled at" mode="datetime-local" />
         </div>
+      </Section>
+
+      <Section title="PageHeader + Breadcrumbs (v2 §B4, §B5)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 16, maxWidth: "70ch" }}>
+            One header for every screen, replacing <strong>nine</strong> distinct hand-set{" "}
+            <code>h1</code> sizes across 61 headings (the handoff said four). 34px desktop / 30px
+            below. The summary is plain text, never a heading — otherwise it lands in the heading
+            outline and the page reads as two titles.
+          </p>
+          <div style={{ border: "1px dashed var(--border-strong)", borderRadius: "var(--radius-md)", padding: 20 }}>
+            <PageHeader
+              breadcrumbs={[
+                { label: "Today", href: "/" },
+                { label: "Work orders", href: "/work-orders" },
+                { label: "#253" },
+              ]}
+              eyebrow="Cellar"
+              title="Top up Hall C"
+              summary="9 of 60 barrels recorded. Two are flagged for a volume that looks high."
+              meta="Issued by you · due today"
+              actions={
+                <>
+                  <Button size="sm" variant="secondary">Edit</Button>
+                  <Button size="sm">Execute</Button>
+                </>
+              }
+            />
+          </div>
+          <p style={{ color: "var(--text-meta)", fontSize: 12, marginTop: 10 }}>
+            Breadcrumbs collapse the middle past 4 crumbs; the last is never a link and carries
+            <code> aria-current=&quot;page&quot;</code>.
+          </p>
+          <div style={{ marginTop: 10 }}>
+            <Breadcrumbs
+              items={[
+                { label: "Cellar floor", href: "/bulk" },
+                { label: "Hall C" },
+                { label: "Rack 4" },
+                { label: "CH-NEUTRAL-14" },
+                { label: "C-1410" },
+              ]}
+            />
+          </div>
+        </div>
+      </Section>
+
+      <Section title="IconButton (v2 §B7)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            44×44, 20px icon, <code>aria-label</code> required by the type. Universal actions only —
+            close, expand, more. <strong>Never a domain action:</strong> &ldquo;Rack&rdquo; and
+            &ldquo;Press&rdquo; are words a cellar hand must be able to read.
+          </p>
+        </div>
+        <IconButton aria-label="Close">✕</IconButton>
+        <IconButton aria-label="More actions" variant="outline">⋯</IconButton>
+        <IconButton aria-label="Expand" variant="outline">⤢</IconButton>
+        <IconButton aria-label="Close" disabled>✕</IconButton>
       </Section>
 
       <Section title="Avatars">

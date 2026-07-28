@@ -59,6 +59,14 @@
   font-size: 14px;
 }
 
+/* PageHeader's h1 (v2 §B4): 34px desktop / 30px below. One size for every page,
+   replacing NINE distinct hand-set sizes (22/24/26/30/32/34/36/40/52 measured
+   across 61 headings). */
+.ds-page-title { font-size: 34px; }
+@media (max-width: 767px) {
+  .ds-page-title { font-size: 30px; }
+}
+
 /* Skeleton pulse (v2 §B29). A CSS animation on purpose, not a JS loop — the global
    reduced-motion rule below then switches it off with no per-component check. */
 @keyframes ds-skeleton-pulse {
@@ -102,8 +110,11 @@
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
   }
-  /* Tame oversized display headings on small screens. */
-  .app-main h1 {
+  /* Tame oversized display headings on small screens. Scoped OFF the new
+     PageHeader, which sets its own responsive size — otherwise this !important
+     would win and PageHeader could never control its own type. Delete this rule
+     entirely once every page has migrated to PageHeader. */
+  .app-main h1:not(.ds-page-title) {
     font-size: 30px !important;
   }
 }
