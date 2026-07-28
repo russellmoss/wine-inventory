@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Card, Button, Badge, Eyebrow, LocalTime } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, LocalTime, StatusChip } from "@/components/ui";
 import type { WorkOrderSummary } from "@/lib/work-orders/data";
 import { DueAt } from "@/components/work-orders/DueAt";
 import { OPEN_STATUSES, type WorkOrderFilters } from "@/lib/work-orders/archive-filters";
@@ -40,7 +40,7 @@ function WoCard({ wo }: { wo: WorkOrderSummary }) {
             {wo.dueAt ? <> · due {fmtDue(wo)}</> : null}
           </div>
         </div>
-        <Badge tone={statusTone(wo.status)}>{wo.status.replace(/_/g, " ").toLowerCase()}</Badge>
+        <StatusChip variant={statusTone(wo.status)}>{wo.status.replace(/_/g, " ").toLowerCase()}</StatusChip>
       </Card>
     </Link>
   );

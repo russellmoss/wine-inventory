@@ -492,15 +492,17 @@ describe("describeWorkOrder", () => {
     const item = describeWorkOrder(wo());
     expect(item.kind).toBe("WORK_ORDER");
     expect(item.summary).toBe("Work order #12 — Cap management");
-    expect(item.tone).toBe("blue");
+    expect(item.tone).toBe("active");
     expect(item.statusLabel).toBe("Issued");
     expect(item.observedAt).toBe("2026-03-02T08:00:00.000Z");
     expect(item.workOrderId).toBe("wo-1");
   });
 
   it("prefers the per-vessel task status over the WO status for the badge", () => {
+    // ISSUED and IN_PROGRESS both map to `active`, so this case needs two statuses
+    // that differ in the ramp to actually prove the task status wins.
     const item = describeWorkOrder(wo({ taskStatus: "DONE", woStatus: "IN_PROGRESS" }));
-    expect(item.tone).toBe("green");
+    expect(item.tone).toBe("done");
     expect(item.statusLabel).toBe("Done");
   });
 

@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Card, Input, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Input, Button, Badge, Eyebrow, StatusChip } from "@/components/ui";
 import { AddressFields } from "@/components/address/AddressFields";
 import type { AddressParts } from "@/lib/address/format";
 import {
@@ -173,12 +173,12 @@ export function ComplianceClient(props: {
               <Badge tone="neutral" variant="soft">{view.version}{view.isFinalBusinessReport ? " · FINAL" : ""}</Badge>
               {/* Phase 2 (CO-11): a NEEDS_AMENDMENT report is watermarked — NEVER shown as the green
                   "Filed" chip. Its figures are projected until an amended return is filed. */}
-              <Badge
-                tone={view.status === "FILED" ? "green" : view.status === "NEEDS_AMENDMENT" ? "gold" : "neutral"}
-                variant={view.status === "FILED" ? "solid" : "soft"}
+              <StatusChip
+                variant={view.status === "FILED" ? "done" : view.status === "NEEDS_AMENDMENT" ? "attention" : "neutral"}
+                size="md"
               >
                 {view.status === "NEEDS_AMENDMENT" ? "Needs amendment" : view.status}
-              </Badge>
+              </StatusChip>
               <div style={{ marginLeft: "auto", fontSize: 14, color: blockers.length ? "var(--danger)" : "var(--positive)" }}>
                 {view.status === "FILED"
                   ? "Filed (immutable)"

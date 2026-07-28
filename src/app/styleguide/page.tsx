@@ -11,9 +11,9 @@ import {
   Eyebrow,
   Metric,
   Quote,
+  StatusChip,
+  STATUS_VARIANTS,
 } from "@/components/ui";
-
-const STATUS_RAMP = ["neutral", "active", "held", "done", "attention", "review"] as const;
 
 const VIZ_SERIES = ["Brix", "Temperature", "pH", "Free SO₂", "TA", "Malic"] as const;
 
@@ -50,30 +50,36 @@ export default function StyleguidePage() {
         Component and token preview. Warm paper, ink text, a single wine-burgundy accent.
       </p>
 
-      <Section title="Status ramp (v2 §A4)">
+      <Section title="StatusChip — the status ramp (v2 §A4, §B17)">
         <div style={{ width: "100%" }}>
           <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
-            The single status vocabulary. Wine is deliberately absent — it means brand and primary
-            action only. <code>held</code> is built but unwired: no current status produces it.
+            The single status vocabulary, replacing six independent status→colour maps. Glyph +
+            mandatory text, so it survives greyscale. Wine is deliberately absent — it means brand
+            and primary action only. <code>held</code> is built but unwired: no current status
+            produces it.
           </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            {STATUS_RAMP.map((name) => (
-              <span
-                key={name}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "6px 12px",
-                  borderRadius: "var(--radius-pill)",
-                  background: `var(--status-${name}-bg)`,
-                  color: `var(--status-${name}-fg)`,
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                }}
-              >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+            {STATUS_VARIANTS.map((name) => (
+              <StatusChip key={name} variant={name}>
                 {name}
-              </span>
+              </StatusChip>
+            ))}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+            {STATUS_VARIANTS.map((name) => (
+              <StatusChip key={name} variant={name} size="md">
+                {name} md
+              </StatusChip>
+            ))}
+          </div>
+          <p style={{ color: "var(--text-meta)", fontSize: 12, marginBottom: 8 }}>
+            The same six under <code>grayscale(1)</code> — the glyph is what keeps them apart.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, filter: "grayscale(1)" }}>
+            {STATUS_VARIANTS.map((name) => (
+              <StatusChip key={name} variant={name}>
+                {name}
+              </StatusChip>
             ))}
           </div>
         </div>

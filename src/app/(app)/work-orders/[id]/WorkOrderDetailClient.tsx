@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge, Eyebrow, LocalTime } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, LocalTime, StatusChip } from "@/components/ui";
 import type { WorkOrderDetail } from "@/lib/work-orders/data";
 import { DueAt } from "@/components/work-orders/DueAt";
 import { issueWorkOrderAction, cancelWorkOrderAction } from "@/lib/work-orders/actions";
@@ -46,7 +46,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
             {wo.startedByEmail ? ` · in progress by ${wo.startedByEmail}` : ""}
           </div>
         </div>
-        <Badge tone={statusTone(wo.status)}>{wo.status.replace(/_/g, " ").toLowerCase()}</Badge>
+        <StatusChip variant={statusTone(wo.status)}>{wo.status.replace(/_/g, " ").toLowerCase()}</StatusChip>
       </div>
 
       {wo.instructions ? <Card style={{ marginTop: 14, padding: 14, fontSize: 14 }}>{wo.instructions}</Card> : null}
@@ -85,7 +85,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {wo.dependsOn.map((d) => (
               <Link key={d.id} href={`/work-orders/${d.id}`} style={{ textDecoration: "none" }}>
-                <Badge tone={statusTone(d.status)}>WO #{d.number} · {d.title}</Badge>
+                <StatusChip variant={statusTone(d.status)}>WO #{d.number} · {d.title}</StatusChip>
               </Link>
             ))}
           </div>
@@ -108,7 +108,7 @@ export function WorkOrderDetailClient({ wo, isAdmin }: { wo: WorkOrderDetail; is
               <Card key={t.id} padding="12px 14px">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ fontWeight: 600 }}>{t.seq}. {t.title}</div>
-                  <Badge tone={statusTone(t.status)}>{t.status.replace(/_/g, " ").toLowerCase()}</Badge>
+                  <StatusChip variant={statusTone(t.status)}>{t.status.replace(/_/g, " ").toLowerCase()}</StatusChip>
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 3 }}>
                   {t.kind === "OPERATION" ? t.opType : t.kind === "NOTE" ? "checklist" : t.kind === "MAINTENANCE" ? `maintenance · ${t.activityType}` : t.observationType === "HARVEST_WEIGH_IN" ? "fruit weigh-in" : `observation · ${t.observationType}`}

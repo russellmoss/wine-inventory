@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LocalTime } from "@/components/ui";
+import { LocalTime, StatusChip } from "@/components/ui";
+import { statusTone } from "@/lib/work-orders/status-badge";
 import {
   markAllNotificationsReadAction,
   markNotificationsReadAction,
@@ -220,8 +221,10 @@ function Empty({ label }: { label: string }) {
   return <div style={{ padding: "var(--space-5)", color: "var(--text-muted)", textAlign: "center", fontSize: 13 }}>{label}</div>;
 }
 
+// Was a bespoke local pill with no tone variance: every status rendered in the same wine, so
+// "issued" and "rejected" looked identical in the inbox. Now the shared chip on the shared ramp.
 function StatusPill({ status }: { status: string }) {
-  return <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: "var(--radius-pill)", background: "var(--accent-soft)", color: "var(--wine-primary)", whiteSpace: "nowrap" }}>{status.replace(/_/g, " ").toLowerCase()}</span>;
+  return <StatusChip variant={statusTone(status)}>{status.replace(/_/g, " ").toLowerCase()}</StatusChip>;
 }
 
 function FilterChips({ bucket, current, options }: { bucket: InboxBucket; current: string; options: [string, string][] }) {

@@ -1,17 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { statusTone, statusLabel, STATUS_TONE } from "@/lib/work-orders/status-badge";
+import { STATUS_VARIANTS } from "@/components/ui/status-variants";
 
 describe("statusTone", () => {
   it("maps every WorkOrderStatus / WorkOrderTaskStatus value to the app color language", () => {
     expect(statusTone("DRAFT")).toBe("neutral");
-    expect(statusTone("ISSUED")).toBe("blue");
-    expect(statusTone("IN_PROGRESS")).toBe("gold");
-    expect(statusTone("PENDING_APPROVAL")).toBe("maroon");
-    expect(statusTone("APPROVED")).toBe("green");
+    expect(statusTone("ISSUED")).toBe("active");
+    expect(statusTone("IN_PROGRESS")).toBe("active");
+    expect(statusTone("PENDING_APPROVAL")).toBe("review");
+    expect(statusTone("APPROVED")).toBe("done");
     expect(statusTone("CANCELLED")).toBe("neutral");
     expect(statusTone("PENDING")).toBe("neutral");
-    expect(statusTone("REJECTED")).toBe("red");
-    expect(statusTone("DONE")).toBe("green");
+    expect(statusTone("REJECTED")).toBe("attention");
+    expect(statusTone("DONE")).toBe("done");
     expect(statusTone("SKIPPED")).toBe("neutral");
   });
 
@@ -24,6 +25,18 @@ describe("statusTone", () => {
     for (const [status, tone] of Object.entries(STATUS_TONE)) {
       expect(statusTone(status)).toBe(tone);
     }
+  });
+
+  it("only ever returns one of the six status-ramp variants", () => {
+    for (const status of [...Object.keys(STATUS_TONE), "???", ""]) {
+      expect(STATUS_VARIANTS).toContain(statusTone(status));
+    }
+  });
+
+  it("never returns `held` — nothing in the codebase produces a HELD status yet", () => {
+    // The variant is built (v2 §A4 marks it Phase-28-gated) but must stay unwired
+    // until a real status exists, or it reads as a state the app cannot enter.
+    expect(Object.values(STATUS_TONE)).not.toContain("held");
   });
 });
 

@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Modal, Badge, ConfirmButton, LocalTime } from "@/components/ui";
+import { Modal, Badge, ConfirmButton, LocalTime, StatusChip } from "@/components/ui";
 import type { TimelineItem, OpItem, RecordItem, OpWorkOrderProvenance } from "@/lib/lot/timeline";
 import { deleteOperationAction, editOperationAction } from "@/lib/cellar/actions";
 import { previewReversalChainAction, reverseOperationChainAction } from "@/lib/ledger/actions";
@@ -127,9 +127,7 @@ function WorkOrderBlock({ wo }: { wo: OpWorkOrderProvenance }) {
         <span style={{ fontSize: 14, fontWeight: "var(--weight-medium)" as unknown as number, color: "var(--text-primary)" }}>
           Work order #{wo.number}
         </span>
-        <Badge tone={wo.tone} variant="soft">
-          {wo.statusLabel}
-        </Badge>
+        <StatusChip variant={wo.tone}>{wo.statusLabel}</StatusChip>
       </div>
       <Row label="Title">{wo.title}</Row>
       <Row label="Issued by">{wo.issuedByEmail}</Row>
