@@ -2,6 +2,24 @@
 
 Deferred work captured during planning/review. Each item has enough context to pick up cold.
 
+## 🟡 `/vessels` still hand-rolls its own fill bar
+
+Found 2026-07-28 in the plan-103 (Phase 6 tanks) pre-landing review.
+
+v2 §B22 says there is ONE fill indicator. `src/components/ui/FillIndicator.tsx` now exists and
+`/bulk`'s private `FillBar` was migrated onto it, but `src/app/(app)/vessels/VesselsClient.tsx:95`
+still renders its own `<span style={{ width: `${pct}%` }}>` fed by plain `pct`/`over` row fields.
+
+Doc 06 §65 only ever knew about the `/vessels` copy, so this is the one the handoff actually
+named and it is the one still outstanding. Left alone because `/vessels` is an admin CRUD screen
+that builds its own row shape and is outside Phase 6's scope — but the FillIndicator docstring
+would otherwise have implied the consolidation was finished, which it is not.
+
+**Fix:** have `vessels/page.tsx` pass the `Fill` object through instead of `pct`/`over`, and render
+`<FillIndicator orientation="horizontal" />` in the row.
+
+**Priority:** P3. Cosmetic duplication, no behaviour difference today.
+
 ## 🟡 Ferment chart dates are browser-local, not winery-local
 
 Found 2026-07-28 in the plan-103 (Phase 6 tanks) pre-landing review.
