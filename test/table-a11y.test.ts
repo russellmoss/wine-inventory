@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { code } from "./helpers/code";
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
 
@@ -55,7 +56,10 @@ describe("scrollable-region-focusable", () => {
       // ResponsiveTable owns its own scrolling on a wrapper and stamps data-rt, which
       // opts its table out of the legacy CSS entirely.
       if (rel === "components/ui/ResponsiveTable.tsx") continue;
-      const source = readFileSync(file, "utf8");
+      // Comments stripped first: this repo's static guards keep tripping over their
+      // own documentation, and TimeSeriesChart's docstring says "renders a real
+      // `<table>`" — prose, not markup.
+      const source = code(readFileSync(file, "utf8"));
       for (const tag of tableTags(source)) {
         if (!tag.includes("tabIndex") && !tag.includes("data-rt")) offenders.push(rel);
       }

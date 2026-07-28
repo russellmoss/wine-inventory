@@ -222,7 +222,9 @@ function RecentRow({ tag }: { tag: RecentTag }) {
 
   return (
     <>
-      <tr style={{ borderTop: "1px solid var(--border-subtle)", opacity: voided ? 0.55 : 1, textDecoration: voided ? "line-through" : "none" }}>
+      {/* Voided tags keep full-contrast text: the strike-through and the sunken surface
+          carry the state, and dimming would drag it under 4.5:1. */}
+      <tr className={voided ? "bw-inactive" : undefined} style={{ borderTop: "1px solid var(--border-subtle)", textDecoration: voided ? "line-through" : "none" }}>
         <td style={{ padding: "8px 10px 8px 0", ...tabular, fontWeight: 600 }}>{tag.tagNumber}</td>
         <td style={{ padding: "8px 10px" }}>{tag.truck ?? "—"}</td>
         <td style={{ padding: "8px 10px", ...tabular }}>{tag.lineCount}</td>

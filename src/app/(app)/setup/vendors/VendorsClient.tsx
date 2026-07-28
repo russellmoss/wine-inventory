@@ -119,7 +119,7 @@ export function VendorsClient({ vendors, isAdmin, importCandidates = [], qboPush
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
             {shown.map((v) => (
-              <Card key={v.id} padding="10px 14px" style={{ opacity: v.isActive ? 1 : 0.6 }}>
+              <Card key={v.id} padding="10px 14px" className={v.isActive ? undefined : "bw-inactive"}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div style={{ minWidth: 0 }}>
                     <span style={{ fontWeight: 600 }}>{v.name}</span>

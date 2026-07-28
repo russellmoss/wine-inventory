@@ -264,8 +264,12 @@ export function ComplianceClient(props: {
 
           {/* Part X + actions */}
           <Card style={{ marginBottom: 16, padding: 16 }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Part X — Remarks</div>
+            {/* A real <label htmlFor>, not a styled <div>: this was the only control on
+                the TTB report with no accessible name at all, so a screen-reader user
+                filing a federal form heard "edit text, blank" and nothing else. */}
+            <label htmlFor="compliance-remarks" style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>Part X — Remarks</label>
             <textarea
+              id="compliance-remarks"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               disabled={view.status === "FILED"}

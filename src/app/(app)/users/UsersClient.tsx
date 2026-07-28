@@ -127,7 +127,7 @@ export function UsersClient({
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} style={{ borderTop: "1px solid var(--border-strong)", opacity: u.banned ? 0.55 : 1 }}>
+              <tr key={u.id} className={u.banned ? "bw-inactive" : undefined} style={{ borderTop: "1px solid var(--border-strong)" }}>
                 <td style={{ padding: "12px 16px" }}>
                   <div>{u.name}{u.isSelf ? " (you)" : ""}</div>
                   <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{u.email}</div>

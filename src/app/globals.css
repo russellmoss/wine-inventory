@@ -112,6 +112,38 @@
   .app-main:has(~ .bw-tabbar) { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
 }
 
+/* Inactive / archived / superseded rows.
+
+   Deliberately NOT `opacity`. Opacity composites the TEXT against whatever is behind
+   it, so `--text-muted` (a comfortable 5.3:1 on white) lands at 2.5-3.4:1 once dimmed
+   — an axe `color-contrast` failure and a real WCAG 1.4.3 one. The maths does not
+   have a rescue: even at 0.9 opacity muted text only reaches ~4.4:1, still short of
+   4.5. The dimming has to come off the text.
+
+   A sunken surface plus secondary-weight text reads as "set aside" while keeping
+   every glyph above 4.5:1. Pair it with a visible "Archived" / "Inactive" badge —
+   dimming ALONE is state conveyed by appearance only, which is 1.4.1 regardless of
+   contrast, and is invisible to anyone who cannot perceive the difference. */
+.bw-inactive {
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+}
+
+/* An inline link inside prose must not be told apart by COLOUR ALONE (WCAG 1.4.1,
+   axe `link-in-text-block`). The app's link colour is wine `--text-accent` #722F37
+   and body prose is `--text-secondary` #4D4A42 — 1.09:1 against each other, so to
+   anyone who does not perceive that hue the link is invisible. Underline is the
+   cheapest honest fix and the one axe accepts.
+
+   Scoped to links INSIDE a paragraph or list item: standalone links, nav items and
+   link-wrapped buttons/cards are distinguishable by position and are excluded, which
+   is why this is not a blanket `a { text-decoration: underline }`. */
+.app-main p > a,
+.app-main li > a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Mobile: wide tables scroll horizontally instead of breaking the layout. */
 @media (max-width: 767px) {
   /* LEGACY mobile table treatment. `display: block` destroys table semantics —

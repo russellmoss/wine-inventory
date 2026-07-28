@@ -99,7 +99,7 @@ function ClientRow({ owner }: { owner: Owner }) {
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--border-subtle)", opacity: active ? 1 : 0.6 }}>
+    <div className={active ? undefined : "bw-inactive"} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--border-subtle)" }}>
       {editing ? (
         <>
           <Input value={name} onChange={(e) => setName(e.target.value)} size="sm" style={{ flex: 1 }} error={err ?? undefined} />

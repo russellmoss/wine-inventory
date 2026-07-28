@@ -136,13 +136,15 @@ export function ForecastStrip({ vineyardId }: { vineyardId: string }) {
               border: "1px solid var(--border-default)",
               borderRadius: 10,
               padding: "10px 8px",
-              background: "var(--surface-raised)",
+              // Reduced confidence shows as a sunken surface, never as dimmed numbers:
+              // opacity would fail contrast AND hide the caveat from anyone who cannot
+              // perceive the dimming (WCAG 1.4.3 + 1.4.1). The tooltip states it in words.
+              background: d.reducedConfidence ? "var(--surface-sunken)" : "var(--surface-raised)",
               display: "grid",
               gap: 4,
               justifyItems: "center",
               textAlign: "center",
               scrollSnapAlign: "start",
-              opacity: d.reducedConfidence ? 0.62 : 1,
               cursor: "pointer",
               font: "inherit",
               color: "inherit",

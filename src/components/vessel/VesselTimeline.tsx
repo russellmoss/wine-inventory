@@ -129,18 +129,19 @@ function TimelineRow({ item, onOpenEntry }: { item: TimelineItem; onOpenEntry: (
           width: "100%",
           textAlign: "left",
           minHeight: 44,
-          background: "transparent",
+          // A superseded entry is marked by its own correction label plus a sunken
+          // surface, never by dimming — opacity puts this text under 4.5:1.
+          background: dim ? "var(--surface-sunken)" : "transparent",
           border: "none",
           borderRadius: "var(--radius-md)",
           padding: "10px 12px",
           cursor: "pointer",
           color: "inherit",
           font: "inherit",
-          opacity: dim ? 0.6 : 1,
           transition: "background var(--duration-fast) var(--ease-standard)",
         }}
         onMouseEnter={(e) => (e.currentTarget.style.background = "var(--paper-100)")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = dim ? "var(--surface-sunken)" : "transparent")}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
           <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 13, color: "var(--text-muted)", minWidth: 44 }}>

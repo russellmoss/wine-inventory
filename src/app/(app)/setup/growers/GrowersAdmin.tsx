@@ -62,7 +62,7 @@ export function GrowersAdmin({ growers }: { growers: GrowerRow[] }) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 12 }}>
             {shown.map((g) => (
-              <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--border-subtle)", opacity: g.isActive ? 1 : 0.6 }}>
+              <div key={g.id} className={g.isActive ? undefined : "bw-inactive"} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--border-subtle)" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ fontWeight: 500 }}>{g.name}</span>{" "}
                   {g.isEstate ? <Badge tone="wine">Estate</Badge> : null}
