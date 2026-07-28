@@ -32,9 +32,13 @@
   button labels. One accent color, used sparingly and meaningfully.
 
 ## Typography
-Tokens: `src/styles/tokens/typography.css`, `fonts.css`. Inter + Inter Tight load from
-Google Fonts at the top of `globals.css` (must precede Tailwind). Big Caslon ships
-locally from `/assets/fonts/`.
+Tokens: `src/styles/tokens/typography.css`, `fonts.css`. Inter + Inter Tight are
+**self-hosted by `next/font`** in `src/app/layout.tsx` and reach the type system through
+`--font-inter` / `--font-inter-tight`, which `typography.css` consumes at the head of the
+`--font-body` / `--font-heading` stacks. (Until 2026-07-28 they arrived via a
+render-blocking `@import` of fonts.googleapis.com at the top of `globals.css`; on poor
+cellar wifi that stalled the whole type system. A static guard now fails if any Google
+Fonts URL reappears.) Big Caslon ships locally from `/assets/fonts/`.
 
 - **Display/Hero:** `Big Caslon` (serif) — `--font-display`. Brand moments, hero
   headings, the `.ds-serif` / `Quote` voice. Falls back to Hoefler Text → Times → Georgia.
