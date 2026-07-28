@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { deriveStages } from "@/lib/work-orders/stage";
 import {
   Button,
   Card,
@@ -13,6 +14,7 @@ import {
   Quote,
   StatusChip,
   STATUS_VARIANTS,
+  StageIndicator,
   INPUT_SIZES,
   Select,
   NumericUnitInput,
@@ -412,6 +414,25 @@ export default function StyleguidePage() {
         <IconButton aria-label="More actions" variant="outline">⋯</IconButton>
         <IconButton aria-label="Expand" variant="outline">⤢</IconButton>
         <IconButton aria-label="Close" disabled>✕</IconButton>
+      </Section>
+
+      <Section title="StageIndicator — derived, never stored (v2 §B24)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 14, maxWidth: "70ch" }}>
+            Six segments computed from recorded operations. A stored{" "}
+            <code>stage</code> column would be a second source of truth that drifts the
+            moment anything is corrected — and this app&rsquo;s whole ledger is
+            append-only correction-as-event. The <em>current</em> stage is the FURTHEST
+            recorded one, not the most recent op: you top a blended wine all the time, and
+            that must not drag the lot backwards.
+          </p>
+          <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
+            <StageIndicator states={deriveStages(["HARVEST_INTAKE", "CRUSH"])} />
+            <StageIndicator states={deriveStages(["HARVEST_INTAKE", "CRUSH", "PRESS", "RACK"])} />
+            <StageIndicator states={deriveStages(["BLEND", "TOPPING"])} />
+            <StageIndicator states={deriveStages([])} />
+          </div>
+        </div>
       </Section>
 
       <Section title="Avatars">

@@ -8,6 +8,8 @@ import { DueAt } from "@/components/work-orders/DueAt";
 import { OPEN_STATUSES, type WorkOrderFilters } from "@/lib/work-orders/archive-filters";
 import { WorkOrdersTabs } from "./WorkOrdersTabs";
 import { WorkOrderFilterBar } from "./WorkOrderFilterBar";
+import { SavedViewsBar } from "./SavedViewsBar";
+import { NAV_V2_ENABLED } from "@/lib/nav/flag";
 import type { VesselOption } from "./new/VesselMultiSelect";
 import { statusTone } from "@/lib/work-orders/status-badge";
 
@@ -58,7 +60,7 @@ function Section({ title, items, tone }: { title: string; items: WorkOrderSummar
   );
 }
 
-export function WorkOrdersClient({ dashboard, isAdmin, filters = {}, vessels = [], templates = [], locations = [] }: { dashboard: Dashboard; isAdmin: boolean; filters?: WorkOrderFilters; vessels?: VesselOption[]; templates?: { id: string; name: string }[]; locations?: { id: string; name: string }[] }) {
+export function WorkOrdersClient({ dashboard, isAdmin, filters = {}, vessels = [], templates = [], locations = [], currentUserEmail = null }: { dashboard: Dashboard; isAdmin: boolean; filters?: WorkOrderFilters; vessels?: VesselOption[]; templates?: { id: string; name: string }[]; locations?: { id: string; name: string }[]; currentUserEmail?: string | null }) {
   const { buckets, pendingApproval } = dashboard;
   const openCount = buckets.overdue.length + buckets.today.length + buckets.upcoming.length + buckets.unscheduled.length + pendingApproval.length;
   const isEmpty = openCount === 0;
@@ -79,7 +81,18 @@ export function WorkOrdersClient({ dashboard, isAdmin, filters = {}, vessels = [
 
       <div style={{ marginTop: 14 }}><WorkOrdersTabs active="open" /></div>
 
-      <WorkOrderFilterBar view="open" filters={filters} vessels={vessels} templates={templates} locations={locations} statuses={OPEN_STATUSES} allLabel="All open" resultCount={openCount} />
+      {/* Phase 5 (v2 §B16): SavedViews + Narrow replace the 7-field filter bar. The
+          old bar stays in the else arm behind the same Phase-3 flag, so the
+          rollback story is identical to the nav's. */}
+      {NAV_V2_ENABLED ? (
+        <SavedViewsBar
+          params={filters as Record<string, string | undefined>}
+          count={openCount}
+          currentUserEmail={currentUserEmail}
+        />
+      ) : (
+        <WorkOrderFilterBar view="open" filters={filters} vessels={vessels} templates={templates} locations={locations} statuses={OPEN_STATUSES} allLabel="All open" resultCount={openCount} />
+      )}
 
       {isEmpty ? (
         <Card style={{ marginTop: 24, textAlign: "center", padding: "48px 24px" }}>

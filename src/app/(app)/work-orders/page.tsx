@@ -59,6 +59,7 @@ export default async function WorkOrdersPage({
       vessels={pickers.vessels}
       templates={templates.map((t) => ({ id: t.id, name: t.name }))}
       locations={locations.map((l) => ({ id: l.id, name: l.name }))}
+      currentUserEmail={user.email ?? null}
     />
   );
 }

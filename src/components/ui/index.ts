@@ -18,6 +18,8 @@ export { Card } from "./Card";
 export type { CardProps } from "./Card";
 export { Badge } from "./Badge";
 export type { BadgeProps } from "./Badge";
+export { StageIndicator } from "./StageIndicator";
+export type { StageIndicatorProps } from "./StageIndicator";
 export { StatusChip } from "./StatusChip";
 export type { StatusChipProps } from "./StatusChip";
 export { STATUS_GLYPH, STATUS_VARIANTS, isStatusVariant } from "./status-variants";
