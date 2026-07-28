@@ -25,9 +25,29 @@ function googleSocialProviders() {
   return { google: { clientId, clientSecret, disableSignUp: true } };
 }
 
+/**
+ * Origin trust.
+ *
+ * Better Auth trusts only `baseURL` (BETTER_AUTH_URL) by default, so a dev server on any other
+ * port is refused with `Invalid origin` — and the login page gives no useful signal, it just
+ * sits on "Signing in…" forever, which reads exactly like a wrong password. This box routinely
+ * runs two or three worktree dev servers at once *because* :3000 is usually taken, so that
+ * default made local login a coin flip and blocked QA on every branch that wasn't on the port
+ * baked into `.env`.
+ *
+ * Outside production we trust localhost and 127.0.0.1 on ANY port. In production the list is
+ * empty, so the baseURL check stays exactly as strict as it was: this widens nothing where it
+ * matters, and the CSRF protection origin-checking provides is untouched on the deployed app.
+ */
+export function devTrustedOrigins(nodeEnv = process.env.NODE_ENV): string[] {
+  if (nodeEnv === "production") return [];
+  return ["http://localhost:*", "http://127.0.0.1:*"];
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   socialProviders: googleSocialProviders(),
+  trustedOrigins: devTrustedOrigins(),
   account: {
     // Link a Google identity to the EXISTING user with the same email. We keep google OUT of
     // `trustedProviders` on purpose: trusting the provider would SUPPRESS Better Auth's check on the
