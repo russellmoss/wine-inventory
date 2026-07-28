@@ -13,6 +13,11 @@ import {
   Quote,
   StatusChip,
   STATUS_VARIANTS,
+  ConfirmButton,
+  Skeleton,
+  EmptyState,
+  Alert,
+  ActionReceipt,
 } from "@/components/ui";
 
 const VIZ_SERIES = ["Brix", "Temperature", "pH", "Free SO₂", "TA", "Malic"] as const;
@@ -196,6 +201,79 @@ export default function StyleguidePage() {
           Badge is for categories. A status value belongs in StatusChip above — the two are not
           interchangeable, and a static test enforces it.
         </p>
+      </Section>
+
+      <Section title="ConfirmButton — two-step, event-disarmed (v2 §B27)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            The confirm label must name its object. It no longer auto-disarms on a 4-second
+            timer (WCAG 2.2.1); it disarms on Escape, on the tab being backgrounded, and on
+            unmount — events that mean the user has left, not a clock running while they think.
+          </p>
+          <ConfirmButton confirmLabel="Archive CH-NEUTRAL-14" onConfirm={() => {}}>
+            Archive lot
+          </ConfirmButton>
+        </div>
+      </Section>
+
+      <Section title="Alert (v2 §B25)">
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
+          <Alert variant="info" title="Two tanks are still warm">
+            T-04 and T-07 are above the 16 °C yeast floor.
+          </Alert>
+          <Alert variant="warning" title="CH-NEUTRAL-14 is 8% over nominal capacity">
+            Recorded anyway — barrels are never blocked for being full.
+          </Alert>
+          <Alert
+            variant="danger"
+            title="The rack into T-04 was not recorded"
+            actions={<Button size="sm" variant="secondary">Try again</Button>}
+          >
+            Nothing was written to the lot ledger. The source vessel still holds 218 L.
+          </Alert>
+          <Alert variant="success" title="WO #171 issued to the cellar crew" />
+        </div>
+      </Section>
+
+      <Section title="ActionReceipt (v2 §B26)">
+        <div style={{ width: "100%" }}>
+          <ActionReceipt
+            summary="Rack recorded — 218 L into T-04"
+            provenance="Written to the lot ledger at 12:47 by you."
+            onCorrect={() => {}}
+            onSeeLedgerLine={() => {}}
+            onDismiss={() => {}}
+          />
+        </div>
+      </Section>
+
+      <Section title="Skeleton (v2 §B29)">
+        <div style={{ width: 320 }}>
+          <Skeleton variant="text" count={3} label="Loading your work orders…" />
+        </div>
+        <div style={{ width: 200 }}>
+          <Skeleton variant="block" label={null} />
+        </div>
+        <Skeleton variant="chip" label={null} />
+      </Section>
+
+      <Section title="EmptyState (v2 §B30)">
+        <Card style={{ width: "100%" }}>
+          <EmptyState
+            title="No open work orders"
+            actions={
+              <>
+                <Button size="sm">Draft a work order</Button>
+                <Button size="sm" variant="secondary">
+                  See the archive
+                </Button>
+              </>
+            }
+          >
+            Everything issued this week has been completed and approved. New work appears here
+            the moment someone drafts it.
+          </EmptyState>
+        </Card>
       </Section>
 
       <Section title="Avatars">

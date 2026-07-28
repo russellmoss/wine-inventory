@@ -163,8 +163,9 @@ variables directly (inline styles or class) — that's the established pattern i
 
 ## Component library
 `src/components/ui/` (barrel: `index.ts`). All token-driven, sentence-case labels.
-Button · Card · Badge · Avatar · Input · Checkbox · Eyebrow · Metric · Quote ·
-ConfirmButton · Modal · ExportCsvButton. Preview them live at `/styleguide`.
+Button · Card · Badge · **StatusChip** · Avatar · Input · Textarea · Checkbox · Eyebrow ·
+Metric · Quote · ConfirmButton · Modal · Collapsible · Tabs · InfoHint · ExportCsvButton ·
+**Skeleton** · **EmptyState** · **Alert** · **ActionReceipt**. Preview them live at `/styleguide`.
 
 - **Button** variants: primary (wine solid) · secondary (outline) · ghost (wine, quiet) ·
   inverse · link. Sizes sm/md/lg/xl — heights **44/48/56/68** (v2 §B6; was 34/42/50).

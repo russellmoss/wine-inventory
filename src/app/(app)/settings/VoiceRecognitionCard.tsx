@@ -295,7 +295,7 @@ export function VoiceRecognitionCard({ initial }: { initial: VoiceSettingsView }
                 <Button variant="secondary" onClick={() => { resetEnrollment(); setEnrolling(true); }} disabled={pending}>
                   Re-enroll
                 </Button>
-                <ConfirmButton onConfirm={removeProfile} disabled={pending} confirmLabel="Delete">
+                <ConfirmButton onConfirm={removeProfile} disabled={pending} confirmLabel="Delete my voiceprint">
                   Delete voiceprint
                 </ConfirmButton>
               </div>

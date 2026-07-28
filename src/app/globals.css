@@ -59,6 +59,16 @@
   font-size: 14px;
 }
 
+/* Skeleton pulse (v2 §B29). A CSS animation on purpose, not a JS loop — the global
+   reduced-motion rule below then switches it off with no per-component check. */
+@keyframes ds-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.ds-skeleton {
+  animation: ds-skeleton-pulse 1.6s var(--ease-in-out) infinite;
+}
+
 /* Global reduced-motion honouring (v2 §A12). Before this, only 4 components
    checked the preference individually; everything else animated regardless.
    This is a real behaviour change for users who set the OS preference — and

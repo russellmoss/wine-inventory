@@ -268,7 +268,7 @@ export function FinishedGoodsSection({ categories, items, locations, onHand }: {
                     </td>
                     <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
                       <Button variant="ghost" size="sm" disabled={pending} onClick={() => startEdit(r)}>edit</Button>
-                      <ConfirmButton onConfirm={() => run(() => deleteOnHand(r.kind, r.itemId, r.locationId))} disabled={pending}>delete</ConfirmButton>
+                      <ConfirmButton confirmLabel={`Delete ${r.item} at ${r.location}`} onConfirm={() => run(() => deleteOnHand(r.kind, r.itemId, r.locationId))} disabled={pending}>delete</ConfirmButton>
                     </td>
                   </tr>
                 );

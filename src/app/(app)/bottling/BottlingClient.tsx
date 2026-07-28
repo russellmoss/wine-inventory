@@ -217,7 +217,7 @@ export function BottlingClient({ vessels, locations, runs, packagingOptions }: {
                   <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
                     <Badge tone="wine" variant="soft">{r.bottlesProduced} bottles · {s.cases}c + {s.loose}</Badge>
                     {!editing ? <Button variant="ghost" size="sm" disabled={pending} onClick={() => setEditingId(r.id)}>edit</Button> : null}
-                    <ConfirmButton onConfirm={() => run(() => deleteBottlingRun(r.id))} disabled={pending}>delete</ConfirmButton>
+                    <ConfirmButton confirmLabel={`Delete ${r.skuName} ${r.skuVintage ?? "NV"} run`} onConfirm={() => run(() => deleteBottlingRun(r.id))} disabled={pending}>delete</ConfirmButton>
                   </span>
                 </div>
                 <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{r.date} → {r.location}</div>

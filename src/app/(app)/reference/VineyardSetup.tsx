@@ -606,7 +606,7 @@ export function VineyardSetup({
                           Clear color
                         </ConfirmButton>
                       ) : null}
-                      <ConfirmButton onConfirm={() => run(() => deleteBlock(b.id), collapse)} disabled={pending}>
+                      <ConfirmButton confirmLabel={`Delete block ${b.blockLabel ?? "(unnamed)"}`} onConfirm={() => run(() => deleteBlock(b.id), collapse)} disabled={pending}>
                         Delete block
                       </ConfirmButton>
                     </div>
