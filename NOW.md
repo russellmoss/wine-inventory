@@ -7,9 +7,11 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PHASE 6 (TANKS) BUILT on `claude/cellarhand-v2-phase6-tanks`, ready to PR.**
-All 13 units of [plan 103](docs/plans/2026-07-28-103-feat-cellarhand-v2-phase6-tanks-plan.md), 10
-commits, 4 PRs' worth. Suite 438 files / 5440 tests green, `tsc` clean, lint 0 errors, `prisma/`
+**CELLARHAND UI/UX v2 — PHASE 6 (TANKS) IS OPEN AS [#562](https://github.com/russellmoss/wine-inventory/pull/562), NOT MERGED.**
+All 13 units of [plan 103](docs/plans/2026-07-28-103-feat-cellarhand-v2-phase6-tanks-plan.md), 18
+commits. **The pre-landing review halted the first ship attempt with 23 criticals** — four
+reviewers, ~64 findings, none visible in 5,450 passing tests. Worst: °F readings plotted as °C
+(TEMP.units is ["°C","°F"]; `toDefaultUnit` existed and was never called). All 23 fixed. Suite 438 files / 5440 tests green, `tsc` clean, lint 0 errors, `prisma/`
 untouched, `AssistantDock` diff empty, no route added or renamed.
 **QA RUN 2026-07-28 against the live Demo Winery tenant on :3007 — `/bulk` passes axe with ZERO
 violations at 390px AND 1440px with the board ON.** Getting there needed a real fix: Better Auth

@@ -624,6 +624,29 @@ Full suite: **438 files / 5440 tests passing**, 3 skipped. `tsc --noEmit` clean.
   `vesselLot` volumes. Following the comment reintroduces the bug where a full tank renders
   empty. Fixed in Unit 3, and the guard in `bulk-tank-board-wiring.test.ts` now pins the source.
 
+### The pre-landing review found 23 criticals, and it was right
+
+Four reviewers (security · adversarial · maintainability · design), ~64 findings. None of them
+showed up in 5,450 passing tests. The worst was the one this plan's own D1 exists to prevent:
+
+**Fahrenheit plotted as Celsius.** `ANALYTES.TEMP.units` is `["°C","°F"]` and `validateMeasurement`
+range-checks AFTER converting, so `value: 68, unit: "°F"` is a valid stored row. `toTankReadings`
+selected `{analyte, value}` only and the panel hard-labelled the axis °C. A US cellar would have
+seen a ferment curve at 68-85 °C and a metric card stating "68.0 °C" — while the Analyses tab one
+click away, which does carry `unit`, showed it correctly. `toDefaultUnit()` already existed,
+documented for exactly this, and was never called. Not two views disagreeing: one view wrong.
+
+Also: `direction()` compared raw values while the sentence quoted rounded ones ("Brix rising from
+21.4 Bx to 21.4 Bx"); the board's staleness aggregate used a THIRD sourcing rule, the precise
+mistake D2 was written to prevent; a future-dated reading made staleness fail open forever; two
+empty states asserted facts about the cellar record when only the network had failed; the origin
+guard failed open on any unrecognised `NODE_ENV`; and the tile's min-width overflowed its grid
+track at two of doc 04's own breakpoints.
+
+**Lesson worth keeping:** a plan can name the invariant and still ship a violation of it. D1's
+single-derivation mechanism held for the numbers it owned and said nothing about the units those
+numbers arrived in. The seam was one layer below where the invariant was drawn.
+
 ### Deferred, with reasons
 
 - **`/bulk/[vesselId]` as a route** — OD-P6-1 ratified modal-only. `route-stability.test.ts`
