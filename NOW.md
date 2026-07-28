@@ -7,34 +7,34 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PHASE 2 + PHASE 3 BUILT, 15 commits on
-`claude/cellarhand-v2-phase-2-3`, ready to PR.** Phase 0/1 shipped earlier as
-[#555](https://github.com/russellmoss/wine-inventory/pull/555) (`ca65245d`).
-Plan: [102](docs/plans/2026-07-28-102-feat-cellarhand-v2-phase2-3-components-shell-plan.md)
-(`completed`, with an Execution record of the eight handoff conflicts and the defects
-found only by building).
+**CELLARHAND UI/UX v2 — PHASE 4 + PHASE 5 BUILT on `claude/cellarhand-v2-next`, ready to PR.**
+Phase 0/1 shipped as [#555](https://github.com/russellmoss/wine-inventory/pull/555); Phase 2/3 as
+[#557](https://github.com/russellmoss/wine-inventory/pull/557) (`f3018c0e`).
 
-**Shipped:** Input a11y wiring (165 call sites, all four attributes were absent) ·
-Select / NumericUnitInput / DateTimeControl · a tokenising unlabelled-control detector
-(35 tests) + 32 selects named, now zero · PageHeader / Breadcrumbs / IconButton ·
-loading + not-found for 7 route families · ResponsiveTable + DataRow with the
-`:not([data-rt])` shrink-to-zero migration of the global mobile table rule ·
-TimeSeriesChart consolidating two chart components · route-stability gate ·
-**`/ferment`** (net-new; the handoff listed it as existing) · the 3-group / 13-destination
-nav behind `NEXT_PUBLIC_NAV_V2` · SectionNav · MobileTabBar · rail logic + tokens ·
-**the axe gate RUN and green** on /login at 390 and 1440.
+**Phase 4 — Ctrl-K command palette + global search.** Spans vessels, lots, work orders, blocks,
+materials, vessel groups and nav destinations. Deterministic, never LLM-backed: search works with
+the assistant off, and a question puts **Ask LAST**, never first. Tenancy is the risk and gets two
+tested rules — every read через the tenant-EXTENDED prisma client (no bare `$queryRaw`, which
+bypasses the extension), and the role comes from the SESSION not the client, so search cannot become
+a privilege-escalation path. Every branch bounded by `take`.
 
-⚠️ **The axe gate found two defects I introduced myself** — `aria-hidden` around the
-login page's show/hide-password button, and around NumericUnitInput's unit box. It had
-been committed-but-unrun since PR #1 because public routes depended on the auth setup
-project, so with no seeded tenant NO a11y check could run at all. That dependency is
-removed.
+**Phase 5 — SavedViews + Narrow, and a DERIVED StageIndicator.** The 7-field filter bar is replaced:
+common case is one click, current narrowing is visible as removable chips, applies live, URL-synced.
+Stage is computed from recorded ops — a stored `stage` column would be a second source of truth that
+drifts the moment anything is corrected, which would quietly undo the append-only ledger.
 
-**Still open, deliberately:** the rail's UI chrome (doc 13 §88 says build it after the
-nav settles — it settled in this PR) · the 61-heading PageHeader migration · 47
-unlabelled input/textarea (the guard prints the count every run) · the authed 40-route
-axe sweep, which needs a Demo Winery credential and would mean seeding the production
-database.
+⚠️ **`Ctrl`, never `⌘` — owner instruction, and a deliberate deviation from the handoff**, which
+writes ⌘K throughout. This winery runs Windows; that glyph points at a key the crew's keyboards do
+not have. The handler still MATCHES Cmd so a Mac user is not broken — we just never advertise it.
+Three ⌘ glyphs already in `src/` were scrubbed and a permanent guard now fails if any returns.
+
+**Also fixed:** `playwright.config.ts`'s `webServer` ignored `E2E_BASE_URL`, so on a box running
+2-3 worktree dev servers it either failed to start or silently REUSED another branch's server and
+reported results for code you did not write.
+
+**Still open:** the rail's UI chrome · the 61-heading PageHeader migration · 47 unlabelled
+input/textarea (guard prints the count) · the authed 40-route axe sweep (needs a Demo credential;
+seeding writes to prod) · Phase 6 tank board · Phases 7-10 behind the ⛔ domain gate.
 
 ## 🔭 Also in flight
 
@@ -1835,7 +1835,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-28 — **Phase 2 + Phase 3 BUILT (15 commits, `claude/cellarhand-v2-phase-2-3`), plan 102 `completed`.** The redesign is now visible: 3-group nav behind a flag, `/ferment` worksheet, PageHeader, ResponsiveTable, TimeSeriesChart, the form-control layer. Biggest finds: `Input` had NONE of its four a11y attributes across 165 call sites; three greps gave three different unlabelled-select counts until a tokenising detector settled it at 32; and **running the axe gate found two defects I had introduced myself**, one of them hiding the login page's password toggle from assistive tech. Suite 425 files / 5,219 passing (one documented flake). Spray Wave 1 remains PUSHED on the tangent stack.
+_Last updated: 2026-07-28 — **Phase 4 (Ctrl-K palette + global search) and Phase 5 (SavedViews/Narrow + derived StageIndicator) BUILT** on `claude/cellarhand-v2-next`. Phase 2/3 shipped as [#557](https://github.com/russellmoss/wine-inventory/pull/557). Keyboard hints are **Ctrl, never ⌘** (owner instruction; deliberate deviation from the handoff — the crew is on Windows), with a permanent guard against Mac modifier glyphs in `src/`. Search tenancy is the real risk and is tested: extended prisma client only, role from the session never the client, every branch bounded. Suite 428 files / 5,277 passing (one documented flake). Axe green on /login at both viewports.
 
 Also this date, from the KB session on `main`: _Last updated: 2026-07-28 — **Plan 100 corpus repair campaign DONE**: ~3,270 of ~3,312 documents
 re-chunked across all 22 affected sources; ~20 correctly refused by the numeric-loss guard, which

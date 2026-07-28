@@ -34,9 +34,13 @@ export default defineConfig({
       testIgnore: /public-.*\.spec\.ts/,
     },
   ],
+  // The webServer must honour E2E_BASE_URL too, not just `use.baseURL`. This box
+  // routinely runs 2-3 worktree dev servers at once, so a hardcoded :3000 either
+  // fails to start or — worse — silently REUSES another branch's server and
+  // reports results for code you did not write.
   webServer: {
     command: "npm run dev",
-    url: "http://localhost:3000/login",
+    url: `${process.env.E2E_BASE_URL || "http://localhost:3000"}/login`,
     reuseExistingServer: true,
     timeout: 120_000,
   },
