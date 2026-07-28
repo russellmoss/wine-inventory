@@ -3,14 +3,31 @@ import { getWorkOrderDashboard, getWorkOrderArchive, getWorkOrderPickers, listTe
 import { parseArchiveFilters, parseOpenFilters } from "@/lib/work-orders/archive-filters";
 import { WorkOrdersClient } from "./WorkOrdersClient";
 import { ArchiveClient } from "./ArchiveClient";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 export const dynamic = "force-dynamic";
 
-export default async function WorkOrdersPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+type WorkOrdersPageProps = { searchParams: Promise<Record<string, string | string[] | undefined>> };
+
+/**
+ * Plan 104 Unit 5 — Review, Templates and Task types are reached from here.
+ *
+ * The strip is hoisted above the body rather than repeated inside it because the
+ * body has four return paths (archive / archive-without-tenant / open /
+ * open-without-tenant) and the sub-nav has to be on all four. Wrapping is also what
+ * keeps it off `/work-orders/[id]/execute` — a layout.tsx would put section tabs on
+ * the wet-hands capture screen (D1).
+ */
+export default async function WorkOrdersPage(props: WorkOrdersPageProps) {
+  return (
+    <>
+      <HubSectionNav hub="/work-orders" />
+      <WorkOrdersHubBody {...props} />
+    </>
+  );
+}
+
+async function WorkOrdersHubBody({ searchParams }: WorkOrdersPageProps) {
   const user = await requireReadyUser();
   const tenantId = user.activeOrganizationId;
   const sp = await searchParams;

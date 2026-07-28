@@ -10,6 +10,7 @@ import { AdminViewToggle } from "../AdminViewToggle";
 import { ManagerVineyardSwitcher } from "../ManagerVineyardSwitcher";
 import { type FormBlock } from "./manager/FieldNoteForm";
 import { type VineyardSummary } from "./admin/AdminDashboard";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 // Columns to build a ParsedFieldNote (matches FieldNoteRowLike), mirrors actions.ts.
 const fieldNoteSelect = {
@@ -30,11 +31,23 @@ const fieldNoteSelect = {
   createdAt: true,
 } as const;
 
-export default async function FieldNotesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ view?: string; vineyard?: string }>;
-}) {
+type FieldNotesPageProps = { searchParams: Promise<{ view?: string; vineyard?: string }> };
+
+/**
+ * Plan 104 Unit 10 — Map Explorer, Weather and Spray records hang off Vineyard
+ * rounds. All three were sidebar entries before Phase 3 and had no way in after it.
+ * Wrapped rather than inlined: the body returns from six places.
+ */
+export default async function FieldNotesPage(props: FieldNotesPageProps) {
+  return (
+    <>
+      <HubSectionNav hub="/vineyards/field-notes" />
+      <FieldNotesHubBody {...props} />
+    </>
+  );
+}
+
+async function FieldNotesHubBody({ searchParams }: FieldNotesPageProps) {
   const user = await requireReadyUser();
   await requireActiveTenant();
 

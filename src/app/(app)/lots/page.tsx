@@ -1,6 +1,7 @@
 import { requireReadyUser } from "@/lib/dal";
 import { listLots, type LotListFilter } from "@/lib/lot/data";
 import { LotsClient } from "./LotsClient";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 // Read-only Lot list (Phase 2). Status filter via ?status= (default ACTIVE = current
 // cellar). Optional ?vessel= filter (NICE). All reads go through the ledger/projection
@@ -33,5 +34,12 @@ export default async function LotsPage({
     vesselId,
     ...(lensOn ? { sourceVineyardIn: user.vineyardIds } : {}),
   });
-  return <LotsClient lots={lots} status={status} vesselId={vesselId} canLens={canLens} lensOn={lensOn} />;
+  return (
+    <>
+      {/* Plan 104 Unit 6 — Samples used to be a sidebar entry; the v2 sidebar keeps
+          13 destinations, so it is reached from the Lots hub it belongs to. */}
+      <HubSectionNav hub="/lots" />
+      <LotsClient lots={lots} status={status} vesselId={vesselId} canLens={canLens} lensOn={lensOn} />
+    </>
+  );
 }

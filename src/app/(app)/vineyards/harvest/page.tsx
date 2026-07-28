@@ -5,14 +5,28 @@ import { Card } from "@/components/ui";
 import { HarvestRouter } from "./HarvestRouter";
 import { AdminViewToggle } from "../AdminViewToggle";
 import { ManagerVineyardSwitcher } from "../ManagerVineyardSwitcher";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 export const dynamic = "force-dynamic";
 
-export default async function HarvestPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ view?: string; vineyard?: string }>;
-}) {
+type HarvestPageProps = { searchParams: Promise<{ view?: string; vineyard?: string }> };
+
+/**
+ * Plan 104 Unit 10 — Weigh-tags is reached from Fruit intake, and only when the
+ * custom-crush program is on. Wrapped rather than inlined: the body returns from
+ * five places (admin/manager × with-and-without vineyards) and the strip belongs on
+ * every one of them.
+ */
+export default async function HarvestPage(props: HarvestPageProps) {
+  return (
+    <>
+      <HubSectionNav hub="/vineyards/harvest" />
+      <HarvestHubBody {...props} />
+    </>
+  );
+}
+
+async function HarvestHubBody({ searchParams }: HarvestPageProps) {
   const user = await requireReadyUser();
   await requireActiveTenant();
   const isAdmin = isTenantAdminLike(user);

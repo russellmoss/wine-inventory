@@ -5,6 +5,7 @@ import { materialDisplayName } from "@/lib/cellar/materials-shared";
 import { getUnitPrefs } from "@/lib/settings/data";
 import { formatVolume } from "@/lib/units/display";
 import type { MaterialPickerOption } from "@/components/work-orders/MaterialFilterPicker";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 export default async function BottlingPage() {
   await requireActiveTenant();
@@ -64,5 +65,12 @@ export default async function BottlingPage() {
     sources: r.sources.map((s) => `${s.variety?.name ?? "—"} · ${s.vineyard?.name ?? "—"} · ${s.vintage ?? "NV"}: ${formatVolume(Number(s.volumeConsumedL), unitPrefs.volume)}`),
   }));
 
-  return <BottlingClient vessels={vesselOpts} locations={locations} runs={runRows} packagingOptions={packagingOptions} />;
+  return (
+    <>
+      {/* Plan 104 Unit 9 — En Tirage, and only when the sparkling program is on:
+          the route 404s without it (K14), so the tab has to vanish with it. */}
+      <HubSectionNav hub="/bottling" />
+      <BottlingClient vessels={vesselOpts} locations={locations} runs={runRows} packagingOptions={packagingOptions} />
+    </>
+  );
 }
