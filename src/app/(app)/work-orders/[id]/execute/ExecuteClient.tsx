@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge, Eyebrow, Textarea, StatusChip } from "@/components/ui";
+import { Card, Button, Eyebrow, Textarea, StatusChip } from "@/components/ui";
 import { statusTone } from "@/lib/work-orders/status-badge";
 import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data";
 import { TASK_VOCABULARY, fieldLabel } from "@/lib/work-orders/template-vocabulary";
@@ -209,7 +209,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
       )}
       <Textarea label="Note (optional)" minRows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. actual differed because…" style={{ marginTop: 12 }} />
 
-      {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
+      {error ? <div role="alert" style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         {canStart ? <Button size="lg" variant="secondary" disabled={pending} onClick={() => startTransition(async () => { unwrap(await startTaskAction({ taskId: task.id })); })}>Start</Button> : null}
         <Button size="lg" fullWidth disabled={pending} onClick={complete}>{pending ? "Recording…" : "Complete — record it"}</Button>
@@ -301,7 +301,17 @@ function BatchCapExecutor({ tasks, vessels, onDone }: { tasks: WorkOrderTaskView
       </div>
 
       <Textarea label="Note (optional)" minRows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="applies to every tank in this batch" style={{ marginTop: 12 }} />
-      {error ? <div style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
+      {/* A partial batch failure sets `failures` and not `error`, so before this the only
+          signal was the inline red text beside each checkbox — visible, but silent to a
+          screen reader. This region announces the outcome once, and names the tanks. */}
+      {failures && failures.length > 0 ? (
+        <div role="alert" style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>
+          {failures.length} of {tasks.length} {tasks.length === 1 ? "tank was" : "tanks were"} not recorded:{" "}
+          {failures.map((f) => taskVessel(tasks.find((t) => t.id === f.taskId) ?? tasks[0])).join(", ")}. The rest
+          were recorded.
+        </div>
+      ) : null}
+      {error ? <div role="alert" style={{ color: "var(--danger)", fontSize: 14, marginTop: 10 }}>{error}</div> : null}
       <Button size="lg" fullWidth disabled={pending} onClick={run} style={{ marginTop: 14 }}>{pending ? "Recording…" : `Complete ${selected.size} ${selected.size === 1 ? "tank" : "tanks"}`}</Button>
     </Card>
   );
