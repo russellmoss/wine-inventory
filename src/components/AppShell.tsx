@@ -9,6 +9,7 @@ import { isTenantAdminLike } from "@/lib/access";
 import { Avatar, Button, LocalTime } from "@/components/ui";
 import { NAV_MODEL, isVisible as navVisible } from "@/lib/nav/model";
 import { NAV_V2_ENABLED } from "@/lib/nav/flag";
+import { MobileTabBar } from "./MobileTabBar";
 import { BrandMark } from "@/components/BrandMark";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
 import { DevDiagnostics } from "@/components/observability/DevDiagnostics";
@@ -451,6 +452,22 @@ export function AppShell({
             <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} customCrushEnabled={customCrushEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
           </aside>
         </div>
+      ) : null}
+
+      {/* Phase 3 (doc 01 §9): four labelled bottom tabs replace the drawer, whose
+          trigger was 38x32px — the most important control on the phone, under the
+          minimum target. `Find` carries the full destination directory so nothing
+          becomes unreachable just because it left the four tabs. */}
+      {NAV_V2_ENABLED ? (
+        <MobileTabBar
+          isActive={isActive}
+          tabs={[
+            { href: "/work-orders", label: "Work", glyph: "☑", badge: pendingWorkOrders },
+            { href: "/bulk", label: "Cellar", glyph: "◍" },
+            { href: "/vineyards/field-notes", label: "Vineyard", glyph: "❧" },
+            { href: "/inbox", label: "Find", glyph: "⌕" },
+          ]}
+        />
       ) : null}
 
       <main id="main" tabIndex={-1} className="app-main" style={{ flex: 1, minWidth: 0, outline: "none" }}>

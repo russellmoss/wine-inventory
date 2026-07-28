@@ -9,25 +9,10 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { code } from "./helpers/code";
 
 const read = (f: string) =>
   readFileSync(fileURLToPath(new URL(`../src/components/ui/${f}`, import.meta.url)), "utf8");
-
-/**
- * Strip comments before asserting a pattern is ABSENT.
- *
- * Recurring trap in this repo's static guards: the comment explaining *why* a
- * pattern is gone contains the pattern, so the guard fails on its own
- * documentation. Bitten three times now (`tone="gold"`, `fonts.googleapis.com`,
- * `role="alert"`) — so strip comments rather than reword prose forever.
- */
-function code(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .filter((l) => !l.trim().startsWith("//"))
-    .join("\n");
-}
 
 const SELECT = read("Select.tsx");
 const NUM = read("NumericUnitInput.tsx");

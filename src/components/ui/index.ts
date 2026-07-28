@@ -12,6 +12,8 @@ export { ResponsiveTable } from "./ResponsiveTable";
 export type { ResponsiveTableProps } from "./ResponsiveTable";
 export { DataRow, DataCell, DataHeadCell } from "./DataRow";
 export type { DataRowProps, DataCellProps, DataHeadCellProps, DataRowDensity } from "./DataRow";
+export { SectionNav } from "./SectionNav";
+export type { SectionNavProps, SectionNavItem } from "./SectionNav";
 export { Card } from "./Card";
 export type { CardProps } from "./Card";
 export { Badge } from "./Badge";

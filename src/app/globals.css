@@ -102,6 +102,16 @@
   .bw-desktop-sidebar { display: flex; }
 }
 
+/* Phase 3: when the bottom tab bar is present it replaces the mobile top bar, and
+   the main region needs clearance so the last row is not sitting under the tabs. */
+.bw-tabbar { display: grid; }
+@media (min-width: 1024px) {
+  .bw-tabbar { display: none; }
+}
+@media (max-width: 1023px) {
+  .app-main:has(~ .bw-tabbar) { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+}
+
 /* Mobile: wide tables scroll horizontally instead of breaking the layout. */
 @media (max-width: 767px) {
   /* LEGACY mobile table treatment. `display: block` destroys table semantics —

@@ -95,37 +95,73 @@ export async function loadFermentWorksheet(): Promise<FermentWorksheetRow[]> {
     lastReadingAt: null,
   }));
 
-  // Latest Brix / temperature per lot. Readings live on AnalysisReading via
-  // AnalysisPanel — there is no FermentReading model — and VOIDED panels must be
-  // excluded, or a reading the winemaker already corrected would still show here.
-  // One grouped read rather than a query per row: a harvest worksheet is 40+ rows
-  // and this is a screen a cellar hand refreshes all day.
+  // Latest Brix / temperature per lot.
+  //
+  // Shape note. The first version ordered AnalysisReading by a RELATION field
+  // (`panel.observedAt`) and fetched EVERY reading for every lot with no bound.
+  // That is a real scale hazard — a relation order forces a join-then-sort across
+  // the whole reading table, and a fermenting lot accumulates readings daily — so
+  // this shape (bounded scalar-ordered panels, then readings by indexed FK) is
+  // the right one to keep.
+  //
+  // It was NOT, however, the cause of the 35s /ferment render that prompted the
+  // rewrite. Measured with scripts/time-ferment-worksheet.ts: 2.3s for the vessel
+  // query (mostly connection setup) and 0.3s for varieties. The slowness is
+  // dev-mode compile plus remote-Neon latency — the dashboard measures 10-13s on
+  // the same server, and a warm /ferment measures 9.1s. Recorded so nobody
+  // re-optimises a query that was never the bottleneck.
+  //
+  // Instead: find the recent panels first (scalar order on an indexed column,
+  // bounded), then read only those panels' readings by indexed FK.
   const lotIds = rows.map((r) => r.lotId);
   if (lotIds.length > 0) {
-    const readings = await prisma.analysisReading.findMany({
-      where: {
-        analyte: { in: ["BRIX", "TEMP"] },
-        panel: { lotId: { in: lotIds }, voidedAt: null },
-      },
-      select: { analyte: true, value: true, panel: { select: { lotId: true, observedAt: true } } },
-      orderBy: { panel: { observedAt: "desc" } },
+    const panels = await prisma.analysisPanel.findMany({
+      where: { lotId: { in: lotIds }, voidedAt: null },
+      orderBy: { observedAt: "desc" },
+      select: { id: true, lotId: true, observedAt: true },
+      // A few panels per lot is plenty to find the newest Brix AND the newest
+      // temp, which may have been recorded in different panels.
+      take: lotIds.length * 6,
     });
+    if (panels.length > 0) {
+      const readings = await prisma.analysisReading.findMany({
+        where: { panelId: { in: panels.map((p) => p.id) }, analyte: { in: ["BRIX", "TEMP"] } },
+        select: { panelId: true, analyte: true, value: true },
+      });
+      // Index readings BY PANEL, then walk `panels` in newest-first order. The
+      // previous shape iterated `readings`, which comes back unordered — so
+      // "first value wins" would have picked an arbitrary reading, not the
+      // latest. Silent wrong numbers on a ferment screen are worse than slow ones.
+      const readingsByPanel = new Map<string, { analyte: string; value: unknown }[]>();
+      for (const r of readings) {
+        const list = readingsByPanel.get(r.panelId) ?? [];
+        list.push({ analyte: String(r.analyte), value: r.value });
+        readingsByPanel.set(r.panelId, list);
+      }
 
-    const latest = new Map<string, { brix: number | null; temp: number | null; at: Date }>();
-    for (const r of readings) {
-      const cur = latest.get(r.panel.lotId) ?? { brix: null, temp: null, at: r.panel.observedAt };
-      // Rows arrive newest-first, so the first value seen per analyte is the latest.
-      if (r.analyte === "BRIX" && cur.brix == null) cur.brix = Number(r.value);
-      if (r.analyte === "TEMP" && cur.temp == null) cur.temp = Number(r.value);
-      if (r.panel.observedAt > cur.at) cur.at = r.panel.observedAt;
-      latest.set(r.panel.lotId, cur);
-    }
-    for (const row of rows) {
-      const r = latest.get(row.lotId);
-      if (!r) continue;
-      row.brix = r.brix;
-      row.tempC = r.temp;
-      row.lastReadingAt = r.at.toISOString();
+      const latest = new Map<string, { brix: number | null; temp: number | null; at: Date | null }>();
+      for (const p of panels) {
+        const cur = latest.get(p.lotId) ?? { brix: null, temp: null, at: null };
+        for (const r of readingsByPanel.get(p.id) ?? []) {
+          if (r.analyte === "BRIX" && cur.brix == null) {
+            cur.brix = Number(r.value);
+            cur.at = cur.at ?? p.observedAt;
+          }
+          if (r.analyte === "TEMP" && cur.temp == null) {
+            cur.temp = Number(r.value);
+            cur.at = cur.at ?? p.observedAt;
+          }
+        }
+        latest.set(p.lotId, cur);
+      }
+
+      for (const row of rows) {
+        const r = latest.get(row.lotId);
+        if (!r) continue;
+        row.brix = r.brix;
+        row.tempC = r.temp;
+        row.lastReadingAt = r.at ? r.at.toISOString() : null;
+      }
     }
   }
 
