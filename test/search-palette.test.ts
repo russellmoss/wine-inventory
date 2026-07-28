@@ -211,7 +211,14 @@ describe("section coverage — the second way a surface goes missing (plan 104 D
   });
 
   it("names the parent hub, so Reports and Review are tellable apart", () => {
-    expect(QUERY).toContain("`under ${hubLabel}`");
+    expect(QUERY).toContain("`under ${parent}`");
+  });
+
+  it("takes the parent name from the role-aware helper, never straight off SECTIONS", () => {
+    // Reading `def.hubLabel` directly here would print "under Setup" to a plain user
+    // and leak the existence of an admin-only destination through the subtitle.
+    expect(QUERY).toContain("sectionParentLabel(hub, ctx)");
+    expect(code(QUERY)).not.toContain("def.hubLabel");
   });
 
   it("takes its context type from the nav model rather than re-declaring it", () => {

@@ -16,6 +16,7 @@ import {
   allSectionItems,
   isSectionVisible,
   sectionHubs,
+  sectionParentLabel,
   sectionsFor,
   type SectionContext,
 } from "@/lib/nav/sections";
@@ -139,6 +140,34 @@ describe("role and capability visibility", () => {
       expect(isSectionVisible(find(h), { ...ADMIN, customCrush: false })).toBe(false);
       expect(isSectionVisible(find(h), ADMIN)).toBe(true);
     }
+  });
+});
+
+describe("the palette subtitle is its own disclosure surface", () => {
+  it("names the parent when the caller can see it", () => {
+    expect(sectionParentLabel("/accounting", ADMIN)).toBe("Accounting");
+    expect(sectionParentLabel("/setup", ADMIN)).toBe("Setup");
+    expect(sectionParentLabel("/lots", USER)).toBe("Lots");
+  });
+
+  it("drops the parent name when the hub is one this caller may not see", () => {
+    // A plain user is entitled to /reports and /vessels — their pages admit any
+    // tenant user — but "under Accounting" / "under Setup" would tell them an
+    // admin-only destination exists. The hit stays; the name goes.
+    expect(sectionParentLabel("/accounting", USER)).toBeUndefined();
+    expect(sectionParentLabel("/setup", USER)).toBeUndefined();
+  });
+
+  it("still shows those hits — hiding them would cost five surfaces their last way in", () => {
+    const find = (href: string) => allSectionItems().find((i) => i.href === href)!;
+    for (const h of ["/reports", "/vessels", "/locations", "/reference", "/setup/vendors"]) {
+      expect(isSectionVisible(find(h), USER), `${h} lost its only route in`).toBe(true);
+    }
+  });
+
+  it("hides the vineyard parent from a user with no membership", () => {
+    expect(sectionParentLabel("/vineyards/field-notes", USER)).toBeUndefined();
+    expect(sectionParentLabel("/vineyards/field-notes", VINEYARD_USER)).toBe("Vineyard rounds");
   });
 });
 

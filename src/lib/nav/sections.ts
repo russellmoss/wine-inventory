@@ -26,7 +26,7 @@
  * Pure data: no React, no prisma, so the role matrix is unit-testable without a browser.
  */
 
-import { isVisible } from "./model";
+import { allDestinations, isVisible } from "./model";
 
 /** A capability gate — the tenant program that has to be on for the item to exist. */
 export type SectionRequirement = "sparkling" | "customCrush";
@@ -188,6 +188,26 @@ export function isSectionVisible(item: SectionItem, ctx: SectionContext): boolea
   // Delegate role/membership to the nav model's own predicate so the sidebar, the
   // sub-navs and the palette can never drift on what "admin-only" means.
   return isVisible({ href: item.href, label: item.label, admin: item.admin, vineyard: item.vineyard }, ctx);
+}
+
+/**
+ * The parent name to show beside a section hit in the palette — or nothing.
+ *
+ * The subtitle is its own disclosure surface. `/vessels`, `/locations`, `/reference`
+ * and `/setup/vendors` are open to every tenant user (their own pages say so) but
+ * they live under `/setup`, which is admin-only; `/reports` is open but lives under
+ * the admin-only `/accounting`. Printing "under Setup" would tell a plain user that
+ * an admin-only destination named Setup exists — from a hit they are entitled to
+ * see. So the HIT stays and the parent NAME drops.
+ *
+ * The other option was to gate each item on its hub's visibility, which is tidier to
+ * state and costs those five surfaces their last route in: under v2 they have no nav
+ * entry for a non-admin, so the palette is it.
+ */
+export function sectionParentLabel(hub: string, ctx: SectionContext): string | undefined {
+  const dest = allDestinations().find((d) => d.href === hub);
+  if (!dest) return SECTIONS[hub]?.hubLabel;
+  return isVisible(dest, ctx) ? dest.label : undefined;
 }
 
 /**

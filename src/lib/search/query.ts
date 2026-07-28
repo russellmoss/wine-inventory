@@ -5,6 +5,7 @@ import {
   SECTIONS,
   UTILITY_DESTINATIONS,
   isSectionVisible,
+  sectionParentLabel,
   type SectionContext,
 } from "@/lib/nav/sections";
 import { rankHits, type SearchHit } from "./rank";
@@ -75,7 +76,12 @@ export async function searchEverything(query: string, ctx: SearchContext): Promi
   // which delegates to the very same `isVisible` used two blocks up — an admin-only
   // section must never surface here for a plain `user`, for any query string.
   for (const [hub, def] of Object.entries(SECTIONS)) {
-    const hubLabel = NAV_MODEL.flatMap((g) => g.items).find((d) => d.href === hub)?.label ?? def.hubLabel;
+    // `sectionParentLabel` returns undefined when the parent hub is one this caller
+    // may not see — the subtitle is its own disclosure surface, and "under Setup"
+    // would name an admin-only destination to a plain user from a hit they ARE
+    // entitled to (see the function's docstring for why the hit stays and the name
+    // drops, rather than the other way round).
+    const parent = sectionParentLabel(hub, ctx);
     for (const item of def.items) {
       if (!isSectionVisible(item, ctx)) continue;
       if (!item.label.toLowerCase().includes(lower)) continue;
@@ -84,7 +90,7 @@ export async function searchEverything(query: string, ctx: SearchContext): Promi
         id: item.href,
         label: item.label,
         // Naming the parent is what makes "Reports" and "Review" tellable apart.
-        subtitle: `under ${hubLabel}`,
+        subtitle: parent ? `under ${parent}` : undefined,
         href: item.href,
       });
     }
