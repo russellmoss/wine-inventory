@@ -7,15 +7,19 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PHASE 4 + PHASE 5 SHIPPED. Next up: PHASE 6 tank board — NOT STARTED.**
+**CELLARHAND UI/UX v2 — PHASE 6 (TANKS) BUILT on `claude/cellarhand-v2-phase6-tanks`, ready to PR.**
+All 13 units of [plan 103](docs/plans/2026-07-28-103-feat-cellarhand-v2-phase6-tanks-plan.md), 10
+commits, 4 PRs' worth. Suite 438 files / 5440 tests green, `tsc` clean, lint 0 errors, `prisma/`
+untouched, `AssistantDock` diff empty, no route added or renamed. **Not yet run: `qa:a11y` /
+`qa:visual` — this worktree has no `.env`, so a dev server here cannot reach the DB.**
 Phase 0/1 shipped as [#555](https://github.com/russellmoss/wine-inventory/pull/555); Phase 2/3 as
 [#557](https://github.com/russellmoss/wine-inventory/pull/557) (`f3018c0e`); Phase 4/5 as
 [#561](https://github.com/russellmoss/wine-inventory/pull/561) (`043fe931`, merged 2026-07-28).
 
-⚠️ **No Phase 6 code exists yet** — a `/ship` was attempted for it on 2026-07-28 and found nothing
-to ship: no commits, no branch, no PR, clean tree. Phase 6 has to be BUILT before it can ship.
+Phase 4/5 merged as #561. A `/ship` attempted for Phase 6 earlier the same day found nothing to
+ship, so it was planned and then built from scratch in this session.
 
-**PLANNED 2026-07-28 →** [plan 103](docs/plans/2026-07-28-103-feat-cellarhand-v2-phase6-tanks-plan.md):
+**PLAN →** [plan 103](docs/plans/2026-07-28-103-feat-cellarhand-v2-phase6-tanks-plan.md):
 13 units in 4 PRs (#6a primitives · #6b the board · #6c chart/facts · #6d detail tabs), zero schema
 changes, behind `NAV_V2_ENABLED` with the accordions kept in the else arm. Ten handoff claims
 failed verification (`Vessel` has no location / no `volumeL` / no `status`; `TimeSeriesChart`'s
@@ -23,8 +27,9 @@ data table is `sr-only` with no prop to reveal it, so **AC-S25 is not met by the
 shipped**; `StageIndicator` is work-order-specific and not reusable). AC-S27 is satisfied
 structurally — ONE pure derivation (`tank-detail-facts.ts`) feeds the chart, the stated facts and
 the aria sentence, so agreement is a unit test rather than a review item.
-**Four owner decisions block implementation:** OD-P6-1 modal-vs-route · OD-P6-2 where Export goes ·
-OD-P6-3 which panel-sourcing rule is canonical · OD-P6-4 confirm location is omitted.
+**All four owner decisions ratified and implemented:** modal only (no new route) · Export in
+`PageHeader`'s actions · `listVesselAnalyses`' panel-sourcing rule is canonical for a vessel ·
+identity block shows `VesselGroup`, omits location (no column exists).
 
 **Phase 4 — Ctrl-K command palette + global search.** Spans vessels, lots, work orders, blocks,
 materials, vessel groups and nav destinations. Deterministic, never LLM-backed: search works with
@@ -2066,7 +2071,8 @@ without a reset. Prior: plan 085 CLOSED, MSU unreachable and DORMANT (#422); the
 fix (#418) that un-broke the monthly refresh for all 21 sources._
 
 _Last updated: 2026-07-28 — product design audit landed (docs/audits/product-design-audit-2026-07-28.md); spray Wave 1 objective unchanged.
-Phase 4/5 recorded as merged (#561); attempted `/ship` for Phase 6 found no Phase 6 work in the repo — objective corrected to "not started"._
+Phase 4/5 recorded as merged (#561); an attempted `/ship` for Phase 6 found no Phase 6 work in the repo, so it was
+planned (103) and BUILT the same session on `claude/cellarhand-v2-phase6-tanks` — 13 units, 10 commits, ready to PR._
 
 Also this date, from the KB/assistant session on `grape-kb-ingestion-a530f9`: _Last updated: 2026-07-28 —
 **Tangent stack entry 1 POPPED: assistant false-source-denial (Gironde) + the legality-refusal

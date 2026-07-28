@@ -599,6 +599,44 @@ no location field; adding one is a schema change and therefore gated.
 
 ---
 
+## Execution record (2026-07-28)
+
+Built on `claude/cellarhand-v2-phase6-tanks`, 10 commits. All 13 units shipped.
+Full suite: **438 files / 5440 tests passing**, 3 skipped. `tsc --noEmit` clean. Lint: 0 errors.
+
+### Defects found by BUILDING, that no plan could have predicted
+
+- **`test/shell-nav.test.ts`'s tab-bar guard was silently dead on every Windows checkout.**
+  It is the only assertion in the repo spanning a newline (`"NAV_V2_ENABLED ? (\n        <MobileTabBar"`),
+  and `core.autocrlf=true` checks `AppShell.tsx` out as CRLF (`.gitattributes` pins LF for the
+  invariant register and the guard scripts, **not** for `.tsx`). So it passed in CI and could
+  never match locally: a guard in the worst possible state. Normalised, not weakened. **Then
+  the same trap caught my own new test** twenty minutes later, which is how I know the lesson
+  generalises: **never write a newline-spanning static assertion in this repo.**
+- **A `useEffect` that would have made the board's search never commit.** `filters` is rebuilt
+  from search params on every render, so depending on the object cleared and restarted the
+  300 ms debounce timer each pass. Caught by `npm run lint` (the "setState synchronously
+  within an effect" rule), not by any test. Now derived during render with primitive deps.
+- **`LotTastingNote` has no `taster` column.** It carries `enteredByEmail` and a 1-5 `score`.
+  Written from the shape the tab wanted rather than the shape the schema has; `tsc` caught it.
+- **`Metric` takes `caption`, not `label`.** Same class of error, same catcher.
+- **`computeFill`'s JSDoc said "component volumes"** while both call sites correctly pass
+  `vesselLot` volumes. Following the comment reintroduces the bug where a full tank renders
+  empty. Fixed in Unit 3, and the guard in `bulk-tank-board-wiring.test.ts` now pins the source.
+
+### Deferred, with reasons
+
+- **`/bulk/[vesselId]` as a route** — OD-P6-1 ratified modal-only. `route-stability.test.ts`
+  only fails on removals, so adding it later stays free.
+- **An overflow menu for Export** — OD-P6-2. Export sits in `PageHeader`'s `actions` slot,
+  which satisfies "out of the most prominent position" without shipping an unspecified
+  primitive.
+- **The yeast temperature floor line** — DM-44, class D. Omitted per the handoff's own
+  instruction until yeast strain and its range are modelled.
+- **Browser verification** — this worktree has no `.env` (only the main checkout does), so a
+  dev server here cannot reach the database. `npm run qa:a11y` / `qa:visual` on both flag
+  paths still need a run from a checkout that has one.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |

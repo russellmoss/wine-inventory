@@ -38,7 +38,6 @@ export function TankBoard({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [draft, setDraft] = React.useState(filters.q ?? "");
 
   const go = React.useCallback(
     (next: BoardFilters) => router.push(`${pathname}${toQueryString(next)}`, { scroll: false }),
@@ -47,13 +46,31 @@ export function TankBoard({
 
   // The URL is the source of truth; the input keeps a draft so typing is not one navigation
   // per keystroke. Committed on a pause, which is what "applies live" means for text.
-  React.useEffect(() => setDraft(filters.q ?? ""), [filters.q]);
+  const currentQ = filters.q ?? "";
+  const currentState = filters.state;
+  const [draft, setDraft] = React.useState(currentQ);
+  const [syncedQ, setSyncedQ] = React.useState(currentQ);
+
+  // Adjusted during render, not in an effect. The URL can change under us (a chip removed,
+  // the back button), and an effect for this would setState synchronously and cascade an
+  // extra render pass on every navigation.
+  if (syncedQ !== currentQ) {
+    setSyncedQ(currentQ);
+    setDraft(currentQ);
+  }
+
   React.useEffect(() => {
     const next = draft.trim();
-    if (next === (filters.q ?? "")) return;
-    const t = setTimeout(() => go({ ...filters, q: next.length > 0 ? next : null }), 300);
+    if (next === currentQ) return;
+    // Primitive deps only. `filters` is rebuilt from search params every render, so
+    // depending on the object would clear and restart this timer on each pass and the
+    // search would never commit.
+    const t = setTimeout(
+      () => go({ state: currentState, q: next.length > 0 ? next : null }),
+      300,
+    );
     return () => clearTimeout(t);
-  }, [draft, filters, go]);
+  }, [draft, currentQ, currentState, go]);
 
   const shown = applyBoardFilters(tiles, filters);
   const chips = filterChips(filters);
