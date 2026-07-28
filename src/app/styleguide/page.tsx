@@ -13,6 +13,7 @@ import {
   Quote,
   StatusChip,
   STATUS_VARIANTS,
+  INPUT_SIZES,
   ConfirmButton,
   Skeleton,
   EmptyState,
@@ -282,14 +283,39 @@ export default function StyleguidePage() {
         <Avatar name="Cellar Master" tone="maroon" size={52} />
       </Section>
 
-      <Section title="Forms">
+      <Section title="Forms — 44 / 48 / 56 / 60">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            The hint and the error are wired to the field with <code>aria-describedby</code>; an error
+            also sets <code>aria-invalid</code> and announces via <code>role=&quot;alert&quot;</code>; a
+            required field carries a visible marker plus a screen-reader word. None of that existed
+            before 2026-07-28, across 165 call sites.
+          </p>
+        </div>
         <div style={{ width: 280 }}>
           <Input label="Wine name" placeholder="Ser Kem Marp Reserve" hint="As it appears on the label" />
         </div>
         <div style={{ width: 280 }}>
           <Input label="Vintage" defaultValue="2025" error="Must be a 4-digit year" />
         </div>
-        <Checkbox checked={checked} onChange={setChecked} label="Active in dropdowns" />
+        <div style={{ width: 280 }}>
+          <Input label="Lot code" required placeholder="25-PN-04" hint="Required" />
+        </div>
+        <div style={{ width: 280 }}>
+          <Input label="Volume" size="floor" defaultValue="218" adornmentRight="L" inputMode="decimal" />
+        </div>
+        <div style={{ width: 280 }}>
+          <Input label="Disabled" defaultValue="Not editable" disabled hint="A real surface, not opacity" />
+        </div>
+        <div style={{ width: "100%", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+          {(["sm", "md", "lg", "floor"] as const).map((sz) => (
+            <div key={sz} style={{ width: 150 }}>
+              <Input label={`${sz} ${INPUT_SIZES[sz].px}`} size={sz} defaultValue="000" />
+            </div>
+          ))}
+        </div>
+        <Checkbox checked={checked} onChange={setChecked} label="Active in dropdowns (44px target)" />
+        <Checkbox checked={false} disabled label="Disabled" />
       </Section>
 
       <Section title="Metrics">

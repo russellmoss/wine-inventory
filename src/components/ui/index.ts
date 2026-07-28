@@ -14,6 +14,8 @@ export { Avatar } from "./Avatar";
 export type { AvatarProps } from "./Avatar";
 export { Input } from "./Input";
 export type { InputProps } from "./Input";
+export { INPUT_SIZES, inputMetrics } from "./input-sizes";
+export type { InputSize, InputMetrics } from "./input-sizes";
 export { Textarea } from "./Textarea";
 export type { TextareaProps } from "./Textarea";
 export { Checkbox } from "./Checkbox";

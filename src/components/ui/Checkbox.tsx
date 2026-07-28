@@ -14,6 +14,11 @@ export interface CheckboxProps {
 
 /**
  * Checkbox — square with gentle radius; wine fill when checked.
+ *
+ * v2 §B11: the visual stays 20px, but it sits inside a ≥44px target. Before this
+ * the whole control was ~20px tall (the label's content height), so the hit area
+ * was the 20px box plus whatever text followed it — under the touch floor on the
+ * one control cellar hands tap most with gloves on.
  */
 export function Checkbox({
   checked = false,
@@ -33,12 +38,14 @@ export function Checkbox({
       style={{
         display: "inline-flex",
         alignItems: "center",
+        // The 20px visual lives inside a 44px target (v2 §B11, AC-F1).
+        minHeight: "var(--touch-min)",
         gap: 10,
         cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.5 : 1,
         fontFamily: "var(--font-body)",
         fontSize: 14.5,
-        color: "var(--text-primary)",
+        // A real disabled treatment, not an opacity wash on the whole label.
+        color: disabled ? "var(--ink-600)" : "var(--text-primary)",
         userSelect: "none",
         ...style,
       }}
@@ -50,8 +57,12 @@ export function Checkbox({
           height: 20,
           flex: "none",
           borderRadius: "var(--radius-xs)",
-          border: `1.5px solid ${checked ? "var(--accent)" : "var(--border-strong)"}`,
-          background: checked ? "var(--accent)" : "var(--surface-raised)",
+          border: `1.5px solid ${disabled ? "var(--paper-300)" : checked ? "var(--accent)" : "var(--border-strong)"}`,
+          background: disabled
+            ? "var(--paper-200)"
+            : checked
+              ? "var(--accent)"
+              : "var(--surface-raised)",
           transition:
             "background var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard)",
           display: "inline-flex",

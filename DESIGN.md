@@ -175,6 +175,12 @@ Metric · Quote · ConfirmButton · Modal · Collapsible · Tabs · InfoHint · 
   Geometry lives in `src/components/ui/button-sizes.ts`.
 - **Badge** tones: neutral · **wine** (was `gold`) · green · blue · maroon · red; variants
   soft/solid/outline. **Category labels only** — a status value goes through `StatusChip`.
+- **Input** sizes sm/md/lg/**floor** — heights **44/48/56/60** (v2 §B8; was 36/44/52, `sm` sat under
+  the touch floor). The hint and error are wired with `aria-describedby`; an error sets `aria-invalid`
+  and announces via `role="alert"`; a required field carries a visible marker **and** an `.sr-only`
+  "(required)". `adornmentRight` puts a unit in its own box at field height — never inside the value.
+  Disabled is a real surface (`--paper-200`), never `opacity`. Geometry in `src/components/ui/input-sizes.ts`.
+- **Checkbox** 20px visual inside a **44px** target (v2 §B11).
 - **StatusChip** the six-value status ramp (`neutral`/`active`/`held`/`done`/`attention`/
   `review`), glyph + mandatory text, sizes sm 24 / md 30. It replaced seven independent
   status→colour maps, including two that were hand-rolled ternaries inside a JSX attribute.
