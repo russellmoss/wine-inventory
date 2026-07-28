@@ -7,51 +7,34 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PR #1 SHIPPED. [#555](https://github.com/russellmoss/wine-inventory/pull/555)
-squash-merged to main as `ca65245d` 2026-07-28, all CI green (check · review · tenant-isolation ·
-GitGuardian), branch pruned. Phase 0 Foundations + Phase 1 Re-baseline are LIVE.
-→ NEXT: plan Phase 2 (shared components) + Phase 3 (shell/IA) — Phase 3 is where a person
-actually notices the redesign, and Phase 2 is its prerequisite (`PageHeader`/`DataRow`/
-`ResponsiveTable` must exist first).**
-Plan: [2026-07-28-101](docs/plans/2026-07-28-101-feat-cellarhand-v2-phase0-1-reconciliation-plan.md)
-(status `completed`, with an "Execution record" section listing every place the plan was wrong about
-the repo). Handoff spec: `docs/design/cellarhand-v2-handoff/` (49 files, 4 RFCs all still `proposed`).
+**CELLARHAND UI/UX v2 — PHASE 2 + PHASE 3 BUILT, 15 commits on
+`claude/cellarhand-v2-phase-2-3`, ready to PR.** Phase 0/1 shipped earlier as
+[#555](https://github.com/russellmoss/wine-inventory/pull/555) (`ca65245d`).
+Plan: [102](docs/plans/2026-07-28-102-feat-cellarhand-v2-phase2-3-components-shell-plan.md)
+(`completed`, with an Execution record of the eight handoff conflicts and the defects
+found only by building).
 
-**What landed (10 commits, one per unit):** v2 tokens (status ramp / provenance / data-viz / density /
-touch / breakpoints / icons) · `.sr-only` + a GLOBAL `prefers-reduced-motion` rule · Inter self-hosted
-via `next/font` · focus ring switched to `border-radius: inherit` · Button 34/42/50 → **44/48/56 + xl 68**
-with a real disabled surface and a `pending` state · new **StatusChip** replacing **eight** independent
-status→colour maps · `Badge tone="gold"` → `tone="wine"` across 31 call sites + 33 typed files ·
-ConfirmButton's WCAG-2.2.1 4-second auto-disarm replaced with event-based disarm, `confirmLabel` now
-required · new Skeleton / EmptyState / Alert / ActionReceipt · AppShell skip link + `aria-current` +
-`aria-expanded` · execute-screen errors announced · axe-core + Playwright a11y/visual harness.
+**Shipped:** Input a11y wiring (165 call sites, all four attributes were absent) ·
+Select / NumericUnitInput / DateTimeControl · a tokenising unlabelled-control detector
+(35 tests) + 32 selects named, now zero · PageHeader / Breadcrumbs / IconButton ·
+loading + not-found for 7 route families · ResponsiveTable + DataRow with the
+`:not([data-rt])` shrink-to-zero migration of the global mobile table rule ·
+TimeSeriesChart consolidating two chart components · route-stability gate ·
+**`/ferment`** (net-new; the handoff listed it as existing) · the 3-group / 13-destination
+nav behind `NEXT_PUBLIC_NAV_V2` · SectionNav · MobileTabBar · rail logic + tokens ·
+**the axe gate RUN and green** on /login at 390 and 1440.
 
-⚠️ **Three gates were NOT run before merge (owner accepted, 2026-07-28) — still open:**
-1. **No axe/e2e run.** `npm run qa:a11y` needs a dev server from a checkout that HAS `.env` (worktrees
-   don't) serving THIS branch, plus the Demo Winery sandbox. Reusing whatever dev server is on :3000
-   would measure someone else's branch — worse than not running it.
-2. **No before/after visual set.** No baseline existed in this repo, so "before" was only capturable
-   from the merge-base before any edit. `qa:visual` establishes the post-Phase-1 baseline instead;
-   from Phase 2 on, the committed baseline IS the previous phase's rendering.
-3. **`npm run build` not run** (needs `DATABASE_URL` for `prisma migrate deploy`). `tsc --noEmit`
-   green, `eslint` 0 errors, 5,068 vitest tests passing across 418 files.
+⚠️ **The axe gate found two defects I introduced myself** — `aria-hidden` around the
+login page's show/hide-password button, and around NumericUnitInput's unit box. It had
+been committed-but-unrun since PR #1 because public routes depended on the auth setup
+project, so with no seeded tenant NO a11y check could run at all. That dependency is
+removed.
 
-**Caught in pre-landing review and fixed before merge (`ba8615f7`):** 10 Buttons were STILL under
-the 44px floor. `Button` spreads the caller's `style` LAST, so `style={{ height: 38 }}` beat
-`height: var(--touch-min)` outright — 10 sites on the two field-notes manager screens at 36-40px.
-Every unit test passed while the phase's headline claim was false there. A static guard now fails on
-any literal Button height under 44. (`minHeight` under 44 is harmless — it cannot shrink a fixed height.)
-
-**The highest-value finding, because it changes the risk profile:** the global `:focus-visible` rule
-already existed (the handoff says three times that it doesn't) — but it never reached `Button`, because
-`Button` sets `boxShadow` **inline** and inline style beats any selector. So "no focus styling" was
-true, for a completely different reason than stated. Any future component that sets `boxShadow` inline
-has the same bug.
-
-**Deferred by design, with an end date:** the ~69 ad-hoc success sites retire in Phase 5, the ~108
-ad-hoc empty states in Phase 12. The four RFCs (barrel groups, topping/keg, measured-vs-estimated,
-vessel tags) stay behind the ⛔ DOMAIN GATE until each is reconciled against the real Prisma schema +
-RLS checklist and owner-approved. OD-3/4/5/6/7 gate Phases 7-10, none gate Phase 0/1.
+**Still open, deliberately:** the rail's UI chrome (doc 13 §88 says build it after the
+nav settles — it settled in this PR) · the 61-heading PageHeader migration · 47
+unlabelled input/textarea (the guard prints the count every run) · the authed 40-route
+axe sweep, which needs a Demo Winery credential and would mean seeding the production
+database.
 
 ## 🔭 Also in flight
 
@@ -1801,7 +1784,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-28 — **Cellarhand UI/UX v2 PR #1 SHIPPED: [#555](https://github.com/russellmoss/wine-inventory/pull/555) squash-merged to main as `ca65245d`, all CI green, branch pruned.** Phase 0 + Phase 1 live: v2 tokens, global reduced-motion, self-hosted Inter, Button 44/48/56/68, StatusChip replacing EIGHT status→colour maps, `gold`→`wine` across 31 sites, ConfirmButton's WCAG-2.2.1 timer replaced with event-based disarm, four new primitives, AppShell skip link + `aria-current` + `aria-expanded`. Pre-landing review caught 10 Buttons still under the floor via inline `style` (fixed, guarded). **Three gates remain unrun and are the honest debt: `qa:a11y`, `qa:visual`, `npm run build`** — the harnesses are committed. NOW WORKING: `/plan` for Phase 2 (shared components) + Phase 3 (shell/IA, 11 orphaned routes rehomed under a hard no-URL-change constraint). Spray Wave 1 stays PUSHED on the tangent stack, archived verbatim under "Also in flight".
+_Last updated: 2026-07-28 — **Phase 2 + Phase 3 BUILT (15 commits, `claude/cellarhand-v2-phase-2-3`), plan 102 `completed`.** The redesign is now visible: 3-group nav behind a flag, `/ferment` worksheet, PageHeader, ResponsiveTable, TimeSeriesChart, the form-control layer. Biggest finds: `Input` had NONE of its four a11y attributes across 165 call sites; three greps gave three different unlabelled-select counts until a tokenising detector settled it at 32; and **running the axe gate found two defects I had introduced myself**, one of them hiding the login page's password toggle from assistive tech. Suite 425 files / 5,219 passing (one documented flake). Spray Wave 1 remains PUSHED on the tangent stack.
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill

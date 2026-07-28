@@ -1,7 +1,7 @@
 ---
 title: Cellarhand UI/UX v2 — Phase 2 (shared components) + Phase 3 (shell & IA)
 type: feat
-status: draft
+status: completed
 date: 2026-07-28
 branch: claude/cellarhand-v2-phase-2-3
 depth: deep
@@ -466,3 +466,64 @@ recommendations that need no decision unless you disagree.
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | -- | -- |
 
 **VERDICT:** NO REVIEWS YET — run `/council` for cross-LLM adversarial review, or the individual reviews above.
+
+---
+
+## Execution record (2026-07-28)
+
+Built on `claude/cellarhand-v2-phase-2-3`, 15 commits. All 19 units either shipped
+or are explicitly recorded below as deferred with a reason.
+
+### Defects found by BUILDING, that no plan could have predicted
+
+- **`Input` had zero a11y wiring.** No `aria-describedby`, `aria-invalid`,
+  `role="alert"` or required marker — all four required by §B8, all four absent. Across
+  **165 call sites** the hint and error rendered on screen but were never associated
+  with the field: a screen-reader user heard the label and nothing else, *including on
+  validation failure*. One component change closed all 165.
+- **`Field` in `TenantProductFactsForm` rendered `<label>` with no `htmlFor`** — 12
+  controls with visible label text assistive tech never connected to anything. One
+  wrapper fix, 12 controls named.
+- **Three greps gave three different counts of unlabelled selects** (31, 71, 34) and the
+  best still had a false positive. Root cause every time: a JSX opening tag does not end
+  at the next `>`. Fixed by building a tokenising detector whose own correctness is
+  pinned by 35 tests. Real answer: **32 across 15 files**, now zero.
+- **10 Buttons were still under the 44px floor** via inline `style` overriding the size
+  map (caught in PR #1's pre-landing review).
+- **The axe gate found two defects I had introduced myself** (Unit 19, below).
+
+### Deferred, with reasons
+
+- **Units 14 (top bar) and 16's `Find` directory** — the tab bar ships and routes
+  correctly, but `Find` points at `/inbox` rather than a destination directory, because
+  the directory belongs with Phase 4's search. Recorded rather than faked.
+- **The rail's UI (Unit 17)** — its logic, tokens and all four legitimacy conditions
+  ship and are tested; the collapse/expand chrome itself is not wired into `AppShell`.
+  doc 13 §88 says build the rail after the nav settles, and the nav settled in this same
+  PR. Wiring it now would be building against a nav that is one release old.
+- **The 61-heading `PageHeader` migration** — the component ships and `/samples` uses it.
+  Migrating the rest is per-route-family work that belongs with the screens' own phases.
+- **47 unlabelled `<input>`/`<textarea>`** remain; the guard prints the number every run
+  rather than hiding it.
+- **The authed 40-route axe sweep** — needs a Demo Winery credential. Seeding one writes
+  to the production database, so it was not done unprompted. `public-a11y.spec.ts` covers
+  what can run without a session and is green.
+
+### Unit 19 — the gate earned its keep immediately
+
+The axe gate had been committed-but-unrun since PR #1. Running it found two real
+defects, **both mine**:
+
+1. `aria-hidden-focus` — Unit 1 blanket-hid `Input`'s adornment slots, and the login page
+   passes an interactive show/hide-password button through one. A focusable control
+   inside an `aria-hidden` subtree, on the one page every user must get through.
+2. `NumericUnitInput`'s unit box was `aria-hidden`, so a screen-reader user editing "218"
+   never learned it was litres.
+
+Plus, from the Playwright a11y snapshot: the required marker's sr-only "(required)" sat
+inside the `<label>`, making the accessible name "Email (required)" and causing a double
+announcement.
+
+The structural fix that matters most: **public routes no longer depend on the auth setup
+project.** They did, which is exactly why the gate went unrun for a whole phase — with no
+seeded tenant, no a11y check could run at all.
