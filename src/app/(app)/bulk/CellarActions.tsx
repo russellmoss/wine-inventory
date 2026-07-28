@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Button, Modal, Tabs } from "@/components/ui";
+import { Button, Modal, Tabs, EmptyState } from "@/components/ui";
 import { FermentMonitor } from "@/components/ferment/FermentMonitor";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import { correctOperationAction, revertRackAction } from "@/lib/cellar/actions";
@@ -16,6 +16,11 @@ import type { TimelineItem } from "@/lib/lot/timeline";
 import { VesselTimeline } from "@/components/vessel/VesselTimeline";
 import { TimelineEntryDetail } from "@/components/vessel/TimelineEntryDetail";
 import { IssueWorkOrderPanel } from "@/components/vessel/IssueWorkOrderPanel";
+import { NAV_V2_ENABLED } from "@/lib/nav/flag";
+import { tankDetailAction } from "@/lib/vessels/tank-detail-actions";
+import type { TankDetail } from "@/lib/vessels/tank-detail-data";
+import { TankFermentPanel } from "./TankFermentPanel";
+import { matchesFilter } from "@/lib/vessel/timeline-view";
 import { vesselLabel } from "@/lib/lot/timeline";
 import {
   DoseForm,
@@ -84,6 +89,10 @@ export function CellarActions({
   const [timelineError, setTimelineError] = React.useState(false);
   const [detailItem, setDetailItem] = React.useState<TimelineItem | null>(null);
   const [issueWoOpen, setIssueWoOpen] = React.useState(false);
+  // Phase 6 (SC-11): the Fermentation + Tasting feeds. Fetched on open, like the timeline —
+  // the board must not carry every vessel's readings.
+  const [tankDetail, setTankDetail] = React.useState<TankDetail | null>(null);
+  const [tankDetailLoading, setTankDetailLoading] = React.useState(false);
   const fermentLot = vessel.residentLots[0];
 
   // Form state resets across vessels via a `key` remount in the parent (BulkClient), so no
@@ -97,6 +106,18 @@ export function CellarActions({
       setAnalyses(null);
     } finally {
       setAnalysesLoading(false);
+    }
+  }, [vessel.id]);
+
+  const loadTankDetail = React.useCallback(async () => {
+    if (!NAV_V2_ENABLED) return;
+    setTankDetailLoading(true);
+    try {
+      setTankDetail(await tankDetailAction(vessel.id));
+    } catch {
+      setTankDetail(null);
+    } finally {
+      setTankDetailLoading(false);
     }
   }, [vessel.id]);
 
@@ -117,13 +138,15 @@ export function CellarActions({
   const refreshWorkspace = React.useCallback(() => {
     void loadTimeline();
     void loadAnalyses();
-  }, [loadTimeline, loadAnalyses]);
+    void loadTankDetail();
+  }, [loadTimeline, loadAnalyses, loadTankDetail]);
 
   function openHistory() {
     setHistoryOpen(true);
     setIssueWoOpen(false);
     void loadTimeline();
     void loadAnalyses();
+    void loadTankDetail();
   }
 
   React.useEffect(() => {
@@ -287,6 +310,69 @@ export function CellarActions({
     </div>
   );
 
+  // ── Fermentation tab (SC-11, default): the Brix + temperature curve and the numbers, all
+  // from ONE derivation so the annotations cannot contradict the stated facts (AC-S27).
+  const fermentTab = <TankFermentPanel facts={tankDetail?.facts ?? null} loading={tankDetailLoading} />;
+
+  // ── Tasting notes tab (DM-46). Scoped to the resident lots, so it follows the wine.
+  const tastingTab = (
+    <div>
+      {tankDetailLoading && !tankDetail ? (
+        <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Loading…</p>
+      ) : (tankDetail?.tastingNotes.length ?? 0) === 0 ? (
+        <EmptyState title="No tasting notes on this wine yet">
+          Notes recorded against the lot in this tank appear here.
+        </EmptyState>
+      ) : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+          {(tankDetail?.tastingNotes ?? []).map((n) => (
+            <li key={n.id} style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 10 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{n.observedAt.slice(0, 10)}</span>
+                <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{n.enteredByEmail}</span>
+                {n.score != null ? <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>score {n.score}</span> : null}
+              </div>
+              {[["Appearance", n.appearance], ["Aroma", n.aroma], ["Flavour", n.flavor], ["Notes", n.notes]]
+                .filter(([, v]) => v)
+                .map(([label, v]) => (
+                  <p key={label as string} style={{ margin: "4px 0 0", fontSize: 14, color: "var(--text-primary)" }}>
+                    <span style={{ color: "var(--text-muted)" }}>{label}: </span>
+                    {v}
+                  </p>
+                ))}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
+  // ── Additions tab: the timeline narrowed to ADDITION/FINING. Reuses the feed already
+  // loaded and the same bucket logic the History chips use, so "an addition" means exactly
+  // one thing on this page.
+  const additionItems = (timeline?.items ?? []).filter((i) => matchesFilter(i, "additions"));
+  const additionsTab = (
+    <div>
+      {timelineLoading && !timeline ? (
+        <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Loading…</p>
+      ) : additionItems.length === 0 ? (
+        <EmptyState title="Nothing added to this tank yet">
+          Additions and finings recorded on this vessel appear here.
+        </EmptyState>
+      ) : (
+        <VesselTimeline
+          vesselCode={vessel.code}
+          items={additionItems}
+          windowStartAt={timeline?.windowStartAt ?? null}
+          onOpenEntry={(item) => setDetailItem(item)}
+          loading={false}
+          error={false}
+          onRetry={() => void loadTimeline()}
+        />
+      )}
+    </div>
+  );
+
   // ── History tab: the occupancy-scoped activity timeline (read); each entry opens the detail modal.
   const historyTab = (
     <VesselTimeline
@@ -314,13 +400,26 @@ export function CellarActions({
         maxWidth="min(1100px, 96vw)"
         fullScreenOnMobile
       >
+        {/* Phase 6 (SC-11): five tabs with the flag on, Fermentation first. The legacy
+            three-tab set stays in the else arm — same rollback story as the board. */}
         <Tabs
-          defaultTab="history"
-          tabs={[
-            { id: "actions", label: "Actions", content: actionsTab },
-            { id: "analyses", label: "Analyses", content: analysesTab },
-            { id: "history", label: "History", content: historyTab },
-          ]}
+          defaultTab={NAV_V2_ENABLED ? "fermentation" : "history"}
+          tabs={
+            NAV_V2_ENABLED
+              ? [
+                  { id: "fermentation", label: "Fermentation", content: fermentTab },
+                  { id: "analyses", label: "Analyses", content: analysesTab },
+                  { id: "tasting", label: "Tasting notes", content: tastingTab },
+                  { id: "history", label: "History", content: historyTab },
+                  { id: "additions", label: "Additions", content: additionsTab },
+                  { id: "actions", label: "Actions", content: actionsTab },
+                ]
+              : [
+                  { id: "actions", label: "Actions", content: actionsTab },
+                  { id: "analyses", label: "Analyses", content: analysesTab },
+                  { id: "history", label: "History", content: historyTab },
+                ]
+          }
         />
       </Modal>
 
