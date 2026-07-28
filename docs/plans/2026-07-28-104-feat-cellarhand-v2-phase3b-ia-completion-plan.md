@@ -1,6 +1,6 @@
 # Plan 104 · Cellarhand UI/UX v2 — Phase 3b: finish the IA
 
-**Type:** feat · **Depth:** Deep · **Date:** 2026-07-28
+**Type:** feat · **Depth:** Deep · **Date:** 2026-07-28 · **Status:** BUILT (see Execution Record)
 **Base:** current `main` (`2613a828`) · **Branch:** `claude/cellarhand-v2-phase3b-ia`
 **Predecessor:** plan 103 (Phase 6 tanks, merged as [#562](https://github.com/russellmoss/wine-inventory/pull/562)).
 **Handoff sources:** `01-information-architecture.md` §2/§3/§4/§5/§9, `02-screen-inventory.md`,
@@ -354,6 +354,58 @@ the brand mark links to it; that link does not exist. Recommendation: **wire the
 rather than spend a sidebar slot. *Blocks Unit 2's classification of `/`.*
 
 **Nothing else blocks.** Units 1, 2 and 3 can start immediately.
+
+## EXECUTION RECORD — BUILT 2026-07-28
+
+**Branch:** `claude/cellarhand-v2-phase3b-ia-41e485`, 9 commits. tsc clean · lint 0 errors ·
+5,537 tests passing · `AssistantDock` diff empty · `prisma/` untouched · no route removed.
+
+**Crawled, not asserted:** live BFS from `/` with the flag on against the Demo tenant, following
+only links that render — **35 of 58 static routes reachable, up from 17**, and the crawl hit its
+own cap mid-queue so that is a floor. The 23 unreached: 5 auth · 3 dev tools · 6 redirect stubs ·
+1 palette-only · 3 correctly hidden by capability flags the Demo tenant has off · 5 contextual
+links on pages not yet dequeued.
+
+### Where execution DEPARTED from the plan, and why
+
+**Unit 7 does not exist.** `/bottled` and `/finished-goods` are `redirect()` stubs into
+`/inventory` (plan 080 U6), not Inventory sub-tabs. A tab pointing at either would send the user
+somewhere other than the label said. Both are classified as redirect stubs; `/inventory` instead
+carries `/reports` (below).
+
+**`/reports` moved to `/inventory`, not `/accounting`.** Doc 01 §4 files it under Accounting, but
+`/accounting` is `admin: true` and `/reports` is `requireActiveTenant()` only — and its own `h1`
+reads "Inventory reports". Parking an ungated page under an admin hub makes it unreachable for
+everyone else, which is the bug this phase exists to fix, one level down.
+
+**`/setup` is NOT admin-gated** (D4 assumed it would be). Four of its eight children — Vessels,
+Locations, Varieties & vineyards, Vendors — are ungated and were ungated in the legacy sidebar.
+Gating the hub would have taken all four from every non-admin.
+
+**`/winemaking-calculator` is a `/bulk` section, not palette-only.** Its doc-01 entry point ("any
+addition form") does not exist in source, and Ctrl-K needs a keyboard a cellar hand on a phone
+does not have.
+
+**The strip renders on section pages too, not just hubs** (D1 said hub-only). Hub-only is a
+one-way door: click "Samples" and the strip you just used disappears. Still never on `[id]`
+capture screens, and still per-page rather than per-`layout.tsx` — asserted.
+
+**`CONTEXTUAL_DESTINATIONS` was deleted**, not just documented as stale. Zero runtime consumers,
+and it contradicted `unnavigable.ts` about four routes.
+
+### Adversarial review — RAN, before the PR
+
+Four independent reviewers with fresh context. Five findings, all green on 5,513 tests at the
+time, all fixed: the ungated-page-under-admin-hub trap (5 surfaces); no phone entry point for the
+calculator; the one-way-door strip; a D2 palette guard that was six `expect(SOURCE).toContain(...)`
+over code nothing in the repo executed; and `hubLabel` resurrecting "Field notes"/"Harvest", the
+two labels doc 01 §5 retired. Two new guards were added as a result —
+`test/search-sections.test.ts` (executes `searchEverything`) and `test/nav-section-guards.test.ts`
+(reads each target `page.tsx`; fails if a section flag is looser than the page's own guard).
+
+**Process lesson:** the maintainability reviewer ran its mutation sweep against this same worktree
+and `git checkout`ed a file mid-review. Nothing was lost, but the tree briefly read as sabotaged.
+Give a mutation-sweep reviewer its own worktree.
 
 ## GSTACK REVIEW REPORT
 
