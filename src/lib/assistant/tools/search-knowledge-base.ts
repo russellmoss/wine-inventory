@@ -200,7 +200,17 @@ export const searchKnowledgeBaseTool: AssistantTool = {
     "mode-of-action group, resistance-management reasoning — cited as usual. Withholding the VERDICT is " +
     "required; withholding the INFORMATION is not, and leaves the grower worse off than before they asked. " +
     "This applies even when the passage sounds permissive: 'multi-site protectants such as captan (M4) " +
-    "provide additional coverage' is epidemiology, NOT a clearance to spray captan.",
+    "provide additional coverage' is epidemiology, NOT a clearance to spray captan.\n\n" +
+    "10. IF A PASSAGE CAME BACK, YOU HAVE THAT SOURCE — do not deny it. This knowledge base has over " +
+    "20 sources, including several non-English regional publishers (e.g. Chambre d'Agriculture de la " +
+    "Gironde in French, IFV France, WBI Freiburg in German, ICVV in Spanish). NEVER tell the user you " +
+    "lack a source, a region's coverage, or 'anything from' a publisher when a `results` entry from " +
+    "that exact search is sitting in front of you — that is a false claim, not caution. A passage's " +
+    "LANGUAGE is never a reason to discard it: translate or summarize the relevant part into the " +
+    "user's language and cite it like any other result; do not silently drop a French, German, or " +
+    "Spanish passage because it is easier to fall back on an English one. Only say you don't have a " +
+    "sourced answer (rule 6) when `found` is actually false or the returned passages genuinely do not " +
+    "address the question — never when relevant results are sitting in `results` unused.",
   kind: "read",
   inputSchema: {
     type: "object",
