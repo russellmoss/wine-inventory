@@ -10,8 +10,14 @@
 **CELLARHAND UI/UX v2 — PHASE 6 (TANKS) BUILT on `claude/cellarhand-v2-phase6-tanks`, ready to PR.**
 All 13 units of [plan 103](docs/plans/2026-07-28-103-feat-cellarhand-v2-phase6-tanks-plan.md), 10
 commits, 4 PRs' worth. Suite 438 files / 5440 tests green, `tsc` clean, lint 0 errors, `prisma/`
-untouched, `AssistantDock` diff empty, no route added or renamed. **Not yet run: `qa:a11y` /
-`qa:visual` — this worktree has no `.env`, so a dev server here cannot reach the DB.**
+untouched, `AssistantDock` diff empty, no route added or renamed.
+**QA RUN 2026-07-28 against the live Demo Winery tenant on :3007 — `/bulk` passes axe with ZERO
+violations at 390px AND 1440px with the board ON.** Getting there needed a real fix: Better Auth
+trusted only `BETTER_AUTH_URL`, so login on any other port died with `Invalid origin` — that is why
+the authed sweep went unrun for a whole phase. Now localhost is trusted on any port outside prod.
+The sweep also found three board defects a browser alone could show (invisible fill gauge,
+"between 27 July and 27 July", `17.0 Bx` stated beside `17 Bx` plotted) and one PRE-EXISTING
+keyboard trap on the dashboard, all fixed.
 Phase 0/1 shipped as [#555](https://github.com/russellmoss/wine-inventory/pull/555); Phase 2/3 as
 [#557](https://github.com/russellmoss/wine-inventory/pull/557) (`f3018c0e`); Phase 4/5 as
 [#561](https://github.com/russellmoss/wine-inventory/pull/561) (`043fe931`, merged 2026-07-28).
