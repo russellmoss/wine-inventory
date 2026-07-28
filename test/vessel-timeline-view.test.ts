@@ -61,7 +61,7 @@ function nonOp(kind: TimelineItem["kind"], dateLabel = "2026-07-05"): TimelineIt
     case "VESSEL_ACTIVITY":
       return { ...base, kind };
     case "WORK_ORDER":
-      return { ...base, kind, workOrderId: "wo1", number: 7, title: "T", taskStatus: "ISSUED", woStatus: "ISSUED", tone: "blue", statusLabel: "Issued", issuedByEmail: null, issuedAt: base.observedAt };
+      return { ...base, kind, workOrderId: "wo1", number: 7, title: "T", taskStatus: "ISSUED", woStatus: "ISSUED", tone: "active", statusLabel: "Issued", issuedByEmail: null, issuedAt: base.observedAt };
     default:
       throw new Error("unreachable");
   }

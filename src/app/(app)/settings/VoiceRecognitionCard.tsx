@@ -16,7 +16,7 @@ const MAX_SAMPLE_MS = 15_000;
 
 function badgeFor(state: VoiceSettingsView["profile"]["state"]) {
   if (state === "active") return { tone: "green" as const, label: "Active" };
-  if (state === "needs_reenroll") return { tone: "gold" as const, label: "Needs re-enrollment" };
+  if (state === "needs_reenroll") return { tone: "wine" as const, label: "Needs re-enrollment" };
   return { tone: "neutral" as const, label: "Not enrolled" };
 }
 
@@ -295,7 +295,7 @@ export function VoiceRecognitionCard({ initial }: { initial: VoiceSettingsView }
                 <Button variant="secondary" onClick={() => { resetEnrollment(); setEnrolling(true); }} disabled={pending}>
                   Re-enroll
                 </Button>
-                <ConfirmButton onConfirm={removeProfile} disabled={pending} confirmLabel="Delete">
+                <ConfirmButton onConfirm={removeProfile} disabled={pending} confirmLabel="Delete my voiceprint">
                   Delete voiceprint
                 </ConfirmButton>
               </div>

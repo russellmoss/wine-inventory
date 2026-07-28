@@ -215,7 +215,7 @@ function HistoryPanel({ rows }: { rows: CalcHistoryRow[] }) {
                     <LocalTime value={r.createdAt} />
                   </span>
                   <Badge tone={r.source === "ASSISTANT" ? "maroon" : "neutral"}>{r.source === "ASSISTANT" ? "Assistant" : "Page"}</Badge>
-                  {r.advisory && <Badge tone="gold">Advisory</Badge>}
+                  {r.advisory && <Badge tone="wine">Advisory</Badge>}
                   {r.danger && <Badge tone="red">Care</Badge>}
                 </summary>
                 <div style={{ marginTop: "var(--space-2)", fontSize: "var(--text-body-sm)", color: "var(--text-secondary)", display: "grid", gap: "var(--space-1)" }}>
@@ -261,7 +261,7 @@ function CalcCard({
       <Eyebrow>{descriptor.section}</Eyebrow>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginTop: "var(--space-2)", flexWrap: "wrap" }}>
         <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, margin: 0 }}>{descriptor.name}</h2>
-        {descriptor.advisory && <Badge tone="gold">Advisory</Badge>}
+        {descriptor.advisory && <Badge tone="wine">Advisory</Badge>}
         {descriptor.danger && <Badge tone="red">Handle with care</Badge>}
       </div>
       <p style={{ color: "var(--text-secondary)", marginTop: "var(--space-2)", maxWidth: "62ch" }}>{descriptor.description}</p>

@@ -15,7 +15,7 @@ const dtf = (d: Date | null) => (d ? d.toISOString().replace("T", " ").slice(0, 
 
 function FactsBadge({ completeness }: { completeness: string }) {
   if (completeness === "KNOWN") return <Badge tone="green" variant="soft">facts known</Badge>;
-  if (completeness === "PARTIAL") return <Badge tone="gold" variant="outline">facts partial</Badge>;
+  if (completeness === "PARTIAL") return <Badge tone="wine" variant="outline">facts partial</Badge>;
   return <Badge tone="maroon" variant="outline">facts unknown</Badge>;
 }
 
@@ -43,7 +43,7 @@ export default async function SprayDetailPage({ params }: { params: Promise<{ id
         </h1>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {app.status === "ACTIVE" ? <Badge tone="green" variant="soft">current</Badge> : null}
-          {app.status === "SUPERSEDED" ? <Badge tone="gold" variant="outline">superseded</Badge> : null}
+          {app.status === "SUPERSEDED" ? <Badge tone="wine" variant="outline">superseded</Badge> : null}
           {app.status === "VOIDED" ? <Badge tone="red" variant="outline">voided</Badge> : null}
           {correctability.correctable ? (
             <Link href={`/vineyards/sprays/${app.id}/correct`}><Button variant="secondary" size="sm">Correct</Button></Link>

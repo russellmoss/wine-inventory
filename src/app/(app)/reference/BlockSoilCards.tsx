@@ -18,10 +18,10 @@ function areaLabel(sqM: number, unit: Unit): string {
 }
 const pct = (n: number) => `${(n * 100).toFixed(n < 0.1 ? 1 : 0)}%`;
 
-const CLASS_TONE: Record<string, "blue" | "gold"> = {
+const CLASS_TONE: Record<string, "blue" | "wine"> = {
   water: "blue",
-  "non-soil": "gold",
-  uncovered: "gold",
+  "non-soil": "wine",
+  uncovered: "wine",
 };
 
 function SoilCard({ c, unit }: { c: SoilComponent; unit: Unit }) {
@@ -57,7 +57,7 @@ function Snapshot({ view, unit }: { view: SoilSnapshotView; unit: Unit }) {
   const [showSlivers, setShowSlivers] = React.useState(false);
   if (view.components == null) {
     return (
-      <Badge tone="gold" variant="soft">
+      <Badge tone="wine" variant="soft">
         Stored snapshot is unreadable — pull again to refresh.
       </Badge>
     );
@@ -75,13 +75,13 @@ function Snapshot({ view, unit }: { view: SoilSnapshotView; unit: Unit }) {
         {view.stale ? (
           <>
             {" "}
-            <Badge tone="gold" variant="soft">Boundary changed — re-pull</Badge>
+            <Badge tone="wine" variant="soft">Boundary changed — re-pull</Badge>
           </>
         ) : null}
       </div>
 
       {view.coverageState === "over" ? (
-        <Badge tone="gold" variant="soft">Coverage exceeds the boundary — treat shares as approximate (possible overlap).</Badge>
+        <Badge tone="wine" variant="soft">Coverage exceeds the boundary — treat shares as approximate (possible overlap).</Badge>
       ) : null}
       {view.coverageState === "none" ? (
         <span style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>No NRCS survey coverage was returned for this location.</span>

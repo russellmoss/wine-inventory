@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Card } from "@/components/ui";
+import { Badge, Card, StatusChip } from "@/components/ui";
 import { reporterStatus } from "@/lib/feedback/reporter-status";
 import type { MyReport } from "@/lib/feedback/my-reports";
 
@@ -77,7 +77,7 @@ export function MyReports({ reports }: { reports: MyReport[] }) {
                       Needs your input — check your inbox →
                     </Link>
                   ) : (
-                    <Badge tone={badge.tone}>{badge.label}</Badge>
+                    <StatusChip variant={badge.tone}>{badge.label}</StatusChip>
                   )}
                 </div>
               );

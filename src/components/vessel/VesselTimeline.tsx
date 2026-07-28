@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Badge, Button, LocalTime } from "@/components/ui";
+import { Badge, Button, LocalTime, StatusChip } from "@/components/ui";
 import type { TimelineItem, OpItem, TimelineLeg } from "@/lib/lot/timeline";
 import { formatVolume, type VolumeUnit } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
@@ -36,14 +36,14 @@ type Tone = React.ComponentProps<typeof Badge>["tone"];
 function chipTone(item: TimelineItem): Tone {
   switch (item.kind) {
     case "OP":
-      if (item.type === "ADDITION" || item.type === "FINING" || item.type === "CAP_MGMT") return "gold";
+      if (item.type === "ADDITION" || item.type === "FINING" || item.type === "CAP_MGMT") return "wine";
       if (item.type === "LOSS" || item.type === "FILTRATION" || item.type === "CORRECTION") return "red";
       if (item.type === "RACK" || item.type === "TOPPING") return "blue";
       if (item.type === "SEED") return "green";
       if (item.type === "BOTTLE") return "maroon";
       return "neutral";
     case "MEASUREMENT":
-      return "gold";
+      return "wine";
     case "TASTING":
       return "maroon";
     case "SAMPLE":
@@ -99,16 +99,12 @@ function metaLine(item: TimelineItem): React.ReactNode {
 function statusBadge(item: TimelineItem): React.ReactNode {
   if (item.kind === "WORK_ORDER") {
     return (
-      <Badge tone={item.tone} variant="soft">
-        {item.statusLabel}
-      </Badge>
+      <StatusChip variant={item.tone}>{item.statusLabel}</StatusChip>
     );
   }
   if (item.kind === "OP" && item.workOrder) {
     return (
-      <Badge tone={item.workOrder.tone} variant="soft">
-        {item.workOrder.statusLabel}
-      </Badge>
+      <StatusChip variant={item.workOrder.tone}>{item.workOrder.statusLabel}</StatusChip>
     );
   }
   return null;

@@ -39,9 +39,9 @@ function money(n: number | null, currency: string | null): string {
   }
 }
 
-const STATUS_META: Record<ProposalStatus, { label: string; tone: "green" | "gold" | "red" }> = {
+const STATUS_META: Record<ProposalStatus, { label: string; tone: "green" | "wine" | "red" }> = {
   ready: { label: "Ready to issue", tone: "green" },
-  needs_input: { label: "Needs decisions", tone: "gold" },
+  needs_input: { label: "Needs decisions", tone: "wine" },
   blocked: { label: "Blocked", tone: "red" },
 };
 

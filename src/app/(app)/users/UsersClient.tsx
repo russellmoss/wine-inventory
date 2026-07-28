@@ -31,9 +31,9 @@ const selectStyle: React.CSSProperties = {
   color: "var(--text-primary)",
 };
 
-const ROLE_TONE: Record<UserRole, "gold" | "maroon" | "neutral"> = {
+const ROLE_TONE: Record<UserRole, "wine" | "maroon" | "neutral"> = {
   developer: "maroon",
-  admin: "gold",
+  admin: "wine",
   user: "neutral",
 };
 

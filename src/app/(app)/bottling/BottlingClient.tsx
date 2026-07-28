@@ -104,7 +104,7 @@ function BottlingForm({
               return (
                 <label key={v.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderTop: "1px solid var(--border-subtle)", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent" }}>
                   <input type="checkbox" checked={on} onChange={() => toggle(v.id)} />
-                  <Badge tone={v.type === "BARREL" ? "maroon" : "gold"} variant="soft">{v.type === "BARREL" ? "Barrel" : "Tank"}</Badge>
+                  <Badge tone={v.type === "BARREL" ? "maroon" : "wine"} variant="soft">{v.type === "BARREL" ? "Barrel" : "Tank"}</Badge>
                   <span style={{ flex: 1, fontSize: 14 }}>{v.type === "BARREL" ? `Barrel ${v.code}` : v.code}</span>
                   <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{formatVolume(v.availableL, vol)}</span>
                 </label>
@@ -215,9 +215,9 @@ export function BottlingClient({ vessels, locations, runs, packagingOptions }: {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                   <strong>{r.skuName} {r.skuVintage ?? "NV"}</strong>
                   <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-                    <Badge tone="gold" variant="soft">{r.bottlesProduced} bottles · {s.cases}c + {s.loose}</Badge>
+                    <Badge tone="wine" variant="soft">{r.bottlesProduced} bottles · {s.cases}c + {s.loose}</Badge>
                     {!editing ? <Button variant="ghost" size="sm" disabled={pending} onClick={() => setEditingId(r.id)}>edit</Button> : null}
-                    <ConfirmButton onConfirm={() => run(() => deleteBottlingRun(r.id))} disabled={pending}>delete</ConfirmButton>
+                    <ConfirmButton confirmLabel={`Delete ${r.skuName} ${r.skuVintage ?? "NV"} run`} onConfirm={() => run(() => deleteBottlingRun(r.id))} disabled={pending}>delete</ConfirmButton>
                   </span>
                 </div>
                 <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{r.date} → {r.location}</div>

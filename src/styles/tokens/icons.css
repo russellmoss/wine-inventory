@@ -1,0 +1,16 @@
+/* ============================================================
+   Cellarhand — Icon sizing (v2 §A15)
+   All domain icons share a `0 0 24 24` viewBox, `fill="none"`,
+   `stroke="currentColor"`, round caps and joins. The stroke width is a
+   CONSTANT: do NOT scale it with the icon, or a 40px feature icon renders
+   nearly three times heavier than the 17px inline one.
+   Icons never appear without a text label, and never on buttons, form
+   labels or ordinary list rows.
+   ============================================================ */
+:root {
+  --icon-nav:     20px; /* sidebar and menu rows      */
+  --icon-tab:     24px; /* mobile bottom tabs         */
+  --icon-inline:  17px; /* inside inputs and buttons  */
+  --icon-feature: 40px; /* icon board, empty states   */
+  --icon-stroke:  1.6;  /* at a 24px viewBox          */
+}

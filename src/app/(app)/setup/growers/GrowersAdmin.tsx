@@ -65,7 +65,7 @@ export function GrowersAdmin({ growers }: { growers: GrowerRow[] }) {
               <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--border-subtle)", opacity: g.isActive ? 1 : 0.6 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ fontWeight: 500 }}>{g.name}</span>{" "}
-                  {g.isEstate ? <Badge tone="gold">Estate</Badge> : null}
+                  {g.isEstate ? <Badge tone="wine">Estate</Badge> : null}
                   {g.vendorId ? <Badge tone="neutral">Vendor</Badge> : null}
                   {g.isActive ? null : <Badge>Inactive</Badge>}
                   <div style={{ fontSize: "var(--text-body-sm)", color: "var(--text-secondary)", marginTop: 2 }}>

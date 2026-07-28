@@ -135,7 +135,7 @@ export function NewWorkOrderClient({
         return (
           <div key={key} style={{ gridColumn: "1 / -1" }}>
             <div style={labelStyle}>Vessel</div>
-            <Badge tone="gold" variant="soft">{lockedVessel.label}</Badge>
+            <Badge tone="wine" variant="soft">{lockedVessel.label}</Badge>
           </div>
         );
       }

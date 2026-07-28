@@ -128,7 +128,7 @@ export function VendorsClient({ vendors, isAdmin, importCandidates = [], qboPush
                     </span>
                     <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                       {v.terms ? <Badge tone="neutral">{v.terms}</Badge> : null}
-                      {v.poRequired ? <Badge tone="gold">PO required</Badge> : null}
+                      {v.poRequired ? <Badge tone="wine">PO required</Badge> : null}
                       {v.contacts.length > 0 ? <span>{v.contacts.length} contact{v.contacts.length === 1 ? "" : "s"}</span> : null}
                       {v.url ? <a href={v.url} target="_blank" rel="noreferrer" style={{ color: "var(--wine-primary)" }}>website</a> : null}
                     </div>

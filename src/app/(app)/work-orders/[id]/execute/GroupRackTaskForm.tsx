@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { Card, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Button, Eyebrow, StatusChip } from "@/components/ui";
+import { statusTone } from "@/lib/work-orders/status-badge";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import { completeGroupRackBatchAction, rejectGroupRackBatchAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
@@ -75,7 +76,7 @@ export function GroupRackTaskForm({ task, onDone }: { task: WorkOrderTaskView; o
     <Card style={{ padding: 18 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 18 }}>{task.seq}. {task.title}</div>
-        <Badge tone="gold">{task.status.replace(/_/g, " ").toLowerCase()}</Badge>
+        <StatusChip variant={statusTone(task.status)}>{task.status.replace(/_/g, " ").toLowerCase()}</StatusChip>
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 12px" }}>
         {isBarrelDown ? "barrel down" : "rack to tank"} · <strong>{gr.doneCount} of {total} done</strong>{gr.pendingCount > 0 ? ` · ${gr.pendingCount} to go` : " · complete"}

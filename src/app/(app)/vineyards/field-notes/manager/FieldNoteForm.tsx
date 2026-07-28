@@ -85,7 +85,6 @@ function InputSection({
                         variant={app.scope === "WHOLE" ? "primary" : "secondary"}
                         size="sm"
                         onClick={() => onScopeChange(opt.name, { ...app, scope: "WHOLE", blockIds: [] })}
-                        style={{ height: 38 }}
                       >
                         Whole vineyard
                       </Button>
@@ -94,7 +93,6 @@ function InputSection({
                         variant={app.scope === "BLOCKS" ? "primary" : "secondary"}
                         size="sm"
                         onClick={() => onScopeChange(opt.name, { ...app, scope: "BLOCKS" })}
-                        style={{ height: 38 }}
                       >
                         Specific blocks
                       </Button>
@@ -117,7 +115,7 @@ function InputSection({
                                     : [...app.blockIds, b.id],
                                 })
                               }
-                              style={{ height: 38, fontSize: 13 }}
+                              style={{ fontSize: 13 }}
                             >
                               {b.blockLabel}
                             </Button>
@@ -545,8 +543,7 @@ export function FieldNoteForm({
           onChange={(e) => setGeneralNotes(e.target.value)}
           rows={4}
           placeholder="Anything else worth flagging this week…"
-          style={{
-            width: "100%",
+          style={{ width: "100%",
             padding: 12,
             border: "1px solid var(--border-strong)",
             borderRadius: "var(--radius-md)",
@@ -554,8 +551,7 @@ export function FieldNoteForm({
             fontFamily: "var(--font-body)",
             fontSize: 16,
             color: "var(--text-primary)",
-            resize: "vertical",
-          }}
+            resize: "vertical" }}
         />
       </Card>
 

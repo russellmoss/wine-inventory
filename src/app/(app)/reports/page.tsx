@@ -103,7 +103,7 @@ export default async function ReportsPage() {
                 bottled.map((r, i) => (
                   <tr key={i}>
                     <td style={td}>{r.sku}</td><td style={td}>{r.location}</td>
-                    <td style={{ ...td, textAlign: "right" }}><Badge tone="gold" variant="soft">{r.cases}c + {r.loose}</Badge></td>
+                    <td style={{ ...td, textAlign: "right" }}><Badge tone="wine" variant="soft">{r.cases}c + {r.loose}</Badge></td>
                     <td style={{ ...td, textAlign: "right" }}>{r.total}</td>
                   </tr>
                 ))}

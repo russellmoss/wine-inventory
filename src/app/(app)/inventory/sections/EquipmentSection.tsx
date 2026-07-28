@@ -15,7 +15,7 @@ import { materialDisplayName } from "@/lib/cellar/materials-shared";
 type LocationRow = { id: string; name: string; kind: string | null };
 const field: React.CSSProperties = { fontSize: 14, padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const labelStyle: React.CSSProperties = { fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 };
-const STATUS_TONE: Record<string, "green" | "gold" | "neutral" | "red"> = { available: "green", in_use: "gold", maintenance: "neutral", retired: "red" };
+const STATUS_TONE: Record<string, "green" | "wine" | "neutral" | "red"> = { available: "green", in_use: "wine", maintenance: "neutral", retired: "red" };
 
 export function EquipmentSection({
   equipment,

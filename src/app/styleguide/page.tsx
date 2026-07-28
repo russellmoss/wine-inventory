@@ -11,7 +11,25 @@ import {
   Eyebrow,
   Metric,
   Quote,
+  StatusChip,
+  STATUS_VARIANTS,
+  ConfirmButton,
+  Skeleton,
+  EmptyState,
+  Alert,
+  ActionReceipt,
 } from "@/components/ui";
+
+const VIZ_SERIES = ["Brix", "Temperature", "pH", "Free SO₂", "TA", "Malic"] as const;
+
+const DENSITY_SAMPLES = [
+  { token: "--row-h-dense", label: "dense 38" },
+  { token: "--row-h-default", label: "default 46" },
+  { token: "--row-h-comfortable", label: "comfortable 56" },
+  { token: "--touch-min", label: "touch-min 44" },
+  { token: "--touch-floor", label: "floor 56" },
+  { token: "--touch-floor-lg", label: "floor-lg 68" },
+] as const;
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -37,6 +55,103 @@ export default function StyleguidePage() {
         Component and token preview. Warm paper, ink text, a single wine-burgundy accent.
       </p>
 
+      <Section title="StatusChip — the status ramp (v2 §A4, §B17)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            The single status vocabulary, replacing six independent status→colour maps. Glyph +
+            mandatory text, so it survives greyscale. Wine is deliberately absent — it means brand
+            and primary action only. <code>held</code> is built but unwired: no current status
+            produces it.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+            {STATUS_VARIANTS.map((name) => (
+              <StatusChip key={name} variant={name}>
+                {name}
+              </StatusChip>
+            ))}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+            {STATUS_VARIANTS.map((name) => (
+              <StatusChip key={name} variant={name} size="md">
+                {name} md
+              </StatusChip>
+            ))}
+          </div>
+          <p style={{ color: "var(--text-meta)", fontSize: 12, marginBottom: 8 }}>
+            The same six under <code>grayscale(1)</code> — the glyph is what keeps them apart.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, filter: "grayscale(1)" }}>
+            {STATUS_VARIANTS.map((name) => (
+              <StatusChip key={name} variant={name}>
+                {name}
+              </StatusChip>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Provenance (v2 §A5)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            Required on every derived quantity. The words carry the meaning; colour only reinforces.
+          </p>
+          <div style={{ display: "flex", gap: 10 }}>
+            {(["measured", "estimated"] as const).map((kind) => (
+              <span
+                key={kind}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "var(--radius-pill)",
+                  background: `var(--provenance-${kind}-bg)`,
+                  color: `var(--provenance-${kind}-fg)`,
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                }}
+              >
+                {kind === "measured" ? "measured" : "≈ estimated"}
+              </span>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Data-viz series (v2 §A6)">
+        <div style={{ width: "100%", display: "flex", flexWrap: "wrap", gap: 14 }}>
+          {VIZ_SERIES.map((label, i) => (
+            <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <span
+                style={{
+                  width: 28,
+                  height: 3,
+                  borderRadius: 2,
+                  background: `var(--viz-${i + 1})`,
+                }}
+              />
+              {label}
+            </span>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Density and touch targets (v2 §A8, §A14)">
+        <div style={{ width: "100%", display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+          {DENSITY_SAMPLES.map(({ token, label }) => (
+            <div key={token} style={{ textAlign: "center" }}>
+              <div
+                style={{
+                  width: 96,
+                  height: `var(${token})`,
+                  background: "var(--paper-200)",
+                  border: "1px solid var(--border-strong)",
+                  borderRadius: "var(--radius-sm)",
+                }}
+              />
+              <div style={{ fontSize: 11, color: "var(--text-meta)", marginTop: 6 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      </Section>
+
       <Section title="Buttons">
         <Button variant="primary">Primary</Button>
         <Button variant="secondary">Secondary</Button>
@@ -45,16 +160,28 @@ export default function StyleguidePage() {
         <Button variant="primary" disabled>
           Disabled
         </Button>
-        <Button variant="primary" size="sm">
-          Small
-        </Button>
-        <Button variant="primary" size="lg">
-          Large
+        <Button variant="primary" pending pendingLabel="Saving…">
+          Save
         </Button>
       </Section>
 
-      <Section title="Badges">
-        <Badge tone="gold">Wine</Badge>
+      <Section title="Button sizes — 44 / 48 / 56 / 68">
+        <Button variant="secondary" size="sm">
+          sm 44
+        </Button>
+        <Button variant="secondary" size="md">
+          md 48
+        </Button>
+        <Button variant="secondary" size="lg">
+          lg 56
+        </Button>
+        <Button variant="secondary" size="xl">
+          xl 68
+        </Button>
+      </Section>
+
+      <Section title="Badges — category labels only">
+        <Badge tone="wine">Wine</Badge>
         <Badge tone="green" variant="soft">
           In stock
         </Badge>
@@ -64,12 +191,89 @@ export default function StyleguidePage() {
         <Badge tone="neutral" variant="outline">
           Neutral
         </Badge>
-        <Badge tone="gold" variant="solid">
+        <Badge tone="wine" variant="solid">
           Solid
         </Badge>
         <Badge tone="blue" uppercase>
           Tank
         </Badge>
+        <p style={{ width: "100%", color: "var(--text-meta)", fontSize: 12, margin: "4px 0 0" }}>
+          Badge is for categories. A status value belongs in StatusChip above — the two are not
+          interchangeable, and a static test enforces it.
+        </p>
+      </Section>
+
+      <Section title="ConfirmButton — two-step, event-disarmed (v2 §B27)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            The confirm label must name its object. It no longer auto-disarms on a 4-second
+            timer (WCAG 2.2.1); it disarms on Escape, on the tab being backgrounded, and on
+            unmount — events that mean the user has left, not a clock running while they think.
+          </p>
+          <ConfirmButton confirmLabel="Archive CH-NEUTRAL-14" onConfirm={() => {}}>
+            Archive lot
+          </ConfirmButton>
+        </div>
+      </Section>
+
+      <Section title="Alert (v2 §B25)">
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
+          <Alert variant="info" title="Two tanks are still warm">
+            T-04 and T-07 are above the 16 °C yeast floor.
+          </Alert>
+          <Alert variant="warning" title="CH-NEUTRAL-14 is 8% over nominal capacity">
+            Recorded anyway — barrels are never blocked for being full.
+          </Alert>
+          <Alert
+            variant="danger"
+            title="The rack into T-04 was not recorded"
+            actions={<Button size="sm" variant="secondary">Try again</Button>}
+          >
+            Nothing was written to the lot ledger. The source vessel still holds 218 L.
+          </Alert>
+          <Alert variant="success" title="WO #171 issued to the cellar crew" />
+        </div>
+      </Section>
+
+      <Section title="ActionReceipt (v2 §B26)">
+        <div style={{ width: "100%" }}>
+          <ActionReceipt
+            summary="Rack recorded — 218 L into T-04"
+            provenance="Written to the lot ledger at 12:47 by you."
+            onCorrect={() => {}}
+            onSeeLedgerLine={() => {}}
+            onDismiss={() => {}}
+          />
+        </div>
+      </Section>
+
+      <Section title="Skeleton (v2 §B29)">
+        <div style={{ width: 320 }}>
+          <Skeleton variant="text" count={3} label="Loading your work orders…" />
+        </div>
+        <div style={{ width: 200 }}>
+          <Skeleton variant="block" label={null} />
+        </div>
+        <Skeleton variant="chip" label={null} />
+      </Section>
+
+      <Section title="EmptyState (v2 §B30)">
+        <Card style={{ width: "100%" }}>
+          <EmptyState
+            title="No open work orders"
+            actions={
+              <>
+                <Button size="sm">Draft a work order</Button>
+                <Button size="sm" variant="secondary">
+                  See the archive
+                </Button>
+              </>
+            }
+          >
+            Everything issued this week has been completed and approved. New work appears here
+            the moment someone drafts it.
+          </EmptyState>
+        </Card>
       </Section>
 
       <Section title="Avatars">

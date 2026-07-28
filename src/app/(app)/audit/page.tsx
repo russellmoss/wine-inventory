@@ -83,7 +83,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                     {e.createdAt.toISOString().slice(0, 16).replace("T", " ")}
                   </td>
                   <td style={{ padding: "10px 14px" }}>{e.actorEmail}</td>
-                  <td style={{ padding: "10px 14px" }}><Badge tone="gold" variant="soft">{e.action}</Badge></td>
+                  <td style={{ padding: "10px 14px" }}><Badge tone="wine" variant="soft">{e.action}</Badge></td>
                   <td style={{ padding: "10px 14px" }}><Badge tone="neutral" variant="soft">{e.entityType}</Badge></td>
                   <td style={{ padding: "10px 14px" }}>{e.summary}</td>
                 </tr>

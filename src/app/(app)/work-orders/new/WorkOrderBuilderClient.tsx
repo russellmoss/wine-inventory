@@ -654,7 +654,7 @@ export function WorkOrderBuilderClient({
                         return (
                           <div key={t.key} style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 10, background: "var(--surface-raised)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                              <Badge tone="gold" variant="soft">{def?.label ?? t.taskType}</Badge>
+                              <Badge tone="wine" variant="soft">{def?.label ?? t.taskType}</Badge>
                               <input value={t.title} onChange={(e) => updateTask(gi, t.key, { title: e.target.value })} placeholder={def?.label ?? "Task"} style={{ ...field, flex: 1, padding: "4px 8px" }} />
                               <button type="button" aria-label="Remove task" onClick={() => removeTask(gi, t.key)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 16 }}>×</button>
                             </div>

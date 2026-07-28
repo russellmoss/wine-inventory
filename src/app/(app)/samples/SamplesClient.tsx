@@ -3,23 +3,25 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Badge, Button, Modal } from "@/components/ui";
+import { Card, Eyebrow, Button, Modal, StatusChip } from "@/components/ui";
+import type { StatusVariant } from "@/components/ui";
 import { ReadingRows, emptyReadingRow, toReadingInputs, readingsValid, type ReadingRow } from "@/components/chemistry/ReadingRows";
 import { attachSampleResultsAction, markSampleSentAction, cancelSampleAction } from "@/lib/chemistry/actions";
 import type { OpenSampleRow } from "@/lib/chemistry/data";
-
-type Tone = React.ComponentProps<typeof Badge>["tone"];
 
 // The dedicated samples surface (Phase 4, design-review IA): a table of open (non-terminal)
 // samples — lot · source · status · age — each row opening an attach-results modal that reuses
 // the shared ReadingRows form. A "N pending" count also rides the WINERY nav item + lot header.
 
-const STATUS_TONE: Record<string, Tone> = {
+// RESULT_RETURNED is `review`, not `done`: the schema models RESULT_RETURNED and ATTACHED as two
+// distinct states, which is itself the evidence that a human attach step sits between them. A
+// returned result is a decision waiting on someone.
+const STATUS_TONE: Record<string, StatusVariant> = {
   PULLED: "neutral",
   SENT: "neutral",
   PENDING: "neutral",
-  RESULT_RETURNED: "gold",
-  ATTACHED: "green",
+  RESULT_RETURNED: "review",
+  ATTACHED: "done",
   CANCELLED: "neutral",
 };
 
@@ -101,9 +103,9 @@ export function SamplesClient({ samples }: { samples: OpenSampleRow[] }) {
                   <td style={{ padding: "10px 6px", color: "var(--text-secondary)" }}>{s.source || "—"}</td>
                   <td style={{ padding: "10px 6px", color: "var(--text-secondary)" }}>{s.lab || "—"}</td>
                   <td style={{ padding: "10px 6px" }}>
-                    <Badge tone={STATUS_TONE[s.status] ?? "neutral"} variant="soft">
+                    <StatusChip variant={STATUS_TONE[s.status] ?? "neutral"}>
                       {statusWord(s.status)}
-                    </Badge>
+                    </StatusChip>
                   </td>
                   <td style={{ padding: "10px 6px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{relAge(s.pulledAt)}</td>
                   <td style={{ padding: "10px 6px", textAlign: "right", whiteSpace: "nowrap" }}>

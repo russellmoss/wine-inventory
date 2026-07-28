@@ -67,7 +67,7 @@ export function Commerce7ConnectionCard({ commerce7 }: { commerce7: Commerce7Con
   const badge = connected
     ? { tone: "green" as const, label: "Connected" }
     : pendingConfirm
-      ? { tone: "gold" as const, label: "Confirm to finish" }
+      ? { tone: "wine" as const, label: "Confirm to finish" }
       : status === "NEEDS_REAUTH"
         ? { tone: "red" as const, label: "Reconnect needed" }
         : { tone: "neutral" as const, label: "Not connected" };
@@ -79,7 +79,7 @@ export function Commerce7ConnectionCard({ commerce7 }: { commerce7: Commerce7Con
         <Badge tone={badge.tone}>{badge.label}</Badge>
         {connected && commerce7?.environment === "sandbox" && <Badge tone="blue">Sandbox</Badge>}
         {connected && (
-          <Badge tone={commerce7?.webhookHealthy ? "green" : "gold"}>
+          <Badge tone={commerce7?.webhookHealthy ? "green" : "wine"}>
             {commerce7?.webhookHealthy ? "Live updates on" : "Updates syncing on a timer"}
           </Badge>
         )}

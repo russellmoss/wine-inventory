@@ -51,7 +51,7 @@ export function ReviewClient({ queue }: { queue: ReviewQueueItem[] }) {
               <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{q.opType} · completed by {q.completedByEmail ?? "—"}</div>
             </div>
           </div>
-          {q.hasSignificantDeviation ? <Badge tone="gold">deviation</Badge> : <Badge tone="green">exact</Badge>}
+          {q.hasSignificantDeviation ? <Badge tone="wine">deviation</Badge> : <Badge tone="green">exact</Badge>}
         </div>
 
         {q.deviations.length > 0 ? (

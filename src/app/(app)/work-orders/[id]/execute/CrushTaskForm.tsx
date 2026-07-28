@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { Card, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Button, Eyebrow, StatusChip } from "@/components/ui";
+import { statusTone } from "@/lib/work-orders/status-badge";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { CrushFormData } from "@/lib/ferment/crush-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
@@ -99,7 +100,7 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
     <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 18 }}>{task.seq}. {task.title}</div>
-        <Badge tone="gold">{task.status.replace(/_/g, " ").toLowerCase()}</Badge>
+        <StatusChip variant={statusTone(task.status)}>{task.status.replace(/_/g, " ").toLowerCase()}</StatusChip>
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 14px" }}>de-stem / crush</div>
     </>

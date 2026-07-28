@@ -2,8 +2,11 @@
    Cellarhand — Webfonts
    Display: Big Caslon (local OTF). Workhorse: Inter Tight + Inter.
    ============================================================ */
-/* Inter + Inter Tight are imported at the top of globals.css (must precede
-   Tailwind rules). Big Caslon is shipped locally below. */
+/* Inter + Inter Tight are self-hosted by next/font in src/app/layout.tsx and
+   reach the type system through --font-inter / --font-inter-tight (see
+   typography.css). Big Caslon is shipped locally below and stays that way —
+   moving it to next/font/local is optional polish no acceptance criterion asks
+   for, considered and deferred to keep this diff minimal. */
 @font-face {
   font-family: "Big Caslon";
   src: url("/assets/fonts/BigCaslon-Regular.otf") format("opentype");

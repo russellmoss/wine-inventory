@@ -2,7 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
-import { Card, Eyebrow, Button, Badge } from "@/components/ui";
+import { Card, Eyebrow, Button, StatusChip } from "@/components/ui";
+import { blendTrialStatusTone } from "@/lib/blend/trial-status";
 import { createTrialAction, chooseTrialAction, discardTrialAction, scoreTrialAction } from "@/lib/blend/actions";
 import type { TrialRow } from "@/lib/blend/data";
 
@@ -20,10 +21,6 @@ const field: React.CSSProperties = {
 };
 
 type Row = { lotId: string; pct: string };
-
-function statusTone(s: string): "gold" | "green" | "neutral" | "red" {
-  return s === "CHOSEN" ? "gold" : s === "PROMOTED" ? "green" : s === "DISCARDED" ? "red" : "neutral";
-}
 
 export function TrialsClient({ trials, lots }: { trials: TrialRow[]; lots: TrialLotOption[] }) {
   const [error, setError] = React.useState<string | null>(null);
@@ -161,9 +158,7 @@ function TrialCard({ trial, pending, run }: { trial: TrialRow; pending: boolean;
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
         <div>
           <strong style={{ fontSize: 16 }}>{trial.name}</strong>{" "}
-          <Badge tone={statusTone(trial.status)} variant="soft">
-            {trial.status.toLowerCase()}
-          </Badge>
+          <StatusChip variant={blendTrialStatusTone(trial.status)}>{trial.status.toLowerCase()}</StatusChip>
           {trial.targetWine ? <span style={{ fontSize: 13, color: "var(--text-secondary)", marginLeft: 8 }}>→ {trial.targetWine}</span> : null}
         </div>
         {trial.promotedToLotId ? (

@@ -1,6 +1,6 @@
 import React from "react";
 
-type Tone = "gold" | "ink" | "onDark";
+type Tone = "wine" | "ink" | "onDark";
 
 export interface EyebrowProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, "style"> {
   tone?: Tone;
@@ -12,9 +12,9 @@ export interface EyebrowProps extends Omit<React.HTMLAttributes<HTMLSpanElement>
  * Eyebrow — uppercase, tracked kicker label above a title. Wine by default,
  * with an optional leading hairline rule.
  */
-export function Eyebrow({ children, tone = "gold", rule = false, style, ...rest }: EyebrowProps) {
+export function Eyebrow({ children, tone = "wine", rule = false, style, ...rest }: EyebrowProps) {
   const colors: Record<Tone, string> = {
-    gold: "var(--text-accent)",
+    wine: "var(--text-accent)",
     ink: "var(--text-muted)",
     onDark: "var(--text-on-dark-muted)",
   };
@@ -29,7 +29,7 @@ export function Eyebrow({ children, tone = "gold", rule = false, style, ...rest 
         fontWeight: "var(--weight-medium)" as unknown as number,
         letterSpacing: "var(--tracking-overline)",
         textTransform: "uppercase",
-        color: colors[tone] || colors.gold,
+        color: colors[tone] || colors.wine,
         ...style,
       }}
       {...rest}

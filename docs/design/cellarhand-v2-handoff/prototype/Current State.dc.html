@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Inter+Tight:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>
+@font-face { font-family: "Big Caslon"; src: url("assets/fonts/BigCaslon-Regular.otf") format("opentype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Big Caslon"; src: url("assets/fonts/BigCaslon-Bold.otf") format("opentype"); font-weight: 700; font-display: swap; }
+body { margin: 0; background: #EDE9E1; font-family: Inter, sans-serif; }
+a { color: #722F37; }
+a:hover { color: #5A2630; }
+</style>
+</helmet>
+
+<div style="padding: 56px; display: flex; flex-direction: column; gap: 56px; font-family: Inter, sans-serif; color: #14130F;">
+
+  <div style="max-width: 900px; display: flex; flex-direction: column; gap: 12px;">
+    <span style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #722F37; font-weight: 500;">Baseline · recreated from source</span>
+    <h1 style="font-family: 'Big Caslon', Georgia, serif; font-size: 44px; font-weight: 400; margin: 0; letter-spacing: -0.01em;">Cellarhand today</h1>
+    <p style="font-size: 16px; line-height: 1.5; color: #4D4A42; margin: 0; text-wrap: pretty;">The cellar-floor task loop exactly as it renders now, rebuilt from <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px; background: #ECE7DC; padding: 1px 5px; border-radius: 4px;">AppShell.tsx</code>, <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px; background: #ECE7DC; padding: 1px 5px; border-radius: 4px;">WorkOrdersClient.tsx</code>, <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px; background: #ECE7DC; padding: 1px 5px; border-radius: 4px;">WorkOrderDetailClient.tsx</code>, <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px; background: #ECE7DC; padding: 1px 5px; border-radius: 4px;">ExecuteClient.tsx</code> and the token files. Every colour, size and label below comes from those files — this is the thing the three directions are measured against.</p>
+  </div>
+
+  <!-- ============ DESKTOP: /work-orders ============ -->
+  <div style="display: flex; flex-direction: column; gap: 14px;">
+    <div style="display: flex; align-items: baseline; gap: 14px;">
+      <h2 style="font-family: 'Inter Tight', sans-serif; font-weight: 300; font-size: 28px; margin: 0;">Work-order triage</h2>
+      <span style="font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: #6B6555;">/work-orders · 1440×900</span>
+    </div>
+
+    <div style="width: 1440px; height: 900px; overflow: hidden; background: #FFF8F1; border: 1px solid #C7BCA1; border-radius: 6px; box-shadow: 0 12px 34px rgba(43,42,38,0.10), 0 4px 10px rgba(43,42,38,0.06); display: flex;">
+
+      <!-- sidebar 248px -->
+      <aside style="width: 248px; flex: none; border-right: 1px solid #C7BCA1; background: #FFFFFF; display: flex; flex-direction: column;">
+        <div style="padding: 20px 20px 12px;"><img src="brand/cellarhand-logo-full.svg" alt="Cellarhand" style="height: 34px; width: auto; display: block;"></div>
+        <nav style="display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; flex: 1; overflow: hidden;">
+          <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Dashboard</a>
+          <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Assistant</a>
+          <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Help / feedback</a>
+          <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Inventory</a>
+          <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Reports</a>
+          <a href="#" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;"><span>TTB compliance</span><span style="font-size: 11px; font-weight: 600; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: rgba(114,47,55,0.12); color: #722F37; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums;">1</span></a>
+          <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Accounting</a>
+          <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Audit log</a>
+
+          <div style="margin-top: 10px;">
+            <div style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #6B6555; font-weight: 600;">Winery<span style="transform: rotate(90deg);">›</span></div>
+            <div style="display: flex; flex-direction: column; gap: 2px; padding-left: 6px;">
+              <a href="#" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #FFFFFF; background: #722F37; font-weight: 500; text-decoration: none;"><span>Work orders</span><span style="font-size: 11px; font-weight: 600; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: rgba(114,47,55,0.12); color: #722F37; display: inline-flex; align-items: center; justify-content: center;">4</span></a>
+              <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Wine in-progress</a>
+              <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">De-stem &amp; press</a>
+              <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Blend</a>
+              <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Lot timeline</a>
+              <a href="#" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;"><span>Samples</span><span style="font-size: 11px; font-weight: 600; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: rgba(114,47,55,0.12); color: #722F37; display: inline-flex; align-items: center; justify-content: center;">2</span></a>
+              <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Bottling</a>
+              <a href="#" style="display: block; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; color: #4D4A42; text-decoration: none;">Calculator</a>
+            </div>
+          </div>
+          <div style="margin-top: 10px;"><div style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #6B6555; font-weight: 600;">Vineyards<span>›</span></div></div>
+          <div style="margin-top: 10px;"><div style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #6B6555; font-weight: 600;">Setup<span>›</span></div></div>
+        </nav>
+        <div style="border-top: 1px solid #C7BCA1; padding: 14px 16px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 34px; height: 34px; border-radius: 999px; background: #722F37; color: #FFF8F1; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500;">MR</div>
+            <div style="min-width: 0; flex: 1;">
+              <div style="font-size: 13px; color: #14130F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Marta Reyes</div>
+              <div style="font-size: 12px; color: #6B6555;">Inbox · 2 new</div>
+            </div>
+          </div>
+          <div style="margin-top: 8px; font-size: 12.5px; color: #722F37;">Sign out</div>
+        </div>
+      </aside>
+
+      <!-- main -->
+      <main style="flex: 1; min-width: 0; overflow: hidden;">
+        <div style="max-width: 1320px; margin: 0 auto; padding: 32px 40px;">
+          <div style="max-width: 820px; margin: 0 auto; padding: 8px 4px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <h1 style="font-family: 'Big Caslon', Georgia, serif; font-size: 26px; font-weight: 400; margin: 0;">Work orders</h1>
+              <div style="display: flex; gap: 8px;">
+                <div style="display: inline-flex; align-items: center; justify-content: center; height: 42px; padding: 11px 20px; font-size: 14.5px; font-weight: 500; letter-spacing: 0.005em; border-radius: 10px; border: 1px solid #C7BCA1; background: #FFFFFF; color: #14130F;">Review queue (1)</div>
+                <div style="display: inline-flex; align-items: center; justify-content: center; height: 42px; padding: 11px 20px; font-size: 14.5px; font-weight: 500; letter-spacing: 0.005em; border-radius: 10px; border: 1px solid #C7BCA1; background: #FFFFFF; color: #14130F;">Templates</div>
+                <div style="display: inline-flex; align-items: center; justify-content: center; height: 42px; padding: 11px 20px; font-size: 14.5px; font-weight: 500; letter-spacing: 0.005em; border-radius: 10px; border: 1px solid transparent; background: #722F37; color: #FFFFFF;">New work order</div>
+              </div>
+            </div>
+
+            <div style="margin-top: 14px;">
+              <div style="display: inline-flex; gap: 2px; padding: 3px; background: #F5F2EC; border: 1px solid #DED7C6; border-radius: 10px;">
+                <span style="padding: 7px 16px; font-size: 14px; font-weight: 600; color: #FFFFFF; background: #722F37; border-radius: 8px; min-height: 36px; display: inline-flex; align-items: center;">Open</span>
+                <span style="padding: 7px 16px; font-size: 14px; font-weight: 500; color: #4D4A42; border-radius: 8px; min-height: 36px; display: inline-flex; align-items: center;">Archive</span>
+              </div>
+            </div>
+
+            <!-- filter card -->
+            <div style="margin-top: 16px; padding: 14px; background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 16px; box-shadow: 0 1px 3px rgba(43,42,38,0.08), 0 1px 2px rgba(43,42,38,0.04);">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                <label style="font-size: 12.5px; color: #6B6555; display: flex; flex-direction: column; gap: 4px;">Status<span style="height: 40px; padding: 0 10px; border: 1px solid #C7BCA1; border-radius: 10px; background: #FFFFFF; font-size: 14px; color: #14130F; display: flex; align-items: center; justify-content: space-between;">All open<span style="color: #6B6555; font-size: 10px;">▾</span></span></label>
+                <label style="font-size: 12.5px; color: #6B6555; display: flex; flex-direction: column; gap: 4px;">From<span style="height: 40px; padding: 0 10px; border: 1px solid #C7BCA1; border-radius: 10px; background: #FFFFFF; font-size: 14px; color: #6B6555; display: flex; align-items: center; justify-content: space-between;">mm/dd/yyyy<span style="font-size: 13px;">📅</span></span></label>
+                <label style="font-size: 12.5px; color: #6B6555; display: flex; flex-direction: column; gap: 4px;">To<span style="height: 40px; padding: 0 10px; border: 1px solid #C7BCA1; border-radius: 10px; background: #FFFFFF; font-size: 14px; color: #6B6555; display: flex; align-items: center; justify-content: space-between;">mm/dd/yyyy<span style="font-size: 13px;">📅</span></span></label>
+                <label style="font-size: 12.5px; color: #6B6555; display: flex; flex-direction: column; gap: 4px;">Template<span style="height: 40px; padding: 0 10px; border: 1px solid #C7BCA1; border-radius: 10px; background: #FFFFFF; font-size: 14px; color: #14130F; display: flex; align-items: center; justify-content: space-between;">Any template<span style="color: #6B6555; font-size: 10px;">▾</span></span></label>
+                <label style="font-size: 12.5px; color: #6B6555; display: flex; flex-direction: column; gap: 4px;">Location<span style="height: 40px; padding: 0 10px; border: 1px solid #C7BCA1; border-radius: 10px; background: #FFFFFF; font-size: 14px; color: #14130F; display: flex; align-items: center; justify-content: space-between;">Any location<span style="color: #6B6555; font-size: 10px;">▾</span></span></label>
+                <label style="font-size: 12.5px; color: #6B6555; display: flex; flex-direction: column; gap: 4px;">Assignee<span style="height: 40px; padding: 0 10px; border: 1px solid #C7BCA1; border-radius: 10px; background: #FFFFFF; font-size: 14px; color: #6B6555; display: flex; align-items: center;">email…</span></label>
+                <label style="font-size: 12.5px; color: #6B6555; display: flex; flex-direction: column; gap: 4px;">Search<span style="height: 40px; padding: 0 10px; border: 1px solid #C7BCA1; border-radius: 10px; background: #FFFFFF; font-size: 14px; color: #6B6555; display: flex; align-items: center;">title or #number</span></label>
+              </div>
+              <div style="font-size: 12.5px; color: #6B6555; display: flex; flex-direction: column; gap: 4px; margin-top: 10px;">Vessels
+                <div style="border: 1px solid #C7BCA1; border-radius: 10px; background: #FFFFFF; padding: 8px;">
+                  <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                    <span style="height: 24px; padding: 0 10px; border-radius: 999px; background: #722F37; color: #FFF; font-size: 12px; display: inline-flex; align-items: center;">All</span>
+                    <span style="height: 24px; padding: 0 10px; border-radius: 999px; border: 1px solid #DED7C6; color: #4D4A42; font-size: 12px; display: inline-flex; align-items: center;">Tanks</span>
+                    <span style="height: 24px; padding: 0 10px; border-radius: 999px; border: 1px solid #DED7C6; color: #4D4A42; font-size: 12px; display: inline-flex; align-items: center;">Barrels</span>
+                  </div>
+                  <div style="height: 92px; overflow: hidden; border-top: 1px solid #ECE7DC; padding-top: 6px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #4D4A42;">
+                    <span>☐ T-01 · Stainless 5,000 L</span>
+                    <span>☐ T-02 · Stainless 5,000 L</span>
+                    <span>☐ T-04 · Stainless 3,000 L</span>
+                    <span>☐ T-12 · Stainless 2,000 L</span>
+                  </div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; margin-top: 12px; align-items: center;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 8px 14px; font-size: 13px; font-weight: 500; border-radius: 10px; background: #722F37; color: #FFFFFF;">Apply filters</span>
+                <span style="margin-left: auto; font-size: 13px; color: #6B6555;">5 results</span>
+              </div>
+            </div>
+
+            <!-- buckets -->
+            <section style="margin-top: 22px;">
+              <span style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #B63D35; font-weight: 500;">Overdue (1)</span>
+              <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+                <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 16px; box-shadow: 0 1px 3px rgba(43,42,38,0.08), 0 1px 2px rgba(43,42,38,0.04); padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div style="min-width: 0;">
+                    <div style="font-weight: 600; font-size: 15px;">#248 · Morning cap management — fermenting reds</div>
+                    <div style="font-size: 13px; color: #6B6555; margin-top: 2px;">0/6 tasks · j.okafor@demowinery.test · due Jul 26, 7:00 AM</div>
+                  </div>
+                  <span style="display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; letter-spacing: 0.01em; padding: 5px 11px; border-radius: 999px; background: rgba(114,47,55,0.12); color: #722F37;">in progress</span>
+                </div>
+              </div>
+            </section>
+
+            <section style="margin-top: 22px;">
+              <span style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #722F37; font-weight: 500;">Today (2)</span>
+              <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+                <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 16px; box-shadow: 0 1px 3px rgba(43,42,38,0.08), 0 1px 2px rgba(43,42,38,0.04); padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div style="min-width: 0;">
+                    <div style="font-weight: 600; font-size: 15px;">#251 · SO₂ top-up — Riesling barrels, Hall B</div>
+                    <div style="font-size: 13px; color: #6B6555; margin-top: 2px;">0/4 tasks · m.reyes@demowinery.test · due Jul 27</div>
+                  </div>
+                  <span style="display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 999px; background: rgba(9,89,114,0.12); color: #095972;">issued</span>
+                </div>
+                <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 16px; box-shadow: 0 1px 3px rgba(43,42,38,0.08), 0 1px 2px rgba(43,42,38,0.04); padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div style="min-width: 0;">
+                    <div style="font-weight: 600; font-size: 15px;">#253 · Barrel down — Pinot Noir 25-PN-04</div>
+                    <div style="font-size: 13px; color: #6B6555; margin-top: 2px;">2/9 tasks · in progress by d.mbeki@demowinery.test · due Jul 27, 2:00 PM</div>
+                  </div>
+                  <span style="display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 999px; background: rgba(114,47,55,0.12); color: #722F37;">in progress</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <p style="max-width: 900px; font-size: 14px; line-height: 1.6; color: #4D4A42; margin: 0;"><strong style="font-weight: 600;">What the audit sees here:</strong> seven filter controls plus an inline scrolling vessel picker occupy ~450px above the list and render in full at any result count (S18); filters need a manual <em>Apply</em>; the sidebar's 31 entries put every daily workflow two clicks deep with <code style="font-family: ui-monospace, Menlo, monospace; font-size: 13px;">Help / feedback</code> third from the top (S16); no search, no breadcrumb (S5); the active pill carries no <code style="font-family: ui-monospace, Menlo, monospace; font-size: 13px;">aria-current</code> (§7.4).</p>
+  </div>
+
+  <!-- ============ DESKTOP: brief + execute ============ -->
+  <div style="display: flex; gap: 40px; flex-wrap: wrap;">
+
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <h2 style="font-family: 'Inter Tight', sans-serif; font-weight: 300; font-size: 28px; margin: 0;">Operational brief</h2>
+        <span style="font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: #6B6555;">/work-orders/253</span>
+      </div>
+      <div style="width: 860px; height: 760px; overflow: hidden; background: #FFF8F1; border: 1px solid #C7BCA1; border-radius: 6px; box-shadow: 0 12px 34px rgba(43,42,38,0.10);">
+        <div style="padding: 32px 40px;">
+          <div style="max-width: 760px; margin: 0 auto; padding: 8px 4px;">
+            <span style="font-size: 13px; color: #6B6555;">← Work orders</span>
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 8px;">
+              <div>
+                <h1 style="font-family: 'Big Caslon', Georgia, serif; font-size: 24px; font-weight: 400; margin: 0;">#253 · Barrel down — Pinot Noir 25-PN-04</h1>
+                <div style="font-size: 13px; color: #6B6555; margin-top: 4px;">Barrel hall B · Assigned to d.mbeki@demowinery.test · Due Jul 27, 2:00 PM PDT · in progress by d.mbeki@demowinery.test</div>
+              </div>
+              <span style="display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 999px; background: rgba(114,47,55,0.12); color: #722F37; white-space: nowrap;">in progress</span>
+            </div>
+
+            <div style="margin-top: 14px; padding: 14px; font-size: 14px; background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 16px; box-shadow: 0 1px 3px rgba(43,42,38,0.08);">Rack the nine 25-PN-04 barrels down to T-04. Leave the lees behind — this lot is going to bottle unfined. Sulfur to 32 ppm free after the last barrel lands.</div>
+
+            <div style="display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;">
+              <span style="display: inline-flex; align-items: center; justify-content: center; height: 42px; padding: 11px 20px; font-size: 14.5px; font-weight: 500; border-radius: 10px; border: 1px solid #C7BCA1; background: #FFFFFF; color: #14130F;">Open execution view</span>
+              <span style="display: inline-flex; align-items: center; justify-content: center; height: 42px; padding: 11px 20px; font-size: 14.5px; font-weight: 500; border-radius: 10px; border: 1px solid #C7BCA1; background: #FFFFFF; color: #14130F;">Print / PDF</span>
+              <span style="display: inline-flex; align-items: center; justify-content: center; height: 42px; padding: 11px 20px; font-size: 14.5px; font-weight: 500; border-radius: 10px; border: 1px solid #C7BCA1; background: #FFFFFF; color: #14130F;">Edit</span>
+              <span style="display: inline-flex; align-items: center; justify-content: center; height: 42px; padding: 11px 20px; font-size: 14.5px; font-weight: 500; border-radius: 10px; background: transparent; color: #722F37;">Cancel WO</span>
+            </div>
+
+            <section style="margin-top: 22px;">
+              <span style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #722F37; font-weight: 500;">Tasks (3)</span>
+              <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+                <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 16px; box-shadow: 0 1px 3px rgba(43,42,38,0.08); padding: 12px 14px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                    <div style="font-weight: 600;">1. Barrel down 25-PN-04 → T-04</div>
+                    <span style="display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 999px; background: rgba(114,47,55,0.12); color: #722F37;">in progress</span>
+                  </div>
+                  <div style="font-size: 12.5px; color: #6B6555; margin-top: 3px;">RACK · Dumisani Mbeki</div>
+                  <div style="font-size: 12px; color: #6B6555; margin-top: 3px;">Equipment: Must pump 2, 2″ hose ×3</div>
+                  <div style="font-size: 12.5px; color: #6B6555; margin-top: 5px;">Barrel down: <strong>2 of 9 done</strong>
+                    <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px;">
+                      <span style="font-size: 11.5px; padding: 2px 7px; border-radius: 999px; background: #F5F2EC; border: 1px solid #DED7C6; color: #4D4A42;">✓ B-114</span>
+                      <span style="font-size: 11.5px; padding: 2px 7px; border-radius: 999px; background: #F5F2EC; border: 1px solid #DED7C6; color: #4D4A42;">✓ B-115</span>
+                      <span style="font-size: 11.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid #DED7C6; color: #6B6555;">B-116</span>
+                      <span style="font-size: 11.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid #DED7C6; color: #6B6555;">B-117</span>
+                      <span style="font-size: 11.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid #DED7C6; color: #6B6555;">B-118</span>
+                      <span style="font-size: 11.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid #DED7C6; color: #6B6555;">B-119</span>
+                      <span style="font-size: 11.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid #DED7C6; color: #6B6555;">B-120</span>
+                      <span style="font-size: 11.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid #DED7C6; color: #6B6555;">B-121</span>
+                      <span style="font-size: 11.5px; padding: 2px 7px; border-radius: 999px; border: 1px solid #DED7C6; color: #6B6555;">B-122</span>
+                    </div>
+                  </div>
+                </div>
+                <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 16px; box-shadow: 0 1px 3px rgba(43,42,38,0.08); padding: 12px 14px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                    <div style="font-weight: 600;">2. SO₂ addition — T-04</div>
+                    <span style="display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 999px; background: #ECE7DC; color: #4D4A42;">pending</span>
+                  </div>
+                  <div style="font-size: 12.5px; color: #6B6555; margin-top: 3px;">ADDITION</div>
+                </div>
+                <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 16px; box-shadow: 0 1px 3px rgba(43,42,38,0.08); padding: 12px 14px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                    <div style="font-weight: 600;">3. Free &amp; total SO₂ panel — T-04</div>
+                    <span style="display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 999px; background: #ECE7DC; color: #4D4A42;">pending</span>
+                  </div>
+                  <div style="font-size: 12.5px; color: #6B6555; margin-top: 3px;">observation · PANEL</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+      <p style="max-width: 820px; font-size: 14px; line-height: 1.6; color: #4D4A42; margin: 0;"><strong style="font-weight: 600;">Notes:</strong> the brief is honest and reasonably clean, but it shows no material, no vessel state, no volume, no precaution and no production context — a cellar hand cannot tell from this page how full T-04 is or what else is in it. Six buttons compete at equal weight; the actual next step (<em>Open execution view</em>) is a secondary outline.</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <h2 style="font-family: 'Inter Tight', sans-serif; font-weight: 300; font-size: 28px; margin: 0;">Execute</h2>
+        <span style="font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: #6B6555;">390×844</span>
+      </div>
+      <div style="display: flex; gap: 24px;">
+        <div>
+          <div style="width: 390px; height: 844px; overflow: hidden; background: #FFF8F1; border: 1px solid #C7BCA1; border-radius: 6px; box-shadow: 0 12px 34px rgba(43,42,38,0.10);">
+            <header style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #FFFFFF; border-bottom: 1px solid #C7BCA1;">
+              <img src="brand/cellarhand-logo-full.svg" alt="Cellarhand" style="height: 34px; width: auto; display: block;">
+              <span style="border: 1px solid #C7BCA1; border-radius: 10px; padding: 6px 10px; font-size: 18px; line-height: 1; color: #14130F;">☰</span>
+            </header>
+            <div style="padding: 20px 16px;">
+              <div style="max-width: 620px; margin: 0 auto; padding: 8px 4px;">
+                <span style="font-size: 13px; color: #6B6555;">← #253 Barrel down — Pinot Noir 25-PN-04</span>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px;">
+                  <h1 style="font-family: 'Big Caslon', Georgia, serif; font-size: 22px; font-weight: 400; margin: 0;">Execute</h1>
+                  <span style="font-size: 12.5px; color: #B63D35;">Offline — will retry</span>
+                </div>
+
+                <div style="margin-top: 16px; background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 16px; box-shadow: 0 1px 3px rgba(43,42,38,0.08); padding: 18px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                    <div style="font-weight: 700; font-size: 18px;">2. Add KMBS to T-04</div>
+                    <span style="display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 999px; background: rgba(114,47,55,0.12); color: #722F37;">pending</span>
+                  </div>
+                  <div style="font-size: 13px; color: #6B6555; margin: 4px 0 14px;">ADDITION · Addition</div>
+                  <div style="display: grid; gap: 8px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #DED7C6; font-size: 14.5px;"><span style="color: #6B6555;">Vessel</span><span style="font-weight: 500; text-align: right;">T-04 · Stainless 3,000 L</span></div>
+                    <div style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #DED7C6; font-size: 14.5px;"><span style="color: #6B6555;">Material</span><span style="font-weight: 500; text-align: right;">KMBS (potassium metabisulfite)</span></div>
+                    <div style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #DED7C6; font-size: 16px;"><span style="color: #6B6555;">Rate</span><span style="font-weight: 700; text-align: right; color: #722F37;">32 ppm → 79.4 g</span></div>
+                    <div style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #DED7C6; font-size: 14.5px;"><span style="color: #6B6555;">Solution</span><span style="font-weight: 500; text-align: right;">10% → 794 mL</span></div>
+                  </div>
+                  <span style="display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 8px 14px; font-size: 13px; font-weight: 500; border-radius: 10px; border: 1px solid #C7BCA1; background: #FFFFFF; color: #14130F; margin-bottom: 4px;">Edit</span>
+
+                  <div style="margin-top: 12px;">
+                    <div style="font-size: 13px; color: #6B6555; margin-bottom: 4px;">Note (optional)</div>
+                    <div style="border: 1px solid #C7BCA1; border-radius: 10px; background: #FFFFFF; padding: 10px 12px; font-size: 14px; color: #6B6555; min-height: 66px;">e.g. actual differed because…</div>
+                  </div>
+
+                  <div style="display: flex; gap: 8px; margin-top: 14px;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; height: 50px; padding: 14px 26px; font-size: 16px; font-weight: 500; border-radius: 10px; border: 1px solid #C7BCA1; background: #FFFFFF; color: #14130F;">Start</span>
+                    <span style="display: inline-flex; align-items: center; justify-content: center; height: 50px; flex: 1; font-size: 16px; font-weight: 500; border-radius: 10px; background: #722F37; color: #FFFFFF;">Complete — record it</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="max-width: 400px; font-size: 14px; line-height: 1.6; color: #4D4A42; margin: 0;"><strong style="font-weight: 600;">The four defects in one frame:</strong> <em>Offline — will retry</em> with no outbox behind it (S1); actuals hidden behind a 34px <em>Edit</em> button (S4); status badge is <code style="font-family: ui-monospace, Menlo, monospace; font-size: 13px;">tone="gold"</code>, which renders wine, so pending / in progress / rejected are indistinguishable (V2); no undo or correction anywhere on the screen (S3). <em>Start</em> reads as mandatory and isn't.</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

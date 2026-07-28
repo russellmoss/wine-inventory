@@ -261,14 +261,14 @@ export function FinishedGoodsSection({ categories, items, locations, onHand }: {
                 return (
                   <tr key={key} style={{ borderTop: "1px solid var(--border-strong)" }}>
                     <td style={{ padding: "12px 16px" }}>{r.item}</td>
-                    <td style={{ padding: "12px 16px" }}><Badge tone={r.kind === "BOTTLED_WINE" ? "gold" : "blue"} variant="soft">{r.category}</Badge></td>
+                    <td style={{ padding: "12px 16px" }}><Badge tone={r.kind === "BOTTLED_WINE" ? "wine" : "blue"} variant="soft">{r.category}</Badge></td>
                     <td style={{ padding: "12px 16px" }}>{r.location}</td>
                     <td style={{ padding: "12px 16px", textAlign: "right" }}>
                       <span>{r.qty}{r.detail ? <span style={{ color: "var(--text-muted)" }}> ({r.detail})</span> : null}</span>
                     </td>
                     <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
                       <Button variant="ghost" size="sm" disabled={pending} onClick={() => startEdit(r)}>edit</Button>
-                      <ConfirmButton onConfirm={() => run(() => deleteOnHand(r.kind, r.itemId, r.locationId))} disabled={pending}>delete</ConfirmButton>
+                      <ConfirmButton confirmLabel={`Delete ${r.item} at ${r.location}`} onConfirm={() => run(() => deleteOnHand(r.kind, r.itemId, r.locationId))} disabled={pending}>delete</ConfirmButton>
                     </td>
                   </tr>
                 );

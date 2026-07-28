@@ -35,8 +35,8 @@ const field: React.CSSProperties = {
 const lbl: React.CSSProperties = { fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", display: "block", marginBottom: 3 };
 
 type Tone = React.ComponentProps<typeof Badge>["tone"];
-const afTone = (s: string): Tone => (s === "ACTIVE" ? "gold" : s === "DRY" ? "maroon" : "neutral");
-const mlfTone = (s: string): Tone => (s === "ACTIVE" ? "gold" : s === "COMPLETE" ? "green" : "neutral");
+const afTone = (s: string): Tone => (s === "ACTIVE" ? "wine" : s === "DRY" ? "maroon" : "neutral");
+const mlfTone = (s: string): Tone => (s === "ACTIVE" ? "wine" : s === "COMPLETE" ? "green" : "neutral");
 
 const newId = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;

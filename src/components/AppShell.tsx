@@ -96,11 +96,15 @@ function CollapsibleNavGroup({
   isActive: (href: string) => boolean;
   onNavigate: () => void;
 }) {
+  const bodyId = React.useId();
   if (items.length === 0) return null;
   return (
     <div style={{ marginTop: 10 }}>
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls={bodyId}
         style={{
           width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px",
           border: "none", background: "transparent", cursor: "pointer", fontFamily: "var(--font-body)", fontSize: 12,
@@ -108,12 +112,12 @@ function CollapsibleNavGroup({
         }}
       >
         {label}
-        <span style={{ transition: "transform 0.15s", transform: open ? "rotate(90deg)" : "none" }}>›</span>
+        <span aria-hidden="true" style={{ transition: "transform 0.15s", transform: open ? "rotate(90deg)" : "none" }}>›</span>
       </button>
       {open ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 6 }}>
+        <div id={bodyId} style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 6 }}>
           {items.map((n) => (
-            <Link key={n.href} href={n.href} onClick={onNavigate} style={{ ...linkStyle(isActive(n.href)), display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <Link key={n.href} href={n.href} onClick={onNavigate} aria-current={isActive(n.href) ? "page" : undefined} style={{ ...linkStyle(isActive(n.href)), display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span>{n.label}</span>
               {n.badge && n.badge > 0 ? (
                 <span
@@ -197,15 +201,15 @@ function SidebarContent({
       <div style={{ padding: "20px 20px 12px" }}>
         <BrandMark />
       </div>
-      <nav style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", flex: 1, overflowY: "auto" }}>
+      <nav aria-label="Main" style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", flex: 1, overflowY: "auto" }}>
         {MAIN.filter((n) => (!n.admin || isAdmin) && (!n.developer || isDeveloper)).map((n) => {
           const active = isActive(n.href);
           const count = n.href === "/compliance" ? complianceDeadlines.count : 0;
           if (count <= 0) {
-            return <Link key={n.href} href={n.href} onClick={onNavigate} style={linkStyle(active)}>{n.label}</Link>;
+            return <Link key={n.href} href={n.href} onClick={onNavigate} aria-current={active ? "page" : undefined} style={linkStyle(active)}>{n.label}</Link>;
           }
           return (
-            <Link key={n.href} href={n.href} onClick={onNavigate} style={{ ...linkStyle(active), display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <Link key={n.href} href={n.href} onClick={onNavigate} aria-current={active ? "page" : undefined} style={{ ...linkStyle(active), display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span>{n.label}</span>
               <span
                 aria-label={`${count} filing deadline${count === 1 ? "" : "s"} due soon`}
@@ -353,6 +357,13 @@ export function AppShell({
 
   return (
     <div className="bw-shell" style={{ minHeight: "100vh", background: "var(--surface-page)" }}>
+      {/* Skip link — must stay the FIRST focusable element in the document, or the
+          keyboard user walks the whole sidebar before reaching the page (AC-S1, AC-F2).
+          Hidden until focused; .skip-link is in globals.css. */}
+      <a href="#main" className="skip-link">
+        Skip to main content
+      </a>
+
       {/* Mobile top bar (hidden on desktop via .bw-mobile-bar) */}
       <header
         className="bw-mobile-bar"
@@ -364,7 +375,20 @@ export function AppShell({
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <BrandMark />
         </div>
-        <button onClick={() => setDrawer(true)} aria-label="Open menu" style={{ background: "none", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", padding: "6px 10px", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>☰</button>
+        <button
+          type="button"
+          onClick={() => setDrawer(true)}
+          aria-label="Open menu"
+          aria-expanded={drawer}
+          style={{
+            minWidth: "var(--touch-min)", minHeight: "var(--touch-min)",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            background: "none", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
+            cursor: "pointer", fontSize: 18, lineHeight: 1,
+          }}
+        >
+          ☰
+        </button>
       </header>
 
       {/* Desktop sidebar (hidden on mobile via .bw-desktop-sidebar) */}
@@ -377,13 +401,25 @@ export function AppShell({
         <div style={{ position: "fixed", inset: 0, zIndex: 50 }}>
           <div onClick={() => setDrawer(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,19,15,0.45)" }} />
           <aside style={{ ...sidebarBox, display: "flex", position: "absolute", left: 0, top: 0, height: "100%", width: 264, boxShadow: "var(--shadow-xl)" }}>
-            <button onClick={() => setDrawer(false)} aria-label="Close menu" style={{ position: "absolute", right: 10, top: 10, background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", zIndex: 1 }}>×</button>
+            <button
+              type="button"
+              onClick={() => setDrawer(false)}
+              aria-label="Close menu"
+              style={{
+                position: "absolute", right: 6, top: 6, zIndex: 1,
+                width: "var(--touch-min)", height: "var(--touch-min)",
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)",
+              }}
+            >
+              ×
+            </button>
             <SidebarContent user={user} isActive={isActive} isAdmin={isAdmin} isDeveloper={isDeveloper} wineryOpen={wineryOpen} setWineryOpen={setWineryOpen} vineyardsOpen={vineyardsOpen} setVineyardsOpen={setVineyardsOpen} setupOpen={setupOpen} setSetupOpen={setSetupOpen} onNavigate={() => setDrawer(false)} onSignOut={handleSignOut} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} customCrushEnabled={customCrushEnabled} complianceDeadlines={complianceDeadlines} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} />
           </aside>
         </div>
       ) : null}
 
-      <main className="app-main" style={{ flex: 1, minWidth: 0 }}>
+      <main id="main" tabIndex={-1} className="app-main" style={{ flex: 1, minWidth: 0, outline: "none" }}>
         {user.supportOrganizationId ? (
           <div
             role="status"

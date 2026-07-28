@@ -82,7 +82,7 @@ function Segmented<T extends string>({
             variant={selected ? "primary" : "secondary"}
             size="sm"
             onClick={() => onChange(allowClear && selected ? null : opt)}
-            style={{ height: 40, fontSize: 13 }}
+            style={{ fontSize: 13 }}
           >
             {labelOf ? labelOf(opt) : prettyEnum(opt)}
           </Button>
@@ -283,7 +283,7 @@ export function BlockCard({
             variant="ghost"
             size="sm"
             onClick={() => setMeasuring(true)}
-            style={{ marginTop: 8, height: 36 }}
+            style={{ marginTop: 8 }}
           >
             + Add a measured length
           </Button>
@@ -302,7 +302,6 @@ export function BlockCard({
             variant={status.hedgedThisWeek === true ? "primary" : "secondary"}
             size="sm"
             onClick={() => update({ hedgedThisWeek: status.hedgedThisWeek === true ? null : true })}
-            style={{ height: 40 }}
           >
             Yes
           </Button>
@@ -311,7 +310,6 @@ export function BlockCard({
             variant={status.hedgedThisWeek === false ? "primary" : "secondary"}
             size="sm"
             onClick={() => update({ hedgedThisWeek: status.hedgedThisWeek === false ? null : false })}
-            style={{ height: 40 }}
           >
             No
           </Button>
@@ -408,7 +406,7 @@ export function BlockCard({
                       : [...status.leafConditions, lc],
                   })
                 }
-                style={{ height: 40, fontSize: 13 }}
+                style={{ fontSize: 13 }}
               >
                 {prettyEnum(lc)}
               </Button>
@@ -425,7 +423,6 @@ export function BlockCard({
             variant={status.diseasePestSpotted ? "primary" : "secondary"}
             size="sm"
             onClick={() => update({ diseasePestSpotted: true })}
-            style={{ height: 40 }}
           >
             Yes
           </Button>
@@ -434,7 +431,6 @@ export function BlockCard({
             variant={!status.diseasePestSpotted ? "primary" : "secondary"}
             size="sm"
             onClick={() => update({ diseasePestSpotted: false, diseaseDescription: null })}
-            style={{ height: 40 }}
           >
             No
           </Button>
@@ -449,8 +445,7 @@ export function BlockCard({
             onChange={(e) => update({ diseaseDescription: e.target.value || null })}
             rows={3}
             placeholder="Describe the disease or pest…"
-            style={{
-              width: "100%",
+            style={{ width: "100%",
               padding: 12,
               border: "1px solid var(--border-strong)",
               borderRadius: "var(--radius-md)",
@@ -458,15 +453,13 @@ export function BlockCard({
               fontFamily: "var(--font-body)",
               fontSize: 16,
               color: "var(--text-primary)",
-              resize: "vertical",
-            }}
+              resize: "vertical" }}
           />
 
           <div style={{ marginTop: "var(--space-3)" }}>
             <label style={fieldLabel}>Photos</label>
             <label
-              style={{
-                display: "inline-flex",
+              style={{ display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
                 height: 48,
@@ -477,8 +470,7 @@ export function BlockCard({
                 color: "var(--text-accent)",
                 fontFamily: "var(--font-body)",
                 fontSize: 15,
-                cursor: "pointer",
-              }}
+                cursor: "pointer" }}
             >
               + Add photo
               <input
@@ -499,24 +491,20 @@ export function BlockCard({
                 {photos.map((ph) => (
                   <div
                     key={ph.id}
-                    style={{
-                      width: 84,
+                    style={{ width: 84,
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
-                      gap: 4,
-                    }}
+                      gap: 4 }}
                   >
                     <div
-                      style={{
-                        width: 84,
+                      style={{ width: 84,
                         height: 84,
                         borderRadius: "var(--radius-md)",
                         overflow: "hidden",
                         border: "1px solid var(--border-strong)",
                         background: "var(--surface-sunken)",
-                        position: "relative",
-                      }}
+                        position: "relative" }}
                     >
                       {ph.previewUrl || ph.url ? (
                         // Blob/object-URL field photo — next/image can't optimize these.

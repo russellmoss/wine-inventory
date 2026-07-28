@@ -4,7 +4,7 @@ import { RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { getAnalyte } from "@/lib/chemistry/analytes";
 import { molecularSO2, type MolecularSO2 } from "@/lib/chemistry/so2";
 import { CAP_LABELS } from "@/lib/cellar/cap-vocab";
-import { statusTone, statusLabel, type BadgeTone } from "@/lib/work-orders/status-badge";
+import { statusTone, statusLabel, type StatusVariant } from "@/lib/work-orders/status-badge";
 
 /** Op types that are volume-neutral (a treatment, no lines) — drives the "voided" pill. */
 const NEUTRAL_OPS = new Set<OperationType>(["ADDITION", "FINING", "CAP_MGMT"]);
@@ -89,7 +89,7 @@ export type OpWorkOrderProvenance = {
   title: string;
   taskStatus: string;
   woStatus: string;
-  tone: BadgeTone;
+  tone: StatusVariant;
   statusLabel: string;
   issuedByEmail: string | null;
   issuedAt: string | null; // ISO
@@ -535,7 +535,7 @@ export type WorkOrderItem = TimelineMeta & {
   summary: string;
   taskStatus: string;
   woStatus: string;
-  tone: BadgeTone;
+  tone: StatusVariant;
   statusLabel: string;
   issuedByEmail: string | null;
   issuedAt: string | null; // ISO

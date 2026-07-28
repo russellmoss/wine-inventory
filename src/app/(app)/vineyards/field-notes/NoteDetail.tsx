@@ -74,7 +74,7 @@ function InputList({
 function BlockRow({ label, status }: { label: string; status: BlockStatus }) {
   // Plan 098: shoot length follows the winery's master system (no per-dimension override exists).
   const prefs = useUnitPrefs();
-  const chips: { text: string; tone: "neutral" | "red" | "green" | "gold" }[] = [];
+  const chips: { text: string; tone: "neutral" | "red" | "green" | "wine" }[] = [];
   if (status.phenoStage)
     chips.push({
       text:
@@ -108,13 +108,13 @@ function BlockRow({ label, status }: { label: string; status: BlockStatus }) {
   if (status.clusterDamage !== null) {
     chips.push({
       text: scoutingLabel("clusterDamage", status.clusterDamage),
-      tone: status.clusterDamage === "NONE" ? "green" : status.clusterDamage === "NOT_ASSESSED" ? "gold" : "red",
+      tone: status.clusterDamage === "NONE" ? "green" : status.clusterDamage === "NOT_ASSESSED" ? "wine" : "red",
     });
   }
   if (status.vinegarFlyPressure !== null) {
     chips.push({
       text: scoutingLabel("vinegarFlyPressure", status.vinegarFlyPressure),
-      tone: status.vinegarFlyPressure === "NONE" ? "green" : status.vinegarFlyPressure === "NOT_ASSESSED" ? "gold" : "red",
+      tone: status.vinegarFlyPressure === "NONE" ? "green" : status.vinegarFlyPressure === "NOT_ASSESSED" ? "wine" : "red",
     });
   }
   for (const lc of status.leafConditions) chips.push({ text: pretty(lc), tone: "red" });

@@ -66,4 +66,57 @@
   --danger:   var(--red);
 
   --focus-ring: rgba(114, 47, 55, 0.45);
+  /* Focus ring for ink/dark surfaces (dock header, inverse bars) where the wine
+     ring disappears. */
+  --focus-ring-on-dark: rgba(255, 248, 241, 0.65);
+
+  /* ---- Text-safe darkened variants (v2 §A2) -------------- */
+  /* The raw editorial hues are decorative-only: --golden-yellow is 2.1:1 on cream
+     and cannot legally carry text. These are their text-carrying counterparts. */
+  --golden-ink: #8A6414; /* 5.1:1 on cream */
+  --red-ink:    #A5342D; /* 5.4:1 on cream */
+  --green-ink:  #175242; /* 8.9:1 — alias of --deep-green, kept for symmetry */
+  --blue-ink:   #095972; /* 7.4:1 on cream */
+  --ink-500:    #8A8272; /* meta/eyebrow text on white, 4.6:1 */
+  --warning-deep-text: #5C440E; /* body text inside a warning tint */
+
+  /* ---- Semantic additions (v2 §A3) ---------------------- */
+  --text-meta: var(--ink-500); /* eyebrows, column headers, timestamps */
+
+  --surface-tint-warning: rgba(215, 159, 50, 0.12);
+  --surface-tint-danger:  rgba(182, 61, 53, 0.08);
+  --surface-tint-info:    rgba(9, 89, 114, 0.10);
+  --surface-tint-success: rgba(23, 82, 66, 0.10);
+  --surface-tint-accent:  rgba(114, 47, 55, 0.06);
+
+  /* ---- Status ramp (v2 §A4) ------------------------------
+     The single status vocabulary, consumed by StatusChip. Wine is deliberately
+     absent here: it now means brand + primary action only, never "in progress".
+     `held` is built but unwired — no current status produces it. */
+  --status-neutral-fg:   #4D4A42;  --status-neutral-bg:   #ECE7DC;
+  --status-active-fg:    #095972;  --status-active-bg:    rgba(9, 89, 114, 0.12);
+  --status-held-fg:      #8A6414;  --status-held-bg:      rgba(215, 159, 50, 0.16);
+  --status-done-fg:      #175242;  --status-done-bg:      rgba(23, 82, 66, 0.12);
+  --status-attention-fg: #A5342D;  --status-attention-bg: rgba(182, 61, 53, 0.12);
+  --status-review-fg:    #6B484D;  --status-review-bg:    rgba(107, 72, 77, 0.14);
+
+  /* ---- Provenance: measured vs estimated (v2 §A5) --------
+     Colour is reinforcement only — the words "measured" / "≈ estimated" are
+     always present. */
+  --provenance-measured-fg:  #175242;  --provenance-measured-bg:  rgba(23, 82, 66, 0.12);
+  --provenance-estimated-fg: #8A6414;  --provenance-estimated-bg: rgba(215, 159, 50, 0.16);
+
+  /* ---- Data visualisation (v2 §A6) -----------------------
+     Ordered series palette, ≥4.5:1 on --surface-raised. Every series pairs its
+     colour with a dash pattern + marker shape — colour is never the only encoding.
+     1 Brix · 2 temperature · 3 pH · 4 free SO₂ · 5 TA · 6 malic. */
+  --viz-1: #722F37;
+  --viz-2: #095972;
+  --viz-3: #175242;
+  --viz-4: #8A6414;
+  --viz-5: #6B484D;
+  --viz-6: #4D4A42;
+  --viz-threshold: #8A6414;
+  --viz-grid: #ECE7DC;
+  --viz-axis: #DED7C6;
 }

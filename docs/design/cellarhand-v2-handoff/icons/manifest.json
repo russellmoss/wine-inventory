@@ -1,0 +1,142 @@
+{
+  "name": "Cellarhand domain icons",
+  "version": "1.0.0",
+  "license": "Original work created for Cellarhand. No third-party assets. Free to use, modify and redistribute within this product.",
+  "grid": {
+    "viewBox": "0 0 24 24",
+    "fill": "none",
+    "stroke": "currentColor",
+    "strokeWidth": 1.6,
+    "strokeLinecap": "round",
+    "strokeLinejoin": "round"
+  },
+  "sizes": {
+    "nav": 20,
+    "tab": 24,
+    "inline": 17,
+    "feature": 40,
+    "minimum": 16
+  },
+  "rules": [
+    "Icons reinforce a visible text label and never replace one.",
+    "Stroke width does not scale with the icon; it stays 1.6 at a 24 viewBox.",
+    "Icons carry no colour of their own; they inherit currentColor.",
+    "Reserved for the twelve domain destinations and for act types in a timeline or lineage.",
+    "Never on buttons, form labels, section headings or ordinary list rows.",
+    "aria-hidden=\"true\" when beside a text label; aria-label required when genuinely alone."
+  ],
+  "icons": [
+    {
+      "file": "ch-work-orders.svg",
+      "id": "ch-work-orders",
+      "domain": "Work orders",
+      "metaphor": "A ruled order sheet with the last line ticked",
+      "note": "Matches the printed sheet still clipped to the tank."
+    },
+    {
+      "file": "ch-cellar.svg",
+      "id": "ch-cellar",
+      "domain": "Cellar & vessels",
+      "metaphor": "A tank with a level line",
+      "note": "The level line is the point: a vessel is defined by how full it is."
+    },
+    {
+      "file": "ch-vineyard.svg",
+      "id": "ch-vineyard",
+      "domain": "Vineyard",
+      "metaphor": "Three trellis posts on a row line",
+      "note": "Land and blocks, not fruit."
+    },
+    {
+      "file": "ch-harvest.svg",
+      "id": "ch-harvest",
+      "domain": "Harvest & intake",
+      "metaphor": "A picking bin being filled from above",
+      "note": "Least universal of the set; a new worker may need the label once. It always carries one."
+    },
+    {
+      "file": "ch-fermentation.svg",
+      "id": "ch-fermentation",
+      "domain": "Fermentation",
+      "metaphor": "An open-top vessel with CO2 rising",
+      "note": "Deliberately the cellar icon minus its lid — same object, active state."
+    },
+    {
+      "file": "ch-blending.svg",
+      "id": "ch-blending",
+      "domain": "Blending & transfers",
+      "metaphor": "Two streams joining and flowing down",
+      "note": "Reversed, it is the split marker in the lineage view."
+    },
+    {
+      "file": "ch-bottling.svg",
+      "id": "ch-bottling",
+      "domain": "Bottling & packaging",
+      "metaphor": "A divided case with top handles",
+      "note": "The case, not the bottle — packaging is counted in cases, and a bottle outline turns to mush at 20px."
+    },
+    {
+      "file": "ch-inventory.svg",
+      "id": "ch-inventory",
+      "domain": "Inventory & finished goods",
+      "metaphor": "A stacked pallet, two and one",
+      "note": "No dividers, and a group of objects — distinguishes it from bottling."
+    },
+    {
+      "file": "ch-compliance.svg",
+      "id": "ch-compliance",
+      "domain": "Compliance",
+      "metaphor": "A filed form with a struck seal",
+      "note": "The seal separates it from a work order: filed with a government, not clipped to a tank."
+    },
+    {
+      "file": "ch-accounting.svg",
+      "id": "ch-accounting",
+      "domain": "Accounting",
+      "metaphor": "Two unequal columns between double rules",
+      "note": "A ledger balance, not a bar chart. Reports use no icon."
+    },
+    {
+      "file": "ch-sales.svg",
+      "id": "ch-sales",
+      "domain": "Sales & shipments",
+      "metaphor": "Goods leaving a closed store",
+      "note": "Directional, so it cannot be confused with static inventory."
+    },
+    {
+      "file": "ch-administration.svg",
+      "id": "ch-administration",
+      "domain": "Administration / Setup",
+      "metaphor": "Two set values on two tracks",
+      "note": "The one deliberately generic icon. Setup is genuinely a software concept; a winery metaphor here would be decoration."
+    },
+    {
+      "file": "ch-lots.svg",
+      "id": "ch-lots",
+      "domain": "Lots",
+      "metaphor": "A volume seen in three dimensions",
+      "note": "A lot is neither a place nor a container: it is a quantity of wine with an identity."
+    },
+    {
+      "file": "ch-keg.svg",
+      "id": "ch-keg",
+      "domain": "Topping keg",
+      "metaphor": "A banded portable keg with a handle",
+      "note": "Added with RFC-002. Distinct from the cellar tank by its bands and handle."
+    },
+    {
+      "file": "ch-search.svg",
+      "id": "ch-search",
+      "domain": "Search / Find",
+      "metaphor": "Magnifier",
+      "note": "Utility icon, not a domain icon. Permitted inside the search field and on the Find tab."
+    },
+    {
+      "file": "ch-scan.svg",
+      "id": "ch-scan",
+      "domain": "Scan a tag",
+      "metaphor": "Framing corners with a read line",
+      "note": "Utility icon. Always paired with the word Scan."
+    }
+  ]
+}

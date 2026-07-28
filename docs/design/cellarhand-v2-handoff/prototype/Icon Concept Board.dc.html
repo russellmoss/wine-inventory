@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+@font-face { font-family: "Big Caslon"; src: url("assets/fonts/BigCaslon-Regular.otf") format("opentype"); font-weight: 400; font-display: swap; }
+body { margin: 0; background: #E8E4DA; font-family: Inter, sans-serif; }
+a { color: #722F37; }
+a:hover { color: #5A2630; }
+</style>
+</helmet>
+
+<svg width="0" height="0" style="position: absolute; visibility: hidden;" aria-hidden="true">
+  <defs>
+    <g id="ico-work" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"></rect><path d="M7.5 8.5h9M7.5 12.5h5"></path><path d="M13.5 16.5l1.6 1.6 3.2-3.4"></path></g>
+    <g id="ico-cellar" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7.5a7 3 0 0 1 14 0v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18.5z"></path><path d="M5 7.5a7 3 0 0 0 14 0"></path><path d="M5 14.5h14"></path></g>
+    <g id="ico-vineyard" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"></path><path d="M7 20V7M12 20V5M17 20V7"></path><path d="M4.5 10h5M9.5 8h5M14.5 10h5"></path></g>
+    <g id="ico-harvest" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h16l-1.7 8.2a1 1 0 0 1-1 .8H6.7a1 1 0 0 1-1-.8z"></path><path d="M12 3v5.5M9.4 6.2L12 8.8l2.6-2.6"></path></g>
+    <g id="ico-ferment" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10.5h14v8a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18.5z"></path><path d="M5 10.5h14"></path><path d="M8.5 7.2v-1M12 5.4v-1.4M15.5 7.2v-1"></path><circle cx="8.5" cy="14.6" r="0.9"></circle><circle cx="12" cy="16" r="0.9"></circle><circle cx="15.5" cy="14.6" r="0.9"></circle></g>
+    <g id="ico-blend" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5v4a5 5 0 0 0 5 5h4a5 5 0 0 1 5 5v4"></path><path d="M19 3.5v4a5 5 0 0 1-5 5"></path><path d="M12 12.5v8"></path><path d="M9.6 18.2L12 20.6l2.4-2.4"></path></g>
+    <g id="ico-bottling" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="17" height="13" rx="1.5"></rect><path d="M3.5 12.5h17"></path><path d="M9 7v13M15 7v13"></path><path d="M8 4h8"></path></g>
+    <g id="ico-inventory" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="13.5" width="8" height="7" rx="1"></rect><rect x="12.5" y="13.5" width="8" height="7" rx="1"></rect><rect x="8" y="6" width="8" height="7" rx="1"></rect></g>
+    <g id="ico-compliance" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5h9l5 5v11.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"></path><path d="M14 3.5V8h5"></path><circle cx="12" cy="15" r="3"></circle><path d="M12 12v-1.5"></path></g>
+    <g id="ico-accounting" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 20.5h17"></path><rect x="5" y="11" width="4" height="6.5"></rect><rect x="14.5" y="6" width="4" height="11.5"></rect><path d="M3.5 3.5h17"></path></g>
+    <g id="ico-sales" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h8.5v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"></path><path d="M12.5 12h8"></path><path d="M17.5 8.5L21 12l-3.5 3.5"></path></g>
+    <g id="ico-admin" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5h17M3.5 16.5h17"></path><circle cx="9" cy="7.5" r="2.4"></circle><circle cx="15.5" cy="16.5" r="2.4"></circle></g>
+    <g id="ico-lot" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l8.2 4.7v8.2L12 20.8 3.8 16.1V7.9z"></path><path d="M12 12l8.2-4.1M12 12v8.8M12 12L3.8 7.9"></path></g>
+    <g id="ico-search" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.4 15.4L20.5 20.5"></path></g>
+  </defs>
+</svg>
+
+<div style="padding: 56px; display: flex; flex-direction: column; gap: 44px; font-family: Inter, sans-serif; color: #14130F;">
+
+  <div style="max-width: 880px; display: flex; flex-direction: column; gap: 12px;">
+    <span style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #722F37; font-weight: 500;">Domain icon system</span>
+    <h1 style="font-family: 'Big Caslon', Georgia, serif; font-size: 46px; font-weight: 400; margin: 0; line-height: 1.06;">Twelve winery objects</h1>
+    <p style="font-size: 16.5px; line-height: 1.55; color: #4D4A42; margin: 0; text-wrap: pretty;">One grammar: a 24px box, 1.6px stroke, round caps and joins, no fills, no colour of their own. Each icon draws a <em>thing in the winery</em> or the <em>shape of an operation</em> — never an abstraction like a gear-for-settings or a chart-for-reports. There is no grape, no wine glass and no bottle silhouette in the set.</p>
+    <p style="font-size: 15px; line-height: 1.55; color: #4D4A42; margin: 4px 0 0; max-width: 720px;"><strong style="font-weight: 600;">Rule of use:</strong> icons appear on the twelve domain destinations and on act types in a lineage or timeline. They never appear on buttons, list rows, form labels or section headings, and they never replace a text label. Applying them everywhere is what makes an icon set stop working.</p>
+  </div>
+
+  <!-- grid -->
+  <div style="display: grid; grid-template-columns: repeat(3, 400px); gap: 16px;">
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-work"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-work"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-work"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Work orders</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">The paper order sheet</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">A ruled sheet with the last line ticked. Universal, and it matches the printed sheet that still gets clipped to the tank.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-cellar"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-cellar"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-cellar"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Cellar &amp; vessels</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">A tank with a level line</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">Domed top, straight sides, and a horizontal line at the fill level. The level line is the whole point: a vessel is defined by how full it is.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-vineyard"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-vineyard"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-vineyard"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Vineyard</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">Three trellis posts on a row line</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">Posts with cordon wires, taller in the middle for depth. Reads as planted rows, not as fruit — the vineyard domain is about <em>land and blocks</em>, not grapes.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-harvest"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-harvest"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-harvest"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Harvest &amp; intake</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">A picking bin being filled</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">The tapered half-tonne bin every crush pad has, with fruit going in from above. <span style="color: #6B6555;">Least universal of the set — a new seasonal worker may need the label once. It carries a text label everywhere, so once is enough.</span></p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-ferment"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-ferment"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-ferment"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Fermentation</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">An open-top with CO₂ rising</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">Deliberately the cellar icon minus its lid, plus bubbles and rising marks. Same object, active state — so the pair reads as one family, not two ideas.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-blend"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-blend"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-blend"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Blending &amp; transfers</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">Two streams joining, flowing down</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">A confluence with a direction arrow. Reversed (one stream becoming two) it is the split marker used in the lineage view — the same glyph carries both operations.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-bottling"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-bottling"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-bottling"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Bottling &amp; packaging</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">A divided case, top handles</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">The case, not the bottle. Packaging is measured in cases and pallets, and a case divider is instantly legible at 20px where a bottle outline turns to mush.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-inventory"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-inventory"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-inventory"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Inventory &amp; finished goods</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">A stacked pallet</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">Three cases stacked two-and-one. Distinguished from the bottling case by having no dividers and by being a <em>group</em> of objects.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-compliance"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-compliance"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-compliance"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Compliance</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">A filed form with a seal</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">A folded-corner form carrying a struck seal. The seal is what separates it from Work orders: this sheet is filed with a government, not clipped to a tank.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-accounting"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-accounting"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-accounting"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Accounting</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">Two columns between rules</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">A ledger's double rule with two unequal columns — the visual of a balance, not a bar chart. Reports use no icon at all.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-sales"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-sales"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-sales"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Sales &amp; shipments</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">Goods leaving the bond</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">A closed store with wine moving out to the right. Directional, so it can never be confused with Inventory, which is static.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-admin"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-admin"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-admin"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Administration</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">Two set values on two tracks</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">The one deliberately generic icon in the set. Setup is genuinely a software concept, and pretending otherwise with a winery metaphor would be decoration.</p>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px; display: flex; gap: 18px;">
+      <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 60px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" style="color: #14130F;"><use href="#ico-lot"></use></svg>
+        <span style="display: flex; gap: 8px; align-items: flex-end;"><svg width="24" height="24" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-lot"></use></svg><svg width="20" height="20" viewBox="0 0 24 24" style="color: #4D4A42;"><use href="#ico-lot"></use></svg></span>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 16.5px; font-weight: 600;">Lots</div>
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-top: 4px;">A volume with three visible faces</div>
+        <p style="font-size: 14px; line-height: 1.5; color: #4D4A42; margin: 7px 0 0;">A lot isn't a place or a container — it's a quantity of wine with an identity. A solid seen in three dimensions says "a body of liquid we track" without naming a vessel.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- in context -->
+  <div style="display: flex; flex-direction: column; gap: 14px;">
+    <h2 style="font-family: 'Inter Tight', sans-serif; font-weight: 300; font-size: 30px; margin: 0;">In context, at real size</h2>
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
+
+      <div style="width: 260px; background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 12px 10px;">
+        <div style="font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #8A8272; font-weight: 600; padding: 6px 12px;">Today</div>
+        <span style="display: flex; align-items: center; gap: 11px; min-height: 44px; padding: 0 12px; border-radius: 10px; font-size: 15px; color: #FFF8F1; background: #722F37; font-weight: 500;"><svg width="20" height="20" viewBox="0 0 24 24"><use href="#ico-work"></use></svg>Work orders</span>
+        <span style="display: flex; align-items: center; gap: 11px; min-height: 44px; padding: 0 12px; font-size: 15px; color: #2B2A26;"><svg width="20" height="20" viewBox="0 0 24 24" style="color: #6B6555;"><use href="#ico-cellar"></use></svg>Cellar floor</span>
+        <span style="display: flex; align-items: center; gap: 11px; min-height: 44px; padding: 0 12px; font-size: 15px; color: #2B2A26;"><svg width="20" height="20" viewBox="0 0 24 24" style="color: #6B6555;"><use href="#ico-vineyard"></use></svg>Vineyard rounds</span>
+        <span style="display: flex; align-items: center; gap: 11px; min-height: 44px; padding: 0 12px; font-size: 15px; color: #2B2A26;"><svg width="20" height="20" viewBox="0 0 24 24" style="color: #6B6555;"><use href="#ico-harvest"></use></svg>Fruit intake</span>
+        <div style="font-size: 12.5px; color: #6B6555; padding: 10px 12px 4px; line-height: 1.45;">20px in a 44px row, always beside its label.</div>
+      </div>
+
+      <div style="width: 300px; background: #14130F; border-radius: 12px; padding: 14px 0;">
+        <div style="padding: 4px 16px 8px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,248,241,0.45); font-weight: 600;">Command results</div>
+        <div style="padding: 10px 16px; display: flex; align-items: center; gap: 12px; background: rgba(255,248,241,0.08);"><svg width="19" height="19" viewBox="0 0 24 24" style="color: #E8B4BA;"><use href="#ico-lot"></use></svg><div style="flex: 1;"><div style="font-size: 14.5px; color: #FFF8F1;">25-PN-04</div><div style="font-size: 12px; color: rgba(255,248,241,0.55);">Lot · aging</div></div></div>
+        <div style="padding: 10px 16px; display: flex; align-items: center; gap: 12px;"><svg width="19" height="19" viewBox="0 0 24 24" style="color: rgba(255,248,241,0.62);"><use href="#ico-cellar"></use></svg><div style="flex: 1;"><div style="font-size: 14.5px; color: #FFF8F1;">T-04</div><div style="font-size: 12px; color: rgba(255,248,241,0.55);">Vessel · empty</div></div></div>
+        <div style="padding: 10px 16px; display: flex; align-items: center; gap: 12px;"><svg width="19" height="19" viewBox="0 0 24 24" style="color: rgba(255,248,241,0.62);"><use href="#ico-work"></use></svg><div style="flex: 1;"><div style="font-size: 14.5px; color: #FFF8F1;">WO #253</div><div style="font-size: 12px; color: rgba(255,248,241,0.55);">In progress</div></div></div>
+        <div style="padding: 8px 16px 0; font-size: 12.5px; color: rgba(255,248,241,0.5); line-height: 1.45;">Icons type the result. Inverted, they hold at 19px.</div>
+      </div>
+
+      <div style="width: 300px; background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 14px;">
+        <div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-bottom: 10px;">Greyscale / no-colour check</div>
+        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; filter: grayscale(1); color: #14130F;">
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-work"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-cellar"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-vineyard"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-harvest"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-ferment"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-blend"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-bottling"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-inventory"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-compliance"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-accounting"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-sales"></use></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24"><use href="#ico-admin"></use></svg>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-top: 16px; filter: grayscale(1); color: #14130F;">
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-work"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-cellar"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-vineyard"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-harvest"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-ferment"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-blend"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-bottling"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-inventory"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-compliance"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-accounting"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-sales"></use></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><use href="#ico-admin"></use></svg>
+        </div>
+        <div style="font-size: 12.5px; color: #6B6555; margin-top: 12px; line-height: 1.45;">All twelve stay distinguishable with colour removed and at 16px, below their intended floor. Cellar / Fermentation are the closest pair — intentionally, they're the same object.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
