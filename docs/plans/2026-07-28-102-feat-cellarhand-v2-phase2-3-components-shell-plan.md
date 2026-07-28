@@ -132,11 +132,78 @@ names.
 |---|---|---|---|
 | OD-1 | Is `Setup` / `Audit log` visibility for role `user` intentional? | **Largely answered by doc 01 §3, which needs owner ratification, not fresh analysis:** `Records` (`/audit`) → visible to `user`; `Setup` (`/settings`) → admin+. Today `/audit` has no `admin` flag (visible to all) and `/settings` has `admin: true`, so **the handoff's table already matches the code**. Recommendation: ratify as-is, no code change. | Unit 12 |
 | OD-2 | Disposition of the 11 orphaned routes | **Fully answered by doc 01 §4** — a complete route-by-route table, zero URL changes. Recommendation: adopt verbatim. | Unit 12 |
-| OD-8 | *New.* `/ferment` index must be created (Conflict #1). What does it show? | A lot list filtered to fermenting lots + a primary "De-stem & press" action into `/ferment/process`. Cheapest thing that makes the nav item honest. | Unit 12 |
+| OD-8 | *New.* `/ferment` index must be created (Conflict #1). What does it show? | **ANSWERED BY INCUMBENT RESEARCH 2026-07-28 — see §"Incumbent parity: the ferment console" below.** Build it as a **fermentation worksheet** (vessel rows), not a lot list and not a tank board. Both incumbents coalesce on this shape. | Unit 12 |
 | OD-9 | *New.* Keep `Reports` reachable as a sidebar entry during the flag rollout? | Doc 01 moves `/reports` to an Accounting sub-tab. While the flag is off, the old sidebar stands, so no gap. Recommendation: no interim change. | Unit 12 |
 | OD-10 | *New.* Rail mode (doc 13) in this PR set or deferred? | **Defer to PR #3c**, after the nav model has settled — doc 13 §88 says exactly this ("a rail built against an unstable nav gets rebuilt"). | Unit 17 |
 
 None of OD-3/4/5/6/7 (from plan 101) gate anything here; they all gate Phases 7–10.
+
+---
+
+## Incumbent parity: the ferment console (resolves OD-8)
+
+Researched 2026-07-28 against InnoVint and Vintrace documentation, per CLAUDE.md's rule that
+where both incumbents coalesce on a shape, their convergence is load-bearing and we align.
+
+**InnoVint — "Fermentation Worksheets" (Ferm Gen):**
+- **Two** worksheets. Tanks-and-bins: **one row per vessel**. Barrels/small vessels
+  (drums, kegs, carboys): **one row per lot**, because a barrel lot spans many vessels.
+- Sortable columns: Vessel, Lot, Owners, Stage, Contents, Processed date, **Brix**, **Temperature**.
+  "Contents" is vessel volume on the tanks sheet, total lot volume on the barrels sheet.
+- **It is an action surface, not a report.** From each row you assign analysis tasks, additives and
+  fermentation-management tasks, assign winery members to **create work orders**, and hover to see
+  recent actions / work orders / additions.
+- Default filter: lots in **Processed, Fermenting, Settling, Cold Soak** — ferment-active states, not
+  all lots.
+
+**Vintrace — "Ferments Console":** "view all of your ferments from the Ferments Console"; lab data
+graphs from both the Vessels page and the Ferment Console; the wine-batch overview also carries a
+Ferment tab.
+
+### Where they coalesce (align to this)
+
+1. **A dedicated ferment console is its own top-level destination in both products.** So doc 01 is
+   right that Fermentations deserves a destination, even though it was wrong that the route exists.
+2. **Row identity splits by vessel class, and the split is physical, not arbitrary:** vessel-rows for
+   tanks (one tank holds one lot — the same physics our `LEDGER-12` one-lot-per-vessel invariant
+   encodes), lot-rows for barrels (one lot spans many barrels).
+3. **It is an assignment surface.** Ferment work is dispatched from these rows. This maps directly
+   onto our existing work-order + task system; nothing new is needed underneath.
+4. **Brix + temperature are the two at-a-glance columns.**
+
+### Correction to this plan's own earlier reasoning
+
+I previously argued a vessel-first `/ferment` would be "Phase 6's tank board arriving early". **That
+was wrong.** In both products the ferment console and the tank map are *separate surfaces* — InnoVint
+lists "Tank Maps" separately from "Fermentation Worksheets"; Vintrace has Tank Maps distinct from the
+Ferments Console. A worksheet is a dense actionable table; a tank board is a spatial map. Building
+`/ferment` as a worksheet does **not** collide with Phase 6.
+
+### Where we deliberately do NOT align
+
+InnoVint's `Stage` column is a **linear enum**. We keep the three-vector state
+(`form` + `afState` + `mlfState`) that `data_model_coalescence.md` records as an intentional
+divergence, because real ferment is not linear. Our state column renders the three vectors; it must
+not be flattened into a fake linear stage to look like theirs.
+
+### What Unit 12 therefore builds
+
+**Minimum-honest worksheet**, reusing what exists rather than inventing:
+- Vessel rows for tanks/bins, filtered to ferment-active state, with Lot, three-vector state,
+  Contents, Brix, Temperature.
+- Row drill-in to the **existing** `FermentMonitor` (`src/components/ferment/FermentMonitor.tsx`,
+  already vessel-first from Phase 6, currently only reachable inside `/bulk` via
+  `CellarActions.tsx:267`) for logging and the curve.
+- Curves via `TimeSeriesChart` (Unit 7) once it lands.
+- A primary "De-stem & press" action into `/ferment/process`, which makes doc 01 §4 true as written.
+
+**Deferred, and named so it is not forgotten:** the row-level *task-assignment* layer (assign
+analysis/additions/ferment-management, create a WO from a row) lands with **Phase 5**, where
+work-order creation UX is already being reworked. Shipping assignment twice would be waste. The
+**barrels/small-vessel worksheet** (lot-rows) is also deferred — barrel ferment is the rarer case,
+and Phase 7's barrel-group work is the natural home.
+
+This keeps PR #3a a shell PR while making the nav item truthful on day one.
 
 ---
 
