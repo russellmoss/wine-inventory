@@ -2,7 +2,7 @@
  * The status vocabulary (v2 §A4) — six values, one language, app-wide.
  *
  * Before this, six independent status→colour maps disagreed with each other, and
- * `Badge tone="gold"` rendered wine, so on the busiest screen in the product
+ * Badge's `gold` tone rendered wine, so on the busiest screen in the product
  * PENDING, IN_PROGRESS and REJECTED were mutually indistinguishable.
  *
  * Pure and dependency-free so every mapping module (work orders, blend trials,

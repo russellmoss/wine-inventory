@@ -137,7 +137,7 @@ export function Commerce7MappingCard({ connected }: { connected: boolean }) {
     <Card id="commerce7-mapping" style={{ maxWidth: 560, marginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: 0 }}>Commerce7 mapping</h2>
-        {connected && unmappedCount > 0 && <Badge tone="gold">{unmappedCount} need a wine</Badge>}
+        {connected && unmappedCount > 0 && <Badge tone="wine">{unmappedCount} need a wine</Badge>}
       </div>
       <p style={{ color: "var(--text-secondary)", margin: "6px 0 16px", fontSize: 14.5, maxWidth: "52ch" }}>
         Match each Commerce7 product to the wine it depletes, and tell QuickBooks where DTC revenue lands.

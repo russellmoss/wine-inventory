@@ -290,7 +290,7 @@ function ReceiptPanel({
           ) : vendorMatch ? (
             <Badge tone="green" variant="soft">existing vendor: {vendorMatch.name}</Badge>
           ) : (
-            <Badge tone="gold" variant="soft">will create vendor</Badge>
+            <Badge tone="wine" variant="soft">will create vendor</Badge>
           )}
         </div>
       </div>
@@ -330,7 +330,7 @@ function ReceiptPanel({
                 {payFromOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             ) : (
-              <Badge tone="gold" variant="soft">Set up payment accounts in Settings first</Badge>
+              <Badge tone="wine" variant="soft">Set up payment accounts in Settings first</Badge>
             )}
           </div>
         ) : null}
@@ -535,7 +535,7 @@ function FxRateBlock({
         {fx?.rateDate && !usingOverride ? (
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>ECB rate for {fx.rateDate}{fx.source ? ` · ${fx.source}` : ""}</span>
         ) : usingOverride ? (
-          <Badge tone="gold" variant="soft">manual override</Badge>
+          <Badge tone="wine" variant="soft">manual override</Badge>
         ) : null}
       </div>
       {missing ? (

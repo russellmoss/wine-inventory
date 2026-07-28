@@ -672,7 +672,7 @@ function MaterialLotsPanel({ materialId }: { materialId: string }) {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
                   <span style={{ fontSize: 13.5, fontWeight: 600 }}>{l.lotCode || "— (no lot code)"}</span>
                   {exp ? (
-                    <Badge tone={exp.status === "expired" ? "red" : exp.status === "soon" ? "gold" : "green"} variant="soft">{expiryLabel(exp)}</Badge>
+                    <Badge tone={exp.status === "expired" ? "red" : exp.status === "soon" ? "wine" : "green"} variant="soft">{expiryLabel(exp)}</Badge>
                   ) : null}
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>

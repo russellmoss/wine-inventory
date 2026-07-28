@@ -172,16 +172,23 @@ ConfirmButton · Modal · ExportCsvButton. Preview them live at `/styleguide`.
   real surface (`--paper-200` on `--ink-600`), never `opacity`. `pending` sets
   `aria-busy`, blocks pointer + keyboard activation, and holds the button's width.
   Geometry lives in `src/components/ui/button-sizes.ts`.
-- **Badge** tones: neutral · gold · green · blue · maroon · red; variants soft/solid/outline.
+- **Badge** tones: neutral · **wine** (was `gold`) · green · blue · maroon · red; variants
+  soft/solid/outline. **Category labels only** — a status value goes through `StatusChip`.
+- **StatusChip** the six-value status ramp (`neutral`/`active`/`held`/`done`/`attention`/
+  `review`), glyph + mandatory text, sizes sm 24 / md 30. It replaced seven independent
+  status→colour maps, including two that were hand-rolled ternaries inside a JSX attribute.
 
 ## Known drift / cleanup backlog
 Flagged during the 2026-06-24 documentation pass. Not yet fixed (each touches a
 component API or many call sites — fix deliberately, not in a doc pass):
 
-1. **`Badge tone="gold"` renders wine burgundy, not gold** (see `Badge.tsx` comment).
-   The real `--golden-yellow` is used for `--warning`. The token name and the API name
-   disagree. Rename candidate: `tone="gold"` → `tone="wine"`, update call sites
-   (`/styleguide` at minimum).
+1. ~~**`Badge tone="gold"` renders wine burgundy, not gold.**~~ **RESOLVED 2026-07-28.**
+   Renamed to `tone="wine"` across all 31 literal call sites and every typed use, plus
+   the same defect in `Avatar` and `Eyebrow` (which had their own `"gold"` tone keys
+   rendering wine, with no external call sites). This was a naming fix, not a colour
+   change — the pixels never moved. A static test (`test/design-static-guards.test.ts`)
+   now fails if `tone="gold"` reappears, and separately if a `Badge` is ever handed a
+   status value: **Badge is for categories, `StatusChip` is for status.**
 2. **Component sizing bypasses the scale tokens.** ~~`Button`~~ **RESOLVED for `Button`
    2026-07-28** — heights now come from `--touch-*`, padding/tracking/size from
    `--space-*`/`--tracking-*`/`--text-*` where a step exists (see `button-sizes.ts`; the

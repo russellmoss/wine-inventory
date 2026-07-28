@@ -15,8 +15,8 @@ export function deadlineWhen(d: Pick<OpenDeadline, "daysUntil" | "overdue">): st
 }
 
 /** Map the urgency tone to a Badge tone from the design system. */
-export function deadlineBadgeTone(tone: OpenDeadline["tone"]): "red" | "gold" | "blue" {
-  return tone === "danger" ? "red" : tone === "warning" ? "gold" : "blue";
+export function deadlineBadgeTone(tone: OpenDeadline["tone"]): "red" | "wine" | "blue" {
+  return tone === "danger" ? "red" : tone === "warning" ? "wine" : "blue";
 }
 
 /** "Operations report · June 2026" / "Excise return · 2026 · Jul 1–15". */

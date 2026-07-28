@@ -1,6 +1,6 @@
 import React from "react";
 
-type Tone = "gold" | "green" | "blue" | "maroon" | "ink";
+type Tone = "wine" | "green" | "blue" | "maroon" | "ink";
 
 export interface AvatarProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, "style"> {
   src?: string;
@@ -13,15 +13,15 @@ export interface AvatarProps extends Omit<React.HTMLAttributes<HTMLSpanElement>,
 /**
  * Avatar — circular, warm. Image, or initials on a tinted fill when no image.
  */
-export function Avatar({ src, name = "", size = 40, tone = "gold", style, ...rest }: AvatarProps) {
+export function Avatar({ src, name = "", size = 40, tone = "wine", style, ...rest }: AvatarProps) {
   const tones: Record<Tone, { bg: string; fg: string }> = {
-    gold: { bg: "var(--accent-soft)", fg: "var(--wine-primary)" },
+    wine: { bg: "var(--accent-soft)", fg: "var(--wine-primary)" },
     green: { bg: "rgba(23,82,66,0.12)", fg: "var(--deep-green)" },
     blue: { bg: "rgba(9,89,114,0.12)", fg: "var(--deep-blue)" },
     maroon: { bg: "rgba(107,72,77,0.14)", fg: "var(--maroon)" },
     ink: { bg: "var(--paper-200)", fg: "var(--ink-800)" },
   };
-  const t = tones[tone] || tones.gold;
+  const t = tones[tone] || tones.wine;
   const initials = name
     .split(" ")
     .filter(Boolean)

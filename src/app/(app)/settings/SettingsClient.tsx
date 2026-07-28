@@ -174,7 +174,7 @@ export function SettingsClient({
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: 0 }}>Sparkling program</h2>
-              <Badge tone={enabled ? "gold" : "neutral"}>{enabled ? "On" : "Off"}</Badge>
+              <Badge tone={enabled ? "wine" : "neutral"}>{enabled ? "On" : "Off"}</Badge>
             </div>
             <p style={{ color: "var(--text-secondary)", margin: "6px 0 0", fontSize: 14.5, maxWidth: "48ch" }}>
               Traditional-method (méthode champenoise) tracking: tirage, riddling, disgorgement,
@@ -226,7 +226,7 @@ export function SettingsClient({
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: 0 }}>Custom-crush program</h2>
-              <Badge tone={ccEnabled ? "gold" : "neutral"}>{ccEnabled ? "On" : "Off"}</Badge>
+              <Badge tone={ccEnabled ? "wine" : "neutral"}>{ccEnabled ? "On" : "Off"}</Badge>
             </div>
             <p style={{ color: "var(--text-secondary)", margin: "6px 0 0", fontSize: 14.5, maxWidth: "48ch" }}>
               Make wine for other owners (custom-crush clients / alternating proprietors). Off by default;
@@ -380,7 +380,7 @@ export function SettingsClient({
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: 0 }}>Push new vendors to QuickBooks</h2>
-              <Badge tone={pushVendors ? "gold" : "neutral"}>{pushVendors ? "On" : "Off"}</Badge>
+              <Badge tone={pushVendors ? "wine" : "neutral"}>{pushVendors ? "On" : "Off"}</Badge>
             </div>
             <p style={{ color: "var(--text-secondary)", margin: "6px 0 0", fontSize: 14.5, maxWidth: "48ch" }}>
               When you add a vendor in Cellarhand, create it in QuickBooks right away. It checks QuickBooks first,

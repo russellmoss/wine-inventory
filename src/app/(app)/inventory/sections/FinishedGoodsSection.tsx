@@ -261,7 +261,7 @@ export function FinishedGoodsSection({ categories, items, locations, onHand }: {
                 return (
                   <tr key={key} style={{ borderTop: "1px solid var(--border-strong)" }}>
                     <td style={{ padding: "12px 16px" }}>{r.item}</td>
-                    <td style={{ padding: "12px 16px" }}><Badge tone={r.kind === "BOTTLED_WINE" ? "gold" : "blue"} variant="soft">{r.category}</Badge></td>
+                    <td style={{ padding: "12px 16px" }}><Badge tone={r.kind === "BOTTLED_WINE" ? "wine" : "blue"} variant="soft">{r.category}</Badge></td>
                     <td style={{ padding: "12px 16px" }}>{r.location}</td>
                     <td style={{ padding: "12px 16px", textAlign: "right" }}>
                       <span>{r.qty}{r.detail ? <span style={{ color: "var(--text-muted)" }}> ({r.detail})</span> : null}</span>

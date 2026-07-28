@@ -78,7 +78,7 @@ export function LocationsClient({ locations }: { locations: Loc[] }) {
                   <td style={{ padding: "12px 16px" }}>
                     {loc.isSystem ? (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        {loc.name} <Badge tone="gold" uppercase>Reserved</Badge>
+                        {loc.name} <Badge tone="wine" uppercase>Reserved</Badge>
                       </span>
                     ) : (
                       <InlineRename loc={loc} disabled={pending} onRename={(fd) => run(() => renameLocation(loc.id, fd))} />

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition, type ReactNode } from "react";
-import { Badge, Button, Card, Eyebrow, Tabs, LocalTime } from "@/components/ui";
+import { Badge, Button, Card, Eyebrow, Tabs, LocalTime, StatusChip } from "@/components/ui";
+import type { StatusVariant } from "@/components/ui";
 import {
   acceptReconciliationItemAction,
   confirmMigrationEntityMappingAction,
@@ -67,12 +68,13 @@ type Props = {
   reference: { vessels: { id: string; label: string }[]; bonds: { id: string; label: string }[]; analytes: { id: string; label: string }[] };
 };
 
-const statusTone: Record<string, "neutral" | "gold" | "green" | "blue" | "red"> = {
+const statusTone: Record<string, StatusVariant> = {
   DRAFT: "neutral",
-  PREFLIGHT_BLOCKED: "red",
-  READY_FOR_REVIEW: "gold",
-  SIGNED_OFF: "blue",
-  PUBLISHED: "green",
+  PREFLIGHT_BLOCKED: "attention",
+  READY_FOR_REVIEW: "review",
+  SIGNED_OFF: "active",
+  PUBLISHED: "done",
+  // A discarded batch is a deliberate, closed outcome — not a failure to flag.
   DISCARDED: "neutral",
 };
 
@@ -264,7 +266,7 @@ export function MigrationClient({ batches, selectedBatchId, detail, proofMapping
           rows={batches}
           columns={[
             { key: "sourceName", label: "Source", render: (r) => <Link href={`/migration?batch=${r.id}`} style={{ color: "var(--text-accent)" }}>{r.sourceName ?? r.sourceSystem}</Link> },
-            { key: "status", label: "Status", render: (r) => <Badge tone={statusTone[r.status] ?? "neutral"}>{r.status}</Badge> },
+            { key: "status", label: "Status", render: (r) => <StatusChip variant={statusTone[r.status] ?? "neutral"}>{r.status}</StatusChip> },
             { key: "cutoverAt", label: "Cutover", render: (r) => shortDate(r.cutoverAt) },
             { key: "counts", label: "Rows", render: (r) => `${r.counts.seedLots} lots / ${r.counts.positions} positions / ${r.counts.reconciliationOpen} open` },
           ]}
@@ -276,7 +278,7 @@ export function MigrationClient({ batches, selectedBatchId, detail, proofMapping
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
               <div>
-                <Badge tone={statusTone[detail.batch.status] ?? "neutral"}>{detail.batch.status}</Badge>
+                <StatusChip variant={statusTone[detail.batch.status] ?? "neutral"}>{detail.batch.status}</StatusChip>
                 <h2 style={{ fontFamily: "var(--font-heading)", margin: "10px 0 0", fontSize: 22 }}>{detail.batch.sourceName ?? detail.batch.sourceSystem}</h2>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -319,7 +321,7 @@ export function MigrationClient({ batches, selectedBatchId, detail, proofMapping
                   <DataTable
                     rows={groupedRecon}
                     columns={[
-                      { key: "severity", label: "Severity", render: (r) => <Badge tone={r.severity === "BLOCKER" ? "red" : r.severity === "WARNING" ? "gold" : "neutral"}>{String(r.severity ?? "-")}</Badge> },
+                      { key: "severity", label: "Severity", render: (r) => <Badge tone={r.severity === "BLOCKER" ? "red" : r.severity === "WARNING" ? "wine" : "neutral"}>{String(r.severity ?? "-")}</Badge> },
                       { key: "status", label: "Status", render: (r) => <Badge tone={r.status === "OPEN" ? "red" : r.status === "ACCEPTED" ? "blue" : "green"}>{String(r.status ?? "-")}</Badge> },
                       { key: "kind", label: "Kind" },
                       { key: "label", label: "Subject" },

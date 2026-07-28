@@ -1,6 +1,6 @@
 import React from "react";
 
-type Tone = "neutral" | "gold" | "green" | "blue" | "maroon" | "red";
+type Tone = "neutral" | "wine" | "green" | "blue" | "maroon" | "red";
 type Variant = "soft" | "solid" | "outline";
 
 export interface BadgeProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, "style"> {
@@ -12,7 +12,14 @@ export interface BadgeProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, 
 
 /**
  * Badge — small status / category label. Quiet soft fills by default, or an
- * uppercase tracked "eyebrow" style. (The "gold" tone now reads as wine.)
+ * uppercase tracked "eyebrow" style.
+ *
+ * Badge is for CATEGORY labels. Status goes through StatusChip (v2 §B18) — a
+ * Badge must never carry a status value.
+ *
+ * The `wine` tone was called `gold` until 2026-07-28 while rendering
+ * wine-burgundy the whole time; this is the name catching up with the pixels,
+ * not a colour change.
  */
 export function Badge({
   children,
@@ -24,7 +31,7 @@ export function Badge({
 }: BadgeProps) {
   const tones: Record<Tone, { fg: string; soft: string; solid: string }> = {
     neutral: { fg: "var(--ink-700)", soft: "var(--paper-200)", solid: "var(--ink-800)" },
-    gold: { fg: "var(--wine-primary)", soft: "var(--accent-soft)", solid: "var(--accent)" },
+    wine: { fg: "var(--wine-primary)", soft: "var(--accent-soft)", solid: "var(--accent)" },
     green: { fg: "var(--deep-green)", soft: "rgba(23,82,66,0.12)", solid: "var(--deep-green)" },
     blue: { fg: "var(--deep-blue)", soft: "rgba(9,89,114,0.12)", solid: "var(--deep-blue)" },
     maroon: { fg: "var(--maroon)", soft: "rgba(107,72,77,0.14)", solid: "var(--maroon)" },
@@ -49,7 +56,7 @@ export function Badge({
 
   const look: React.CSSProperties =
     variant === "solid"
-      ? { background: t.solid, color: tone === "gold" ? "var(--accent-on)" : "var(--white)" }
+      ? { background: t.solid, color: tone === "wine" ? "var(--accent-on)" : "var(--white)" }
       : variant === "outline"
         ? { background: "transparent", color: t.fg, borderColor: "currentColor" }
         : { background: t.soft, color: t.fg };

@@ -16,7 +16,7 @@ const MAX_SAMPLE_MS = 15_000;
 
 function badgeFor(state: VoiceSettingsView["profile"]["state"]) {
   if (state === "active") return { tone: "green" as const, label: "Active" };
-  if (state === "needs_reenroll") return { tone: "gold" as const, label: "Needs re-enrollment" };
+  if (state === "needs_reenroll") return { tone: "wine" as const, label: "Needs re-enrollment" };
   return { tone: "neutral" as const, label: "Not enrolled" };
 }
 

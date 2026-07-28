@@ -175,8 +175,8 @@ export default function StyleguidePage() {
         </Button>
       </Section>
 
-      <Section title="Badges">
-        <Badge tone="gold">Wine</Badge>
+      <Section title="Badges — category labels only">
+        <Badge tone="wine">Wine</Badge>
         <Badge tone="green" variant="soft">
           In stock
         </Badge>
@@ -186,12 +186,16 @@ export default function StyleguidePage() {
         <Badge tone="neutral" variant="outline">
           Neutral
         </Badge>
-        <Badge tone="gold" variant="solid">
+        <Badge tone="wine" variant="solid">
           Solid
         </Badge>
         <Badge tone="blue" uppercase>
           Tank
         </Badge>
+        <p style={{ width: "100%", color: "var(--text-meta)", fontSize: 12, margin: "4px 0 0" }}>
+          Badge is for categories. A status value belongs in StatusChip above — the two are not
+          interchangeable, and a static test enforces it.
+        </p>
       </Section>
 
       <Section title="Avatars">

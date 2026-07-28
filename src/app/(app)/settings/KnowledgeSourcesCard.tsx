@@ -59,7 +59,7 @@ export function KnowledgeSourcesCard({ sources }: { sources: SourceSetting[] }) 
                 {s.docCount.toLocaleString()} document{s.docCount === 1 ? "" : "s"}
               </span>
             </span>
-            <Badge tone={s.tier === 1 ? "neutral" : "gold"}>
+            <Badge tone={s.tier === 1 ? "neutral" : "wine"}>
               {s.tier === 1 ? "Extension / research" : "Vendor"}
             </Badge>
           </label>

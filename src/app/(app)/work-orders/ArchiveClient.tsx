@@ -3,7 +3,8 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge, LocalTime } from "@/components/ui";
+import { Card, Button, Badge, LocalTime, StatusChip } from "@/components/ui";
+import { statusTone } from "@/lib/work-orders/status-badge";
 import type { ArchiveRow } from "@/lib/work-orders/data";
 import { ARCHIVE_STATUSES, type ArchiveFilters } from "@/lib/work-orders/archive-filters";
 import { WorkOrdersTabs } from "./WorkOrdersTabs";
@@ -17,8 +18,6 @@ import type { VesselOption } from "./new/VesselMultiSelect";
 
 type Picker = VesselOption;
 type Template = { id: string; name: string };
-
-const STATUS_TONE: Record<string, "neutral" | "green"> = { APPROVED: "green", CANCELLED: "neutral" };
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -76,7 +75,7 @@ export function ArchiveClient({
                     <div style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 4, fontStyle: "italic" }}>“{r.noteSnippet}”</div>
                   ) : null}
                 </div>
-                <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{r.status.replace(/_/g, " ").toLowerCase()}</Badge>
+                <StatusChip variant={statusTone(r.status)}>{r.status.replace(/_/g, " ").toLowerCase()}</StatusChip>
               </Card>
             </Link>
           ))}

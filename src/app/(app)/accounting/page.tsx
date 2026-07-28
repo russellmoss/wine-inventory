@@ -15,12 +15,12 @@ export const dynamic = "force-dynamic";
 // JournalEntry/realmId/debit); status by text + Badge tone, never color alone. Reuses the UI kit.
 
 // Delivery status → { tone, label } per the Design & UX Spec (word ALWAYS shown).
-const STATUS_META: Record<string, { tone: "green" | "blue" | "gold" | "red" | "neutral"; label: string }> = {
+const STATUS_META: Record<string, { tone: "green" | "blue" | "wine" | "red" | "neutral"; label: string }> = {
   POSTED: { tone: "green", label: "Posted to QuickBooks" },
   PENDING: { tone: "blue", label: "Waiting to sync" },
   IN_FLIGHT: { tone: "blue", label: "Sending…" },
   VERIFYING: { tone: "blue", label: "Confirming…" },
-  WITHHELD: { tone: "gold", label: "Needs attention" },
+  WITHHELD: { tone: "wine", label: "Needs attention" },
   FAILED: { tone: "red", label: "Couldn’t post" },
   DELETED_IN_GL: { tone: "neutral", label: "Deleted in QuickBooks" },
 };
@@ -126,10 +126,10 @@ export default async function AccountingPage() {
       <Card style={{ maxWidth: 720 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <h3 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: 0 }}>Connection</h3>
-          <Badge tone={c7Connected ? "green" : c7.connection?.status === "PENDING_CONFIRM" ? "gold" : "neutral"}>
+          <Badge tone={c7Connected ? "green" : c7.connection?.status === "PENDING_CONFIRM" ? "wine" : "neutral"}>
             {c7Connected ? "Connected" : c7.connection?.status === "PENDING_CONFIRM" ? "Confirm to finish" : "Not connected"}
           </Badge>
-          {c7Connected && <Badge tone={c7.connection?.webhookHealthy ? "green" : "gold"}>{c7.connection?.webhookHealthy ? "Live updates on" : "On a timer"}</Badge>}
+          {c7Connected && <Badge tone={c7.connection?.webhookHealthy ? "green" : "wine"}>{c7.connection?.webhookHealthy ? "Live updates on" : "On a timer"}</Badge>}
         </div>
         <p style={{ color: "var(--text-secondary)", margin: "8px 0 0", fontSize: 14.5 }}>
           {c7Connected ? `Connected to ${c7.connection?.companyName ?? c7.connection?.externalTenantId ?? "your Commerce7 tenant"}.` : "Set up the sync in Settings → Commerce7."}{" "}

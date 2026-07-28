@@ -79,10 +79,10 @@ function statusTone(status: string): Tone {
 
 // Phase 6: the orthogonal ferment vectors as badges (shown only when there's something to show).
 function afTone(s: string): Tone {
-  return s === "ACTIVE" ? "gold" : s === "DRY" ? "maroon" : "neutral";
+  return s === "ACTIVE" ? "wine" : s === "DRY" ? "maroon" : "neutral";
 }
 function mlfTone(s: string): Tone {
-  return s === "ACTIVE" ? "gold" : s === "COMPLETE" ? "green" : "neutral";
+  return s === "ACTIVE" ? "wine" : s === "COMPLETE" ? "green" : "neutral";
 }
 
 const newId = (): string =>
@@ -380,7 +380,7 @@ function opTone(type: string): Tone {
     case "ADDITION":
     case "FINING":
     case "CAP_MGMT":
-      return "gold";
+      return "wine";
     default:
       return "neutral"; // ADJUST, DEPLETE
   }
@@ -607,7 +607,7 @@ const SAMPLE_TONE: Record<string, Tone> = {
   PULLED: "neutral",
   SENT: "neutral",
   PENDING: "neutral",
-  RESULT_RETURNED: "gold",
+  RESULT_RETURNED: "wine",
   ATTACHED: "green",
 };
 
@@ -690,7 +690,7 @@ function EditRecordButton({ onClick }: { onClick: () => void }) {
 function MeasurementRow({ item, editMode, onEditRecord }: { item: MeasurementItem; editMode: boolean; onEditRecord: (i: EditableRecordItem) => void }) {
   return (
     <RecordRail
-      badgeTone="gold"
+      badgeTone="wine"
       badgeLabel="ANALYSIS"
       summary={item.summary}
       observedAt={item.observedAt}
@@ -1000,7 +1000,7 @@ export function LotDetailClient({ lot, cost }: { lot: LotDetail; cost?: LotCostV
           ) : null}
           {pendingSamples > 0 ? (
             <Link href="/samples">
-              <Badge tone="gold" variant="soft">
+              <Badge tone="wine" variant="soft">
                 {pendingSamples} sample{pendingSamples === 1 ? "" : "s"} pending
               </Badge>
             </Link>

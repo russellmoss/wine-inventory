@@ -29,8 +29,8 @@ export type ChipTone = "neutral" | "green" | "red" | "amber";
 export type PhenologyChip = { text: string; tone: ChipTone };
 
 /** DESIGN.md has no amber token; `gold` is the design system's attention tone. */
-export function chipToneToBadgeTone(tone: ChipTone): "neutral" | "green" | "red" | "gold" {
-  return tone === "amber" ? "gold" : tone;
+export function chipToneToBadgeTone(tone: ChipTone): "neutral" | "green" | "red" | "wine" {
+  return tone === "amber" ? "wine" : tone;
 }
 
 function pretty(v: string): string {

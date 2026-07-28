@@ -28,6 +28,29 @@ function hits(pattern: RegExp): string[] {
   return FILES.filter((f) => pattern.test(f.text)).map((f) => f.path.slice(SRC.length + 1).replace(/\\/g, "/"));
 }
 
+describe("Badge tone (AC-C5)", () => {
+  it("never reintroduces tone=\"gold\"", () => {
+    // The tone was renamed to `wine` in 2026-07: it had rendered wine-burgundy
+    // since it shipped, so the name and the pixels disagreed for a year. Copy-paste
+    // from an old file is the way it comes back.
+    expect(hits(/tone="gold"/)).toEqual([]);
+  });
+
+  it("never puts a status value in a Badge — status goes through StatusChip", () => {
+    // The specific regression: `<Badge tone=...>{task.status...}</Badge>`, which is
+    // how six independent status→colour maps grew in the first place.
+    expect(hits(/<Badge[^>]*>\{\s*\w+\.status\b/)).toEqual([]);
+  });
+});
+
+describe("colour tokens that must never carry text (AC-F8)", () => {
+  it("does not reference a --gold token, which has never existed", () => {
+    // colors.css defines --golden-yellow. `var(--gold)` silently resolves to
+    // nothing, so the rule it was written for quietly did not apply.
+    expect(hits(/var\(--gold\)/)).toEqual([]);
+  });
+});
+
 describe("font loading (AC-F10)", () => {
   it("never re-adds a render-blocking Google Fonts request", () => {
     // Inter + Inter Tight are self-hosted through next/font in src/app/layout.tsx.

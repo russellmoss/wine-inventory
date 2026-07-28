@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Card, Input, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Input, Button, Badge, Eyebrow, StatusChip } from "@/components/ui";
 import { generateComplianceReport, fileComplianceReport } from "./actions";
 import { returnPeriodsForYear } from "@/lib/compliance/return-cadence";
 import type { ReturnCadence } from "@/lib/compliance/types";
@@ -167,7 +167,7 @@ export function ExciseClient(props: {
                 </div>
                 <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                   <Badge tone="neutral" variant="soft">{view.version}{view.isFinalBusinessReport ? " · FINAL" : ""}</Badge>
-                  <Badge tone={view.status === "FILED" ? "green" : "neutral"} variant={view.status === "FILED" ? "solid" : "soft"}>{view.status}</Badge>
+                  <StatusChip variant={view.status === "FILED" ? "done" : view.status === "NEEDS_AMENDMENT" ? "attention" : "neutral"} size="md">{view.status}</StatusChip>
                   {view.computed.cbmaCredit > 0 ? <Badge tone="green" variant="soft">CBMA −{usd(view.computed.cbmaCredit)}</Badge> : null}
                 </div>
               </div>

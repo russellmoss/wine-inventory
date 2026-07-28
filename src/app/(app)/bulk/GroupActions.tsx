@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { Card, Button, Badge, Eyebrow } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, StatusChip } from "@/components/ui";
+import type { StatusVariant } from "@/components/ui";
 import { RATE_BASES, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import type { VesselGroupDTO } from "@/lib/vessels/groups";
@@ -492,10 +493,13 @@ function VesselChip({ v, on, onToggle }: { v: GroupVessel; on: boolean; onToggle
   );
 }
 
-function statusTone(status: "ready" | "skipped" | "blocked" | "applied" | "error") {
-  if (status === "ready" || status === "applied") return "green" as const;
-  if (status === "blocked" || status === "error") return "red" as const;
-  return "neutral" as const;
+// `ready` is not `done` — it means this member WILL be included, which is a live
+// state, not a finished one. `applied` is the finished one.
+function statusTone(status: "ready" | "skipped" | "blocked" | "applied" | "error"): StatusVariant {
+  if (status === "applied") return "done";
+  if (status === "ready") return "active";
+  if (status === "blocked" || status === "error") return "attention";
+  return "neutral";
 }
 
 function GroupPreview({ preview }: { preview: GroupApplyPreview }) {
@@ -513,7 +517,7 @@ function GroupPreview({ preview }: { preview: GroupApplyPreview }) {
         {preview.members.map((m) => (
           <div key={m.vesselId} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) 88px minmax(160px, 2fr)", gap: 8, alignItems: "center", fontSize: 13 }}>
             <span style={{ color: "var(--text-primary)" }}>{m.label}</span>
-            <Badge tone={statusTone(m.status)} variant="soft">{m.status}</Badge>
+            <StatusChip variant={statusTone(m.status)}>{m.status}</StatusChip>
             <span style={{ color: "var(--text-secondary)" }}>{m.message}</span>
           </div>
         ))}

@@ -3,7 +3,8 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Badge, Eyebrow, Textarea } from "@/components/ui";
+import { Card, Button, Badge, Eyebrow, Textarea, StatusChip } from "@/components/ui";
+import { statusTone } from "@/lib/work-orders/status-badge";
 import type { WorkOrderDetail, WorkOrderTaskView } from "@/lib/work-orders/data";
 import { TASK_VOCABULARY, fieldLabel } from "@/lib/work-orders/template-vocabulary";
 import type { CustomLogFieldSpec } from "@/lib/work-orders/custom-log-fields";
@@ -169,7 +170,7 @@ function TaskExecutor({ task, pickers, onDone }: { task: WorkOrderTaskView; pick
     <Card style={{ padding: 18 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 18 }}>{task.seq}. {summary.headline}</div>
-        <Badge tone="gold">{task.status.replace(/_/g, " ").toLowerCase()}</Badge>
+        <StatusChip variant={statusTone(task.status)}>{task.status.replace(/_/g, " ").toLowerCase()}</StatusChip>
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 14px" }}>{task.kind === "OPERATION" ? task.opType : task.kind === "NOTE" ? "checklist" : task.kind === "MAINTENANCE" ? `maintenance · ${task.activityType}` : `observation · ${task.observationType}`}{def ? ` · ${def.label}` : ""}</div>
 
@@ -273,8 +274,10 @@ function BatchCapExecutor({ tasks, vessels, onDone }: { tasks: WorkOrderTaskView
     });
   }
 
+  // --gold has never existed as a token (colors.css defines --golden-yellow), so this
+  // border silently rendered the default. The card marks the ACTIVE task.
   return (
-    <Card style={{ padding: 18, borderColor: "var(--gold)" }}>
+    <Card style={{ padding: 18, borderColor: "var(--accent)" }}>
       <Eyebrow>Batch cap management</Eyebrow>
       <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 12px" }}>Work the cap on several tanks at once. Pick the technique, check the tanks, record them all.</div>
 
@@ -360,7 +363,7 @@ export function ExecuteClient({ wo, pickers, crushData, pressData, weighInData, 
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
                   {/* Plan 061: undo a completed group maintenance task (reverses every member's activity event). */}
                   {t.kind === "MAINTENANCE" && t.groupActivity && t.status === "DONE" ? <GroupMaintenanceUndo task={t} onDone={() => router.refresh()} /> : null}
-                  <Badge tone={t.status === "APPROVED" || t.status === "DONE" ? "green" : t.status === "REJECTED" ? "red" : "maroon"}>{t.status.replace(/_/g, " ").toLowerCase()}</Badge>
+                  <StatusChip variant={statusTone(t.status)}>{t.status.replace(/_/g, " ").toLowerCase()}</StatusChip>
                 </span>
               </Card>
             ))}

@@ -36,14 +36,14 @@ type Tone = React.ComponentProps<typeof Badge>["tone"];
 function chipTone(item: TimelineItem): Tone {
   switch (item.kind) {
     case "OP":
-      if (item.type === "ADDITION" || item.type === "FINING" || item.type === "CAP_MGMT") return "gold";
+      if (item.type === "ADDITION" || item.type === "FINING" || item.type === "CAP_MGMT") return "wine";
       if (item.type === "LOSS" || item.type === "FILTRATION" || item.type === "CORRECTION") return "red";
       if (item.type === "RACK" || item.type === "TOPPING") return "blue";
       if (item.type === "SEED") return "green";
       if (item.type === "BOTTLE") return "maroon";
       return "neutral";
     case "MEASUREMENT":
-      return "gold";
+      return "wine";
     case "TASTING":
       return "maroon";
     case "SAMPLE":

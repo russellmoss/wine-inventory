@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { Card, Button, Badge } from "@/components/ui";
+import { Card, Button, StatusChip } from "@/components/ui";
+import { statusTone } from "@/lib/work-orders/status-badge";
 import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import { completeTaskAction, undoMaintenanceTaskAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
@@ -47,7 +48,7 @@ export function GroupMaintenanceTaskForm({ task, onDone }: { task: WorkOrderTask
     <Card style={{ padding: 18 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 18 }}>{task.seq}. {task.title}</div>
-        <Badge tone="gold">{task.status.replace(/_/g, " ").toLowerCase()}</Badge>
+        <StatusChip variant={statusTone(task.status)}>{task.status.replace(/_/g, " ").toLowerCase()}</StatusChip>
       </div>
       <div style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 12px" }}>
         {ga.activityType.toLowerCase().replace(/_/g, " ")} · <strong>{ga.count} {ga.count === 1 ? "vessel" : "vessels"}</strong> — completed together
