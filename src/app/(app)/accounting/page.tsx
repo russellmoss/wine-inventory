@@ -63,7 +63,7 @@ export default async function AccountingPage() {
             ? `Connected to ${connection?.companyName ?? "your QuickBooks company"}${connection?.homeCurrency ? ` · books in ${connection.homeCurrency}` : ""}.`
             : "Set up the sync in Settings → QuickBooks."}
           {" "}
-          <Link href="/settings#accounting" style={{ color: "var(--text-accent)" }}>Go to settings</Link>
+          <Link href="/settings#accounting" style={{ color: "var(--text-accent)", textDecoration: "underline" }}>Go to settings</Link>
         </p>
       </Card>
 
@@ -137,7 +137,7 @@ export default async function AccountingPage() {
         </div>
         <p style={{ color: "var(--text-secondary)", margin: "8px 0 0", fontSize: 14.5 }}>
           {c7Connected ? `Connected to ${c7.connection?.companyName ?? c7.connection?.externalTenantId ?? "your Commerce7 tenant"}.` : "Set up the sync in Settings → Commerce7."}{" "}
-          <Link href="/settings#commerce7" style={{ color: "var(--text-accent)" }}>Go to settings</Link>
+          <Link href="/settings#commerce7" style={{ color: "var(--text-accent)", textDecoration: "underline" }}>Go to settings</Link>
         </p>
       </Card>
 

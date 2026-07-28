@@ -171,6 +171,22 @@ export const UTILITY_DESTINATIONS: SectionItem[] = [
   { href: "/winemaking-calculator", label: "Calculator" },
 ];
 
+/**
+ * The hub a route belongs to, if any.
+ *
+ * Lets the sidebar mark the PARENT current while the user is on one of its
+ * sections. Without it, the v2 sidebar shows no current item at all on any of the
+ * ~19 section routes — stand on `/vessels` or `/settings` and nothing anywhere says
+ * where you are. `startsWith` handles the section routes that nest (`/vessels/x`)
+ * without letting `/lots` claim `/lots-archive`.
+ */
+export function hubForRoute(pathname: string): string | undefined {
+  for (const [hub, def] of Object.entries(SECTIONS)) {
+    if (def.items.some((i) => i.href === pathname || pathname.startsWith(`${i.href}/`))) return hub;
+  }
+  return undefined;
+}
+
 /** Every hub href that has sub-navigation. */
 export function sectionHubs(): string[] {
   return Object.keys(SECTIONS);

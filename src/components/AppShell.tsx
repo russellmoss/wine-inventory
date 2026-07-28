@@ -8,6 +8,7 @@ import { exitSupportTenant } from "@/lib/developer/actions";
 import { isTenantAdminLike } from "@/lib/access";
 import { Avatar, Button, LocalTime } from "@/components/ui";
 import { NAV_MODEL, isVisible as navVisible } from "@/lib/nav/model";
+import { hubForRoute } from "@/lib/nav/sections";
 import { NAV_V2_ENABLED } from "@/lib/nav/flag";
 import { MobileTabBar } from "./MobileTabBar";
 import { CommandPalette } from "./CommandPalette";
@@ -370,7 +371,14 @@ export function AppShell({
   // when they actually have a membership. Everyone else loses it, on BOTH the desktop
   // sidebar and the mobile tab bar, which is the half that was never filtered at all.
   const hasVineyard = (user.vineyardIds?.length ?? 0) > 0 || isAdmin;
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  // Under v2 the sidebar holds 13 destinations and the other ~19 surfaces hang off
+  // them. Without this, standing on /vessels or /settings lights up NOTHING in the
+  // sidebar — no aria-current, no highlight, no answer to "where am I". The parent
+  // hub is the honest answer. Undefined with the flag off, so the legacy nav is
+  // byte-for-byte unchanged.
+  const sectionHub = NAV_V2_ENABLED ? hubForRoute(pathname) : undefined;
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname.startsWith(href) || href === sectionHub;
   const wineryActive = isActive(EN_TIRAGE_NAV.href) || WINERY.some((s) => isActive(s.href));
   const vineyardsActive = VINEYARDS.some((s) => isActive(s.href));
   const setupActive = SETUP.some((s) => isActive(s.href));

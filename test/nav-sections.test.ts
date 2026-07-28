@@ -14,6 +14,7 @@ import {
   SECTIONS,
   UTILITY_DESTINATIONS,
   allSectionItems,
+  hubForRoute,
   isSectionVisible,
   sectionHubs,
   sectionParentLabel,
@@ -140,6 +141,35 @@ describe("role and capability visibility", () => {
       expect(isSectionVisible(find(h), { ...ADMIN, customCrush: false })).toBe(false);
       expect(isSectionVisible(find(h), ADMIN)).toBe(true);
     }
+  });
+});
+
+describe("hubForRoute — the sidebar still says where you are on a section route", () => {
+  it("maps every section route back to its hub", () => {
+    expect(hubForRoute("/samples")).toBe("/lots");
+    expect(hubForRoute("/reports")).toBe("/accounting");
+    expect(hubForRoute("/vessels")).toBe("/setup");
+    expect(hubForRoute("/settings")).toBe("/setup");
+    expect(hubForRoute("/cellar/en-tirage")).toBe("/bottling");
+    expect(hubForRoute("/vineyards/maps")).toBe("/vineyards/field-notes");
+    expect(hubForRoute("/work-orders/review")).toBe("/work-orders");
+  });
+
+  it("covers every item, so no section route leaves the sidebar blank", () => {
+    // With NAV_V2 on, a route with no hub lights up nothing anywhere: no highlight,
+    // no aria-current, no answer to "where am I".
+    const orphaned = allSectionItems().filter((i) => hubForRoute(i.href) === undefined);
+    expect(orphaned.map((o) => o.href)).toEqual([]);
+  });
+
+  it("follows a nested child up to the same hub", () => {
+    expect(hubForRoute("/vineyards/sprays/products")).toBe("/vineyards/field-notes");
+  });
+
+  it("does not claim a route that merely shares a prefix", () => {
+    // `/lots-archive` is not under `/lots`; a bare startsWith would say it is.
+    expect(hubForRoute("/lots-archive")).toBeUndefined();
+    expect(hubForRoute("/bulk")).toBeUndefined();
   });
 });
 
