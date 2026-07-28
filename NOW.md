@@ -7,8 +7,12 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PR #1 (Phase 0 Foundations + Phase 1 Re-baseline) BUILT, all 10 units,
-on `claude/cellarhand-v2-phase-reconciliation-a926e3`. NOT PR'd yet, and NOT browser/axe-verified.**
+**CELLARHAND UI/UX v2 — PR #1 SHIPPED. [#555](https://github.com/russellmoss/wine-inventory/pull/555)
+squash-merged to main as `ca65245d` 2026-07-28, all CI green (check · review · tenant-isolation ·
+GitGuardian), branch pruned. Phase 0 Foundations + Phase 1 Re-baseline are LIVE.
+→ NEXT: plan Phase 2 (shared components) + Phase 3 (shell/IA) — Phase 3 is where a person
+actually notices the redesign, and Phase 2 is its prerequisite (`PageHeader`/`DataRow`/
+`ResponsiveTable` must exist first).**
 Plan: [2026-07-28-101](docs/plans/2026-07-28-101-feat-cellarhand-v2-phase0-1-reconciliation-plan.md)
 (status `completed`, with an "Execution record" section listing every place the plan was wrong about
 the repo). Handoff spec: `docs/design/cellarhand-v2-handoff/` (49 files, 4 RFCs all still `proposed`).
@@ -22,7 +26,7 @@ ConfirmButton's WCAG-2.2.1 4-second auto-disarm replaced with event-based disarm
 required · new Skeleton / EmptyState / Alert / ActionReceipt · AppShell skip link + `aria-current` +
 `aria-expanded` · execute-screen errors announced · axe-core + Playwright a11y/visual harness.
 
-⚠️ **Three things stand between this and a PR:**
+⚠️ **Three gates were NOT run before merge (owner accepted, 2026-07-28) — still open:**
 1. **No axe/e2e run.** `npm run qa:a11y` needs a dev server from a checkout that HAS `.env` (worktrees
    don't) serving THIS branch, plus the Demo Winery sandbox. Reusing whatever dev server is on :3000
    would measure someone else's branch — worse than not running it.
@@ -31,6 +35,12 @@ required · new Skeleton / EmptyState / Alert / ActionReceipt · AppShell skip l
    from Phase 2 on, the committed baseline IS the previous phase's rendering.
 3. **`npm run build` not run** (needs `DATABASE_URL` for `prisma migrate deploy`). `tsc --noEmit`
    green, `eslint` 0 errors, 5,068 vitest tests passing across 418 files.
+
+**Caught in pre-landing review and fixed before merge (`ba8615f7`):** 10 Buttons were STILL under
+the 44px floor. `Button` spreads the caller's `style` LAST, so `style={{ height: 38 }}` beat
+`height: var(--touch-min)` outright — 10 sites on the two field-notes manager screens at 36-40px.
+Every unit test passed while the phase's headline claim was false there. A static guard now fails on
+any literal Button height under 44. (`minHeight` under 44 is harmless — it cannot shrink a fixed height.)
 
 **The highest-value finding, because it changes the risk profile:** the global `:focus-visible` rule
 already existed (the handoff says three times that it doesn't) — but it never reached `Button`, because
@@ -1791,7 +1801,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-28 — **Cellarhand UI/UX v2 Phase 0 + Phase 1 BUILT (10 units, 10 commits) on `claude/cellarhand-v2-phase-reconciliation-a926e3`, not PR'd and not axe/browser-verified.** Plan [101](docs/plans/2026-07-28-101-feat-cellarhand-v2-phase0-1-reconciliation-plan.md) is `completed` and carries an Execution record of the eight places the plan was wrong about the repo. Green: `tsc --noEmit`, `eslint` (0 errors), 5,068 vitest tests / 418 files, 6 new suites. Not green because not run: `qa:a11y` + `qa:visual` (need a dev server with `.env` on THIS branch) and `npm run build` (needs `DATABASE_URL`). The Spray Wave 1 objective is PUSHED onto the tangent stack, verbatim, under "Also in flight" — nothing lost.
+_Last updated: 2026-07-28 — **Cellarhand UI/UX v2 PR #1 SHIPPED: [#555](https://github.com/russellmoss/wine-inventory/pull/555) squash-merged to main as `ca65245d`, all CI green, branch pruned.** Phase 0 + Phase 1 live: v2 tokens, global reduced-motion, self-hosted Inter, Button 44/48/56/68, StatusChip replacing EIGHT status→colour maps, `gold`→`wine` across 31 sites, ConfirmButton's WCAG-2.2.1 timer replaced with event-based disarm, four new primitives, AppShell skip link + `aria-current` + `aria-expanded`. Pre-landing review caught 10 Buttons still under the floor via inline `style` (fixed, guarded). **Three gates remain unrun and are the honest debt: `qa:a11y`, `qa:visual`, `npm run build`** — the harnesses are committed. NOW WORKING: `/plan` for Phase 2 (shared components) + Phase 3 (shell/IA, 11 orphaned routes rehomed under a hard no-URL-change constraint). Spray Wave 1 stays PUSHED on the tangent stack, archived verbatim under "Also in flight".
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill
