@@ -135,6 +135,9 @@
     "triage:issues": "tsx --conditions=react-server --env-file=.env scripts/bug-triage-issues.ts",
     "triage:lookup": "tsx --conditions=react-server --env-file=.env scripts/bug-triage-lookup.ts",
     "qa:e2e": "playwright test",
+    "qa:a11y": "playwright test phase1-a11y",
+    "qa:visual": "playwright test visual-baseline",
+    "qa:visual:update": "playwright test visual-baseline --update-snapshots",
     "qa:e2e:report": "playwright show-report",
     "eval:assistant": "vitest run test/evals/assistant-tools.eval.test.ts",
     "eval:assistant-must-propose": "vitest run test/evals/assistant-must-propose.eval.test.ts",
@@ -183,6 +186,7 @@
     "unpdf": "^1.6.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/leaflet": "^1.9.21",
