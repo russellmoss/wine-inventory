@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+@font-face { font-family: "Big Caslon"; src: url("assets/fonts/BigCaslon-Regular.otf") format("opentype"); font-weight: 400; font-display: swap; }
+body { margin: 0; background: #E8E4DA; font-family: Inter, sans-serif; }
+a { color: #722F37; }
+a:hover { color: #5A2630; }
+</style>
+</helmet>
+
+<div style="padding: 56px; display: flex; flex-direction: column; gap: 48px; font-family: Inter, sans-serif; color: #14130F;">
+
+  <div style="max-width: 900px; display: flex; flex-direction: column; gap: 12px;">
+    <span style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #722F37; font-weight: 500;">Conceptual · exploratory</span>
+    <h1 style="font-family: 'Big Caslon', Georgia, serif; font-size: 46px; font-weight: 400; margin: 0; line-height: 1.06;">Grape to bottle</h1>
+    <p style="font-size: 16.5px; line-height: 1.55; color: #4D4A42; margin: 0; text-wrap: pretty;">One lot's real history, including a split at the press and a blend that takes part of it away. Four questions get four separate treatments rather than one diagram: <strong style="font-weight: 600; color: #14130F;">where it is now</strong>, <strong style="font-weight: 600; color: #14130F;">where it came from and what it fed</strong>, <strong style="font-weight: 600; color: #14130F;">what happened and who did it</strong>, and <strong style="font-weight: 600; color: #14130F;">what it currently is</strong>. This is a concept: it assumes no capability the ledger doesn't already model.</p>
+  </div>
+
+  <!-- ===== CURRENT STATE BAND ===== -->
+  <div style="max-width: 1352px; background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 14px; overflow: hidden;">
+    <div style="padding: 18px 24px; border-bottom: 1px solid #ECE7DC; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;">
+      <h2 style="font-family: 'Inter Tight', sans-serif; font-size: 25px; font-weight: 600; margin: 0; letter-spacing: -0.02em;">25-PN-04</h2>
+      <span style="font-size: 15px; color: #4D4A42;">Pinot Noir 2025 · Estate, Blocks 3 &amp; 5</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 999px; background: rgba(9,89,114,0.12); color: #095972;">◐ Aging · day 214</span>
+      <span style="margin-left: auto; font-size: 13.5px; color: #6B6555;">Every figure below links to the record it came from.</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(5, 1fr);">
+      <div style="padding: 16px 24px; border-right: 1px solid #ECE7DC;"><div style="font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8272; font-weight: 600;">Volume now</div><div style="font-size: 24px; font-weight: 600; margin-top: 5px; font-variant-numeric: tabular-nums;">2,025 L</div><div style="font-size: 13px; color: #6B6555; margin-top: 2px;">−115 L to angels since Oct</div></div>
+      <div style="padding: 16px 24px; border-right: 1px solid #ECE7DC;"><div style="font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8272; font-weight: 600;">Where</div><div style="font-size: 24px; font-weight: 600; margin-top: 5px;">9 barrels</div><div style="font-size: 13px; color: #6B6555; margin-top: 2px;">Hall B rack 4 · moving to T-04</div></div>
+      <div style="padding: 16px 24px; border-right: 1px solid #ECE7DC;"><div style="font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8272; font-weight: 600;">Composition</div><div style="font-size: 24px; font-weight: 600; margin-top: 5px;">100% PN</div><div style="font-size: 13px; color: #6B6555; margin-top: 2px;">62% Block 3 · 38% Block 5</div></div>
+      <div style="padding: 16px 24px; border-right: 1px solid #ECE7DC;"><div style="font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8272; font-weight: 600;">Free SO₂</div><div style="font-size: 24px; font-weight: 600; margin-top: 5px; font-variant-numeric: tabular-nums; color: #8A6414;">24 ppm</div><div style="font-size: 13px; color: #8A6414; margin-top: 2px;">▲ below the 30 ppm target</div></div>
+      <div style="padding: 16px 24px;"><div style="font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8272; font-weight: 600;">Open work</div><div style="font-size: 24px; font-weight: 600; margin-top: 5px;">WO #253</div><div style="font-size: 13px; color: #6B6555; margin-top: 2px;">Barrel down · 2 of 9 recorded</div></div>
+    </div>
+  </div>
+
+  <!-- ===== LINEAGE GRAPH ===== -->
+  <div style="display: flex; flex-direction: column; gap: 14px;">
+    <div style="display: flex; align-items: baseline; gap: 14px;">
+      <h2 style="font-family: 'Inter Tight', sans-serif; font-weight: 300; font-size: 30px; margin: 0;">Lineage — desktop</h2>
+      <span style="font-size: 14px; color: #6B6555;">Solid = recorded · hollow = planned · the two forks are a press split and a blend draw</span>
+    </div>
+
+    <div style="width: 1352px; background: #FFFCF8; border: 1px solid #C7BCA1; border-radius: 14px; padding: 24px 32px 28px; overflow: hidden;">
+      <div style="display: grid; grid-template-columns: 180px 60px 180px 60px 180px 60px 180px 60px 250px; font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8272; font-weight: 600; margin-bottom: 12px;">
+        <span>Vineyard</span><span></span><span>Ferment</span><span></span><span>Press</span><span></span><span>Age</span><span></span><span>Blend &amp; bottle</span>
+      </div>
+
+      <div style="position: relative; width: 1210px; height: 350px;">
+        <svg width="1210" height="350" style="position: absolute; inset: 0;" aria-hidden="true">
+          <path d="M180,76 C210,76 210,126 240,126" fill="none" stroke="#C7BCA1" stroke-width="1.5"></path>
+          <path d="M180,176 C210,176 210,126 240,126" fill="none" stroke="#C7BCA1" stroke-width="1.5"></path>
+          <path d="M420,126 C450,126 450,76 480,76" fill="none" stroke="#722F37" stroke-width="2"></path>
+          <path d="M420,126 C450,126 450,206 480,206" fill="none" stroke="#722F37" stroke-width="2" stroke-dasharray="0"></path>
+          <path d="M660,76 C690,76 690,66 720,66" fill="none" stroke="#C7BCA1" stroke-width="1.5"></path>
+          <path d="M900,66 C930,66 930,46 960,46" fill="none" stroke="#6B484D" stroke-width="2"></path>
+          <path d="M900,66 C930,66 930,156 960,156" fill="none" stroke="#C7BCA1" stroke-width="1.5" stroke-dasharray="5 4"></path>
+          <path d="M660,206 C790,206 830,286 960,286" fill="none" stroke="#6B484D" stroke-width="2"></path>
+          <circle cx="450" cy="126" r="4" fill="#722F37"></circle>
+          <circle cx="930" cy="66" r="4" fill="#6B484D"></circle>
+        </svg>
+
+        <!-- fruit -->
+        <div style="position: absolute; left: 0; top: 40px; width: 180px; background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 10px; padding: 11px 13px;">
+          <div style="font-size: 11.5px; color: #8A8272; font-family: 'IBM Plex Mono', monospace;">HARVEST LOAD 251</div>
+          <div style="font-size: 15px; font-weight: 600; margin-top: 3px;">Block 3</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 2px;">22 Sep · 3.0 t · 23.4 °Bx</div>
+        </div>
+        <div style="position: absolute; left: 0; top: 140px; width: 180px; background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 10px; padding: 11px 13px;">
+          <div style="font-size: 11.5px; color: #8A8272; font-family: 'IBM Plex Mono', monospace;">HARVEST LOAD 254</div>
+          <div style="font-size: 15px; font-weight: 600; margin-top: 3px;">Block 5</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 2px;">24 Sep · 1.8 t · 24.1 °Bx</div>
+        </div>
+
+        <!-- ferment -->
+        <div style="position: absolute; left: 240px; top: 90px; width: 180px; background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 10px; padding: 11px 13px;">
+          <div style="font-size: 11.5px; color: #8A8272; font-family: 'IBM Plex Mono', monospace;">MUST LOT · T-09</div>
+          <div style="font-size: 15px; font-weight: 600; margin-top: 3px;">25-PN-04</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 2px;">28 Sep – 12 Oct · dry 0.2 g/L</div>
+          <div style="font-size: 12.5px; color: #6B6555;">4,800 kg → 2,520 L</div>
+        </div>
+
+        <!-- press split -->
+        <div style="position: absolute; left: 480px; top: 40px; width: 180px; background: #FFFFFF; border: 1.5px solid #722F37; border-radius: 10px; padding: 11px 13px;">
+          <div style="font-size: 11.5px; color: #722F37; font-family: 'IBM Plex Mono', monospace; font-weight: 500;">SPLIT · PRESS 14 OCT</div>
+          <div style="font-size: 15px; font-weight: 600; margin-top: 3px;">Free run</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 2px;">2,140 L · stays 25-PN-04</div>
+        </div>
+        <div style="position: absolute; left: 480px; top: 170px; width: 180px; background: #FFFFFF; border: 1.5px solid #722F37; border-radius: 10px; padding: 11px 13px;">
+          <div style="font-size: 11.5px; color: #722F37; font-family: 'IBM Plex Mono', monospace; font-weight: 500;">SPLIT · SAME PRESS</div>
+          <div style="font-size: 15px; font-weight: 600; margin-top: 3px;">Press fraction</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 2px;">380 L · new lot 25-PN-04P</div>
+        </div>
+
+        <!-- age -->
+        <div style="position: absolute; left: 720px; top: 30px; width: 180px; background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 10px; padding: 11px 13px;">
+          <div style="font-size: 11.5px; color: #8A8272; font-family: 'IBM Plex Mono', monospace;">AGING · HALL B</div>
+          <div style="font-size: 15px; font-weight: 600; margin-top: 3px;">9 French oak barrels</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 2px;">18 Oct – now · 214 days</div>
+          <div style="font-size: 12.5px; color: #6B6555;">2 toppings · 1 rack</div>
+        </div>
+
+        <!-- outputs -->
+        <div style="position: absolute; left: 960px; top: 10px; width: 250px; background: #FFFFFF; border: 1.5px solid #6B484D; border-radius: 10px; padding: 11px 13px;">
+          <div style="font-size: 11.5px; color: #6B484D; font-family: 'IBM Plex Mono', monospace; font-weight: 500;">BLEND · GAVE 340 L</div>
+          <div style="font-size: 15px; font-weight: 600; margin-top: 3px;">2024 Estate Red</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 2px;">12 Feb · WO #201 · 6% of that blend</div>
+          <div style="font-size: 12.5px; color: #6B484D; margin-top: 4px; font-weight: 500;">Bottled 3 Apr · 1,840 units</div>
+        </div>
+        <div style="position: absolute; left: 960px; top: 120px; width: 250px; background: #FFFCF8; border: 1.5px dashed #C7BCA1; border-radius: 10px; padding: 11px 13px;">
+          <div style="font-size: 11.5px; color: #8A8272; font-family: 'IBM Plex Mono', monospace;">PLANNED · IN PROGRESS</div>
+          <div style="font-size: 15px; font-weight: 600; margin-top: 3px;">Consolidate to T-04</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 2px;">WO #253 · 2 of 9 barrels · 421 L so far</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 4px;">Then bench trial, 4 Aug</div>
+        </div>
+        <div style="position: absolute; left: 960px; top: 250px; width: 250px; background: #FFFFFF; border: 1.5px solid #6B484D; border-radius: 10px; padding: 11px 13px;">
+          <div style="font-size: 11.5px; color: #6B484D; font-family: 'IBM Plex Mono', monospace; font-weight: 500;">BLEND · GAVE 380 L</div>
+          <div style="font-size: 15px; font-weight: 600; margin-top: 3px;">2025 Estate Red</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 2px;">4 Nov · WO #188 · all of 25-PN-04P</div>
+          <div style="font-size: 12.5px; color: #6B6555; margin-top: 4px;">Aging in T-11</div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 26px; margin-top: 6px; flex-wrap: wrap; font-size: 13px; color: #4D4A42; border-top: 1px solid #ECE7DC; padding-top: 16px;">
+        <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 26px; height: 2px; background: #722F37;"></span>Split — one liquid became two lots</span>
+        <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 26px; height: 2px; background: #6B484D;"></span>Blend — this lot contributed to another wine</span>
+        <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 26px; height: 2px; background: #C7BCA1;"></span>Continuation</span>
+        <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 26px; border-top: 2px dashed #C7BCA1;"></span>Planned, not yet recorded</span>
+        <span style="margin-left: auto; color: #6B6555;">Every node opens the work order and ledger lines behind it.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MOBILE + EVENTS ===== -->
+  <div style="display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start;">
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <h2 style="font-family: 'Inter Tight', sans-serif; font-weight: 300; font-size: 26px; margin: 0;">Lineage — phone</h2>
+      <div style="width: 390px; height: 844px; overflow: hidden; background: #FFF8F1; border: 1px solid #C7BCA1; border-radius: 6px; box-shadow: 0 12px 34px rgba(43,42,38,0.12); display: flex; flex-direction: column;">
+        <header style="flex: none; padding: 14px 16px; background: #FFFFFF; border-bottom: 1px solid #DED7C6;">
+          <div style="font-size: 20px; font-weight: 600;">25-PN-04</div>
+          <div style="font-size: 13.5px; color: #6B6555; margin-top: 2px;">Pinot Noir 2025 · aging, day 214</div>
+          <div style="display: flex; gap: 4px; margin-top: 12px; padding: 3px; background: #F5F2EC; border-radius: 9px;">
+            <span style="flex: 1; height: 40px; border-radius: 7px; background: #722F37; color: #FFF; display: flex; align-items: center; justify-content: center; font-size: 13.5px; font-weight: 600;">History</span>
+            <span style="flex: 1; height: 40px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13.5px; color: #4D4A42;">Now</span>
+            <span style="flex: 1; height: 40px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13.5px; color: #4D4A42;">Fed into</span>
+          </div>
+        </header>
+        <div style="flex: 1; overflow: hidden; padding: 16px;">
+          <div style="font-size: 13.5px; color: #4D4A42; line-height: 1.5; margin-bottom: 14px;">Read bottom-up like the barrel tag: newest first. Tap any step for the work order behind it.</div>
+
+          <div style="display: flex; gap: 12px;">
+            <div style="width: 12px; flex: none; display: flex; flex-direction: column; align-items: center;"><span style="width: 12px; height: 12px; border-radius: 999px; border: 2px dashed #C7BCA1; margin-top: 5px;"></span><span style="flex: 1; width: 2px; background: #DED7C6;"></span></div>
+            <div style="padding-bottom: 18px; flex: 1;">
+              <div style="font-size: 12px; color: #8A8272; font-family: 'IBM Plex Mono', monospace;">IN PROGRESS · TODAY</div>
+              <div style="font-size: 16px; font-weight: 600; margin-top: 3px;">Consolidating to T-04</div>
+              <div style="font-size: 13.5px; color: #4D4A42; margin-top: 3px; line-height: 1.45;">2 of 9 barrels · 421 L so far · WO #253, Mbeki</div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <div style="width: 12px; flex: none; display: flex; flex-direction: column; align-items: center;"><span style="width: 12px; height: 12px; border-radius: 999px; background: #6B484D; margin-top: 5px;"></span><span style="flex: 1; width: 2px; background: #DED7C6;"></span></div>
+            <div style="padding-bottom: 18px; flex: 1;">
+              <div style="font-size: 12px; color: #6B484D; font-family: 'IBM Plex Mono', monospace; font-weight: 500;">GAVE WINE AWAY · 12 FEB</div>
+              <div style="font-size: 16px; font-weight: 600; margin-top: 3px;">340 L into 2024 Estate Red</div>
+              <div style="font-size: 13.5px; color: #4D4A42; margin-top: 3px; line-height: 1.45;">6% of that blend. Bottled 3 Apr, 1,840 units. <span style="color: #722F37;">Follow it →</span></div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <div style="width: 12px; flex: none; display: flex; flex-direction: column; align-items: center;"><span style="width: 12px; height: 12px; border-radius: 999px; background: #4D4A42; margin-top: 5px;"></span><span style="flex: 1; width: 2px; background: #DED7C6;"></span></div>
+            <div style="padding-bottom: 18px; flex: 1;">
+              <div style="font-size: 12px; color: #8A8272; font-family: 'IBM Plex Mono', monospace;">AGING · FROM 18 OCT</div>
+              <div style="font-size: 16px; font-weight: 600; margin-top: 3px;">9 French oak barrels</div>
+              <div style="font-size: 13.5px; color: #4D4A42; margin-top: 3px; line-height: 1.45;">2,140 L in · 2 toppings · 1 rack · 115 L lost</div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <div style="width: 12px; flex: none; display: flex; flex-direction: column; align-items: center;"><span style="width: 12px; height: 12px; border-radius: 999px; background: #722F37; margin-top: 5px;"></span><span style="flex: 1; width: 2px; background: #DED7C6;"></span></div>
+            <div style="padding-bottom: 18px; flex: 1;">
+              <div style="font-size: 12px; color: #722F37; font-family: 'IBM Plex Mono', monospace; font-weight: 500;">SPLIT IN TWO · 14 OCT</div>
+              <div style="font-size: 16px; font-weight: 600; margin-top: 3px;">Pressed</div>
+              <div style="font-size: 13.5px; color: #4D4A42; margin-top: 3px; line-height: 1.45;">Free run 2,140 L stayed this lot.<br>Press fraction 380 L became <strong style="font-weight: 600;">25-PN-04P</strong> and went to the 2025 Estate Red. <span style="color: #722F37;">Follow it →</span></div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <div style="width: 12px; flex: none; display: flex; flex-direction: column; align-items: center;"><span style="width: 12px; height: 12px; border-radius: 999px; background: #4D4A42; margin-top: 5px;"></span><span style="flex: 1; width: 2px; background: #DED7C6;"></span></div>
+            <div style="padding-bottom: 18px; flex: 1;">
+              <div style="font-size: 12px; color: #8A8272; font-family: 'IBM Plex Mono', monospace;">FERMENTED · 28 SEP – 12 OCT</div>
+              <div style="font-size: 16px; font-weight: 600; margin-top: 3px;">T-09, dry at 0.2 g/L</div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px;">
+            <div style="width: 12px; flex: none;"><span style="display: block; width: 12px; height: 12px; border-radius: 999px; background: #4D4A42; margin-top: 5px;"></span></div>
+            <div style="flex: 1;">
+              <div style="font-size: 12px; color: #8A8272; font-family: 'IBM Plex Mono', monospace;">PICKED · 22 &amp; 24 SEP</div>
+              <div style="font-size: 16px; font-weight: 600; margin-top: 3px;">Blocks 3 &amp; 5 · 4.8 t</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="width: 390px; font-size: 13.5px; line-height: 1.55; color: #4D4A42; margin: 0;">Not a shrunken graph — a different artefact. A vertical event stream where each fork becomes a sentence with a "follow it" link, so branching is <em>narrated</em> rather than drawn.</p>
+    </div>
+
+    <div style="flex: 1; min-width: 520px; max-width: 900px; display: flex; flex-direction: column; gap: 12px;">
+      <h2 style="font-family: 'Inter Tight', sans-serif; font-weight: 300; font-size: 26px; margin: 0;">Event history — inspectable, attributable</h2>
+      <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 14px; overflow: hidden;">
+        <div style="display: grid; grid-template-columns: 110px 1fr 130px 120px 90px; background: #F5F2EC; border-bottom: 1px solid #C7BCA1; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6B6555; font-weight: 600;">
+          <span style="padding: 10px 14px;">When</span><span style="padding: 10px 14px;">What happened</span><span style="padding: 10px 14px; text-align: right;">Volume</span><span style="padding: 10px 14px;">Who</span><span style="padding: 10px 14px;">Order</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 110px 1fr 130px 120px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14px; align-items: center;"><span style="padding: 11px 14px; color: #6B6555; font-variant-numeric: tabular-nums;">27 Jul 12:31</span><span style="padding: 11px 14px;">B-115 racked to T-04</span><span style="padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums;">207 L</span><span style="padding: 11px 14px; color: #4D4A42;">D. Mbeki</span><span style="padding: 11px 14px; color: #722F37;">#253</span></div>
+        <div style="display: grid; grid-template-columns: 110px 1fr 130px 120px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14px; align-items: center; background: rgba(215,159,50,0.06);"><span style="padding: 11px 14px; color: #6B6555; font-variant-numeric: tabular-nums;">27 Jul 12:22</span><span style="padding: 11px 14px;">B-114 volume corrected <span style="color: #8A6414;">208 → 214 L</span> <span style="font-size: 12.5px; color: #6B6555;">— “misread the sight glass”</span></span><span style="padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums;">+6 L</span><span style="padding: 11px 14px; color: #4D4A42;">D. Mbeki</span><span style="padding: 11px 14px; color: #722F37;">#253</span></div>
+        <div style="display: grid; grid-template-columns: 110px 1fr 130px 120px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14px; align-items: center;"><span style="padding: 11px 14px; color: #6B6555; font-variant-numeric: tabular-nums;">27 Jul 12:18</span><span style="padding: 11px 14px;">B-114 racked to T-04</span><span style="padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums;">208 L</span><span style="padding: 11px 14px; color: #4D4A42;">D. Mbeki</span><span style="padding: 11px 14px; color: #722F37;">#253</span></div>
+        <div style="display: grid; grid-template-columns: 110px 1fr 130px 120px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14px; align-items: center;"><span style="padding: 11px 14px; color: #6B6555; font-variant-numeric: tabular-nums;">12 Feb</span><span style="padding: 11px 14px;">Drawn off into 2024 Estate Red blend</span><span style="padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums;">−340 L</span><span style="padding: 11px 14px; color: #4D4A42;">M. Reyes</span><span style="padding: 11px 14px; color: #722F37;">#201</span></div>
+        <div style="display: grid; grid-template-columns: 110px 1fr 130px 120px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14px; align-items: center;"><span style="padding: 11px 14px; color: #6B6555; font-variant-numeric: tabular-nums;">3 Jan</span><span style="padding: 11px 14px;">Topped, 9 barrels</span><span style="padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums;">+31 L</span><span style="padding: 11px 14px; color: #4D4A42;">J. Okafor</span><span style="padding: 11px 14px; color: #722F37;">#164</span></div>
+        <div style="display: grid; grid-template-columns: 110px 1fr 130px 120px 90px; font-size: 14px; align-items: center;"><span style="padding: 11px 14px; color: #6B6555; font-variant-numeric: tabular-nums;">14 Oct 2025</span><span style="padding: 11px 14px;">Pressed — split into free run and press fraction</span><span style="padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums;">2,520 L in</span><span style="padding: 11px 14px; color: #4D4A42;">M. Reyes</span><span style="padding: 11px 14px; color: #722F37;">#142</span></div>
+      </div>
+      <p style="font-size: 14px; line-height: 1.6; color: #4D4A42; margin: 0;">Corrections are rows in the history, not edits to it — the original 208 L and the amended 214 L both stand, with the stated reason. That is what makes "correction, not undo" honest: the trail survives the fix, which is exactly what a TTB auditor and a winemaker each need for different reasons.</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

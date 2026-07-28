@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+@font-face { font-family: "Big Caslon"; src: url("assets/fonts/BigCaslon-Regular.otf") format("opentype"); font-weight: 400; font-display: swap; }
+body { margin: 0; background: #E8E4DA; font-family: Inter, sans-serif; }
+a { color: #722F37; }
+a:hover { color: #5A2630; }
+</style>
+</helmet>
+
+<div style="padding: 56px; display: flex; flex-direction: column; gap: 48px; font-family: Inter, sans-serif; color: #14130F; max-width: 1400px;">
+
+  <div style="max-width: 900px; display: flex; flex-direction: column; gap: 12px;">
+    <span style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #722F37; font-weight: 500;">Three directions · one workflow</span>
+    <h1 style="font-family: 'Big Caslon', Georgia, serif; font-size: 48px; font-weight: 400; margin: 0; line-height: 1.05;">Comparison, decisions, recommendation</h1>
+    <p style="font-size: 16.5px; line-height: 1.55; color: #4D4A42; margin: 0; text-wrap: pretty;">All three run the same slice — <span style="font-family: 'IBM Plex Mono', monospace; font-size: 14.5px;">/work-orders → /[id] → /execute → recorded</span> — on the same day at Demo Winery, with the same 25-PN-04 barrel-down. They differ in information architecture, hierarchy, density and interaction; the palette is nearly identical across all three on purpose, so the structural choices are what you're comparing.</p>
+  </div>
+
+  <!-- ===== FILE INDEX ===== -->
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px 22px;">
+      <div style="font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #722F37; font-weight: 600;">Direction A</div>
+      <div style="font-family: 'Big Caslon', Georgia, serif; font-size: 26px; margin-top: 6px;">Warm operational editorial</div>
+      <p style="font-size: 14.5px; line-height: 1.5; color: #4D4A42; margin: 8px 0 0;">The current identity, made operational. One reordered nav, comfortable density, type-led hierarchy. The lowest-risk evolution.</p>
+    </div>
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px 22px;">
+      <div style="font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #722F37; font-weight: 600;">Direction B</div>
+      <div style="font-family: 'Inter Tight', sans-serif; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; margin-top: 6px;">Precision cellar system</div>
+      <p style="font-size: 14.5px; line-height: 1.5; color: #4D4A42; margin: 8px 0 0;">Two apps under one brand: a stripped floor app and a dense manager console. Fastest for experts, most work to build.</p>
+    </div>
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px 22px;">
+      <div style="font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #722F37; font-weight: 600;">Direction C</div>
+      <div style="font-family: 'Inter Tight', sans-serif; font-size: 26px; font-weight: 500; letter-spacing: -0.025em; margin-top: 6px;">Modern AI-native winery</div>
+      <p style="font-size: 14.5px; line-height: 1.5; color: #4D4A42; margin: 8px 0 0;">No sidebar. A Now surface ranked by consequence, a command bar for everything, writes previewed before they happen.</p>
+    </div>
+  </div>
+
+  <!-- ===== MATRIX ===== -->
+  <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 14px; overflow: hidden;">
+    <div style="display: grid; grid-template-columns: 210px 1fr 1fr 1fr; background: #14130F; color: #FFF8F1;">
+      <span style="padding: 14px 18px; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; opacity: 0.7;">Dimension</span>
+      <span style="padding: 14px 18px; font-size: 14.5px; font-weight: 600;">A · Warm operational</span>
+      <span style="padding: 14px 18px; font-size: 14.5px; font-weight: 600;">B · Precision cellar</span>
+      <span style="padding: 14px 18px; font-size: 14.5px; font-weight: 600;">C · AI-native</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 210px 1fr 1fr 1fr; border-bottom: 1px solid #ECE7DC;">
+      <span style="padding: 15px 18px; font-size: 14px; font-weight: 600; background: #FFFCF8;">Information architecture</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">One sidebar, regrouped as <em>Today / The wine / The business</em>. Same nav for everyone; admin items gated but present.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Hard split by role. Floor app = 3 tabs. Console = rail + queue + workspace, no page loads between them.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">No persistent nav. <em>Now</em> is the front page; ⌘K reaches everything; a full directory sits behind one header button.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 210px 1fr 1fr 1fr; border-bottom: 1px solid #ECE7DC;">
+      <span style="padding: 15px 18px; font-size: 14px; font-weight: 600; background: #FFFCF8;">Triage model</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Four saved views + one "narrow by…". Buckets by urgency, each row with its own verb.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">A persistent scannable list column with sort chips. Selection updates the pane; the list never leaves.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Ranked by consequence, not by due date, with the ranking's sources shown and the plain queue one click away.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 210px 1fr 1fr 1fr; border-bottom: 1px solid #ECE7DC;">
+      <span style="padding: 15px 18px; font-size: 14px; font-weight: 600; background: #FFFCF8;">Capture interaction</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">One act per screen, field pre-filled from plan, ±nudge buttons, 56px primary that names the value and the next stop.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Nine barrels = nine rows in one grid on desktop; a dedicated 64px keypad on the phone. Enter records, Tab advances.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Voice or type fills the same form; the screen states the resulting ledger change before you commit it.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 210px 1fr 1fr 1fr; border-bottom: 1px solid #ECE7DC;">
+      <span style="padding: 15px 18px; font-size: 14px; font-weight: 600; background: #FFFCF8;">Density</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Comfortable. ~3 orders per screenful; 44px rows.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">High. ~12 orders and 9 capture rows on one console screen; 32px rows.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Spacious head, dense tail — one large lead item, then compact rows.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 210px 1fr 1fr 1fr; border-bottom: 1px solid #ECE7DC;">
+      <span style="padding: 15px 18px; font-size: 14px; font-weight: 600; background: #FFFCF8;">Where AI lives</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">A bylined column in the brief: observation, source chips, one draft action. Never covers content.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">A result type inside search, always below the record matches, plus one strip under the capture grid.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Structural: it ranks Now, explains abnormalities, and drafts diffed writes in a dedicated review rail.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 210px 1fr 1fr 1fr; border-bottom: 1px solid #ECE7DC;">
+      <span style="padding: 15px 18px; font-size: 14px; font-weight: 600; background: #FFFCF8;">Production context</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Right column, three collapsible levels: stage bar, lineage timeline, next step.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">A six-cell fact strip under the title — stage, volume, chemistry, destination, progress. No graphic.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">A six-stage bar at the top of the brief; solid = recorded, hollow = planned. Same component on lots and vessels.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 210px 1fr 1fr 1fr; border-bottom: 1px solid #ECE7DC;">
+      <span style="padding: 15px 18px; font-size: 14px; font-weight: 600; background: #FFFCF8;">Best for</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Small-to-mid estate wineries where everyone does a bit of everything, and for selling the product.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Larger wineries and custom-crush, with dedicated cellar crews and hundreds of barrels.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;">Wineries whose bottleneck is judgement, not typing — and the strongest differentiated pitch.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 210px 1fr 1fr 1fr; border-bottom: 1px solid #ECE7DC;">
+      <span style="padding: 15px 18px; font-size: 14px; font-weight: 600; background: #FFFCF8;">Main risk</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #A5342D;">Least differentiated. At 400 barrels the comfortable density becomes a lot of scrolling.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #A5342D;">Two shells to build and maintain, and role boundaries in a small winery are blurrier than the design assumes.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #A5342D;">Findability depends on a command bar and ranked surface. If ranking is ever wrong, trust drops hard.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 210px 1fr 1fr 1fr;">
+      <span style="padding: 15px 18px; font-size: 14px; font-weight: 600; background: #FFFCF8;">Build cost from today</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;"><strong style="font-weight: 600;">Low.</strong> Component and nav work; no new architecture.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;"><strong style="font-weight: 600;">High.</strong> New shell, new role model, virtualised lists, a keypad component.</span>
+      <span style="padding: 15px 18px; font-size: 14px; line-height: 1.5; color: #4D4A42;"><strong style="font-weight: 600;">High.</strong> Command bar, ranking service, draft/diff model, provenance plumbing.</span>
+    </div>
+  </div>
+
+  <!-- ===== SUCCESS CRITERIA ===== -->
+  <div style="display: flex; flex-direction: column; gap: 14px;">
+    <h2 style="font-family: 'Inter Tight', sans-serif; font-weight: 300; font-size: 30px; margin: 0;">Against your non-negotiables</h2>
+    <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 14px; overflow: hidden;">
+      <div style="display: grid; grid-template-columns: 1fr 90px 90px 90px; background: #F5F2EC; border-bottom: 1px solid #C7BCA1; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #6B6555; font-weight: 600;">
+        <span style="padding: 11px 18px;">Criterion</span><span style="padding: 11px 12px; text-align: center;">A</span><span style="padding: 11px 12px; text-align: center;">B</span><span style="padding: 11px 12px; text-align: center;">C</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 90px 90px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14.5px; align-items: center;"><span style="padding: 12px 18px;">Zero mode-switching clicks to record actuals</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 90px 90px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14.5px; align-items: center;"><span style="padding: 12px 18px;">No false offline or retry promise</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 90px 90px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14.5px; align-items: center;"><span style="padding: 12px 18px;">Act-level correction from the screen where it happened</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 90px 90px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14.5px; align-items: center;"><span style="padding: 12px 18px;">Every target ≥44px at 390px</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 90px 90px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14.5px; align-items: center;"><span style="padding: 12px 18px;">Status legible without colour</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 90px 90px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14.5px; align-items: center;"><span style="padding: 12px 18px;">Readable in bright sun, one-handed, under time pressure</span><span style="padding: 12px; text-align: center; color: #8A6414; font-weight: 600;">◐</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 90px 90px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14.5px; align-items: center;"><span style="padding: 12px 18px;">Excellent at scale (400+ barrels, harvest volumes)</span><span style="padding: 12px; text-align: center; color: #8A6414; font-weight: 600;">◐</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #8A6414; font-weight: 600;">◐</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 90px 90px 90px; border-bottom: 1px solid #ECE7DC; font-size: 14.5px; align-items: center;"><span style="padding: 12px 18px;">Findability works with AI switched off</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #8A6414; font-weight: 600;">◐</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 90px 90px 90px; font-size: 14.5px; align-items: center;"><span style="padding: 12px 18px;">Serves a first-day seasonal worker</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #175242; font-weight: 600;">●</span><span style="padding: 12px; text-align: center; color: #8A6414; font-weight: 600;">◐</span></div>
+      <div style="padding: 12px 18px; background: #FFFCF8; border-top: 1px solid #ECE7DC; font-size: 13.5px; color: #6B6555;">● meets it · ◐ meets it with a caveat named in the risks row above. Keyboard navigation, skip links, focus visibility, heading order, accessible names and <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">aria-current</code> are assumed in all three — they are corrections to defects, not design variables.</div>
+    </div>
+  </div>
+
+  <!-- ===== DECISIONS ===== -->
+  <div style="display: flex; flex-direction: column; gap: 16px;">
+    <h2 style="font-family: 'Inter Tight', sans-serif; font-weight: 300; font-size: 30px; margin: 0;">Decisions common to all three, and what they cost</h2>
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;">
+
+      <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px 22px;">
+        <div style="font-size: 17px; font-weight: 600;">Wine is no longer a status colour</div>
+        <p style="font-size: 14.5px; line-height: 1.55; color: #4D4A42; margin: 8px 0 0;">The <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13.5px;">gold→wine</code> drift didn't just mislabel a token; it made every task status identical on the busiest screen. Wine now means brand and "the one action to take". Status gets deep-blue / green / golden / red plus a glyph.</p>
+        <p style="font-size: 13.5px; line-height: 1.5; color: #6B6555; margin: 10px 0 0;"><strong style="font-weight: 600; color: #8A6414;">Cost:</strong> the brand colour appears less often, so the product looks marginally less "Cellarhand" at a glance. Worth it — a colour that means five things means nothing.</p>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px 22px;">
+        <div style="font-size: 17px; font-weight: 600;">"Correct", never "Undo"</div>
+        <p style="font-size: 14.5px; line-height: 1.55; color: #4D4A42; margin: 8px 0 0;">You told me the ledger amends rather than reverses, so the word is <em>Correct</em> everywhere, the receipt says the entry is permanent, and corrected entries stay visible with both values in the history. Rule 8's blocked case gets a named later operation and a "unwind the chain" path.</p>
+        <p style="font-size: 13.5px; line-height: 1.5; color: #6B6555; margin: 10px 0 0;"><strong style="font-weight: 600; color: #8A6414;">Cost:</strong> "Undo" is a friendlier word and reduces fear more. Accuracy wins: promising undo and delivering an amendment is the same class of defect as the offline label.</p>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px 22px;">
+        <div style="font-size: 17px; font-weight: 600;">The connection state changes the verb</div>
+        <p style="font-size: 14.5px; line-height: 1.55; color: #4D4A42; margin: 8px 0 0;">With a real queue coming, offline is a named state — <em>Held</em> — with a count, a list of what's held, the sentence "not on the server yet", and a primary button that reads <em>Hold</em> instead of <em>Record</em>. The word on the button is the contract.</p>
+        <p style="font-size: 13.5px; line-height: 1.5; color: #6B6555; margin: 10px 0 0;"><strong style="font-weight: 600; color: #8A6414;">Cost:</strong> the interface visibly changes under the user mid-task, which is normally something to avoid. Here the change <em>is</em> the information.</p>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px 22px;">
+        <div style="font-size: 17px; font-weight: 600;">The plan is the default value, not a separate mode</div>
+        <p style="font-size: 14.5px; line-height: 1.55; color: #4D4A42; margin: 8px 0 0;">Deleting the Edit gate removes two clicks per task — ~24 on a twelve-task morning — and removes a mode named after the exception.</p>
+        <p style="font-size: 13.5px; line-height: 1.5; color: #6B6555; margin: 10px 0 0;"><strong style="font-weight: 600; color: #8A6414;">Cost:</strong> an editable field is easier to change by accident than a read-only summary. Mitigated by naming the value in the button ("Record 225 L and go to B-117") and by correction being available after.</p>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px 22px;">
+        <div style="font-size: 17px; font-weight: 600;">AI proposes; a person commits</div>
+        <p style="font-size: 14.5px; line-height: 1.55; color: #4D4A42; margin: 8px 0 0;">Every AI write is a <em>draft</em> with a visible diff, the records it reasoned from, and an explicit confirm. Recommendation / draft / confirmed / completed are four distinguishable states, and only the last two exist on the server. No sparkles, no permanent chat panel.</p>
+        <p style="font-size: 13.5px; line-height: 1.5; color: #6B6555; margin: 10px 0 0;"><strong style="font-weight: 600; color: #8A6414;">Cost:</strong> slower than letting the assistant act. Correct for a system of record that feeds a TTB filing.</p>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #C7BCA1; border-radius: 12px; padding: 20px 22px;">
+        <div style="font-size: 17px; font-weight: 600;">Filters shrink; saved views replace them</div>
+        <p style="font-size: 14.5px; line-height: 1.55; color: #4D4A42; margin: 8px 0 0;">Seven fields and a scrolling vessel picker became four named views plus one expandable "narrow by…". Work is visible in the first screenful on both desktop and phone.</p>
+        <p style="font-size: 13.5px; line-height: 1.5; color: #6B6555; margin: 10px 0 0;"><strong style="font-weight: 600; color: #8A6414;">Cost:</strong> the power-user who filters by template <em>and</em> location <em>and</em> date now takes one extra click. Measured against every user paying 450px of chrome on every visit, that trade is easy.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== RECOMMENDATION ===== -->
+  <div style="background: #14130F; color: #FFF8F1; border-radius: 16px; padding: 40px 44px; display: flex; gap: 44px; flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 460px;">
+      <span style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #E8B4BA; font-weight: 600;">Recommendation</span>
+      <h2 style="font-family: 'Big Caslon', Georgia, serif; font-size: 40px; font-weight: 400; margin: 14px 0 0; line-height: 1.1;">Build A's shell. Ship B's capture. Add C's command bar — in that order.</h2>
+      <p style="font-size: 16px; line-height: 1.6; color: rgba(255,248,241,0.8); margin: 18px 0 0;">If forced to pick one whole direction: <strong style="font-weight: 600; color: #FFF8F1;">A</strong>. It is the only one that reaches the floor this season, it preserves the identity that makes Cellarhand look unlike winery software, and it fixes every safety defect in the audit without a new architecture. B and C both bet the slice on infrastructure you'd be building at the same time as the redesign.</p>
+      <p style="font-size: 16px; line-height: 1.6; color: rgba(255,248,241,0.8); margin: 14px 0 0;">But the honest answer is that the three are not really rivals — <strong style="font-weight: 600; color: #FFF8F1;">they are three layers of the same product</strong>, and their best parts don't conflict.</p>
+    </div>
+    <div style="flex: 1; min-width: 400px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="border-left: 2px solid #E8B4BA; padding-left: 18px;">
+        <div style="font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #E8B4BA; font-weight: 600;">Now — this harvest</div>
+        <div style="font-size: 17px; font-weight: 600; margin-top: 6px;">A's shell, status ramp and execute flow</div>
+        <p style="font-size: 14.5px; line-height: 1.55; color: rgba(255,248,241,0.72); margin: 6px 0 0;">Reordered nav, the five-tone status ramp, the Edit gate deleted, honest connection states, correction on the act. Mostly component-layer work; every audit critical is closed.</p>
+      </div>
+      <div style="border-left: 2px solid rgba(255,248,241,0.3); padding-left: 18px;">
+        <div style="font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,248,241,0.55); font-weight: 600;">Next — before next harvest</div>
+        <div style="font-size: 17px; font-weight: 600; margin-top: 6px;">B's multi-row capture grid and floor mode</div>
+        <p style="font-size: 14.5px; line-height: 1.55; color: rgba(255,248,241,0.72); margin: 6px 0 0;">The nine-rows-in-one-table pattern is the highest-leverage thing in the whole exploration for a winery with real barrel counts, and it transfers straight to <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13.5px;">/bulk</span> — the audit's runner-up slice. Ship "floor mode" as a preference, not a second app.</p>
+      </div>
+      <div style="border-left: 2px solid rgba(255,248,241,0.3); padding-left: 18px;">
+        <div style="font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,248,241,0.55); font-weight: 600;">Then — the differentiator</div>
+        <div style="font-size: 17px; font-weight: 600; margin-top: 6px;">C's command bar, draft-diff writes and Now</div>
+        <p style="font-size: 14.5px; line-height: 1.55; color: rgba(255,248,241,0.72); margin: 6px 0 0;">The command bar should land early regardless — it's the fix for S5 and it takes the Assistant off the critical path for findability. <em>Now</em> should replace the dashboard only once the floor loop has defined what "needs me today" actually means. That sequencing is the audit's own §8 argument, and I think it's right.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== OPEN QUESTIONS ===== -->
+  <div style="background: #FFFCF8; border: 1px solid #C7BCA1; border-radius: 14px; padding: 26px 30px; max-width: 980px;">
+    <h2 style="font-family: 'Inter Tight', sans-serif; font-weight: 400; font-size: 24px; margin: 0;">What I'd need to resolve before this becomes a build plan</h2>
+    <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.55; color: #4D4A42;">
+      <div style="display: flex; gap: 12px;"><span style="font-family: 'IBM Plex Mono', monospace; color: #722F37; font-weight: 600; flex: none;">1</span><span><strong style="font-weight: 600; color: #14130F;">Which acts are correctable, and for how long.</strong> The designs assume value corrections are open until a later operation consumes the wine. If there's a time or approval boundary, the receipt copy changes.</span></div>
+      <div style="display: flex; gap: 12px;"><span style="font-family: 'IBM Plex Mono', monospace; color: #722F37; font-weight: 600; flex: none;">2</span><span><strong style="font-weight: 600; color: #14130F;">The 11 orphaned routes.</strong> I've assumed the review queue and templates belong under Work orders, and weigh-tags under Fruit intake — but that's a product decision, not a design one.</span></div>
+      <div style="display: flex; gap: 12px;"><span style="font-family: 'IBM Plex Mono', monospace; color: #722F37; font-weight: 600; flex: none;">3</span><span><strong style="font-weight: 600; color: #14130F;">Whether Setup and Audit log stay ungated.</strong> A and C show them to everyone as today; B hides them from the floor role. Audit §9 Q1 is still open.</span></div>
+      <div style="display: flex; gap: 12px;"><span style="font-family: 'IBM Plex Mono', monospace; color: #722F37; font-weight: 600; flex: none;">4</span><span><strong style="font-weight: 600; color: #14130F;">Real barrel and tank counts across target tenants.</strong> The density choice between A and B turns almost entirely on this number, and I've been guessing at it.</span></div>
+      <div style="display: flex; gap: 12px;"><span style="font-family: 'IBM Plex Mono', monospace; color: #722F37; font-weight: 600; flex: none;">5</span><span><strong style="font-weight: 600; color: #14130F;">Scanning.</strong> The audit notes no barcode support anywhere. Every one of these designs would get materially faster with a scan on the vessel — it's the single biggest unexplored win, and it needs a hardware answer first.</span></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
