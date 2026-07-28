@@ -79,7 +79,28 @@ Tokens: `src/styles/tokens/colors.css`. Always use the semantic aliases, not raw
   orange `#F19E70` · bright-mauve `#C06F74`.
 - **Semantic status:** positive = deep-green · info = deep-blue · warning =
   golden-yellow · danger = red.
-- **Focus ring:** `rgba(114,47,55,0.45)` → `--shadow-focus` (3px ring) on `:focus-visible`.
+- **Text-safe ink variants (v2):** the editorial hues above are decorative-only —
+  `--golden-yellow` is 2.1:1 on cream and cannot carry text. Use `--golden-ink`
+  `#8A6414` · `--red-ink` `#A5342D` · `--green-ink` `#175242` · `--blue-ink` `#095972`
+  for glyphs and text on light surfaces, `--ink-500` `#8A8272` (via `--text-meta`) for
+  eyebrows/column headers/timestamps, and `--warning-deep-text` `#5C440E` inside a
+  warning tint. **Never** set text in golden-yellow, orange, lavender or bright-mauve.
+- **Surface tints (v2):** `--surface-tint-{warning,danger,info,success,accent}` — the
+  quiet wash behind an `Alert` or a flagged row.
+- **Status ramp (v2, the single status vocabulary):** six values, each a
+  `--status-*-fg` / `--status-*-bg` pair — `neutral ○` · `active ◐` · `held ◔` ·
+  `done ●` · `attention ▲` · `review ◇`. Rendered only through `StatusChip`, which
+  always pairs the glyph with mandatory text. **Wine is not in this ramp** — it means
+  brand and primary action only. `held` is built but unwired.
+- **Provenance (v2):** `--provenance-measured-*` / `--provenance-estimated-*`. The
+  labels are always the words **measured** / **≈ estimated**; colour reinforces only.
+- **Data-viz series (v2):** `--viz-1`…`--viz-6` (Brix · temperature · pH · free SO₂ ·
+  TA · malic), plus `--viz-threshold` / `--viz-grid` / `--viz-axis`. Every series
+  pairs its colour with a dash pattern and marker shape — colour is never the only
+  encoding.
+- **Focus ring:** `rgba(114,47,55,0.45)` → `--shadow-focus` (3px ring) on `:focus-visible`,
+  with `border-radius: inherit` so the ring traces the control's own shape. On ink/dark
+  surfaces use `--focus-ring-on-dark` `rgba(255,248,241,0.65)`.
 - **Dark mode:** **None — light-only by design.** The warm paper aesthetic is the brand.
   Do not add a dark theme without an explicit decision logged below.
 
@@ -88,6 +109,21 @@ Tokens: `src/styles/tokens/spacing.css`. **Base unit: 8px.** Density: comfortabl
 
 - **Scale:** 0 · 4 · 8 · 12 · 16 · 24 · 32 · 40 · 56 · 72 · 96 · 128 (`--space-0`…`--space-11`).
 - **Gutter:** `--space-5` (24px).
+- **Density (v2):** chrome stays comfortable, data compresses. `--row-h-comfortable`
+  56 · `--row-h-default` 46 · `--row-h-dense` 38 · `--row-h-active` 56, plus
+  `--cell-pad-x` 8 / `--cell-pad-x-first` 12 / `--section-gap` 24 /
+  `--page-pad-x` 32 (`-sm` 16) / `--page-pad-y` 24. Page header, breadcrumb, headline,
+  summary and primary actions always use the comfortable scale; only tabular data
+  uses `--row-h-dense`.
+- **Touch targets (v2):** `--touch-min` **44px is the floor at every width**, not a
+  phone-only rule · `--touch-floor` 56 (primary action on a capture screen) ·
+  `--touch-floor-lg` 68 (the single tick action on a phone runner) · `--touch-nudge` 46.
+  If a design cannot fit 44px targets, the design is wrong.
+- **Breakpoints (v2):** `--bp-phone-lg` 430 · `--bp-tablet` 768 · `--bp-desktop` 1024 ·
+  `--bp-wide` 1440.
+- **Icons (v2):** `src/styles/tokens/icons.css` — `--icon-nav` 20 · `--icon-tab` 24 ·
+  `--icon-inline` 17 · `--icon-feature` 40, and `--icon-stroke` 1.6 at a 24px viewBox.
+  The stroke is a constant: do **not** scale it with the icon.
 
 ## Layout
 - **Approach:** Grid-disciplined for app screens; editorial restraint (serif, eyebrows,
@@ -113,6 +149,11 @@ Calm, editorial. Tokens in `spacing.css`.
 - **Duration:** fast 120ms · normal 220ms · slow 400ms.
 - **Use:** transitions that aid comprehension (hover, state, drawer). No scroll
   choreography, no decorative animation.
+- **Reduced motion (v2):** `globals.css` carries a **global**
+  `@media (prefers-reduced-motion: reduce)` rule that collapses every animation and
+  transition app-wide. Components no longer need to check the preference individually
+  (four of them still do, harmlessly). Anything animated in JS rather than CSS — the
+  voice orb's canvas, for one — must still check `matchMedia` itself.
 
 ## Tailwind bridge
 `globals.css` exposes a small set of tokens as Tailwind v4 utilities via `@theme inline`:
@@ -141,9 +182,13 @@ component API or many call sites — fix deliberately, not in a doc pass):
    (`fontSize: 14.5`, heights `34/42/50`, padding `"11px 20px"`, tracking `0.005em`)
    instead of `--text-*`, `--space-*`, `--tracking-*`. The scale exists; consume it so
    resizing the system stays single-source.
-3. **`--golden-yellow`, `--lavender`, `--orange`, `--bright-mauve`** are defined but
-   lightly used. Keep if they map to real domain categories (e.g. vessel/wine types);
-   otherwise prune to keep the palette honest.
+3. ~~**`--golden-yellow`, `--lavender`, `--orange`, `--bright-mauve`** are defined but
+   lightly used.~~ **RESOLVED 2026-07-28 — keep all four.** They map to a real domain
+   category: `src/lib/vineyard/colors.ts` uses their exact hexes as the 8-hue vineyard
+   variety palette (map, legend, colour pickers, server-side validation) and names
+   `colors.css` as its source of truth. `--golden-yellow` additionally backs
+   `--warning`. Pruning them would orphan a live feature. Text use is still forbidden —
+   see the text-safe ink variants above.
 
 ## Decisions Log
 | Date | Decision | Rationale |
@@ -151,4 +196,5 @@ component API or many call sites — fix deliberately, not in a doc pass):
 | 2026-06-24 | Captured existing in-code system as DESIGN.md (source of truth) | System was mature and coherent in `src/styles/tokens/` but undocumented; created by /design-consultation (document + refine, no research) to stop future drift. |
 | 2026-06-24 | Light-only, no dark mode — recorded as intentional | Warm cream-paper palette is the brand; a dark theme would require a deliberate redesign decision, not an inversion. |
 | 2026-06-24 | Logged 3 known-drift items rather than auto-fixing | Renaming the Badge `gold` tone and re-tokenizing component sizing touch component APIs / many call sites; left as owner's call. |
+| 2026-07-28 | **Cellarhand UI/UX v2 Phase 0/1 adopted** — status ramp, provenance, data-viz, density, touch-target, breakpoint and icon tokens added; `.sr-only` + a global reduced-motion rule added; Inter/Inter Tight self-hosted via `next/font`; focus ring switched to `border-radius: inherit`. | Approved design handoff in `docs/design/cellarhand-v2-handoff/`, executed per `docs/plans/2026-07-28-101-feat-cellarhand-v2-phase0-1-reconciliation-plan.md`. The audit baseline was real: 293/376 controls under 44px, zero `aria-current` anywhere, no `.sr-only`, six independent status→colour maps. |
 | 2026-07-21 | **Motion exception:** the inline voice orb (dock title bar, plan 089) may animate continuously — the one deliberate deviation from "no decorative animation". | It is persistent chrome that follows the user across routes, so it is gated to move ONLY while audio is flowing (`listening`/`speaking`); still while thinking/idle. The motion then encodes state ("audio is moving now"), which the policy allows, rather than decoration, which it forbids. Enforced by `orbShouldAnimate` in `src/lib/voice/inline-ui.ts` + the `AudioVisualizer` `animate` prop. |

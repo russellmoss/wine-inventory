@@ -49,4 +49,8 @@ a:hover { color: var(--accent-hover); }
 
 ::selection { background: var(--accent-soft); color: var(--text-primary); }
 
-:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm); }
+/* The global focus ring (v2 §A11). `border-radius: inherit` — NOT a fixed 6px —
+   so the ring traces the control it is on: square on a tile, pill on a chip,
+   10px on a button. A hardcoded radius makes the ring visibly disagree with
+   every control whose radius is not --radius-sm. */
+:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: inherit; }

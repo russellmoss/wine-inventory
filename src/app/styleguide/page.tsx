@@ -13,6 +13,19 @@ import {
   Quote,
 } from "@/components/ui";
 
+const STATUS_RAMP = ["neutral", "active", "held", "done", "attention", "review"] as const;
+
+const VIZ_SERIES = ["Brix", "Temperature", "pH", "Free SO₂", "TA", "Malic"] as const;
+
+const DENSITY_SAMPLES = [
+  { token: "--row-h-dense", label: "dense 38" },
+  { token: "--row-h-default", label: "default 46" },
+  { token: "--row-h-comfortable", label: "comfortable 56" },
+  { token: "--touch-min", label: "touch-min 44" },
+  { token: "--touch-floor", label: "floor 56" },
+  { token: "--touch-floor-lg", label: "floor-lg 68" },
+] as const;
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section style={{ marginBottom: 48 }}>
@@ -36,6 +49,97 @@ export default function StyleguidePage() {
       <p style={{ color: "var(--text-secondary)", maxWidth: "60ch", marginBottom: 40 }}>
         Component and token preview. Warm paper, ink text, a single wine-burgundy accent.
       </p>
+
+      <Section title="Status ramp (v2 §A4)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            The single status vocabulary. Wine is deliberately absent — it means brand and primary
+            action only. <code>held</code> is built but unwired: no current status produces it.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {STATUS_RAMP.map((name) => (
+              <span
+                key={name}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 12px",
+                  borderRadius: "var(--radius-pill)",
+                  background: `var(--status-${name}-bg)`,
+                  color: `var(--status-${name}-fg)`,
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                }}
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Provenance (v2 §A5)">
+        <div style={{ width: "100%" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12, maxWidth: "70ch" }}>
+            Required on every derived quantity. The words carry the meaning; colour only reinforces.
+          </p>
+          <div style={{ display: "flex", gap: 10 }}>
+            {(["measured", "estimated"] as const).map((kind) => (
+              <span
+                key={kind}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "var(--radius-pill)",
+                  background: `var(--provenance-${kind}-bg)`,
+                  color: `var(--provenance-${kind}-fg)`,
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                }}
+              >
+                {kind === "measured" ? "measured" : "≈ estimated"}
+              </span>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Data-viz series (v2 §A6)">
+        <div style={{ width: "100%", display: "flex", flexWrap: "wrap", gap: 14 }}>
+          {VIZ_SERIES.map((label, i) => (
+            <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <span
+                style={{
+                  width: 28,
+                  height: 3,
+                  borderRadius: 2,
+                  background: `var(--viz-${i + 1})`,
+                }}
+              />
+              {label}
+            </span>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Density and touch targets (v2 §A8, §A14)">
+        <div style={{ width: "100%", display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+          {DENSITY_SAMPLES.map(({ token, label }) => (
+            <div key={token} style={{ textAlign: "center" }}>
+              <div
+                style={{
+                  width: 96,
+                  height: `var(${token})`,
+                  background: "var(--paper-200)",
+                  border: "1px solid var(--border-strong)",
+                  borderRadius: "var(--radius-sm)",
+                }}
+              />
+              <div style={{ fontSize: 11, color: "var(--text-meta)", marginTop: 6 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      </Section>
 
       <Section title="Buttons">
         <Button variant="primary">Primary</Button>
