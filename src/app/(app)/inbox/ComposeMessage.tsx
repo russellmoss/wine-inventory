@@ -110,7 +110,7 @@ export function ComposeMessage({
       {!reply ? (
         <>
           <strong style={{ fontSize: 13 }}>New message</strong>
-          <select
+          <select aria-label="Recipient"
             value={recipientUserId}
             onChange={(e) => setRecipientUserId(e.target.value)}
             style={{ padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-strong)", fontFamily: "var(--font-body)" }}

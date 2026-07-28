@@ -78,6 +78,7 @@
     "verify:group-rack-progressive": "tsx --conditions=react-server --env-file=.env scripts/verify-group-rack-progressive.ts",
     "verify:gis-coverage": "tsx scripts/gis-p0-validate-coverage.ts",
     "verify:naming": "tsx --env-file=.env scripts/verify-naming.ts",
+    "verify:a11y-labels": "tsx scripts/find-unlabelled-controls.ts",
     "verify:one-lot-per-vessel": "tsx --env-file=.env scripts/verify-one-lot-per-vessel.ts",
     "verify:owner-model": "tsx --conditions=react-server --env-file=.env scripts/verify-owner-model.ts",
     "verify:vessel-composition": "tsx --conditions=react-server --env-file=.env scripts/verify-vessel-composition.ts",

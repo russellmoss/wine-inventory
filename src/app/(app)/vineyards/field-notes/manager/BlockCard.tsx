@@ -206,7 +206,7 @@ export function BlockCard({
 
       <div style={sectionGap}>
         <label style={fieldLabel}>Phenological stage</label>
-        <select
+        <select aria-label="Phenological stage"
           style={selectStyle}
           value={status.phenoStage ?? ""}
           onChange={(e) => {
@@ -225,7 +225,7 @@ export function BlockCard({
         {phenoStageUsesPct(status.phenoStage) ? (
           <div style={{ marginTop: 10 }}>
             <label style={fieldLabel}>Stage progress</label>
-            <select
+            <select aria-label="Stage progress"
               style={selectStyle}
               value={status.phenoStagePct ?? ""}
               onChange={(e) =>

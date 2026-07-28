@@ -474,7 +474,7 @@ export function VineyardSetup({
                         <input value={draft.vineSpacing} onChange={(e) => setDraft({ ...draft, vineSpacing: e.target.value })} inputMode="decimal" style={fieldInput} />
                       </Field>
                       <Field label="Variety">
-                        <select value={draft.varietyId} onChange={(e) => setDraft({ ...draft, varietyId: e.target.value })} style={fieldInput}>
+                        <select aria-label="Variety" value={draft.varietyId} onChange={(e) => setDraft({ ...draft, varietyId: e.target.value })} style={fieldInput}>
                           <option value="">— none —</option>
                           {varietyOptions.map((v) => (
                             <option key={v.id} value={v.id}>{v.name}</option>
@@ -494,7 +494,7 @@ export function VineyardSetup({
                         <input value={draft.yearPlanted} onChange={(e) => setDraft({ ...draft, yearPlanted: e.target.value })} inputMode="numeric" placeholder="e.g. 2018" style={fieldInput} />
                       </Field>
                       <Field label="Irrigation">
-                        <select value={draft.irrigated} onChange={(e) => setDraft({ ...draft, irrigated: e.target.value })} style={fieldInput}>
+                        <select aria-label="Irrigated" value={draft.irrigated} onChange={(e) => setDraft({ ...draft, irrigated: e.target.value })} style={fieldInput}>
                           <option value="">—</option>
                           <option value="yes">Yes</option>
                           <option value="no">No</option>

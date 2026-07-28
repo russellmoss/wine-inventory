@@ -118,7 +118,7 @@ export function CreateUnitModal({ open, onClose, onCreated, initialName = "" }: 
             {dimension === "count" ? (
               <span style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)", paddingBottom: 10 }}>base items (leave 1 to count the {unitName} itself)</span>
             ) : (
-              <select
+              <select aria-label="Reference unit"
                 value={refUnit}
                 onChange={(e) => setRefUnit(e.target.value)}
                 style={{ height: 42, borderRadius: "var(--radius-md)", border: "var(--border-width) solid var(--border-default)", background: "var(--surface-raised)", padding: "0 10px", fontFamily: "var(--font-body)", fontSize: "var(--text-body)" }}

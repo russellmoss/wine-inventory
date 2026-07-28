@@ -122,7 +122,7 @@ function PressLotForm({ positions, vessels, router, cycles, createCycle }: { pos
   return (
     <>
       <label style={label}>Lot to press</label>
-      <select value={posKey} onChange={(e) => setPosKey(e.target.value)} style={{ ...field, width: "100%" }}>
+      <select aria-label="Lot to press" value={posKey} onChange={(e) => setPosKey(e.target.value)} style={{ ...field, width: "100%" }}>
         {positions.map((p) => (
           <option key={`${p.vesselId}:${p.lotId}`} value={`${p.vesselId}:${p.lotId}`}>
             {p.vesselCode} · {p.lotCode} · {p.form} ({p.volumeL} L)
@@ -132,7 +132,7 @@ function PressLotForm({ positions, vessels, router, cycles, createCycle }: { pos
 
       <div style={{ marginTop: 12 }}>
         <label style={label}>Operation</label>
-        <select value={op} onChange={(e) => setOp(e.target.value as "PRESS" | "SAIGNEE")} style={{ ...field, width: 240 }}>
+        <select aria-label="Operation" value={op} onChange={(e) => setOp(e.target.value as "PRESS" | "SAIGNEE")} style={{ ...field, width: 240 }}>
           <option value="PRESS">Press (free-run + press cuts)</option>
           <option value="SAIGNEE">Saignée (bleed juice off must)</option>
         </select>
@@ -238,7 +238,7 @@ function FruitPressForm({ blocks, vessels, materials, router, cycles, createCycl
   return (
     <>
       <label style={label}>Block (vintage)</label>
-      <select value={blockId} onChange={(e) => setBlockId(e.target.value)} style={{ ...field, width: "100%" }}>
+      <select aria-label="Block (vintage)" value={blockId} onChange={(e) => setBlockId(e.target.value)} style={{ ...field, width: "100%" }}>
         {blocks.map((b) => (
           <option key={b.blockId} value={b.blockId}>
             {b.label} — {b.vintageYear}

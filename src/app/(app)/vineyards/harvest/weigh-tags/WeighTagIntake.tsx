@@ -132,14 +132,14 @@ export function WeighTagIntake({ owners, growers, blocks, recent }: { owners: Re
               <Input label="Net (kg)" type="number" inputMode="decimal" value={b.netKg} onChange={(e) => setBin(b.key, { netKg: e.target.value })} inputStyle={tabular} />
               <div>
                 <span style={label}>Grower</span>
-                <select style={selectStyle} value={b.growerId} onChange={(e) => setBin(b.key, { growerId: e.target.value })}>
+                <select aria-label="Grower" style={selectStyle} value={b.growerId} onChange={(e) => setBin(b.key, { growerId: e.target.value })}>
                   <option value="">Unassigned</option>
                   {growers.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               </div>
               <div>
                 <span style={label}>Owner</span>
-                <select style={selectStyle} value={b.ownerSel} onChange={(e) => setBin(b.key, { ownerSel: e.target.value })}>
+                <select aria-label="Owner" style={selectStyle} value={b.ownerSel} onChange={(e) => setBin(b.key, { ownerSel: e.target.value })}>
                   <option value={OWNER_NEEDS}>Needs assignment</option>
                   <option value={OWNER_ESTATE}>Estate (facility)</option>
                   {owners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -147,7 +147,7 @@ export function WeighTagIntake({ owners, growers, blocks, recent }: { owners: Re
               </div>
               <div>
                 <span style={label}>Block</span>
-                <select style={selectStyle} value={b.blockId} onChange={(e) => setBin(b.key, { blockId: e.target.value })}>
+                <select aria-label="Block" style={selectStyle} value={b.blockId} onChange={(e) => setBin(b.key, { blockId: e.target.value })}>
                   <option value="">Unassigned</option>
                   {blocks.map((bl) => <option key={bl.id} value={bl.id}>{bl.label}</option>)}
                 </select>

@@ -132,19 +132,19 @@ function AddWineForm({
       }}
       style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid var(--border-strong)", paddingTop: 14 }}
     >
-      <select name="varietyId" style={selectStyle} required defaultValue="">
+      <select aria-label="Variety" name="varietyId" style={selectStyle} required defaultValue="">
         <option value="" disabled>Variety</option>
         {varieties.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
       </select>
-      <select name="vineyardId" style={selectStyle} required value={vineyardId} onChange={(e) => { setVineyardId(e.target.value); setBlockId(""); }}>
+      <select aria-label="Vineyard" name="vineyardId" style={selectStyle} required value={vineyardId} onChange={(e) => { setVineyardId(e.target.value); setBlockId(""); }}>
         <option value="" disabled>Vineyard</option>
         {vineyards.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
       </select>
-      <select name="blockId" style={selectStyle} value={blockId} onChange={(e) => setBlockId(e.target.value)} disabled={!vineyardId || vineyardBlocks.length === 0} title="Block (optional)">
+      <select aria-label="Block" name="blockId" style={selectStyle} value={blockId} onChange={(e) => setBlockId(e.target.value)} disabled={!vineyardId || vineyardBlocks.length === 0} title="Block (optional)">
         <option value="">Block (optional)</option>
         {vineyardBlocks.map((b) => <option key={b.id} value={b.id}>{b.blockLabel || b.code || "Block"}</option>)}
       </select>
-      <select name="subblockId" style={selectStyle} defaultValue="" disabled={!blockId || blockSubblocks.length === 0} title="Subblock (optional)">
+      <select aria-label="Sub-block" name="subblockId" style={selectStyle} defaultValue="" disabled={!blockId || blockSubblocks.length === 0} title="Subblock (optional)">
         <option value="">Subblock (optional)</option>
         {blockSubblocks.map((s) => <option key={s.id} value={s.id}>{s.code}{s.label ? ` · ${s.label}` : ""}</option>)}
       </select>
