@@ -52,4 +52,37 @@
   --duration-fast:   120ms;
   --duration-normal: 220ms;
   --duration-slow:   400ms;
+
+  /* ---- Density (v2 §A8) ---------------------------------
+     Chrome stays comfortable; data compresses. This is the mechanism that lets
+     the warm direction scale to thousands of barrels. Page header, breadcrumb,
+     headline, summary and primary actions always use the comfortable scale —
+     only tabular data uses --row-h-dense. */
+  --row-h-comfortable: 56px; /* nav items, card rows, mobile list rows */
+  --row-h-default:     46px; /* standard table rows                    */
+  --row-h-dense:       38px; /* group member rows, expanded detail rows */
+  --row-h-active:      56px; /* the row currently being captured        */
+  --cell-pad-x:        8px;
+  --cell-pad-x-first:  12px;
+  --section-gap:       24px;
+  --page-pad-x:        32px; /* ≥1024 */
+  --page-pad-x-sm:     16px; /* ≤767  */
+  --page-pad-y:        24px;
+
+  /* ---- Touch targets (v2 §A14) --------------------------
+     44px is the floor at every width, not a phone-only rule. If a design cannot
+     fit 44px targets, the design is wrong. */
+  --touch-min:      44px; /* absolute floor, every control            */
+  --touch-floor:    56px; /* primary action on a capture screen       */
+  --touch-floor-lg: 68px; /* the single tick action on a phone runner */
+  --touch-nudge:    46px;
+
+  /* ---- Borders (v2 §A9) --------------------------------- */
+  --border-accent-width: 3px; /* left status rule on a row (overdue, active) */
+
+  /* ---- Breakpoints (v2 §A13) ---------------------------- */
+  --bp-phone-lg: 430px;
+  --bp-tablet:   768px;
+  --bp-desktop:  1024px;
+  --bp-wide:     1440px;
 }

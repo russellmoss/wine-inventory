@@ -4,6 +4,7 @@
 @import "../styles/tokens/colors.css";
 @import "../styles/tokens/typography.css";
 @import "../styles/tokens/spacing.css";
+@import "../styles/tokens/icons.css";
 @import "../styles/tokens/base.css";
 
 /* Expose a few design tokens as Tailwind utilities (bg-cream, text-wine, font-display, ...) */
@@ -17,6 +18,61 @@
   --font-display: var(--font-display);
   --font-heading: var(--font-heading);
   --font-body: var(--font-body);
+}
+
+/* Visually hidden, but still read by screen readers and still focusable — the
+   standard WCAG clip-rect idiom. Used by the skip link and by any label that
+   must exist for assistive tech without occupying layout. Do NOT replace this
+   with `display:none` or `visibility:hidden`: both remove it from the a11y tree. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The skip link: hidden until it takes focus, then a real, visible control at
+   the top-left. It must be the first focusable thing in the document. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 1000;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  left: 8px;
+  top: 8px;
+  width: auto;
+  height: auto;
+  padding: 10px 16px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+/* Global reduced-motion honouring (v2 §A12). Before this, only 4 components
+   checked the preference individually; everything else animated regardless.
+   This is a real behaviour change for users who set the OS preference — and
+   the point of the rule. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Responsive app shell. These own `display` so inline styles don't fight them. */
