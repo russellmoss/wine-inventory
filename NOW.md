@@ -7,9 +7,13 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PHASE 4 + PHASE 5 BUILT on `claude/cellarhand-v2-next`, ready to PR.**
+**CELLARHAND UI/UX v2 — PHASE 4 + PHASE 5 SHIPPED. Next up: PHASE 6 tank board — NOT STARTED.**
 Phase 0/1 shipped as [#555](https://github.com/russellmoss/wine-inventory/pull/555); Phase 2/3 as
-[#557](https://github.com/russellmoss/wine-inventory/pull/557) (`f3018c0e`).
+[#557](https://github.com/russellmoss/wine-inventory/pull/557) (`f3018c0e`); Phase 4/5 as
+[#561](https://github.com/russellmoss/wine-inventory/pull/561) (`043fe931`, merged 2026-07-28).
+
+⚠️ **No Phase 6 code exists yet** — a `/ship` was attempted for it on 2026-07-28 and found nothing
+to ship: no commits, no branch, no PR, clean tree. Phase 6 has to be BUILT before it can ship.
 
 **Phase 4 — Ctrl-K command palette + global search.** Spans vessels, lots, work orders, blocks,
 materials, vessel groups and nav destinations. Deterministic, never LLM-backed: search works with
@@ -32,9 +36,11 @@ Three ⌘ glyphs already in `src/` were scrubbed and a permanent guard now fails
 2-3 worktree dev servers it either failed to start or silently REUSED another branch's server and
 reported results for code you did not write.
 
-**Still open:** the rail's UI chrome · the 61-heading PageHeader migration · 47 unlabelled
-input/textarea (guard prints the count) · the authed 40-route axe sweep (needs a Demo credential;
-seeding writes to prod) · Phase 6 tank board · Phases 7-10 behind the ⛔ domain gate.
+**Standing debt carried forward from Phases 0-5 (none of this is done):** the collapsible rail's UI
+chrome (logic + tokens shipped, chrome not wired) · the 61-heading PageHeader migration · 47
+unlabelled `<input>`/`<textarea>` (`npm run verify:a11y-labels -- --all` prints the count each run) ·
+the authed 40-route axe sweep (needs a Demo Winery credential; seeding writes to prod) · Phase 6 tank
+board · Phases 7-10 behind the ⛔ domain gate.
 
 ## 🔭 Also in flight
 
@@ -2048,7 +2054,8 @@ publication dates from junk metadata, and a newly-allowlisted crawl target prove
 without a reset. Prior: plan 085 CLOSED, MSU unreachable and DORMANT (#422); the sweep fail-closed
 fix (#418) that un-broke the monthly refresh for all 21 sources._
 
-_Last updated: 2026-07-28 — product design audit landed (docs/audits/product-design-audit-2026-07-28.md); spray Wave 1 objective unchanged._
+_Last updated: 2026-07-28 — product design audit landed (docs/audits/product-design-audit-2026-07-28.md); spray Wave 1 objective unchanged.
+Phase 4/5 recorded as merged (#561); attempted `/ship` for Phase 6 found no Phase 6 work in the repo — objective corrected to "not started"._
 
 Also this date, from the KB/assistant session on `grape-kb-ingestion-a530f9`: _Last updated: 2026-07-28 —
 **Tangent stack entry 1 POPPED: assistant false-source-denial (Gironde) + the legality-refusal
