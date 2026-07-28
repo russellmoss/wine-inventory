@@ -78,3 +78,7 @@ export { BrixChart } from "./BrixChart";
 export type { BrixChartProps, BrixChartSeries, BrixChartMarker } from "./BrixChart";
 export { AnalyteTrendChart } from "./AnalyteTrendChart";
 export type { AnalyteTrendChartProps, TrendPoint } from "./AnalyteTrendChart";
+export { FillIndicator } from "./FillIndicator";
+export type { FillIndicatorProps } from "./FillIndicator";
+export { VesselIdentityBlock, truncateWineName, CODE_MIN_CHARS } from "./VesselIdentityBlock";
+export type { VesselIdentityBlockProps, VesselBarrelFacts } from "./VesselIdentityBlock";
