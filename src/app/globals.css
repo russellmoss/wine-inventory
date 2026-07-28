@@ -124,6 +124,11 @@
      itself out, a partly-migrated app is always correct, and no table can end up
      with neither treatment. DELETE this rule once no `table:not([data-rt])`
      remains under .app-main. */
+  /* NOTE: `overflow-x: auto` here makes the TABLE ITSELF the scroll container, so
+     every un-migrated table needs `tabIndex={0}` in its JSX or a keyboard user can
+     never pan it — WCAG 2.1.1, and axe's `scrollable-region-focusable` fires on it
+     at 390px. ResponsiveTable already does this on its wrapper. The pairing is
+     enforced by test/table-a11y.test.ts, which fails on a raw <table> without it. */
   .app-main table:not([data-rt]) {
     display: block;
     overflow-x: auto;

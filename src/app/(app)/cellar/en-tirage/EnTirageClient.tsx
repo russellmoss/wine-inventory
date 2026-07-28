@@ -104,7 +104,7 @@ export function EnTirageClient({
       ) : (
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ textAlign: "left", background: "var(--surface-sunken)" }}>
                   {["Lot", "Method", "Bottles", "Months on lees", "Stage", "AF", "Location", ""].map((h) => (
@@ -164,7 +164,7 @@ export function EnTirageClient({
           </p>
           <Card style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                   <tr style={{ textAlign: "left", background: "var(--surface-sunken)" }}>
                     {["Lot", "SKU", "Bottles", "Finished", "Style", "Location", ""].map((h) => (

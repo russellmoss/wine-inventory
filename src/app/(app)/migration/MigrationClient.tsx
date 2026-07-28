@@ -113,7 +113,7 @@ function DataTable<T extends object>({ rows, columns }: { rows: T[]; columns: { 
   if (rows.length === 0) return <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No rows.</p>;
   return (
     <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, fontVariantNumeric: "tabular-nums" }}>
+      <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, fontVariantNumeric: "tabular-nums" }}>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--text-secondary)" }}>
             {columns.map((c) => (

@@ -208,7 +208,7 @@ export function FinishedGoodsSection({ categories, items, locations, onHand }: {
       </div>
 
       <Card padding="0">
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
+        <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
               <th style={{ padding: "12px 16px", fontWeight: 500 }}>Item</th>

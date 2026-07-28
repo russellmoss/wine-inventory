@@ -148,7 +148,7 @@ function VintageTable({ group, unit }: { group: VintageGroup; unit: Unit }) {
           Season total <strong>{formatWeightFromKg(group.actualKg, unit)}</strong>
         </span>
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+      <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead>
           <tr style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border-strong)" }}>
             <th style={thLeft}>Block / variety</th>

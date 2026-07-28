@@ -115,7 +115,7 @@ export function NdviConsole({ vineyards, selectedId, selectedName, jobs, blocks,
           {blocks.length === 0 ? (
             <p style={{ color: "var(--text-secondary)", margin: 0, fontSize: 14 }}>No blocks with geometry yet.</p>
           ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ textAlign: "left", color: "var(--text-secondary)", fontSize: 12 }}>
                   <th style={th}>Block</th><th style={th}>NDVI mean</th><th style={th}>Acquired</th><th style={th}>Valid %</th><th style={th}>Notes</th>

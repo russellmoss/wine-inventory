@@ -6,7 +6,7 @@ import type { ExciseComputed } from "@/lib/compliance/excise";
 
 // plan-026 Unit 10 (D3/D4/D5) — presentational excise worksheet: the tax-class table (gallons · rate ·
 // pre-credit tax · CBMA credit · net), the CBMA credit-ladder strip, and the Pay.gov data-entry panel
-// (the PRIMARY deliverable). Light-only per DESIGN.md, real <table>/<th scope>, tabular currency.
+// (the PRIMARY deliverable). Light-only per DESIGN.md, real <table tabIndex={0}>/<th scope>, tabular currency.
 
 const CLASS_LABEL: Record<string, string> = {
   A_LE16: "a · ≤16% ABV",
@@ -32,7 +32,7 @@ export function ExciseWorksheet({ computed }: { computed: ExciseComputed }) {
         <div style={{ padding: "12px 14px", fontWeight: 600, borderBottom: "1px solid var(--border-subtle)" }}>
           Tax computation worksheet
         </div>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 640 }}>
+        <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 640 }}>
           <thead>
             <tr style={{ background: "var(--surface-sunken)" }}>
               <th scope="col" style={{ padding: "8px 12px", textAlign: "left", color: "var(--text-muted)", position: "sticky", left: 0, background: "var(--surface-sunken)", minWidth: 150 }}>

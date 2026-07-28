@@ -228,7 +228,7 @@ export function ComplianceClient(props: {
             <Card style={{ marginBottom: 16, padding: 16 }}>
               <div style={{ fontWeight: 600, marginBottom: 8 }}>Lot tax classes {view.status === "FILED" ? "(filed — read only)" : "(override then regenerate)"}</div>
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
                   <thead>
                     <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                       <th scope="col" style={{ padding: "6px 8px" }}>Lot</th>
@@ -402,7 +402,7 @@ function SectionGrid(props: {
   return (
     <Card padding="0" style={{ marginBottom: 16, overflowX: "auto" }}>
       <div style={{ padding: "12px 14px", fontWeight: 600, borderBottom: "1px solid var(--border-subtle)" }}>{props.title}</div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 760 }}>
+      <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 760 }}>
         <thead>
           <tr style={{ color: "var(--text-muted)", background: "var(--surface-sunken)" }}>
             <th scope="col" style={{ padding: "8px 10px", textAlign: "left", position: "sticky", left: 0, background: "var(--surface-sunken)", minWidth: 220 }}>Item</th>

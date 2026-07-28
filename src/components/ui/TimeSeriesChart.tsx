@@ -18,7 +18,7 @@ import { scaleLinear, niceAxisBounds } from "@/lib/harvest/chart";
  *
  * ## The data table is not optional
  * A chart with no textual equivalent is unreadable to a screen reader. This
- * renders a real `<table>`, visually hidden by default, containing every plotted
+ * renders a real `<table tabIndex={0}>`, visually hidden by default, containing every plotted
  * value. It is the accessible equivalent, not a fallback.
  */
 
@@ -172,7 +172,7 @@ export function TimeSeriesChart({
   // `aria-describedby` points at this id, and a duplicate id would break that association
   // and read the whole series out twice.
   const table = (
-    <table id={tableId} className={tableVisibility === "disclosure" ? undefined : "sr-only"} data-rt="scroll">
+    <table tabIndex={0} id={tableId} className={tableVisibility === "disclosure" ? undefined : "sr-only"} data-rt="scroll">
       <caption className={tableVisibility === "disclosure" ? undefined : "sr-only"}>{caption}</caption>
       <thead>
         <tr>

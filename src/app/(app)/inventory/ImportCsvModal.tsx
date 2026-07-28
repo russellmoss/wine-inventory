@@ -234,7 +234,7 @@ export function ImportCsvModal({
                 ) : null}
 
                 <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                  <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
                     <thead>
                       <tr>
                         <th style={headTh}>Line</th>

@@ -1110,7 +1110,7 @@ export function SatelliteMap({
               boxShadow: "0 1px 3px rgba(43, 42, 38, 0.18)",
             }}
           >
-            <table style={{ borderCollapse: "collapse", fontFamily: "var(--font-body)", fontSize: 12.5 }}>
+            <table tabIndex={0} style={{ borderCollapse: "collapse", fontFamily: "var(--font-body)", fontSize: 12.5 }}>
               <tbody>
                 {keyedBlocks.map((b) => {
                   const c = effectiveColor({

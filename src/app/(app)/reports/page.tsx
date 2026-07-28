@@ -73,7 +73,7 @@ export default async function ReportsPage() {
           <ExportCsvButton filename="bulk-by-variety.csv" columns={[{ key: "variety", label: "Variety" }, { key: "unblendedL", label: "Unblended (L)" }, { key: "blendedL", label: "In blends (L)" }, { key: "totalL", label: "Total (L)" }]} rows={bulk} />
         </div>
         <Card padding="0">
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
+          <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
             <thead><tr><th style={th}>Variety</th><th style={{ ...th, textAlign: "right" }}>Unblended ({volLabel})</th><th style={{ ...th, textAlign: "right" }}>In blends ({volLabel})</th><th style={{ ...th, textAlign: "right" }}>Total ({volLabel})</th></tr></thead>
             <tbody>
               {bulk.length === 0 ? <tr><td style={td} colSpan={4}>No bulk wine.</td></tr> :
@@ -96,7 +96,7 @@ export default async function ReportsPage() {
           <ExportCsvButton filename="bottled-by-location.csv" columns={[{ key: "sku", label: "SKU" }, { key: "location", label: "Location" }, { key: "cases", label: "Cases" }, { key: "loose", label: "Loose bottles" }, { key: "total", label: "Total bottles" }]} rows={bottled} />
         </div>
         <Card padding="0">
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
+          <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
             <thead><tr><th style={th}>SKU</th><th style={th}>Location</th><th style={{ ...th, textAlign: "right" }}>Cases + loose</th><th style={{ ...th, textAlign: "right" }}>Bottles</th></tr></thead>
             <tbody>
               {bottled.length === 0 ? <tr><td style={td} colSpan={4}>No bottled stock.</td></tr> :
@@ -118,7 +118,7 @@ export default async function ReportsPage() {
           <ExportCsvButton filename="finished-goods-by-location.csv" columns={[{ key: "category", label: "Category" }, { key: "item", label: "Item" }, { key: "location", label: "Location" }, { key: "quantity", label: "Quantity" }]} rows={finished} />
         </div>
         <Card padding="0">
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
+          <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
             <thead><tr><th style={th}>Category</th><th style={th}>Item</th><th style={th}>Location</th><th style={{ ...th, textAlign: "right" }}>Qty</th></tr></thead>
             <tbody>
               {finished.length === 0 ? <tr><td style={td} colSpan={4}>No finished goods.</td></tr> :

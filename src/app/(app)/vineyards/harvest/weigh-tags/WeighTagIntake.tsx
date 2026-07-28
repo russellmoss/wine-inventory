@@ -174,7 +174,7 @@ export function WeighTagIntake({ owners, growers, blocks, recent }: { owners: Re
           <p style={{ color: "var(--text-secondary)", margin: "12px 0 0" }}>No weigh-tags yet. Issue the first one above when a truck arrives.</p>
         ) : (
           <div style={{ overflowX: "auto", marginTop: 12 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--text-body-sm)" }}>
+            <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--text-body-sm)" }}>
               <thead>
                 <tr style={{ textAlign: "left", color: "var(--text-secondary)" }}>
                   <th style={{ padding: "6px 10px 6px 0" }}>#</th>

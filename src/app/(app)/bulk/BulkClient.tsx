@@ -393,7 +393,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
               </form>
             ) : null}
             {selected.components.length > 0 ? (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, marginBottom: 14 }}>
+              <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, marginBottom: 14 }}>
                 <thead>
                   <tr style={{ textAlign: "left", color: "var(--text-muted)", fontSize: 12.5 }}>
                     <th style={{ padding: "6px" }}>Variety</th><th style={{ padding: "6px" }}>Vineyard</th><th style={{ padding: "6px" }}>Vintage</th><th style={{ padding: "6px" }}>Volume</th><th />

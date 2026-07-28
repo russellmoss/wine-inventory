@@ -59,7 +59,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
       </form>
 
       <Card padding="0">
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+        <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
               <th style={{ padding: "10px 14px", fontWeight: 500 }}>When</th>

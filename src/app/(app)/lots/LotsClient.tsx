@@ -340,7 +340,7 @@ export function LotsClient({
           {/* Desktop: table */}
           <div className="hidden md:block">
             <Card padding="0">
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                   <tr style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border-strong)" }}>
                     <th style={TH}>Lot code</th>

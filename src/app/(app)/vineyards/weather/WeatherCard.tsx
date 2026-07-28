@@ -416,7 +416,7 @@ export function WeatherCard({
                     We show the range, never a blended average — the accumulator has to stay reproducible.
                   </p>
                 )}
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                   <thead>
                     <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                       <th style={{ padding: "4px 8px" }}>Source</th>

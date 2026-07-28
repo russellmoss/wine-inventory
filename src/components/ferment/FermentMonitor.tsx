@@ -431,7 +431,7 @@ export function FermentMonitor({
         <div style={{ marginTop: 14 }}>
           <span style={lbl}>History ({history.length})</span>
           <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid var(--border-subtle, #eee)", borderRadius: "var(--radius-md)" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                   <th style={{ padding: "6px 10px", fontWeight: 500 }}>When</th>
