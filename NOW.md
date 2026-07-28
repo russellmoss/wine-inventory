@@ -20,6 +20,21 @@ admin hub; `hasVineyard` derives from real membership on desktop, mobile AND sea
 gated on `NEXT_PUBLIC_NAV_V2`, so production is unchanged. **Turning the flag on is a separate
 decision with its own QA pass — this phase only made it possible.**
 
+**Crawled to prove it, not asserted:** a live BFS from `/` with the flag on, against the Demo
+tenant, following only links that actually render — **35 of 58 static routes reachable, up from
+17**, and the crawl hit its own 10-minute cap mid-queue so that is a floor. All 23 unreached are
+accounted for: 5 auth pages, 3 dev tools, 6 redirect stubs, 1 palette-only (`/assistant`, whose
+real surface is the dock FAB), 3 hidden because the Demo tenant has sparkling and custom-crush
+OFF (correct), and 5 contextual links on pages the crawl had not dequeued yet.
+
+**A four-reviewer adversarial pass ran BEFORE the PR** (security · adversarial · maintainability ·
+design) and found five things that were green on 5,513 tests — an ungated page parked under an
+admin-only hub is unreachable (`/reports`, and four Setup children); a palette-only route is
+unreachable on a phone (`/winemaking-calculator`); a strip only on the hub is a one-way door; the
+D2 palette guard was six source-text assertions over code nothing executed; and `hubLabel` had
+resurrected two labels doc 01 §5 retired. All fixed. `CONTEXTUAL_DESTINATIONS` was deleted outright
+— zero consumers, and it contradicted `unnavigable.ts` about four routes.
+
 Two corrections against the plan, both verified in source: `/bottled` and `/finished-goods` are
 `redirect()` stubs into `/inventory` (plan 080 U6), so Unit 7's "Inventory sub-tabs" do not exist —
 `/inventory` gets no strip and both are classified as stubs. `/assistant` and
