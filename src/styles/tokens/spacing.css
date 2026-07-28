@@ -80,6 +80,16 @@
   /* ---- Borders (v2 §A9) --------------------------------- */
   --border-accent-width: 3px; /* left status rule on a row (overdue, active) */
 
+  /* ---- Collapsible sidebar rail (v2 doc 13 §6) ----------
+     Expanded is the default and the rail is desktop-only; below 1024px the
+     labelled bottom tabs stand and no unlabelled icon is ever reachable. */
+  --rail-w-expanded:  236px;
+  --rail-w-collapsed: 64px;
+  --rail-item:        44px;  /* the icon target in collapsed mode */
+  --rail-divider:     28px;  /* the hairline that replaces a group heading */
+  --tooltip-delay-hover: 400ms;
+  --tooltip-delay-focus: 0ms;
+
   /* ---- Breakpoints (v2 §A13) ---------------------------- */
   --bp-phone-lg: 430px;
   --bp-tablet:   768px;

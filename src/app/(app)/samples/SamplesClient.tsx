@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Eyebrow, Button, Modal, StatusChip, ResponsiveTable, DataRow, DataCell, DataHeadCell } from "@/components/ui";
+import { Card, Button, Modal, StatusChip, ResponsiveTable, DataRow, DataCell, DataHeadCell, PageHeader } from "@/components/ui";
 import type { StatusVariant } from "@/components/ui";
 import { ReadingRows, emptyReadingRow, toReadingInputs, readingsValid, type ReadingRow } from "@/components/chemistry/ReadingRows";
 import { attachSampleResultsAction, markSampleSentAction, cancelSampleAction } from "@/lib/chemistry/actions";
@@ -59,12 +59,16 @@ export function SamplesClient({ samples }: { samples: OpenSampleRow[] }) {
 
   return (
     <div>
-      <Eyebrow rule>Lab &amp; bench · Winery</Eyebrow>
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Samples</h1>
-      <p style={{ color: "var(--text-secondary)", marginBottom: 20, maxWidth: "64ch" }}>
-        Open samples awaiting results. Attach a returned result to flip the sample to attached and
-        write the readings onto its lot&rsquo;s timeline and trends.
-      </p>
+      <PageHeader
+        breadcrumbs={[{ label: "The wine", href: "/lots" }, { label: "Lots", href: "/lots" }, { label: "Samples" }]}
+        eyebrow="Lab & bench"
+        title="Samples"
+        summary={
+          samples.length === 0
+            ? "No samples are waiting on results."
+            : `${samples.length} ${samples.length === 1 ? "sample is" : "samples are"} waiting on results.`
+        }
+      />
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 14 }}>{error}</p> : null}
 

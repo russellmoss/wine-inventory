@@ -70,6 +70,8 @@ export { MapLegend } from "./MapLegend";
 export type { MapLegendProps } from "./MapLegend";
 export { MapLayerControl } from "./MapLayerControl";
 export type { LayerRow } from "./MapLayerControl";
+export { TimeSeriesChart } from "./TimeSeriesChart";
+export type { TimeSeriesChartProps, ChartSeries, ChartThreshold, ChartMarker, SeriesPoint } from "./TimeSeriesChart";
 export { BrixChart } from "./BrixChart";
 export type { BrixChartProps, BrixChartSeries, BrixChartMarker } from "./BrixChart";
 export { AnalyteTrendChart } from "./AnalyteTrendChart";
