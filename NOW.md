@@ -7,6 +7,46 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**CELLARHAND UI/UX v2 — PR #1 (Phase 0 Foundations + Phase 1 Re-baseline) BUILT, all 10 units,
+on `claude/cellarhand-v2-phase-reconciliation-a926e3`. NOT PR'd yet, and NOT browser/axe-verified.**
+Plan: [2026-07-28-101](docs/plans/2026-07-28-101-feat-cellarhand-v2-phase0-1-reconciliation-plan.md)
+(status `completed`, with an "Execution record" section listing every place the plan was wrong about
+the repo). Handoff spec: `docs/design/cellarhand-v2-handoff/` (49 files, 4 RFCs all still `proposed`).
+
+**What landed (10 commits, one per unit):** v2 tokens (status ramp / provenance / data-viz / density /
+touch / breakpoints / icons) · `.sr-only` + a GLOBAL `prefers-reduced-motion` rule · Inter self-hosted
+via `next/font` · focus ring switched to `border-radius: inherit` · Button 34/42/50 → **44/48/56 + xl 68**
+with a real disabled surface and a `pending` state · new **StatusChip** replacing **eight** independent
+status→colour maps · `Badge tone="gold"` → `tone="wine"` across 31 call sites + 33 typed files ·
+ConfirmButton's WCAG-2.2.1 4-second auto-disarm replaced with event-based disarm, `confirmLabel` now
+required · new Skeleton / EmptyState / Alert / ActionReceipt · AppShell skip link + `aria-current` +
+`aria-expanded` · execute-screen errors announced · axe-core + Playwright a11y/visual harness.
+
+⚠️ **Three things stand between this and a PR:**
+1. **No axe/e2e run.** `npm run qa:a11y` needs a dev server from a checkout that HAS `.env` (worktrees
+   don't) serving THIS branch, plus the Demo Winery sandbox. Reusing whatever dev server is on :3000
+   would measure someone else's branch — worse than not running it.
+2. **No before/after visual set.** No baseline existed in this repo, so "before" was only capturable
+   from the merge-base before any edit. `qa:visual` establishes the post-Phase-1 baseline instead;
+   from Phase 2 on, the committed baseline IS the previous phase's rendering.
+3. **`npm run build` not run** (needs `DATABASE_URL` for `prisma migrate deploy`). `tsc --noEmit`
+   green, `eslint` 0 errors, 5,068 vitest tests passing across 418 files.
+
+**The highest-value finding, because it changes the risk profile:** the global `:focus-visible` rule
+already existed (the handoff says three times that it doesn't) — but it never reached `Button`, because
+`Button` sets `boxShadow` **inline** and inline style beats any selector. So "no focus styling" was
+true, for a completely different reason than stated. Any future component that sets `boxShadow` inline
+has the same bug.
+
+**Deferred by design, with an end date:** the ~69 ad-hoc success sites retire in Phase 5, the ~108
+ad-hoc empty states in Phase 12. The four RFCs (barrel groups, topping/keg, measured-vs-estimated,
+vessel tags) stay behind the ⛔ DOMAIN GATE until each is reconciled against the real Prisma schema +
+RLS checklist and owner-approved. OD-3/4/5/6/7 gate Phases 7-10, none gate Phase 0/1.
+
+## 🔭 Also in flight
+
+### ⏸️ Archived 2026-07-28 — the Spray Wave 1 objective block, verbatim
+
 **SPRAY INTELLIGENCE — Wave 1 LANDING: S0 complete · S2 built · S3a SHIPPED · S4 built ·
 S2b resumption (Units 1/2/3/5) built + DB-proven 2026-07-27, on `claude/s2b-resume-units-2026-07-27`
 (not yet PR'd). ⚠️ Wave 2 (S7a · S8 · S6) is still BLOCKED — coverage is 0% (needs real curated
@@ -542,7 +582,7 @@ per-site and never averaged, and the six US sites failed independently against g
 all (`vineyard_forecast_daily` empty for them). Separate issue.
 
 
-## 🔭 Also in flight
+
 
 **SPRAY INTELLIGENCE S3a (lane C) — plan written + council-reconciled, READY FOR `/work`
 (2026-07-26).** Branch `claude/s3a-spray-application-record-2572f2`. The spray application record
@@ -746,6 +786,18 @@ is two decisions that are Russell's, not code:
   tenant. Every migration plan 080 deployed is already live.
 
 ## 🧵 Tangent stack  (LIFO — push when you detour, pop when done)
+
+1. 🔴 **PUSHED 2026-07-28 — SPRAY INTELLIGENCE Wave 1 landing, paused for Cellarhand UI/UX v2.**
+   Where it stood: S0 complete (gate did NOT pass, deliverable is the narrowing — S1 is eastern-sites-
+   only, California needs station blending) · S2 built, 3 PRs · S3a SHIPPED · S4 built · S2b Units
+   1/2/3/5 merged as [#552](https://github.com/russellmoss/wine-inventory/pull/552) and live.
+   ⛔ **Wave 2 (S7a · S8 · S6) still BLOCKED**: curated coverage is 0% and needs real content plus a
+   human's review signature, and the shipped resolver does not gate on `reviewedBy` yet either.
+   Two calls still Russell's: (a) accept the two-zone canopy model; (b) how long must a lot's residue
+   flag stay explicable (the one inferred input to ADR 0011).
+   Full state: [S2b-report.md](docs/spray_assistant/phases/S2b-report.md) and the entries below —
+   the five "do NOT re-derive" findings are preserved in the archived block under "Also in flight".
+
 
 0. ✅ **POPPED 2026-07-27 — all three PRs MERGED, PNW Handbooks is chunked + embedded + LIVE FOR
    EVERY TENANT.** [#544](https://github.com/russellmoss/wine-inventory/pull/544) (chunker fix) +
@@ -1189,6 +1241,18 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   parallel). Next: register CDO token + run the ~45-min point-API spike (de-risks the providers), then `/work`.
 
 ## ✅ Done recently
+
+- **✅ Cellarhand UI/UX v2 Phase 0 + Phase 1 BUILT (2026-07-28) — 10 units, 10 commits, not PR'd.**
+  See the Current objective above for the full picture. The parts worth remembering even after the PR
+  lands: **eight** independent status→colour maps existed, not the six the audit counted (two were
+  hand-rolled ternaries inside a single JSX attribute); the `gold`→`wine` rename was 2.5× the plan's
+  estimate (31 literal sites / 24 files / 33 typed files); `/compliance` and `/compliance` excise both
+  DO render status as a Badge, contrary to the plan; a **partial batch failure on the execute screen
+  set `failures` without `error`, so it was completely silent to a screen reader** — a cellar hand
+  would have believed all N tanks recorded; `var(--gold)` has never existed as a token, so a border
+  styled with it silently rendered the default; and `--lavender`/`--orange`/`--bright-mauve` are NOT
+  unclaimed (the vineyard variety palette in `src/lib/vineyard/colors.ts` uses their exact hexes), so
+  DESIGN.md backlog item 3 is closed as "keep", not "prune".
 
 - **✅ Cornell NY/PA Grape Guide is LIVE in the KB (2026-07-27) + the breadcrumb defect it exposed.
   Plan 099, [#543](https://github.com/russellmoss/wine-inventory/pull/543) MERGED (`64db4cd9`),
@@ -1727,7 +1791,7 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
-_Last updated: 2026-07-27 — **Plan 100 SHIPPED IN FULL, all three PRs merged** ([#544](https://github.com/russellmoss/wine-inventory/pull/544) chunker fix, [#545](https://github.com/russellmoss/wine-inventory/pull/545) PNW Handbooks source, [#547](https://github.com/russellmoss/wine-inventory/pull/547) `defaultEnabled` flip — Russell's call, live for every tenant): the chunker was silently DELETING text (`splitBySentences` used `String.match(/g)`, which skips spans it cannot match, so `0.5 lb ai` indexed as `5 lb ai`). Fixed, with a lossless scanner + a standing ingest-time numeric-integrity guard + `CHUNKER_VERSION` folded unconditionally into `deriveIndexHash`. Measured read-only: **~630 of 3,299 corpus documents corrupted, about 1 in 5** (candidates 44/64; random non-candidates 16/90 = 18.2%) — the monthly sweep now progressively repairs what it re-fetches; a dedicated repair campaign for the rest is NOT run and needs a go-ahead. PNW Handbooks is live for all tenants: 59 documents / 142 chunks, KB-1-clean. Task branches pruned (local + remote). Correction to the note below: **SKB PR 1 has since MERGED as #538**, so the KB-1 gate is on main. **UPDATE, later the same day: SKB Units 4/6-11 also complete** (all 11 units except Unit 10's operator-gated MSU crawl) — Penn State Extension + Virginia Tech grape IPM shipped, but D13 cross-region contamination REPRODUCES (measured), so extension-psu stays dark and virginia-fruit's pre-existing live status is an open owner question. See the SKB entry above for full detail. Also this date: **S5a Unit 0 gate ANSWERED: the powdery index is a NO-GO on reconstructed hourly (all 8 sites failed; consecutive-hours-in-band MAE 2.2–3.4 h against a rule thresholded at 6 h; unsafe-miss 13.6% at Madera). S5a ships the LEDGER ONLY; the index moves to S5b behind S1, which is now load-bearing for powdery mildew and not just leaf wetness. Bhutan's daily series may be 8–9 °C off vs ERA5 — escalated as its own investigation.** Also this date: plan 098 tenant unit preferences built (all 12 units; QA + ship pending); S2b product-facts FOUNDATION merged + live (#535), phase still open. And: **SKB PR 1 + Unit 5 BUILT AND QA'd on `claude/skb-knowledge-sources-plan-bd36b7` (units 1/2/3/5 of 11, not yet PR'd): the KB-1 tabular-vs-prose boundary is enforced INLINE at the pre-extraction seam, `search_knowledge_base` refuses the legality VERDICT rather than the query, and `allowPaths` exists. Units 4 + 6-11 all need .env / live crawls / an operator-gated probe.** Prior: **Spray Wave 1: S0 (weather-lane spike, lane A) COMPLETE — PR [#528](https://github.com/russellmoss/wine-inventory/pull/528): the gate is answered and S1 is NARROWED to eastern regimes (reanalysis inputs fail at coastal-fog and hot-arid-interior sites, both live Demo sites). No production code, 0 Neon branches left, all gates green.** **TENANT-3 swept + closed structurally: `runAsTenant` now forces its callback
+_Last updated: 2026-07-28 — **Cellarhand UI/UX v2 Phase 0 + Phase 1 BUILT (10 units, 10 commits) on `claude/cellarhand-v2-phase-reconciliation-a926e3`, not PR'd and not axe/browser-verified.** Plan [101](docs/plans/2026-07-28-101-feat-cellarhand-v2-phase0-1-reconciliation-plan.md) is `completed` and carries an Execution record of the eight places the plan was wrong about the repo. Green: `tsc --noEmit`, `eslint` (0 errors), 5,068 vitest tests / 418 files, 6 new suites. Not green because not run: `qa:a11y` + `qa:visual` (need a dev server with `.env` on THIS branch) and `npm run build` (needs `DATABASE_URL`). The Spray Wave 1 objective is PUSHED onto the tangent stack, verbatim, under "Also in flight" — nothing lost.
 inside the ALS scope, 8 call sites rewritten, `verify:tenant-callbacks` + `test/tenant-context-lazy.test.ts`
 added, CI wired. `verify:reminders` recovered from red-on-`main` to 15/15.** Also this date: **S3a spray
 record SHIPPED: PR1+PR2 merged (Wave 2 unblocked), PR3 browser-QA'd GREEN (2 findings found+fixed: prefill

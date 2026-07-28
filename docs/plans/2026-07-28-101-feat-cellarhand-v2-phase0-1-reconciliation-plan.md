@@ -1,9 +1,9 @@
 ---
 title: Cellarhand UI/UX v2 — Master Reconciliation Plan + Phase 0/1 Execution Plan
 type: feat
-status: draft
+status: completed
 date: 2026-07-28
-branch: claude/ui-ux-v2-foundations
+branch: claude/cellarhand-v2-phase-reconciliation-a926e3
 depth: deep
 units: 9 (Phase 0/1 only — later phases sequenced but not unit-broken here)
 ---
@@ -1206,3 +1206,87 @@ Log — all gate later phases, unchanged by this review).
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | -- | -- |
 
 **VERDICT:** NO REVIEWS YET — run `/council` for cross-LLM adversarial review, or the individual reviews above.
+
+## Execution record (2026-07-28)
+
+Phase 0 + Phase 1 built on `claude/cellarhand-v2-phase-reconciliation-a926e3`
+(branched from `a970ddaf`, the handoff-docs commit). Ten commits, one per unit.
+
+- [x] Unit 1 — token additions (`226e6cde`)
+- [x] Unit 2 — next/font self-hosting (`b2c350b3`)
+- [x] Unit 3 — focus-ring refinement + DESIGN.md/styleguide (`e94e4549`)
+- [x] Unit 4 — Button re-baseline (`66178f44`)
+- [x] Unit 5 — StatusChip + status remap (`6e6d4cbd`)
+- [x] Unit 6 — Badge gold→wine + status out of Badge (`afa65d5b`)
+- [x] Unit 7 — ConfirmButton + 4 new primitives (`73d476d0`)
+- [x] Unit 8 — AppShell skip link / aria-current / aria-expanded (`7a426be6`)
+- [x] Unit 9 — execute-screen errors announced (`4e164b8f`)
+- [x] Unit 10 — axe-core + Playwright a11y/visual harness (`db62ddeb`)
+
+### Where the plan was wrong about the repo
+
+1. **The `gold` audit was ~2.5× the estimate.** The plan expected ~12 files; reality
+   was 31 literal `tone="gold"` call sites across 24 files plus typed uses in 33 files.
+2. **`/compliance` IS badge-driven.** The plan said it renders derived booleans only and
+   needs a comment; `ComplianceClient.tsx:176` renders `ComplianceReportStatus` as a
+   `Badge`. Converted, not annotated. `ExciseClient.tsx:170` had the same shape.
+3. **Five status-in-a-Badge sites nobody enumerated.** A new static guard found
+   `ArchiveClient`, `ExecuteClient:366`, `ExciseClient`, `MigrationClient` and
+   `GroupActions`. Two were hand-rolled ternaries inside a JSX attribute — a seventh and
+   eighth independent status map. All converted.
+4. **The focus ring never reached `Button` at all, and not for the stated reason.** The
+   handoff said `Button` "has no focus styling"; the actual cause is that `Button` sets
+   `boxShadow` *inline* (primary on every render), and inline style beats any selector,
+   so the pre-existing global `:focus-visible` rule was overridden. Fixed by re-deriving
+   `:focus-visible` in the component, applied after the caller's `style` prop.
+5. **A partial batch failure on the execute screen was completely silent.** The plan
+   flagged "check whether `failures` also renders as plain text." It does, and it sets
+   `failures` *without* setting `error`, so a screen-reader user would have believed all
+   N tanks recorded. Added a `role="alert"` summary naming the count and the tanks.
+6. **`var(--gold)` never existed.** `ExecuteClient` styled a border with a token
+   `colors.css` has never defined, so it silently rendered the default.
+7. **The prune in Unit 1 was wrong to do.** `--lavender`/`--orange`/`--bright-mauve` are
+   claimed: `src/lib/vineyard/colors.ts` uses their exact hexes as the vineyard variety
+   palette and names `colors.css` as its source of truth. Kept, flagged, DESIGN.md
+   backlog item 3 closed as "keep".
+8. **"The 24 audited routes" is 51.** The number appears throughout the acceptance
+   criteria but is never enumerated; generated from the route tree it is 51 static
+   routes, 40 of them sweepable. `test/e2e/routes.ts` records the 11 exclusions and why.
+
+### Deliberate deviations
+
+- **Avatar and Eyebrow renamed too.** Both had their own `"gold"` tone key rendering
+  wine, both as the default, with zero external call sites. Outside Unit 6's letter,
+  but the same defect — renaming cost nothing and avoided leaving two-thirds of it.
+- **`--font-inter` / `--font-inter-tight`, not `--font-body` / `--font-heading`.** The
+  plan proposed having `next/font` publish the existing token names directly. Those
+  tokens already carry the full fallback stack and live on `:root`; a class on `<html>`
+  publishing the same names would either clobber the stack or tie on specificity.
+  typography.css consumes the new variables at the head of each stack instead.
+- **Big Caslon left as a local `@font-face`** — considered, deferred, as the plan allowed.
+
+### Not done, and why
+
+- **The before/after visual-regression set is not attached.** No baseline existed in this
+  repo, so the "before" half was only capturable from the merge-base *before* any edit.
+  `test/e2e/visual-baseline.spec.ts` establishes the post-Phase-1 baseline (and says this
+  in the file); from Phase 2 the committed baseline is the previous phase's rendering.
+- **No e2e/axe run yet.** The suite needs a dev server from a checkout that has `.env`
+  (worktrees do not) serving THIS branch, plus the Demo Winery sandbox. Running it
+  against a `reuseExistingServer` dev server on :3000 would measure whatever branch that
+  server is on, which is worse than not running it. Everything the harness needs is
+  committed: `npm run qa:a11y` / `npm run qa:visual`.
+- **`npm run build` not run here** — it runs `prisma migrate deploy`, which needs
+  `DATABASE_URL`. `npx tsc --noEmit` is green; the build belongs in the main checkout.
+- The ~69 ad-hoc success sites and ~108 ad-hoc empty states are NOT migrated, by design:
+  Phase 5 for work-order screens, Phase 12 for the rest.
+
+### Gates that did pass
+
+`npx tsc --noEmit` clean · `npx eslint` 0 errors (44 pre-existing warnings, none in the
+new files) · `npx vitest run` 5,068 passing across 418 files, including 5 new suites
+(`design-tokens`, `design-static-guards`, `button-sizes`, `status-chip`, `ui-primitives`,
+`appshell-a11y`). One intermittent 30s hook timeout in
+`test/assistant-commit-tenant-context.test.ts` under full-suite load — passes in
+isolation, did not reproduce on a second full run, and this diff does not touch
+`src/lib/assistant/confirm`.
