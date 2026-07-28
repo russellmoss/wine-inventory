@@ -1,0 +1,168 @@
+import "server-only";
+import { prisma } from "@/lib/prisma";
+import { NAV_MODEL, isVisible } from "@/lib/nav/model";
+import { rankHits, type SearchHit } from "./rank";
+
+/**
+ * The global search read (doc 01 §7).
+ *
+ * ## Tenancy — the real risk in this phase
+ * This query spans MANY tenant-scoped tables at once, which is exactly the shape
+ * that leaks. Two rules, both load-bearing:
+ *
+ *   1. Every read goes through the **extended `prisma` client**, so the tenant is
+ *      injected and Postgres RLS is enforced. There is no raw `$queryRaw` here.
+ *      (If one is ever needed for a trigram index, it MUST go through
+ *      `runInTenantRawTx` — a bare `$queryRaw` bypasses the tenant extension.)
+ *   2. Destinations are filtered by the caller's ROLE before they are returned,
+ *      so search cannot become a side channel that reveals an admin-only
+ *      destination to a `user`.
+ *
+ * AC-P4 is the cross-tenant leak test: an object from another tenant must never
+ * appear, for any query string.
+ *
+ * ## Bounded by construction
+ * Every branch has a `take`. At 8,142 barrels an unbounded `contains` scan on
+ * each keystroke is the difference between a palette and an outage.
+ */
+
+const PER_KIND = 8; // fetch slightly above the display cap so ranking has room
+
+export interface SearchContext {
+  isAdmin: boolean;
+  isDeveloper: boolean;
+  hasVineyard: boolean;
+}
+
+export async function searchEverything(query: string, ctx: SearchContext): Promise<SearchHit[]> {
+  const q = query.trim();
+  // One character matches nearly everything and is never a real intent.
+  if (q.length < 2) return [];
+
+  const hits: SearchHit[] = [];
+
+  // --- Destinations (no DB, role-filtered) ---------------------------------
+  const lower = q.toLowerCase();
+  for (const group of NAV_MODEL) {
+    for (const d of group.items) {
+      if (!isVisible(d, ctx)) continue;
+      const matchesLabel = d.label.toLowerCase().includes(lower);
+      // The four renamed destinations keep their old label as a search alias for
+      // one release, so muscle memory still lands.
+      const matchesAlias = d.alias ? d.alias.toLowerCase().includes(lower) : false;
+      if (matchesLabel || matchesAlias) {
+        hits.push({
+          kind: "destination",
+          id: d.href,
+          label: d.label,
+          subtitle: matchesAlias && d.alias ? `formerly "${d.alias}" · ${group.label}` : group.label,
+          href: d.href,
+        });
+      }
+    }
+  }
+
+  const [vessels, lots, workOrders, blocks, materials, groups] = await Promise.all([
+    prisma.vessel.findMany({
+      where: { isActive: true, code: { contains: q, mode: "insensitive" } },
+      select: { id: true, code: true, type: true },
+      take: PER_KIND,
+    }),
+    prisma.lot.findMany({
+      where: { code: { contains: q, mode: "insensitive" } },
+      select: { id: true, code: true, vintageYear: true, form: true },
+      take: PER_KIND,
+    }),
+    prisma.workOrder.findMany({
+      where: {
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          ...(/^\d+$/.test(q) ? [{ number: Number(q) }] : []),
+        ],
+      },
+      select: { id: true, number: true, title: true, status: true },
+      take: PER_KIND,
+    }),
+    prisma.vineyardBlock.findMany({
+      where: {
+        OR: [
+          { blockLabel: { contains: q, mode: "insensitive" } },
+          { code: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, blockLabel: true, code: true, vineyardId: true },
+      take: PER_KIND,
+    }),
+    prisma.cellarMaterial.findMany({
+      where: { isActive: true, name: { contains: q, mode: "insensitive" } },
+      select: { id: true, name: true, kind: true },
+      take: PER_KIND,
+    }),
+    prisma.vesselGroup.findMany({
+      where: { name: { contains: q, mode: "insensitive" } },
+      select: { id: true, name: true },
+      take: PER_KIND,
+    }),
+  ]);
+
+  for (const v of vessels) {
+    // A barrel and a tank are different jobs, so they are different groups —
+    // "find me a tank" should not wade through 40 barrels.
+    const isBarrel = String(v.type) === "BARREL";
+    hits.push({
+      kind: isBarrel ? "barrel" : "tank",
+      id: v.id,
+      label: v.code,
+      subtitle: String(v.type).toLowerCase(),
+      href: "/bulk",
+    });
+  }
+
+  for (const l of lots) {
+    hits.push({
+      kind: "lot",
+      id: l.id,
+      label: l.code,
+      subtitle: [l.vintageYear, String(l.form).toLowerCase()].filter(Boolean).join(" · "),
+      href: `/lots/${l.id}`,
+    });
+  }
+
+  for (const w of workOrders) {
+    hits.push({
+      kind: "workOrder",
+      id: w.id,
+      label: `#${w.number} · ${w.title}`,
+      subtitle: String(w.status).replace(/_/g, " ").toLowerCase(),
+      href: `/work-orders/${w.id}`,
+    });
+  }
+
+  for (const b of blocks) {
+    hits.push({
+      kind: "block",
+      id: b.id,
+      label: b.blockLabel ?? b.code ?? "(unnamed block)",
+      subtitle: "vineyard block",
+      href: "/reference",
+    });
+  }
+
+  for (const m of materials) {
+    hits.push({
+      kind: "material",
+      id: m.id,
+      label: m.name,
+      // `kind` is the load-bearing family (cost/dosing/identity) — more
+      // disambiguating than a unit, which CellarMaterial does not carry anyway.
+      subtitle: m.kind ? String(m.kind).toLowerCase() : "material",
+      href: "/inventory",
+    });
+  }
+
+  for (const g of groups) {
+    hits.push({ kind: "group", id: g.id, label: g.name, subtitle: "barrel group", href: "/bulk" });
+  }
+
+  return rankHits(hits, q);
+}

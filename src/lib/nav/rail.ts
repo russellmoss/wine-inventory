@@ -49,7 +49,7 @@ export function railItemLabel(label: string, badge?: number): string {
   return badge && badge > 0 ? `${label}, ${badge} open` : label;
 }
 
-/** ⌘\ / Ctrl-\ (doc 13 §4). */
+/** Ctrl-\ toggles the rail. Matches Cmd too, but the UI only ever says Ctrl. */
 export function isRailToggleShortcut(e: { key: string; metaKey: boolean; ctrlKey: boolean }): boolean {
   return e.key === "\\" && (e.metaKey || e.ctrlKey);
 }
