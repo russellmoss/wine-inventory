@@ -32,7 +32,7 @@ const CLAIMS: RegExp[] = [
  * Requiring whitespace-or-capital after the terminator keeps decimals ("24.2") and dates ("2026-09-15")
  * intact, since those are followed by a digit.
  */
-function sentences(text: string): string[] {
+export function sentences(text: string): string[] {
   return text
     .split(/\n+/)
     .flatMap((line) => line.split(/(?<=[.!?])(?=\s|[A-Z])/))

@@ -5,6 +5,11 @@ import { getToolsFor } from "./registry";
 import { buildSystemPrompt, VOICE_STYLE_PROMPT } from "./prompt";
 import { listOpenClarificationsForUser } from "@/lib/feedback/clarification";
 import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION, OVERCLAIM_REPAIR_PROMPT } from "./overclaim-guard";
+import {
+  claimsNoKbCoverage,
+  KB_DENIAL_CORRECTION,
+  KB_DENIAL_REPAIR_PROMPT,
+} from "./retrieval-overclaim-guard";
 import { type AssistantEvent, asProposal, asChoice, asNavigation, isDraftProposal } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
 import { normalizeTimeZone } from "@/lib/work-orders/due-at";
@@ -75,6 +80,18 @@ export async function runAssistant(opts: {
   // "Done — review the card" without ever calling file_feedback, so nothing was filed).
   let emittedProposal = false;
   let repairAttempted = false;
+  // Same idea, for the retrieval half (Gironde repro 2026-07-28): search_knowledge_base returned
+  // real results this run, but the final text denied having any source for the topic. Persists for
+  // the WHOLE run, not reset per turn — a tool call in an earlier turn still grounds a denial in a
+  // later one, same lifetime as emittedProposal.
+  let kbFoundThisTurn = false;
+  let kbRepairAttempted = false;
+  // Where `assistantText` stood the instant the repair prompt was injected. Unlike emittedProposal,
+  // `kbFoundThisTurn` does not flip after a successful repair (the tool result doesn't change), so
+  // the backstop below must judge repair success from the SUFFIX emitted after this point, not the
+  // whole cumulative string — otherwise a fixed final answer would still show the ORIGINAL denying
+  // sentence sitting earlier in `assistantText` and the backstop would fire on a good answer.
+  let kbDenialCheckpoint = 0;
   const emit = (e: AssistantEvent) => {
     if (e.type === "text") assistantText += e.text;
     if (e.type === "proposal") emittedProposal = true;
@@ -182,6 +199,17 @@ export async function runAssistant(opts: {
             const tool = tools.find((t) => t.name === tu.name);
             if (!tool) throw new Error(`Unknown tool: ${tu.name}`);
             const out = await tool.run({ user, lastUserMessage, timeZone, units: opts.units }, tu.input);
+
+            // Ground truth for the retrieval-denial guard: did the KB tool actually find something
+            // this run? Checked structurally, not by trusting the model's own later claim about it.
+            if (
+              tu.name === "search_knowledge_base" &&
+              typeof out === "object" &&
+              out !== null &&
+              (out as { found?: unknown }).found === true
+            ) {
+              kbFoundThisTurn = true;
+            }
 
             const proposal = tool.kind === "write" ? asProposal(out) : null;
             if (proposal) {
@@ -333,6 +361,24 @@ export async function runAssistant(opts: {
         continue;
       }
 
+      // Retrieval-denial REPAIR (Gironde repro 2026-07-28). Same shape as the write-overclaim repair
+      // above: one chance to actually use the results it was already handed before falling back to a
+      // correction. Independent flag/check — a KB denial and a write over-claim are different
+      // failures and either can fire without the other.
+      if (
+        kbFoundThisTurn &&
+        !kbRepairAttempted &&
+        msg.stop_reason === "end_turn" &&
+        claimsNoKbCoverage(assistantText)
+      ) {
+        kbRepairAttempted = true;
+        kbDenialCheckpoint = assistantText.length;
+        trace.kbDenialRepair = "attempted";
+        convo.push({ role: "assistant", content: msg.content });
+        convo.push({ role: "user", content: KB_DENIAL_REPAIR_PROMPT });
+        continue;
+      }
+
       // end_turn or max_tokens — text already streamed via on("text").
       trace.stopReason = msg.stop_reason ?? "end_turn";
       break;
@@ -357,6 +403,20 @@ export async function runAssistant(opts: {
     } else if (repairAttempted) {
       trace.overclaimRepair = "recovered";
     }
+
+    // Retrieval-denial backstop (Gironde repro 2026-07-28). Unlike emittedProposal, kbFoundThisTurn
+    // never flips after a repair attempt — the tool result doesn't change — so checking the WHOLE
+    // cumulative assistantText here would still catch the ORIGINAL denying sentence even after a
+    // successful repair fixed the final answer. Scope to the suffix emitted since the repair prompt
+    // was injected; only fall back to the full text when no repair ever ran.
+    const kbTextToCheck = kbRepairAttempted ? assistantText.slice(kbDenialCheckpoint) : assistantText;
+    if (kbFoundThisTurn && claimsNoKbCoverage(kbTextToCheck)) {
+      if (kbRepairAttempted) trace.kbDenialRepair = "failed";
+      emit({ type: "text", text: KB_DENIAL_CORRECTION });
+    } else if (kbRepairAttempted) {
+      trace.kbDenialRepair = "recovered";
+    }
+
     emit({ type: "done" });
   }
 
