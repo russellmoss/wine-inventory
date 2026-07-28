@@ -81,7 +81,12 @@ describe("the flag contract", () => {
   });
 
   it("gates the tab bar on the same flag", () => {
-    expect(SHELL).toContain("NAV_V2_ENABLED ? (\n        <MobileTabBar");
+    // Line endings are normalised because this is the only assertion in the file that spans
+    // a newline, and `core.autocrlf=true` (the default on Windows, and .gitattributes pins
+    // LF only for the invariant register, not for .tsx) checks AppShell.tsx out as CRLF.
+    // Without this the guard could never match locally: it passed in CI and was vacuous on
+    // every Windows working tree, which is the worst state for a guard to be in.
+    expect(SHELL.replace(/\r\n/g, "\n")).toContain("NAV_V2_ENABLED ? (\n        <MobileTabBar");
   });
 
   it("hides the tab bar on desktop", () => {

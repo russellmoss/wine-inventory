@@ -2,7 +2,13 @@
 
 import React from "react";
 import Link from "next/link";
-import { Card, Button, Badge, Eyebrow, Modal, ExportCsvButton } from "@/components/ui";
+import { useSearchParams } from "next/navigation";
+import { Card, Button, Badge, Eyebrow, Modal, ExportCsvButton, PageHeader } from "@/components/ui";
+import { NAV_V2_ENABLED } from "@/lib/nav/flag";
+import { parseBoardFilters } from "@/lib/vessels/board-filters";
+import type { TankState } from "@/lib/vessels/tank-state";
+import { TankBoard } from "./TankBoard";
+import type { TankTileData } from "./TankTile";
 import type { BlendInfo } from "@/lib/bulk/blend";
 import type { Fill } from "@/lib/vessels/fill";
 import { addComponent, updateComponentVolume, removeComponent, setBlendName } from "@/lib/bulk/actions";
@@ -28,6 +34,10 @@ export type VesselWithContents = {
   oakOrigin: string | null; cooperageYear: number | null; cooperage: string | null; toastLevel: string | null;
   lotCodes: string[];
   residentLots: ResidentLot[];
+  /** DERIVED on the server from the ledger (DM-40). Never a stored column. */
+  state: TankState;
+  groupName: string | null;
+  wineUnknown: boolean;
 };
 
 const selectStyle: React.CSSProperties = {
@@ -163,6 +173,14 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({});
 
+  // The URL owns the board's narrowing, so a filtered board is shareable and survives a
+  // reload. Same contract as Phase 5's queue.
+  const searchParams = useSearchParams();
+  const filters = parseBoardFilters({
+    state: searchParams.get("state") ?? undefined,
+    q: searchParams.get("q") ?? undefined,
+  });
+
   // Keg sources (topping) + group multi-select rows, derived from the vessel list.
   const kegOptions: KegOption[] = vessels.map((v) => ({ id: v.id, label: vesselLabel(v.type, v.code), type: v.type, totalL: v.fill.filledL, lotCodes: v.residentLots.map((r) => r.code) }));
   const groupVessels: GroupVessel[] = vessels.map((v) => ({
@@ -238,15 +256,10 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
     );
   }
 
-  return (
-    <div>
-      <Eyebrow rule>In-process wine · Winery</Eyebrow>
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Wine in-progress</h1>
-      <p style={{ color: "var(--text-secondary)", marginBottom: 16, maxWidth: "64ch" }}>
-        Barrels and tanks at the winery. Click a vessel to see what&rsquo;s inside and add, adjust, or remove wine.
-      </p>
-
-      <div style={{ marginBottom: 20 }}>
+  // Export demoted out of the page's most prominent position (SC-10). The rows expression
+  // is unchanged — one row per vessel COMPONENT — so moving the control cannot quietly
+  // change what the CSV contains.
+  const exportButton = (
         <ExportCsvButton
           filename="bulk-wine.csv"
           columns={[
@@ -274,7 +287,46 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
             volumeL: c.volumeL,
           })))}
         />
-      </div>
+  );
+
+  const tankTiles: TankTileData[] = tanks.map((v) => ({
+    id: v.id,
+    code: v.code,
+    lotCode: v.residentLots[0]?.code ?? null,
+    wineName: v.blendName || v.residentLots[0]?.varietyName || null,
+    groupName: v.groupName,
+    state: v.state,
+    fill: v.fill,
+    capacityL: v.capacityL,
+    lotCodes: v.lotCodes,
+    wineUnknown: v.wineUnknown,
+  }));
+
+  return (
+    <div>
+      {/* Phase 6 (v2 SC-10): the tank board replaces two accordions that defaulted to
+          CLOSED, so the cellar's primary screen showed no wine (audit S15). The legacy
+          accordion is kept verbatim in the else branch — both paths ship in the same
+          build, so rollback is an env change and a restart, not a revert commit. Barrels
+          are unchanged in BOTH arms: doc 11 scopes Phase 6 to tanks, and barrel groups are
+          Phase 7 behind the domain gate. */}
+      {NAV_V2_ENABLED ? (
+        <PageHeader
+          eyebrow="In-process wine · Winery"
+          title="Wine in-progress"
+          summary="Every tank, what is in it, and what needs you."
+          actions={exportButton}
+        />
+      ) : (
+        <>
+          <Eyebrow rule>In-process wine · Winery</Eyebrow>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Wine in-progress</h1>
+          <p style={{ color: "var(--text-secondary)", marginBottom: 16, maxWidth: "64ch" }}>
+            Barrels and tanks at the winery. Click a vessel to see what&rsquo;s inside and add, adjust, or remove wine.
+          </p>
+          <div style={{ marginBottom: 20 }}>{exportButton}</div>
+        </>
+      )}
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 16 }}>{error}</p> : null}
 
@@ -298,9 +350,14 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
       {vessels.length === 0 ? (
         <Card><p style={{ color: "var(--text-secondary)", margin: 0 }}>No active vessels. Register barrels/tanks in <strong>Setup → Vessels</strong> first.</p></Card>
       ) : (
-        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
-          {renderTypeCard("Barrels", barrels)}
-          {renderTypeCard("Tanks", tanks)}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, alignItems: "stretch" }}>
+          {NAV_V2_ENABLED ? (
+            <TankBoard tiles={tankTiles} filters={filters} onOpen={setSelectedId} />
+          ) : null}
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
+            {renderTypeCard("Barrels", barrels)}
+            {NAV_V2_ENABLED ? null : renderTypeCard("Tanks", tanks)}
+          </div>
         </div>
       )}
 
