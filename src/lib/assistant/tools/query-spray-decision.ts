@@ -63,16 +63,18 @@ export function summarizeInfectionStatus(dto: Awaited<ReturnType<typeof loadVine
 export const querySprayDecisionTool: AssistantTool = {
   name: "query_spray_decision",
   description:
-    "Report which latent (incubating) disease infections are currently being tracked on a vineyard's blocks, " +
-    "when each may become infectious, and what is NOT known. Call this for questions about incubating or latent " +
-    "infections, whether a block is a source of inoculum, or powdery-mildew disease pressure. " +
-    "NOTE: this tool only sees model-driven incubating powdery mildew — it does NOT see diseases or pests a scout " +
-    "observed and logged in a weekly field report; for those (and for any 'have we recorded/seen any disease' " +
-    "question) also call query_field_reports. " +
+    "SCOPE: model-driven incubating POWDERY MILDEW ONLY — not downy mildew, black rot, botrytis, or any other " +
+    "disease/pest. Report which latent (incubating) powdery-mildew infections are currently being tracked on a " +
+    "vineyard's blocks, when each may become infectious, and what is NOT known. Call this for questions about " +
+    "incubating or latent POWDERY MILDEW infections, or whether a block is a source of powdery-mildew inoculum. " +
+    "Do NOT call this for a different named disease (e.g. a downy-mildew question) — it has nothing to say about " +
+    "it and will only add an irrelevant spray-legality disclaimer; go straight to search_knowledge_base instead. " +
+    "NOTE: this tool also does NOT see diseases or pests a scout observed and logged in a weekly field report; " +
+    "for those (and for any 'have we recorded/seen any disease' question) call query_field_reports. " +
     "IMPORTANT: this tool CANNOT recommend a spray, a product, or a spray timing, and will refuse to — " +
     "legality, re-entry/pre-harvest intervals and resistance rotation are not available yet. " +
-    "For weather, forecast, GDD or frost use query_climate instead; for label or extension guidance use " +
-    "search_knowledge_base.",
+    "For weather, forecast, GDD or frost use query_climate instead; for label or extension guidance or the " +
+    "biology/epidemiology of ANY disease (including downy mildew) use search_knowledge_base.",
   kind: "read",
   inputSchema: {
     type: "object",

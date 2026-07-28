@@ -98,7 +98,7 @@ export function summarizePhenology(dto: PhenologyBlockDTO) {
 export const queryFieldReportsTool: AssistantTool = {
   name: "query_field_reports",
   description:
-    "Read the weekly manager / field reports for a vineyard and answer questions about them: weather, sprays and fertilizers applied, per-block status (phenology, canopy, water/weed stress, leaf conditions, disease/pest), general notes, and the AI briefing. Call this for 'how's <vineyard> doing per the reports', 'what did they spray last week', 'any disease flagged', etc.",
+    "Read the weekly manager / field reports for a vineyard and answer questions about them: weather, sprays and fertilizers applied, per-block status (phenology, canopy, water/weed stress, leaf conditions, disease/pest), general notes, and the AI briefing. Call this for 'how's <vineyard> doing per the reports', 'what did they spray last week', 'any disease flagged', etc. This tool only relays what a scout observed and logged — it does NOT explain disease/pest biology. For a 'why' question (why pressure is high, what conditions favor a pathogen), still call search_knowledge_base for the epidemiology even when nothing was scouted or logged; no report this week is not evidence there is no biological explanation to give.",
   kind: "read",
   inputSchema: {
     type: "object",
