@@ -16,7 +16,7 @@ import {
   type SearchResult,
 } from "./ConversationSidebar";
 import { messagesToItems } from "@/lib/assistant/history";
-import { proposalGate } from "@/lib/assistant/proposal-card";
+import { proposalGate, primaryActionLabel, primaryActionPendingLabel } from "@/lib/assistant/proposal-card";
 import {
   RESOLVED_CARD_LINGER_MS,
   collapsesAfterLinger,
@@ -45,6 +45,9 @@ type Role = "user" | "assistant";
 type TextItem = { kind: "text"; id?: string; role: Role; content: string };
 type ProposalItem = {
   kind: "proposal";
+  /** Which write tool produced this card. Decides the primary action's wording — a work-order card
+   *  lands you ON the object, so it says "Review", not "Confirm" (plan 105). */
+  tool?: string;
   preview: string;
   /** Present ONLY on a Ready card. A Draft has no token and therefore cannot be confirmed at all. */
   token?: string;
@@ -764,6 +767,7 @@ export function AssistantChat({
               ...prev,
               {
                 kind: "proposal",
+                tool: evt.tool,
                 preview: evt.preview,
                 ...(evt.draft ? { draft: true } : { token: evt.token }),
                 details: asWorkOrderProposalDetails(evt.details),
@@ -889,7 +893,16 @@ export function AssistantChat({
           currentPath: pathname,
           hasUnsavedChanges: pageHasUnsavedChanges(),
         });
-        if (decision.kind === "navigate") setNavPending({ path: decision.path, label: decision.label });
+        // Straight there, no countdown. The 3s cancellable delay belongs to the navigate TOOL, where
+        // the assistant decided to move you and you deserve a chance to say no. Here you pressed a
+        // button labelled "Review" — waiting three seconds to honour it just feels broken.
+        if (decision.kind === "navigate") {
+          router.push(decision.path);
+          // Announce the arrival for screen readers, matching the navigate-tool path.
+          setTimeout(() => {
+            (document.querySelector("main h1, main h2") as HTMLElement | null)?.focus?.();
+          }, 150);
+        }
       } else {
         setItems((prev) => updateProposal(prev, index, { status: "error", result: data?.error ?? "Could not apply." }));
       }
@@ -1590,7 +1603,12 @@ function ProposalCard({
         padding: "var(--space-3) var(--space-4)",
         borderRadius: "var(--radius-lg)",
         background: "var(--surface-raised)",
-        border: `1px solid ${edge}`,
+        // Longhand, not `border: 1px solid ${edge}` plus a borderStyle override. React warns on
+        // mixing a shorthand with a longhand for the same property during a rerender, because the
+        // two can be applied in either order and the result depends on which lands last — the card
+        // re-renders on every status change (pending → applying → done), so it hit that every time.
+        borderWidth: "1px",
+        borderColor: edge,
         // A draft is visibly provisional, not just differently-worded: a dashed edge reads as
         // "unfinished" at a glance, which is the defence against Confirm becoming a reflex.
         borderStyle: isDraft && !done && !errored ? "dashed" : "solid",
@@ -1617,7 +1635,9 @@ function ProposalCard({
               disabled={!gate.canConfirm || item.status === "applying"}
               title={gate.reason ?? undefined}
             >
-              {item.status === "applying" ? "Applying…" : "Confirm"}
+              {item.status === "applying"
+                ? primaryActionPendingLabel(item.tool)
+                : primaryActionLabel(item.tool)}
             </Button>
             <Button variant="secondary" onClick={onCancel} disabled={item.status === "applying"}>
               {gate.canConfirm ? "Cancel" : "Dismiss"}
