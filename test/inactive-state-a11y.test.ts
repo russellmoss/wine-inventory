@@ -20,6 +20,7 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { code } from "./helpers/code";
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
 
@@ -94,6 +95,27 @@ describe("inactive/archived state is not conveyed by dimming text", () => {
     const live = new Set(tsxFiles(SRC).map((f) => f.slice(SRC.length + 1).split(sep).join("/")));
     const stale = Object.keys(NON_TEXT_OPACITY).filter((f) => !live.has(f));
     expect(stale, "exempted files that no longer exist").toEqual([]);
+  });
+
+  it("never uses a FILL colour as text", () => {
+    // `--warning` is golden-yellow #D79F32: correct as a border or a tint, and 2.36:1
+    // as a foreground on white — barely half of AA. The design system already ships
+    // the readable pair (`--status-held-fg` #8A6414, and `--warning-deep-text` for
+    // body copy inside a warning tint); five call sites had reached for the fill.
+    const offenders: string[] = [];
+    for (const file of tsxFiles(SRC)) {
+      const src = code(readFileSync(file, "utf8"));
+      if (/color:\s*"var\(--warning\)"/.test(src)) {
+        offenders.push(file.slice(SRC.length + 1).split(sep).join("/"));
+      }
+    }
+    expect(
+      offenders,
+      `--warning is a FILL, not a foreground (2.36:1 on white). Use --status-held-fg ` +
+        `for a label, or --warning-deep-text for body copy on a warning tint:` +
+        offenders.map((o) => `
+  ${o}`).join(""),
+    ).toEqual([]);
   });
 
   it("is not vacuous — the pattern it hunts is the one that was there", () => {

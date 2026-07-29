@@ -106,7 +106,7 @@ function CbmaLadderStrip({ computed }: { computed: ExciseComputed }) {
       <div style={{ fontWeight: 600, marginBottom: 6 }}>CBMA credit ladder (this calendar year)</div>
       <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 10 }}>
         {gal(ladder.ytdRemovedEnd)} of 750,000 wine gallons removed year-to-date
-        {ladder.over750k ? <span style={{ color: "var(--warning)" }}> · past the 750k cap — credit is limited</span> : null}
+        {ladder.over750k ? <span style={{ color: "var(--status-held-fg)" }}> · past the 750k cap — credit is limited</span> : null}
       </div>
       <div aria-hidden style={{ height: 10, borderRadius: 999, background: "var(--surface-sunken)", overflow: "hidden", marginBottom: 12 }}>
         <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent, var(--positive))" }} />

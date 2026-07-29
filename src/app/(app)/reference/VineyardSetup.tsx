@@ -57,7 +57,7 @@ const sel: React.CSSProperties = {
   width: "100%",
 };
 
-const fieldInput: React.CSSProperties = { ...sel, height: 40, fontSize: 14 };
+const fieldInput: React.CSSProperties = { ...sel, height: "var(--touch-min)", fontSize: 14 };
 
 type BlockDraft = {
   blockLabel: string;

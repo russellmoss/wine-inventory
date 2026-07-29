@@ -12,7 +12,7 @@ import { VesselMultiSelect, type VesselOption } from "./new/VesselMultiSelect";
 
 type Template = { id: string; name: string };
 
-const fld: React.CSSProperties = { height: 40, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, minWidth: 0 };
+const fld: React.CSSProperties = { height: "var(--touch-min)", padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)", background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, minWidth: 0 };
 const lbl: React.CSSProperties = { fontSize: 12.5, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 4 };
 
 export function WorkOrderFilterBar({

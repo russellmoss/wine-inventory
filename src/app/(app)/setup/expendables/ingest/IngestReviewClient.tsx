@@ -36,7 +36,7 @@ export type FxSuggestion = { rate: number | null; rateDate: string | null; sourc
 const num = { fontVariantNumeric: "tabular-nums" } as const;
 
 const selectStyle: React.CSSProperties = {
-  height: 40, padding: "0 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-strong)",
+  height: "var(--touch-min)", padding: "0 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-strong)",
   background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--text-primary)",
   maxWidth: "100%",
 };
@@ -670,7 +670,7 @@ function LineRow({
     <div style={{ display: "flex", gap: 4 }}>
       <input aria-label="Pack amount" value={pack.amount} disabled={disabled} inputMode="decimal" placeholder="amt"
         onChange={(e) => onSaveLine(doc.id, line.id, { unitRaw: composePackUnitRaw(e.target.value, pack.unit) })}
-        style={{ width: 62, minWidth: 0, height: 40, padding: "0 8px", borderRadius: "var(--radius-md)", border: packBorder, background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--text-primary)" }} />
+        style={{ width: 62, minWidth: 0, height: "var(--touch-min)", padding: "0 8px", borderRadius: "var(--radius-md)", border: packBorder, background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--text-primary)" }} />
       <select aria-label="Pack unit" value={pack.unit} disabled={disabled}
         style={{ ...selectStyle, flex: 1, minWidth: 62, border: packBorder }}
         onChange={(e) => {

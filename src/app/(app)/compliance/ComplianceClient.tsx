@@ -45,7 +45,7 @@ export type VesselOpt = { id: string; code: string; availableL: number };
 export type BottledOpt = { value: string; label: string; bottles: number };
 
 const sel: React.CSSProperties = {
-  height: 40, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
+  height: "var(--touch-min)", padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
   background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--text-primary)",
 };
 
@@ -242,7 +242,7 @@ export function ComplianceClient(props: {
                       <tr key={l.lotId} style={{ borderTop: "1px solid var(--border-subtle)" }}>
                         <td style={{ padding: "6px 8px" }}>{l.lotCode}{l.needsAbvReview ? <Badge tone="red" variant="soft" style={{ marginLeft: 6 }}>needs ABV</Badge> : null}</td>
                         <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{l.abv == null ? "—" : `${l.abv}%`}</td>
-                        <td style={{ padding: "6px 8px" }}>{CLASS_LABEL[l.taxClass] ?? l.taxClass}{l.overridden ? <span style={{ color: "var(--warning)" }}> (overridden)</span> : null}</td>
+                        <td style={{ padding: "6px 8px" }}>{CLASS_LABEL[l.taxClass] ?? l.taxClass}{l.overridden ? <span style={{ color: "var(--status-held-fg)" }}> (overridden)</span> : null}</td>
                         <td style={{ padding: "6px 8px" }}>
                           <select aria-label="Tax class override"
                             disabled={view.status === "FILED" || pending}

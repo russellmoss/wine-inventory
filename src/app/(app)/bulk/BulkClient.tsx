@@ -388,7 +388,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
                 onSubmit={(e) => { e.preventDefault(); run(() => setBlendName(selected.id, new FormData(e.currentTarget))); }}
                 style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}
               >
-                <input name="blendName" defaultValue={selected.blendName ?? ""} placeholder="Name this blend (e.g. Reserve Red)" style={{ ...selectStyle, flex: 1, height: 40 }} />
+                <input name="blendName" defaultValue={selected.blendName ?? ""} placeholder="Name this blend (e.g. Reserve Red)" style={{ ...selectStyle, flex: 1, height: "var(--touch-min)" }} />
                 <Button type="submit" variant="secondary" size="sm" disabled={pending}>Save name</Button>
               </form>
             ) : null}

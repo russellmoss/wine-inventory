@@ -92,7 +92,7 @@ function Snapshot({ view, unit }: { view: SoilSnapshotView; unit: Unit }) {
       ))}
 
       {uncovered ? (
-        <div style={{ fontSize: 13, color: "var(--warning)" }}>{pct(uncovered.areaPct)} of the boundary is uncovered by the survey.</div>
+        <div style={{ fontSize: 13, color: "var(--status-held-fg)" }}>{pct(uncovered.areaPct)} of the boundary is uncovered by the survey.</div>
       ) : null}
 
       {slivers.length > 0 ? (

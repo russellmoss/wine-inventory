@@ -4,7 +4,7 @@ import { Card, Eyebrow, Badge, ExportCsvButton } from "@/components/ui";
 import type { Prisma } from "@prisma/client";
 
 const inputStyle: React.CSSProperties = {
-  height: 40,
+  height: "var(--touch-min)",
   padding: "0 12px",
   border: "1px solid var(--border-strong)",
   borderRadius: "var(--radius-md)",

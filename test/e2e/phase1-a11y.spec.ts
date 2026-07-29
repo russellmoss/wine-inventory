@@ -40,7 +40,17 @@ test("the excluded-route list is explicit, not silent", async () => {
 /** Wait for the shell, not just the network — every audited route renders inside AppShell. */
 async function goto(page: Page, route: string) {
   await page.goto(route, { waitUntil: "domcontentloaded" });
-  await page.locator("#main").waitFor({ state: "attached", timeout: 20_000 });
+  await page
+    .locator("#main")
+    .waitFor({ state: "attached", timeout: 20_000 })
+    .catch(async () => {
+      // Not every audited route renders inside AppShell: /styleguide lives at
+      // src/app/styleguide, OUTSIDE the (app) group, so it has no #main and this
+      // wait could never be satisfied. It was timing out at 20s and reporting as an
+      // axe failure on a page that had loaded perfectly. Fall back to "anything
+      // rendered" — axe does not need the shell, only a painted document.
+      await page.locator("body *").first().waitFor({ state: "attached", timeout: 10_000 });
+    });
 }
 
 test.describe("AC-F7 — zero axe violations", () => {
