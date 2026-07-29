@@ -81,12 +81,19 @@
   --red-ink:    #A5342D; /* 5.4:1 on cream */
   --green-ink:  #175242; /* 8.9:1 — alias of --deep-green, kept for symmetry */
   --blue-ink:   #095972; /* 7.4:1 on cream */
-  /* #8A8272 until 2026-07-28, where the comment claimed "4.6:1" and the measured
-     value was 3.81:1 on white and 3.62:1 on the cream surface this app actually
-     uses — under AA for normal text, and axe was failing on it. Darkened until it
-     clears 4.5 on BOTH surfaces (4.79 white / 4.55 cream). The number in a comment
-     is worth nothing; test/design-tokens-contrast.test.ts computes it now. */
-  --ink-500:    #79725F; /* meta/eyebrow text: 4.79:1 on white, 4.55:1 on cream */
+  /* #8A8272 until 2026-07-28, carrying the comment "4.6:1". Measured, it was
+     3.81:1 on white, 3.62:1 on cream and 3.41:1 on paper-100 — under AA for normal
+     text on EVERY surface the app renders, and axe failed on it.
+     Body text lands on three surfaces here, and the ratio must clear 4.5 on the
+     WORST of them, not on pure white: --surface-raised #FFFFFF (cards),
+     --surface-page #FFF8F1 (cream, the page), --surface-sunken #F5F2EC (paper-100,
+     used by .bw-inactive — which this same phase added MORE of, so the sunken case
+     is the one that binds). A first pass at #79725F cleared white and cream and
+     still failed sunken at 4.29.
+     test/design-tokens-contrast.test.ts computes all three; DESIGN.md carries the
+     same hex. A number in a comment is documentation — that is exactly how the
+     "4.6:1" survived. */
+  --ink-500:    #736C5C; /* meta/eyebrow text: 5.21 white · 4.95 cream · 4.67 sunken */
   --warning-deep-text: #5C440E; /* body text inside a warning tint */
 
   /* ---- Semantic additions (v2 §A3) ---------------------- */

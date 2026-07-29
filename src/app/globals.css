@@ -112,6 +112,32 @@
   .app-main:has(~ .bw-tabbar) { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
 }
 
+/* The AA target-size floor for raw controls.
+ *
+ * Two different standards get confused here, so both are named. WCAG 2.5.5 Target
+ * Size at 44x44 is **AAA**, and it is also this project's house rule via
+ * `--touch-min`. WCAG 2.2 added 2.5.8 Target Size (Minimum) at **24x24 at AA** —
+ * with an explicit exception for targets inline in a sentence.
+ *
+ * A sweep at 390px found raw `<input>`/`<button>` elements rendering at **23px**:
+ * one pixel under the AA minimum, on eight inputs and three filter buttons, because
+ * they set a font-size and padding but no height and inherited the UA default. The
+ * design system's own `Input` has been 44/48/56 since Phase 1 — these are the sites
+ * that never went through it.
+ *
+ * 24px is deliberately the floor here and not 44. Raising every bespoke control to
+ * 44 would relayout a lot of dense screens, and that is a design decision with its
+ * own plan, not something to slip in to make a number go green. This closes the
+ * genuine AA failure and leaves the house standard visible as debt.
+ * Checkboxes and radios are excluded: their 20px visual sits inside a >=44px label
+ * target, which is the pattern v2 §B11 asks for. */
+.app-main input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+.app-main select,
+.app-main button,
+.app-main [role="button"] {
+  min-height: 24px;
+}
+
 /* Inactive / archived / superseded rows.
 
    Deliberately NOT `opacity`. Opacity composites the TEXT against whatever is behind

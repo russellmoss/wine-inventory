@@ -12,8 +12,21 @@
  * ≥24px) — every token here is used at body size, so they are all held to 4.5.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, sep } from "node:path";
+import { code } from "./helpers/code";
 import { fileURLToPath } from "node:url";
+
+const SRC = fileURLToPath(new URL("../src", import.meta.url));
+
+function tsxFiles(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) tsxFiles(p, out);
+    else if (name.endsWith(".tsx")) out.push(p);
+  }
+  return out;
+}
 
 const CSS = readFileSync(fileURLToPath(new URL("../src/styles/tokens/colors.css", import.meta.url)), "utf8");
 
@@ -38,20 +51,29 @@ function hex(token: string): string {
   return m[1].toUpperCase();
 }
 
-// The two surfaces body text is rendered on. `--surface-page` is CREAM, not white,
-// and cream is the harder of the two — checking only white overstates every ratio.
-const WHITE = "#FFFFFF";
-const CREAM = "#FFF8F1";
+/**
+ * The THREE surfaces body text is rendered on. Checking only white overstates every
+ * ratio, and checking white + cream still misses the one that binds: `--surface-sunken`
+ * (#F5F2EC) is the darkest, and `.bw-inactive` put more of it on screen. A first pass
+ * at --ink-500 #79725F cleared white (4.79) and cream (4.55) and still failed sunken
+ * at 4.29 — which is exactly the trap of measuring against the lightest surface.
+ */
+const SURFACES: Record<string, string> = {
+  "white (--surface-raised, cards)": "#FFFFFF",
+  "cream (--surface-page)": "#FFF8F1",
+  "paper-100 (--surface-sunken, .bw-inactive)": "#F5F2EC",
+};
 
 describe("text tokens clear WCAG AA on every surface they are used on", () => {
   // Each is a foreground token that carries real copy at body size.
   const TEXT_TOKENS = ["--ink-500", "--ink-600", "--ink-700", "--ink-800", "--ink-900"];
 
   for (const token of TEXT_TOKENS) {
-    it(`${token} is >= 4.5:1 on white AND on cream`, () => {
+    it(`${token} clears 4.5:1 on every surface it renders on`, () => {
       const c = hex(token);
-      expect(contrast(c, WHITE), `${token} (${c}) on white`).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(c, CREAM), `${token} (${c}) on cream — the app's own page surface`).toBeGreaterThanOrEqual(4.5);
+      for (const [name, bg] of Object.entries(SURFACES)) {
+        expect(contrast(c, bg), `${token} (${c}) on ${name}`).toBeGreaterThanOrEqual(4.5);
+      }
     });
   }
 
@@ -59,15 +81,46 @@ describe("text tokens clear WCAG AA on every surface they are used on", () => {
     // These carry short status words, still normal-size text.
     for (const token of ["--status-held-fg", "--status-attention-fg"]) {
       const c = hex(token);
-      expect(contrast(c, WHITE), `${token} (${c}) on white`).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(c, SURFACES["white (--surface-raised, cards)"]), `${token} (${c}) on white`).toBeGreaterThanOrEqual(4.5);
     }
+  });
+
+  it("keeps DESIGN.md's hex in step with the token", () => {
+    // CLAUDE.md makes DESIGN.md the source of truth for colour, so a token that moves
+    // without it starts lying to the next person who reads the doc instead of the CSS.
+    const design = readFileSync(fileURLToPath(new URL("../DESIGN.md", import.meta.url)), "utf8");
+    expect(design, "DESIGN.md still names the old --ink-500").toContain(hex("--ink-500"));
+    expect(design).not.toContain("#8A8272");
+  });
+
+  it("keeps --text-meta off the tinted surfaces", () => {
+    // --ink-500 is tuned for the three PAGE surfaces (white / cream / paper-100). The
+    // tints are darker again, and meta grey measured 3.86:1 on --surface-tint-success
+    // inside ActionReceipt. Tinted surfaces have their own inks (--green-ink,
+    // --red-ink, --blue-ink, --golden-ink) and --text-secondary clears all five at
+    // 7.1:1+. Darkening --ink-500 far enough to survive a tint would have collapsed
+    // it into --ink-600 and flattened the ramp for every ordinary page.
+    const offenders: string[] = [];
+    for (const file of tsxFiles(SRC)) {
+      const src = code(readFileSync(file, "utf8"));
+      // Same style object carrying both a tint background and meta text.
+      for (const m of src.matchAll(/style=\{\{[^}]*\}\}/g)) {
+        if (m[0].includes("surface-tint-") && m[0].includes("--text-meta")) {
+          offenders.push(file.slice(SRC.length + 1).split(sep).join("/"));
+        }
+      }
+    }
+    expect(
+      offenders,
+      "meta grey on a tinted surface fails AA — use --text-secondary or the tint's own ink",
+    ).toEqual([]);
   });
 
   it("does not hold FILL tokens to a text ratio", () => {
     // --warning is golden-yellow: correct as a border or tint, 2.36:1 as text. It is
     // excluded on purpose, and test/inactive-state-a11y.test.ts is what stops anyone
     // using it as a foreground.
-    expect(contrast(hex("--golden-yellow"), WHITE)).toBeLessThan(4.5);
+    expect(contrast(hex("--golden-yellow"), "#FFFFFF")).toBeLessThan(4.5);
   });
 
   it("is not vacuous — the arithmetic matches known values", () => {
@@ -75,5 +128,7 @@ describe("text tokens clear WCAG AA on every surface they are used on", () => {
     expect(contrast("#FFFFFF", "#FFFFFF")).toBeCloseTo(1, 5);
     // The exact value that shipped believing it was 4.6.
     expect(contrast("#8A8272", "#FFFFFF")).toBeCloseTo(3.81, 1);
+    // …and the value that looked fine until the sunken surface was included.
+    expect(contrast("#79725F", "#F5F2EC")).toBeCloseTo(4.29, 1);
   });
 });

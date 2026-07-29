@@ -76,7 +76,12 @@ export function ActionReceipt({
           {summary}
         </div>
         {provenance ? (
-          <div style={{ marginTop: 3, fontSize: 12.5, color: "var(--text-meta)" }}>{provenance}</div>
+          // NOT --text-meta: this sits on --surface-tint-success, and meta grey only
+          // clears 4.5:1 against the PAGE surfaces (white / cream / paper-100). On a
+          // tint it measured 3.86:1. Tinted surfaces have their own ink in this system
+          // (--green-ink, --red-ink, --blue-ink, --golden-ink, each documented with its
+          // ratio on cream); --text-secondary is the neutral that still clears the tint.
+          <div style={{ marginTop: 3, fontSize: 12.5, color: "var(--text-secondary)" }}>{provenance}</div>
         ) : null}
         {onCorrect || onSeeLedgerLine ? (
           <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>

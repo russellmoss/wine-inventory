@@ -87,7 +87,13 @@ describe("text-safe ink variants (§A2)", () => {
     expect(color("red-ink")).toBe("#A5342D");
     expect(color("green-ink")).toBe("#175242");
     expect(color("blue-ink")).toBe("#095972");
-    expect(color("ink-500")).toBe("#8A8272");
+    // #8A8272 until 2026-07-28. This block is titled "variants that can LEGALLY
+    // carry text" and that one could not: 3.81:1 on white, 3.62 on cream, 3.41 on
+    // paper-100 — under AA on every surface the app renders, while a comment in
+    // colors.css claimed 4.6:1. Pinning the hex without computing the ratio is what
+    // let it stand; test/design-tokens-contrast.test.ts now does the arithmetic for
+    // every text token, on all three page surfaces.
+    expect(color("ink-500")).toBe("#736C5C");
     expect(color("warning-deep-text")).toBe("#5C440E");
   });
 
