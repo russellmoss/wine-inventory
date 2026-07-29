@@ -81,7 +81,12 @@
   --red-ink:    #A5342D; /* 5.4:1 on cream */
   --green-ink:  #175242; /* 8.9:1 — alias of --deep-green, kept for symmetry */
   --blue-ink:   #095972; /* 7.4:1 on cream */
-  --ink-500:    #8A8272; /* meta/eyebrow text on white, 4.6:1 */
+  /* #8A8272 until 2026-07-28, where the comment claimed "4.6:1" and the measured
+     value was 3.81:1 on white and 3.62:1 on the cream surface this app actually
+     uses — under AA for normal text, and axe was failing on it. Darkened until it
+     clears 4.5 on BOTH surfaces (4.79 white / 4.55 cream). The number in a comment
+     is worth nothing; test/design-tokens-contrast.test.ts computes it now. */
+  --ink-500:    #79725F; /* meta/eyebrow text: 4.79:1 on white, 4.55:1 on cream */
   --warning-deep-text: #5C440E; /* body text inside a warning tint */
 
   /* ---- Semantic additions (v2 §A3) ---------------------- */

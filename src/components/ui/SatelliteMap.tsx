@@ -483,7 +483,21 @@ export function SatelliteMap({
       markerRef.current = L.marker([lat, lng], {
         icon: makePinIcon(),
         interactive: false,
+        // Leaflet stamps `tabindex="0" role="button"` on a marker by default even
+        // when it is `interactive: false`. That produced a focusable button with no
+        // accessible name and no action — axe flagged it five ways at once
+        // (aria-command-name, has-visible-text, aria-label…), and a keyboard user
+        // landed on it with nothing announced and nothing to do.
+        keyboard: false,
       }).addTo(map);
+      // The pin marks the vineyard's centre, which the page already states in text.
+      // It is decoration, so it says so rather than pretending to be a control.
+      const pin = markerRef.current.getElement();
+      if (pin) {
+        pin.removeAttribute("role");
+        pin.removeAttribute("tabindex");
+        pin.setAttribute("aria-hidden", "true");
+      }
     }
   }, [markerVisible, lat, lng, showMap]);
 
