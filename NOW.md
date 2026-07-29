@@ -7,44 +7,39 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PHASE 9: ASSISTANT BEHAVIOUR (class C). PLANNED + COUNCIL-APPLIED. Ready for `/work` at PR B1.**
-Plan: `docs/plans/2026-07-29-105-feat-cellarhand-v2-phase9-assistant-behaviour-plan.md` (v2, 6 units, 5 PRs)
+**CELLARHAND UI/UX v2 — PHASE 9: ASSISTANT BEHAVIOUR. BUILT, 5 of 6 units, on branch — not PR'd.**
+Plan: `docs/plans/2026-07-29-105-feat-cellarhand-v2-phase9-assistant-behaviour-plan.md` (v2, council-applied)
 Council: `docs/plans/council-feedback-105-phase9-assistant-behaviour.md`
-Branch `claude/cellarhand-v2-phase-9-bd9d68` off `f7040b7e`. The dock file stays byte-unchanged.
+Branch `claude/cellarhand-v2-phase-9-bd9d68` off `f7040b7e`. `AssistantDock.tsx` is byte-unchanged.
 
-**THREE items, not four** — B33 `ProvenancePanel` was cut (see Follow-ups in the plan):
-1. Draft by default + **an explicit "issue it" still issues**, then **navigate to it**
-2. The page passes object context to the dock (provider + client bridge, dock untouched)
-3. `AIProposalCard` becomes one real component (it exists twice today, privately)
-4. Degraded-AI state, rescoped to the dock — the ranked-queue copy is deferred to Phase 5+
+Commits, in the council's inverted order (correctness first, refactor last):
+- `26e02339` U1 — draft by default; an explicit "issue it" still issues (signed into the token)
+- `a2dd56f9` U2 — navigate to the created object, keeping the conversation
+- (U4) object context: pages publish what they show, via a provider above the dock
+- `eaeca9aa` U5 — degraded-AI state from one server-owned gate
+- `74da50f0` U6 — the Phase 9 acceptance criteria the handoff never wrote (AC-C18..21, W7..9, N2..3)
 
-⚠️ **The handoff was wrong about item 1, and it is the load-bearing fact.**
-`commitProposeWorkOrder` today creates a draft and then **immediately ISSUES it**
-(`propose-work-order.ts:544`), while the spec says `DRAFT`, never `ISSUED`
-(`03-interaction-spec.md:179`). So item 1 is a behaviour change on the busiest assistant write path,
-not a `router.push`. The navigate transport already exists (`commit.ts:19` → `confirm/route.ts:30` →
-client, rendered as a "View X →" link). 11 handoff conflicts logged; DM-58 had no host surface.
+Gates: `tsc` 0 · `eslint` 0 · `verify:ai-native` green · `eval:assistant` 167 pass / 114 key-gated,
+**no golden moved**. Full suite: see the plan.
 
-🔪 **Council found four failure sequences the first draft missed** — deleting the issue call defers
-reservation conflicts to *after* the nonce burns (no retry); pre-deploy tokens carry stale semantics;
-the link-only downgrade can strand a created draft unreachable after a reload; and the nav rule
-guarded the destination but not the **source** (navigating away from `/assistant` ends the session).
-Each now has a mitigation and a branch-table row. **PR order is inverted from the first draft: the
-correctness fix (B1) ships before the refactor (A).**
+🛑 **TWO THINGS BEFORE THIS SHIPS.**
 
-**Phase 3b is DONE and LIVE.** The v2 nav is ON in production as of 2026-07-29 —
-[#563](https://github.com/russellmoss/wine-inventory/pull/563) (a11y),
-[#564](https://github.com/russellmoss/wine-inventory/pull/564) (IA),
-[#565](https://github.com/russellmoss/wine-inventory/pull/565) (flag flip), main at `13cbc62c`.
-Sidebar is now **Today · The vineyards · The wine · The business**, 16 destinations.
+1. **DRAFT work orders appear in NO list view.** `OPEN_STATUSES` = ISSUED/IN_PROGRESS/PENDING_APPROVAL,
+   `ARCHIVE_STATUSES` = APPROVED/CANCELLED (`work-orders/archive-filters.ts:6-7`). A draft is reachable
+   only by its own detail page or Ctrl-K search (global search has no status filter, so the "#318" in
+   the receipt does find it). Before U1 the assistant issued, so its orders landed in the open queue.
+   Now they do not. **Owner call:** add DRAFT to the open queue, add a Drafts section, or accept search
+   as the only route in.
+2. **U3 (the `AIProposalCard` extraction) is deliberately NOT done.** The chat and voice cards are
+   materially divergent — the voice one has NO draft gate at all, no details body, and is deliberately
+   sized for a 620px floor panel. Unifying them blind would either push a details table onto the floor
+   surface or drop the gate plan 081 built to stop Confirm becoming a reflex, and with no jsdom/RTL
+   neither is catchable by a test. Wants a browser session or a decision about what voice should show.
 
-⚠️ **Rollback is config, not code:** `NEXT_PUBLIC_NAV_V2=0` + redeploy restores the legacy
-31-entry sidebar byte-identically. The flag predicate is `!== "0"` precisely to keep that true.
-
-⚠️ **Not browser-QA'd as a NON-ADMIN.** Every browser pass ran as the Demo Winery owner
-(admin). The role matrix is unit-tested hard — a plain user and a vineyard manager are
-covered in `nav-model`/`nav-sections`/`search-sections` — but nobody has *looked* at the
-sidebar as a cellar hand. First thing worth doing if anything looks wrong on the floor.
+⚠️ **Still not browser-QA'd, and not QA'd as a NON-ADMIN.** Every browser pass so far ran as the Demo
+Winery owner. Phase 9 touches navigation, which is role-scoped. AC-W7/W8/W9 exist now but have not been
+run. Also worth checking while there: `routes.ts:45-69` `SECTION_ROUTES` has **no role gating** while the
+v2 nav gates admin/feature/vineyard — the assistant will walk a cellar hand to `/settings`. Own ticket.
 
 ⚠️ **The 44px house rule still has a backlog.** WCAG AA (2.5.8, 24px) is now met app-wide;
 the project's own stricter 44px floor (2.5.5, AAA) is not. The remaining offenders are

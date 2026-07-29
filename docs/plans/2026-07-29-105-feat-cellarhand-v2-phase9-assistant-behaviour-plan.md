@@ -1,7 +1,7 @@
 ---
 title: Cellarhand v2 Phase 9 — assistant behaviour (draft-by-default, navigate to it, object context, degraded AI)
 type: feat
-status: approved (council-applied)
+status: built (5 of 6 units; U3 deliberately not done — see Build notes)
 date: 2026-07-29
 revised: 2026-07-29 — v2 after council
 branch: claude/cellarhand-v2-phase-9-bd9d68
@@ -517,6 +517,66 @@ against the dock, the supported surface.
 | Implementation Units | **MEDIUM-HIGH** | U1's preflight is the residual unknown — it depends on how cleanly a read-only path extracts from the existing issue gate, which needs a look before estimating. U2–U5 land on read code with precedents to copy |
 | Test Strategy | **MEDIUM-HIGH** | The integration test closes the real gap. Residual: no jsdom means the card is source-asserted plus Playwright — the same gap every UI change here has |
 | Risk Assessment | **HIGH** | Raised from MEDIUM-HIGH: council surfaced four failure sequences v1 missed, and each now has a named mitigation and a branch-table row |
+
+## Build notes (discovered during execution, 2026-07-29)
+
+Recorded rather than worked around silently — three of these correct the plan or the council.
+
+**1. Council C1's preflight was not needed, and building it would have been building for a failure
+that cannot occur.** The plan (following Codex) said `issueWorkOrderAction` is where reservation
+conflicts surface, so removing it would defer a real failure past the burned nonce. It is not.
+`reserveForWorkOrderTx` (`reservations.ts:162`) returns `string[]` **warnings**; reservations are
+advisory holds and never block. `issueWorkOrderCore` (`lifecycle.ts:257`) throws in exactly two
+cases: the work order does not exist, and its status is not `DRAFT` — both impossible one line after
+`createWorkOrderFromBuildsAction` creates it. The readiness gate runs in the *create* action, which
+still runs. So the pre-existing `catch` branch was effectively dead for anything but an
+infrastructure fault, and no preflight was built. **U1 shrank accordingly.**
+
+**2. Council C2 is real, but bumping `NL_WORK_ORDER_SCHEMA_VERSION` was the wrong instrument.** That
+constant is shared with the draft/resume token shapes (`nl-proposal.ts:7,91,165,187,323`), so
+bumping it would also invalidate every in-flight picker selection. An exact marker already exists:
+a token minted before this change carries **no `issueOnConfirm` key at all**, while every token
+minted after carries it explicitly (true or false). `hasIssueIntentContract` tests for presence and
+refuses the old contract with the existing stale message. Narrower, and no collateral.
+
+**3. Council C3 was overstated: a confirmed draft is unlisted, not unreachable.** Global search
+(`search/query.ts:117-126`) applies **no status filter** to work orders, so the number in the
+receipt ("Created draft work order #318") finds it via Ctrl-K after any reload. No persistence work
+was needed. BUT — see the open risk below, because the weaker version of this is still a real gap.
+
+**4. `asProposal` did not need touching (council S3).** It passes `details` through whole
+(`assistant-events.ts:173,177`) rather than field-by-field, so the new `issueOnConfirm` field
+reaches the client without the sanitiser knowing about it.
+
+**5. U3 (the `AIProposalCard` extraction) was NOT done — deliberately.** The two cards are
+materially divergent, not accidental duplicates:
+
+| | Chat (`AssistantChat.tsx:1493`) | Voice (`VoiceInlinePanel.tsx:250`) |
+|---|---|---|
+| Draft gating | `proposalGate()`, Confirm disabled, reason text, dashed edge | **none** — always "Confirm change", always enabled |
+| Details body | tasks / warnings / cost / diff | none |
+| Collapsed receipt + nav link | yes | no |
+| Sizing | full width | `maxHeight:140` + internal scroll, `size="sm"` — deliberate for a 620px panel |
+
+Unifying them blind would either push a details table into a floor-sized panel or drop the draft
+gate plan 081 built specifically to stop Confirm becoming a reflex — and this repo has no
+jsdom/RTL, so neither outcome is catchable by a test. It wants a browser session (which needs the
+user to log in) or a deliberate decision about what the voice card should show. **Left undone with
+the reason stated, rather than shipped unverified.**
+
+## Open risks found during the build (not in the original plan)
+
+**DRAFT work orders appear in NO list view.** `OPEN_STATUSES` is `["ISSUED","IN_PROGRESS",
+"PENDING_APPROVAL"]` and `ARCHIVE_STATUSES` is `["APPROVED","CANCELLED"]`
+(`work-orders/archive-filters.ts:6-7`). A draft is reachable only by its own detail page or by
+Ctrl-K search. Before U1 the assistant issued, so its work orders landed in the open queue; now
+they do not. This is the sharp version of Gemini's "draft graveyard" question — the drafts are not
+cluttering, they are **invisible**. Not caused by this plan, but made load-bearing by it.
+**Owner decision before B1 ships:** add DRAFT to the open queue (a `OPEN_STATUSES` change plus its
+filter UI, arguably Phase 5's job), add a Drafts section, or accept search as the only route in.
+
+**The voice proposal card has no draft gate.** Visible in the table above. Whether a Draft can even
+reach the voice surface was not established. Worth an explicit check before U3 is attempted.
 
 ## GSTACK REVIEW REPORT
 
