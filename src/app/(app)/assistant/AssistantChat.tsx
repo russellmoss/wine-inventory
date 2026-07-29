@@ -9,7 +9,7 @@ import type { VoiceState } from "@/lib/voice/state-types";
 import type { VoiceSessionApi } from "./voice/VoiceInlinePanel";
 import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import { decidePostCommitNav, parseCommitNavTarget } from "@/lib/assistant/post-commit-nav";
-import { useAssistantObjectContext } from "@/components/assistant/AssistantObjectContext";
+import { useAssistantObjectContext, useAssistantUnavailableReason } from "@/components/assistant/AssistantObjectContext";
 import {
   ConversationSidebar,
   type ConversationSummary,
@@ -215,6 +215,9 @@ export function AssistantChat({
   // What the page under the dock is showing, if it published anything (plan 105 U4). Null on the
   // full-page assistant and on any page that has not opted in — the turn is then unchanged.
   const objectContext = useAssistantObjectContext();
+  // Plan 105 U5: why the assistant is off, from the ONE server-owned gate /api/assistant also uses
+  // (so the composer and the route cannot disagree). Null when it is on.
+  const assistantUnavailableReason = useAssistantUnavailableReason();
 
   // When embedded in the dock, the chat stays mounted (display:none) after the dock collapses so its
   // history survives. `active` is false while the dock is closed — force any live voice session shut so
@@ -1158,6 +1161,27 @@ export function AssistantChat({
         {error ? (
           <div style={{ ...column, color: "var(--danger)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", paddingBottom: "var(--space-2)" }}>{error}</div>
         ) : null}
+        {/* Plan 105 U5 / DM-58: say it here, where the user is about to type, rather than letting
+            them compose a message and discover it mid-stream. The sentence names what still works
+            (search, records, recording) because 03-interaction-spec.md:183 forbids AI-only
+            affordances — nothing else on this page or in the app degrades with it. */}
+        {assistantUnavailableReason ? (
+          <div
+            role="status"
+            style={{
+              ...column,
+              padding: "var(--space-3) var(--space-4)",
+              borderRadius: "var(--radius-md)",
+              background: "var(--surface-tint-info)",
+              border: "1px solid var(--border-strong)",
+              color: "var(--text-primary)",
+              fontFamily: "var(--font-body)",
+              fontSize: "var(--text-body-sm)",
+            }}
+          >
+            {assistantUnavailableReason}
+          </div>
+        ) : null}
         <div
           style={{
             ...column,
@@ -1172,8 +1196,8 @@ export function AssistantChat({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             rows={1}
-            placeholder="Ask a question…"
-            disabled={busy}
+            placeholder={assistantUnavailableReason ? "The assistant is off right now" : "Ask a question…"}
+            disabled={busy || !!assistantUnavailableReason}
             style={{
               flex: embedded ? "0 0 auto" : 1,
               width: embedded ? "100%" : undefined,
@@ -1224,7 +1248,7 @@ export function AssistantChat({
           <Button size="lg" variant="secondary" onClick={() => setTicketOpen(true)} disabled={busy}>
             Report bug
           </Button>
-          <Button size="lg" onClick={() => void send()} disabled={busy || input.trim().length === 0}>
+          <Button size="lg" onClick={() => void send()} disabled={busy || !!assistantUnavailableReason || input.trim().length === 0}>
             {busy ? "…" : "Send"}
           </Button>
           </div>

@@ -10,6 +10,7 @@ import {
   touchConversation,
   listMessagesForReplay,
 } from "@/lib/assistant/conversations";
+import { assistantAvailability } from "@/lib/assistant/availability";
 import { parseObjectContextHint } from "@/lib/assistant/object-context";
 import { resolveObjectContext } from "@/lib/assistant/object-context-resolve";
 import { buildReplayMessages, windowReplayRows } from "@/lib/assistant/replay";
@@ -28,6 +29,14 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user || user.banned || user.mustChangePassword) {
     return Response.json({ error: "Not signed in." }, { status: 401 });
+  }
+
+  // Plan 105 U5 / DM-58: the SAME gate the dock reads, so the composer's "assistant is off" and this
+  // route can never disagree. Refused here rather than mid-stream in run.ts, which only surfaced
+  // after the user had already typed and sent.
+  const availability = assistantAvailability();
+  if (!availability.available) {
+    return Response.json({ error: availability.unavailableReason }, { status: 503 });
   }
 
   let body: unknown;

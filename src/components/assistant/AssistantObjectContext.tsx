@@ -69,3 +69,30 @@ export function PageObjectContext({ entity, id }: ObjectContextHint) {
 
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Assistant availability (plan 105 U5 / DM-58)
+//
+// Same provider trick, same reason: the dock file must not be edited, so the value comes DOWN from
+// the (app) layout rather than THROUGH AssistantDock's props. The layout resolves it from the one
+// server-owned gate (lib/assistant/availability.ts) that /api/assistant also uses, so the composer
+// and the route can never disagree about whether the assistant works.
+
+const AssistantAvailabilityCtx = React.createContext<string | null>(null);
+
+export function AssistantAvailabilityProvider({
+  unavailableReason,
+  children,
+}: {
+  unavailableReason: string | null;
+  children: React.ReactNode;
+}) {
+  return (
+    <AssistantAvailabilityCtx.Provider value={unavailableReason}>{children}</AssistantAvailabilityCtx.Provider>
+  );
+}
+
+/** Why the assistant is off, or null when it is on. Null outside the (app) layout. */
+export function useAssistantUnavailableReason(): string | null {
+  return React.useContext(AssistantAvailabilityCtx);
+}

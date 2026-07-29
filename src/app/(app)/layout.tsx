@@ -10,7 +10,8 @@ import { voiceEnabled } from "@/lib/voice/config";
 import { CurrencyProvider } from "@/components/money/CurrencyProvider";
 import { WineryTimeZoneProvider } from "@/components/time/WineryTimeZoneProvider";
 import { UnitsProvider } from "@/components/units/UnitsProvider";
-import { AssistantObjectContextProvider } from "@/components/assistant/AssistantObjectContext";
+import { AssistantObjectContextProvider, AssistantAvailabilityProvider } from "@/components/assistant/AssistantObjectContext";
+import { assistantAvailability } from "@/lib/assistant/availability";
 import { getWineryTimeZone, getUnitPrefs } from "@/lib/settings/data";
 import { DEFAULT_CURRENCY } from "@/lib/money/currency";
 import { DEFAULT_METRIC_PREFS } from "@/lib/units/display";
@@ -55,11 +56,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <UnitsProvider prefs={unitPrefs}>
       {/* Above AppShell (and so above the assistant dock) so a page can publish the object it is
           showing without the dock — or AssistantDock.tsx — having to know about it. Plan 105 U4. */}
+      <AssistantAvailabilityProvider unavailableReason={assistantAvailability().unavailableReason}>
       <AssistantObjectContextProvider>
       <AppShell user={user} pendingSamples={pendingSamples} pendingWorkOrders={pendingWorkOrders} sparklingEnabled={sparklingEnabled} customCrushEnabled={customCrushEnabled} complianceDeadlines={complianceDeadlines} voiceEnabled={voiceEnabled()} inboxEnabled={inboxEnabled} unreadMessages={unreadMessages} diagnosticsTenantName={diagnosticsTenantName}>
         {children}
       </AppShell>
       </AssistantObjectContextProvider>
+      </AssistantAvailabilityProvider>
       </UnitsProvider>
       </WineryTimeZoneProvider>
     </CurrencyProvider>
