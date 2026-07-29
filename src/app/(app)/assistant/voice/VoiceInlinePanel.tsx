@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui";
-import { proposalGate } from "@/lib/assistant/proposal-card";
+import { proposalGate, primaryActionLabel, primaryActionPendingLabel } from "@/lib/assistant/proposal-card";
 import { focusAction } from "@/lib/voice/focus";
 import { voiceAnnouncement, voiceControlAvailability } from "@/lib/voice/inline-ui";
 import type { VoiceState } from "@/lib/voice/state-types";
@@ -170,6 +170,7 @@ export function VoiceInlinePanel({
 
       {session.proposal ? (
         <ProposalCard
+          tool={session.proposal.tool}
           preview={session.proposal.preview}
           status={session.proposal.status}
           result={session.proposal.result}
@@ -252,6 +253,7 @@ export function VoiceInlinePanel({
 }
 
 function ProposalCard({
+  tool,
   preview,
   status,
   result,
@@ -261,6 +263,7 @@ function ProposalCard({
   onConfirm,
   onCancel,
 }: {
+  tool?: string;
   preview: string;
   status: "pending" | "applying" | "done" | "error";
   result?: string;
@@ -341,7 +344,7 @@ function ProposalCard({
               disabled={!gate.canConfirm || status === "applying"}
               title={gate.reason ?? undefined}
             >
-              {status === "applying" ? "Applying…" : "Confirm"}
+              {status === "applying" ? primaryActionPendingLabel(tool) : primaryActionLabel(tool)}
             </Button>
             <Button size="sm" variant="secondary" onClick={onCancel} disabled={status === "applying"}>
               {gate.canConfirm ? "Cancel" : "Dismiss"}

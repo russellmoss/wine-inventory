@@ -2,7 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal, signResume } from "../confirm";
-import { entityPath } from "../routes";
+import { entityPath, workOrderLandingPath } from "../routes";
 import { materialDisplayName } from "@/lib/cellar/materials";
 import { listMaterials } from "@/lib/cellar/materials";
 import { findScopedBlocks, type ScopedBlock } from "../scope";
@@ -557,7 +557,7 @@ export const commitProposeWorkOrder: Committer = async (user, rawArgs) => {
   // Nothing is reserved and nobody is notified. The user lands on the draft and presses Issue there.
   return {
     message: `Created draft work order #${created.number} "${args.title}" with ${taskCount} ${plural}. Taking you to it — review it, then press Issue when you are ready.`,
-    navigate: { path: entityPath("workOrder", created.workOrderId), label: `Draft WO #${created.number}` },
+    navigate: { path: workOrderLandingPath(created.workOrderId), label: `Draft WO #${created.number}` },
   };
 };
 

@@ -2,6 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
+import { workOrderLandingPath } from "../routes";
 import { resolveExactlyOne } from "./resolve";
 import { listWorkOrderTemplates } from "@/lib/work-orders/data";
 import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
@@ -77,6 +78,6 @@ export const commitCreateWorkOrder: Committer = async (_user, args) => {
   const from = String(args.templateName ?? "template");
   return {
     message: `Created draft work order #${created.number} from "${from}". Taking you to it — review it, then press Issue when you are ready.`,
-    navigate: { path: `/work-orders/${created.workOrderId}`, label: `Draft WO #${created.number}` },
+    navigate: { path: workOrderLandingPath(created.workOrderId), label: `Draft WO #${created.number}` },
   };
 };

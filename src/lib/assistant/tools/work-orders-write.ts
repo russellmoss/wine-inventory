@@ -2,7 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { entityPath } from "../routes";
+import { entityPath, workOrderLandingPath } from "../routes";
 import { resolveVessel, type ResolvedVessel } from "../scope";
 import { CAP_KINDS, isCapKind, type CapKind } from "@/lib/cellar/treatments";
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
@@ -148,6 +148,6 @@ export const commitIssueCapManagementWo: Committer = async (_user, args) => {
   const taskWord = vessels.length === 1 ? "task" : "tasks";
   return {
     message: `Created draft work order #${created.number} "${title}" with ${vessels.length} ${taskWord}${asgSuffix}. Taking you to it — review it, then press Issue when you are ready.`,
-    navigate: { path: entityPath("workOrder", created.workOrderId), label: `Draft WO #${created.number}` },
+    navigate: { path: workOrderLandingPath(created.workOrderId), label: `Draft WO #${created.number}` },
   };
 };

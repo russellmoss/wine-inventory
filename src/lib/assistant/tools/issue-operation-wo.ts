@@ -2,7 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { entityPath } from "../routes";
+import { entityPath, workOrderLandingPath } from "../routes";
 import { resolveVessel, type ResolvedVessel } from "../scope";
 import { instantiateTaskBuilds, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
@@ -183,6 +183,6 @@ export const commitIssueOperationWo: Committer = async (_user, args) => {
   const taskWord = builds.length === 1 ? "task" : "tasks";
   return {
     message: `Created draft work order #${created.number} "${title}" with ${builds.length} ${taskWord}${asgSuffix}. Taking you to it — review it, then press Issue when you are ready.`,
-    navigate: { path: entityPath("workOrder", created.workOrderId), label: `Draft WO #${created.number}` },
+    navigate: { path: workOrderLandingPath(created.workOrderId), label: `Draft WO #${created.number}` },
   };
 };

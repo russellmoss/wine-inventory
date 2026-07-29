@@ -78,9 +78,12 @@ describe("commitProposeWorkOrder — the default path leaves a DRAFT", () => {
     expect(res.message).not.toContain("Issued work order");
   });
 
-  it("still returns a deep link to the created draft", async () => {
+  it("returns a deep link to the created draft, pointing at the BUILDER", async () => {
+    // MOVED DELIBERATELY (plan 105): the landing target is /edit, not the read-only detail page.
+    // Drafting instead of issuing only helps if you arrive somewhere you can change it. The builder
+    // is admin-only and redirects a non-admin back to the detail view — the right degrade.
     const res = await commitProposeWorkOrder(USER, args());
-    expect(res.navigate).toEqual({ path: "/work-orders/wo_1", label: "Draft WO #318" });
+    expect(res.navigate).toEqual({ path: "/work-orders/wo_1/edit", label: "Draft WO #318" });
   });
 });
 

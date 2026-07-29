@@ -38,6 +38,21 @@ export function entityPath(entity: RoutableEntity, id: string): string {
 }
 
 /**
+ * Where a freshly-created work order should LAND the user (plan 105).
+ *
+ * The builder, not the read-only detail page: the whole point of drafting instead of issuing is that
+ * you arrive somewhere you can change it. `/work-orders/[id]/edit` is admin-only and redirects a
+ * non-admin back to the detail view, which is the right degrade — a cellar hand should not be
+ * dropped into the builder.
+ *
+ * Deliberately NOT folded into entityPath(): the `navigate` tool ("take me to WO 12") should still
+ * open the detail page. Only the post-create landing differs.
+ */
+export function workOrderLandingPath(id: string): string {
+  return `/work-orders/${encodeURIComponent(id)}/edit`;
+}
+
+/**
  * Section (list/area) pages the assistant may link to. Label -> relative path.
  * Only paths confirmed to exist in src/app/(app)/. Every value is a safe
  * "/"-relative path (asserted by the test).

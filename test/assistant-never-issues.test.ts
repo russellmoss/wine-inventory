@@ -60,6 +60,20 @@ describe("the assistant never issues a work order", () => {
     expect(missing, `these create a work order but return no deep link: ${missing.join(", ")}`).toEqual([]);
   });
 
+  it("they land the user on the EDIT screen, not the read-only detail page", () => {
+    // The point of drafting instead of issuing is arriving somewhere you can change it. The builder
+    // is admin-only and redirects a non-admin back to the detail view, which is the right degrade.
+    const creators = walk(TOOLS_DIR).filter((p) => {
+      const src = readFileSync(p, "utf8");
+      return /createWorkOrder(Action|FromBuildsAction|FromTemplateAction)\s*\(/.test(src);
+    });
+    expect(creators.length).toBeGreaterThan(0);
+    const wrong = creators
+      .filter((p) => !readFileSync(p, "utf8").includes("workOrderLandingPath("))
+      .map((p) => p.slice(TOOLS_DIR.length + 1).split("\\").join("/"));
+    expect(wrong, `these land on the detail page instead of the builder: ${wrong.join(", ")}`).toEqual([]);
+  });
+
   it("their receipts say a draft was made, never that something was issued", () => {
     const offenders = walk(TOOLS_DIR)
       .filter((p) => /message: `Issued work order/.test(readFileSync(p, "utf8")))

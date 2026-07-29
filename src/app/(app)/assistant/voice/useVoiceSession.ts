@@ -51,6 +51,9 @@ export type { VoiceState };
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type Caption = { role: "user" | "assistant"; content: string };
 export type PendingProposal = {
+  /** Which write tool produced this card — decides the primary action's wording, exactly as in the
+   *  text card. A work-order card lands you ON the object, so it says "Review", not "Confirm". */
+  tool?: string;
   preview: string;
   /** Absent on a Draft — a Draft is not committable, by voice or by tap (plan 081 U4). */
   token?: string;
@@ -413,6 +416,7 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
             case "proposal": {
               const draft = evt.draft === true;
               admit({
+                tool: evt.tool,
                 preview: evt.preview,
                 ...(draft ? { draft: true } : { token: evt.token }),
                 ...(evt.details !== undefined ? { details: evt.details } : {}),

@@ -55,6 +55,15 @@ describe("the inline voice card is gated by the same decision as the text card",
     expect(voiceSrc).not.toMatch(/border:\s*`1px solid/);
   });
 
+  it("uses the same primary-action label rule as the text card", () => {
+    // The gap the user hit: the voice card still hardcoded "Confirm" after the text card learned
+    // to say "Review" for anything that lands you on a work order.
+    expect(voiceSrc).toContain("primaryActionLabel(tool)");
+    expect(voiceSrc).toContain("primaryActionPendingLabel(tool)");
+    expect(voiceSrc).not.toMatch(/"Applying…" : "Confirm"/);
+    expect(voiceSrc).toContain("tool={session.proposal.tool}");
+  });
+
   it("does NOT drag the text card's details table onto a floor-sized panel", () => {
     // The divergence that is deliberate. If this ever fails, someone unified the two cards.
     expect(voiceSrc).not.toContain("WorkOrderProposalDetails");
