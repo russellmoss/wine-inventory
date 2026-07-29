@@ -106,8 +106,14 @@ describe("role filtering reaches BOTH nav surfaces (plan 104 D5)", () => {
 });
 
 describe("the flag contract", () => {
-  it("defaults OFF", () => {
-    expect(FLAG).toContain('process.env.NEXT_PUBLIC_NAV_V2 === "1"');
+  it("defaults ON, and keeps an env kill-switch", () => {
+    // Flipped 2026-07-29 (owner) once plan 104 finished the second level of the IA.
+    // The predicate is `!== "0"` on purpose: the flag exists so a rollback is an env
+    // change and a restart, never a revert commit mid-harvest. `=== "1"` would have
+    // made turning it ON the config act and turning it OFF a code change, which is
+    // the wrong way round once v2 is the shipping nav.
+    expect(FLAG).toContain('process.env.NEXT_PUBLIC_NAV_V2 !== "0"');
+    expect(code(FLAG)).not.toContain('=== "1"');
   });
 
   it("keeps BOTH nav models in the same build so rollback needs no deploy", () => {
