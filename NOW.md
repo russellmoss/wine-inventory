@@ -22,24 +22,34 @@ Commits, in the council's inverted order (correctness first, refactor last):
 Gates: `tsc` 0 · `eslint` 0 · `verify:ai-native` green · `eval:assistant` 167 pass / 114 key-gated,
 **no golden moved**. Full suite: see the plan.
 
-✅ **THE RULE, after live testing: the assistant NEVER issues a work order.** It creates a DRAFT and
-takes you to it; Issue is your press on the work-order page, after you have seen it and edited it.
+✅ **THE RULE: the assistant NEVER issues a work order.** It creates a DRAFT and takes you to it;
+Issue is your press on the work-order page, after you have reviewed and edited it. The card's primary
+action reads **Review**, not Confirm, and Review navigates immediately.
 
-Two earlier attempts were both wrong and are recorded so they are not re-tried:
+**Browser-verified end to end** on Demo Winery, 2026-07-29, using the phrasing that broke it:
+"make me a work order for punch down on tank T5 **issued to** mike juergens" → card reads *"Draft a
+cap-management work order…"* → Review → `/vessels` → `/work-orders/<id>`, h1 `#68 · Punch-down — 1
+tank`, status **draft**, dock still open, page offers Issue / Edit / Cancel WO. Console clean.
+(QA leftovers in Demo Winery: WO **#68**, **#69** — delete when done with them.)
+
+Three earlier attempts were wrong and are recorded so they are not re-tried:
 1. Four tools created-and-issued in one press; the first fix gated only `propose_work_order`. The
-   other three were missed — the MODEL picks the tool from the shape of the request, so "make me a
-   work order for punch down on T5" went down `issue_cap_management_wo` and would have published.
-2. The second gated all four on an "explicit issue verb" heuristic. Live testing killed it: a
-   request phrased "…issued to mike juergens" still published straight from the chat card. There is
-   no phrasing that should skip the review step.
-Now enforced structurally by `test/assistant-never-issues.test.ts` — no file under
-`src/lib/assistant/` may call `issueWorkOrderAction`/`Core`, every WO committer must return a deep
-link, and no receipt may claim an issue.
+   MODEL picks the tool from the request's shape, so "make me a work order for punch down on T5"
+   went down `issue_cap_management_wo` and would have published.
+2. The second gated all four on an "explicit issue verb" heuristic — a request saying "…issued to
+   mike" still published straight from the card. No phrasing should skip the review step.
+3. Widening `OPEN_STATUSES` did NOT surface drafts: `getWorkOrderDashboard` re-filters to
+   ISSUED/IN_PROGRESS **in memory after the query**, and that is what decides visibility. Fixing it
+   immediately surfaced a real invisible draft (#34 bottling, overdue since 18 Jul).
+Enforced structurally by `test/assistant-never-issues.test.ts` (no file under `src/lib/assistant/`
+may call `issueWorkOrderAction`/`Core`) and `test/assistant-proposal-action-label.test.ts` (the
+Review set is derived from the tools directory, so a fifth WO tool fails rather than shipping
+"Confirm").
 
-✅ **`OPEN_STATUSES` now leads with `DRAFT`** (`work-orders/archive-filters.ts`). It had to: with the
-assistant only ever drafting, every work order it makes would otherwise be invisible in every list
-in the product. The assistant had literally told the user "open Work orders and it'll be at the top
-of the list" — which was false.
+⚠️ **Dev-server gotcha, cost an hour:** a stale `.next/` in a worktree made `POST
+/api/assistant/confirm` return **404 with an HTML body** while `/api/assistant` itself worked. Not a
+code bug. `rm -rf .next` and restart. First compile of the confirm route is ~110s (it pulls all 96
+tool modules), so give it time before concluding anything.
 
 ⚠️ **Still not browser-QA'd, and not QA'd as a NON-ADMIN.** Every browser pass so far ran as the Demo
 Winery owner. Phase 9 touches navigation, which is role-scoped. AC-W7/W8/W9 exist now but have not been
