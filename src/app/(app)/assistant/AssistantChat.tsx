@@ -9,6 +9,7 @@ import type { VoiceState } from "@/lib/voice/state-types";
 import type { VoiceSessionApi } from "./voice/VoiceInlinePanel";
 import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
 import { decidePostCommitNav, parseCommitNavTarget } from "@/lib/assistant/post-commit-nav";
+import { useAssistantObjectContext } from "@/components/assistant/AssistantObjectContext";
 import {
   ConversationSidebar,
   type ConversationSummary,
@@ -211,6 +212,9 @@ export function AssistantChat({
   // Where the user is right now. Read for the post-commit navigation decision: leaving the
   // full-page assistant would end the session, so that case must degrade to a link (plan 105 U2).
   const pathname = usePathname();
+  // What the page under the dock is showing, if it published anything (plan 105 U4). Null on the
+  // full-page assistant and on any page that has not opted in — the turn is then unchanged.
+  const objectContext = useAssistantObjectContext();
 
   // When embedded in the dock, the chat stays mounted (display:none) after the dock collapses so its
   // history survives. `active` is false while the dock is closed — force any live voice session shut so
@@ -719,7 +723,15 @@ export function AssistantChat({
         headers: { "Content-Type": "application/json" },
         // timeZone: the server is UTC, so a due date/time the assistant resolves ("tomorrow at 9am")
         // needs the viewer's own clock to land on the right instant.
-        body: JSON.stringify({ messages: clampHistoryForSend(history), conversationId, timeZone: browserTimeZone() }),
+        // objectContext (plan 105 U4): what the page under the dock is showing, so "change the
+        // schedule" resolves to the record in front of the user. A hint only — the server
+        // re-resolves it tenant-scoped before any of it reaches the prompt.
+        body: JSON.stringify({
+          messages: clampHistoryForSend(history),
+          conversationId,
+          timeZone: browserTimeZone(),
+          ...(objectContext ? { objectContext } : {}),
+        }),
       });
       if (!res.ok || !res.body) {
         const msg = await res.json().catch(() => null);

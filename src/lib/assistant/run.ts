@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import type { AppUser } from "@/lib/access";
 import { getToolsFor } from "./registry";
+import { serializeObjectContext, type ResolvedObjectContext } from "./object-context";
 import { buildSystemPrompt, VOICE_STYLE_PROMPT } from "./prompt";
 import { listOpenClarificationsForUser } from "@/lib/feedback/clarification";
 import { claimsWriteWithoutCard, OVERCLAIM_CORRECTION, OVERCLAIM_REPAIR_PROMPT } from "./overclaim-guard";
@@ -67,6 +68,11 @@ export async function runAssistant(opts: {
    *  (beside the timezone) so this loop stays free of DB reads. Adds one system-prompt line and
    *  rides ToolContext into every tool; omitted (tests, unconfigured) = pre-098 behavior. */
   units?: UnitPrefs;
+  /** Plan 105 U4 (DM-56): the object the user's current page is showing, ALREADY RESOLVED
+   *  tenant-scoped by the route (same reason as the zone and units — no DB reads in this loop).
+   *  Appended to the prompt as an escaped block so "change the schedule" lands on the right record.
+   *  Omitted = byte-identical to before the feature existed. */
+  objectContext?: ResolvedObjectContext | null;
   /** Test seam. Omitted in production, where it defaults to the real Anthropic SDK stream. */
   createStream?: AssistantStreamFactory;
 }): Promise<AssistantRunResult> {
@@ -134,6 +140,13 @@ export async function runAssistant(opts: {
   // screen-shaped (no markdown, no read-aloud citations, units as words). Text chat and the
   // golden evals never set this, so their behaviour is byte-identical to before.
   if (opts.voice) system += `\n\n${VOICE_STYLE_PROMPT}`;
+
+  // Plan 105 U4: the object the user is looking at. APPENDED after the stable prompt body, like the
+  // voice and clarification blocks, so the cached prefix survives. The values are already escaped by
+  // serializeObjectContext — the injection point is a system prompt, and an unescaped winery-authored
+  // label would close the block and read as instruction. Empty string when there is no context.
+  const objectContextBlock = serializeObjectContext(opts.objectContext);
+  if (objectContextBlock) system += `\n\n${objectContextBlock}`;
 
   // Plan 079 (U12): if engineering asked this user for a detail on a bug they reported, surface it —
   // the inbox has no push notification, so the assistant is where they're most likely to notice.
