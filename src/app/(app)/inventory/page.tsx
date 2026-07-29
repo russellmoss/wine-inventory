@@ -13,6 +13,7 @@ import { ConsumablesSection as ConsumablesPanel } from "./sections/ConsumablesSe
 import { listEquipment } from "@/lib/equipment/equipment";
 import { listLocations } from "@/lib/work-orders/data";
 import { EquipmentSection as EquipmentPanel } from "./sections/EquipmentSection";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Inventory" };
@@ -111,6 +112,12 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
 
   return (
     <div>
+      {/* Two controls, two jobs — deliberately. The strip below navigates to a
+          sibling ROUTE (/reports); InventoryTabs switches a ?section= view of THIS
+          route (D6 leaves it alone). Reports lives here rather than under Accounting
+          because its own h1 says "Inventory reports" and Accounting is admin-only,
+          which would have hidden an ungated page from every non-admin. */}
+      <HubSectionNav hub="/inventory" />
       <div style={{ padding: "0 0 16px" }}>
         <InventoryTabs active={section} />
       </div>

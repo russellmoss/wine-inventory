@@ -1,6 +1,6 @@
 "use server";
 
-import { requireReadyUser } from "@/lib/dal";
+import { navContext } from "@/lib/nav/server-context";
 import { searchEverything } from "./query";
 import { groupHits, looksLikeQuestion, type SearchGroup } from "./rank";
 
@@ -17,20 +17,16 @@ export interface PaletteResult {
  * unauthenticated or org-less caller must get nothing rather than a partial
  * answer. The role context comes from the session, never from the client — a
  * client-supplied `isAdmin` would turn search into a privilege-escalation path.
+ *
+ * The context comes from `navContext()`, the SAME function the sub-navs use. It was
+ * briefly a hand-rolled copy here — `role === "admin" || role === "owner"` (missing
+ * `developer`), `hasVineyard: isAdmin`, and its own pair of capability reads — which
+ * is exactly how the palette and the sidebar end up disagreeing about who sees what.
+ * `navContext` calls `requireReadyUser()` itself, and that is `cache()`d per request,
+ * so this is one auth check, not two.
  */
 export async function paletteSearchAction(query: string): Promise<PaletteResult> {
-  const user = await requireReadyUser();
-
-  const role = String(user.role ?? "").toLowerCase();
-  const isAdmin = role === "admin" || role === "owner";
-
-  const hits = await searchEverything(query, {
-    isAdmin,
-    isDeveloper: Boolean((user as { isDeveloper?: boolean }).isDeveloper),
-    // Admins see vineyard destinations regardless; a non-admin's membership is
-    // resolved by the destination filter itself.
-    hasVineyard: isAdmin,
-  });
-
+  const ctx = await navContext();
+  const hits = await searchEverything(query, ctx);
   return { groups: groupHits(hits), question: looksLikeQuestion(query) };
 }

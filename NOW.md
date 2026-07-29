@@ -7,11 +7,41 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PHASE 3b: FINISH THE IA. Planned as
-[plan 104](docs/plans/2026-07-28-104-feat-cellarhand-v2-phase3b-ia-completion-plan.md), not started.**
+**CELLARHAND UI/UX v2 — PHASE 3b: FINISH THE IA. Plan 104 BUILT on
+`claude/cellarhand-v2-phase3b-ia-41e485`; four-reviewer adversarial pass then PR.**
 
 Phase 6 (tanks) MERGED as [#562](https://github.com/russellmoss/wine-inventory/pull/562) (`2613a828`) —
 board + five-tab detail, zero schema changes. Phases 0/1 [#555], 2/3 [#557], 4/5 [#561].
+
+✅ **Closed.** Every static route is now nav-reachable, palette-findable, or exempt with a stated
+reason, and `test/route-reachability.test.ts` fails CI on the next orphan (verified by hand: adding
+an unlinked page fails it by name). `SectionNav` has six real consumers; `/setup` is a new grouped
+admin hub; `hasVineyard` derives from real membership on desktop, mobile AND search. All of it is
+gated on `NEXT_PUBLIC_NAV_V2`, so production is unchanged. **Turning the flag on is a separate
+decision with its own QA pass — this phase only made it possible.**
+
+**Crawled to prove it, not asserted:** a live BFS from `/` with the flag on, against the Demo
+tenant, following only links that actually render — **35 of 58 static routes reachable, up from
+17**, and the crawl hit its own 10-minute cap mid-queue so that is a floor. All 23 unreached are
+accounted for: 5 auth pages, 3 dev tools, 6 redirect stubs, 1 palette-only (`/assistant`, whose
+real surface is the dock FAB), 3 hidden because the Demo tenant has sparkling and custom-crush
+OFF (correct), and 5 contextual links on pages the crawl had not dequeued yet.
+
+**A four-reviewer adversarial pass ran BEFORE the PR** (security · adversarial · maintainability ·
+design) and found five things that were green on 5,513 tests — an ungated page parked under an
+admin-only hub is unreachable (`/reports`, and four Setup children); a palette-only route is
+unreachable on a phone (`/winemaking-calculator`); a strip only on the hub is a one-way door; the
+D2 palette guard was six source-text assertions over code nothing executed; and `hubLabel` had
+resurrected two labels doc 01 §5 retired. All fixed. `CONTEXTUAL_DESTINATIONS` was deleted outright
+— zero consumers, and it contradicted `unnavigable.ts` about four routes.
+
+Two corrections against the plan, both verified in source: `/bottled` and `/finished-goods` are
+`redirect()` stubs into `/inventory` (plan 080 U6), so Unit 7's "Inventory sub-tabs" do not exist —
+`/inventory` gets no strip and both are classified as stubs. `/assistant` and
+`/winemaking-calculator` are palette-only (doc 01 §4's own "and Ctrl-K"), because `AssistantDock`
+had to stay diff-empty.
+
+<details><summary>The gap as it stood before this phase</summary>
 
 ⚠️ **The v2 nav cannot be turned on yet, and that is now the blocking item.** Measured by crawling
 the running app with `NEXT_PUBLIC_NAV_V2=1` against the live Demo tenant: **17 of 56 static routes
@@ -26,9 +56,11 @@ Finished goods, Reports and ~15 more. Ctrl-K does not rescue it: `search/query.t
 palette, so a surface cannot be reachable in one and invisible in the other. The deliverable is an
 **orphan guard**: a new route with nothing linking to it fails CI. Eleven handoff claims failed
 verification, including a live flag-gated bug — `hasVineyard` is hard-coded to `isAdmin`, so a real
-vineyard manager loses "Vineyard rounds" while mobile shows it to everyone.
+vineyard manager loses "Vineyards" while mobile shows it to everyone.
 **Both ODs ratified:** Setup gets its own `/setup` hub with grouped cards; the brand mark links to
 `/`. A four-reviewer adversarial pass is scheduled INTO the work, before the PR.
+
+</details>
 
 ## 🔭 Also in flight
 
@@ -1307,6 +1339,15 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **✅ Plan 104 (Phase 3b — finish the v2 IA) BUILT 2026-07-28**, 5 commits on
+  `claude/cellarhand-v2-phase3b-ia-41e485`. `src/lib/nav/sections.ts` (one module feeds BOTH the
+  sub-navs and Ctrl-K), `test/route-reachability.test.ts` (the orphan guard — a contextual claim
+  names the file that links to it and the guard reads that file; a redirect exemption is checked
+  against the page for a `redirect()` call; a hub is only credited once its page renders
+  `<HubSectionNav hub="...">`), the `/setup` hub, `hasVineyard` fixed on all three surfaces, and
+  `route-stability`'s two drifted lists now derived instead of hand-typed. Zero schema changes,
+  `AssistantDock` diff empty, suite 5,513 passing.
+
 - **✅ Assistant false-source-denial (Gironde) + the legality-refusal eval-fixture gap it exposed —
   BOTH FIXED (2026-07-28), see tangent-stack entry 1 above for the full write-up.** Merged
   [#556](https://github.com/russellmoss/wine-inventory/pull/556) (retrieval-overclaim guard),
@@ -1879,6 +1920,15 @@ _Older shipped work lives in git history and `docs/plans/`. Roadmap phases in `R
   same-day duplicates), 4 hand-filed bugs (#414 flaky test, #413 soft-404 tombstones, #412 undated
   corpus sources, #408 the H8 eval drifting with CI never running it), 2 scale tripwires (#402, #91),
   and 1 orphaned plan issue (#365). None triaged in depth this run.
+
+_Last updated: 2026-07-28 — **Plan 104 / Phase 3b BUILT** on `claude/cellarhand-v2-phase3b-ia-41e485`
+(5 commits). The v2 nav's blocking gap is closed: every static route is nav-reachable,
+palette-findable, or exempt with a stated reason, and `test/route-reachability.test.ts` fails CI on
+the next orphan. `SectionNav` finally has consumers. Two plan corrections, both source-verified:
+`/bottled` + `/finished-goods` are redirect stubs (so Unit 7 does not exist), and `/assistant` +
+`/winemaking-calculator` are palette-only because `AssistantDock` had to stay diff-empty. Everything
+is behind `NEXT_PUBLIC_NAV_V2`; flipping it is still a separate decision. Suite 5,513 passing (one
+documented whole-suite contention flake), tsc clean, lint 0 errors._
 
 _Last updated: 2026-07-28 — **Phase 4 (Ctrl-K palette + global search) and Phase 5 (SavedViews/Narrow + derived StageIndicator) BUILT** on `claude/cellarhand-v2-next`. Phase 2/3 shipped as [#557](https://github.com/russellmoss/wine-inventory/pull/557). Keyboard hints are **Ctrl, never ⌘** (owner instruction; deliberate deviation from the handoff — the crew is on Windows), with a permanent guard against Mac modifier glyphs in `src/`. Search tenancy is the real risk and is tested: extended prisma client only, role from the session never the client, every branch bounded. Suite 428 files / 5,277 passing (one documented flake). Axe green on /login at both viewports.
 

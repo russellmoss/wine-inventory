@@ -135,7 +135,16 @@ test.describe("AC-F3 — aria-current", () => {
     test(`exactly one nav item is current on ${route}`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await goto(page, route);
-      await expect(page.locator('nav[aria-label="Main"] [aria-current="page"]')).toHaveCount(1);
+      // `:visible`, and the ORDER of that reasoning matters. Both the sidebar and the
+      // mobile tab bar are nav[aria-label="Main"] and both stay in the DOM at every
+      // width, so an unscoped count is 2 no matter what. Scoping to what the user can
+      // actually perceive is only honest if the hiding genuinely works — and it did
+      // not: MobileTabBar set `display: "grid"` INLINE, beating the >=1024px
+      // `display: none`, so the phone nav really was rendering on desktop. That bug
+      // is fixed in the component (test/shell-nav.test.ts guards the inline style),
+      // display:none now truly applies, and only then does `:visible` measure the
+      // thing this criterion is about instead of hiding a defect behind a selector.
+      await expect(page.locator('nav[aria-label="Main"]:visible [aria-current="page"]')).toHaveCount(1);
     });
   }
 });

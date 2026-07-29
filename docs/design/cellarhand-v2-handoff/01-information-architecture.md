@@ -12,7 +12,7 @@ Three groups replace four. Group labels name the *thing being managed*, not the 
 TODAY          ← always expanded, highest frequency
   Work orders          /work-orders                      all roles      badge: open count
   Cellar floor         /bulk                             all roles
-  Vineyard rounds      /vineyards/field-notes            vineyard+admin
+  Vineyards      /vineyards/field-notes            vineyard+admin
   Fruit intake         /vineyards/harvest                all roles      badge: open weigh-tags
 
 THE WINE       ← expanded by default on desktop ≥1280px
@@ -43,7 +43,7 @@ Rationale: 31 sidebar entries is not navigable. The approved structure is **13 g
 |---|---|---|---|---|---|
 | Work orders | ✓ (own + team) | ✓ | ✓ all | ✓ all | ✓ |
 | Cellar floor | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Vineyard rounds | — | ✓ scoped | ✓ | ✓ | ✓ |
+| Vineyards | — | ✓ scoped | ✓ | ✓ | ✓ |
 | Fruit intake | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Lots / Fermentations / Bottling / Inventory | ✓ read + act | ✓ | ✓ | ✓ | ✓ |
 | Blends & trials | — | — | ✓ | ✓ | ✓ |
@@ -69,7 +69,7 @@ These are reached from the object, from a section sub-nav, or from search. This 
 | `/finished-goods`, `/bottled` | Inventory sub-tabs | Inventory | no |
 | `/setup/equipment` | Setup | Setup | no |
 | `/vineyards/planting-setup` | Setup → Vineyards | Setup | no |
-| `/vineyards/sprays/products`, `/vineyards/sprays/planned-harvest` | Spray records sub-nav | Vineyard rounds → Sprays | no |
+| `/vineyards/sprays/products`, `/vineyards/sprays/planned-harvest` | Spray records sub-nav | Vineyards → Sprays | no |
 | `/inbox` | Avatar in sidebar footer (unchanged) | — | no |
 | `/ferment/process` (De-stem & press) | Fermentations page primary action; also from a must lot | Fermentations | no |
 | `/samples` | Lots → Samples tab; badge surfaces on Lots | Lots | no |
@@ -110,12 +110,12 @@ Navigation position changes; URLs are stable. This table is the migration refere
 | WINERY → Bottling | THE WINE → Bottling | none |
 | WINERY → Calculator | Contextual + ⌘K | none |
 | WINERY → En Tirage | Bottling sub-tab | none |
-| VINEYARDS → Field notes | **TODAY → Vineyard rounds** (renamed) | none |
+| VINEYARDS → Field notes | **TODAY → Vineyards** (renamed) | none |
 | VINEYARDS → Harvest | **TODAY → Fruit intake** (renamed) | none |
 | VINEYARDS → Weigh-tags | Fruit intake sub-tab | none |
-| VINEYARDS → Map Explorer | Vineyard rounds sub-tab | none |
-| VINEYARDS → Weather & climate | Vineyard rounds sub-tab | none |
-| VINEYARDS → Spray records | Vineyard rounds sub-tab | none |
+| VINEYARDS → Map Explorer | Vineyards sub-tab | none |
+| VINEYARDS → Weather & climate | Vineyards sub-tab | none |
+| VINEYARDS → Spray records | Vineyards sub-tab | none |
 | SETUP → * | THE BUSINESS → Setup, with sub-nav | none |
 
 **Note on renames:** "Wine in-progress" → "Cellar floor" and "Lot timeline" → "Lots" are content changes only. Keep the old label as a search alias for one release so muscle memory still finds them.

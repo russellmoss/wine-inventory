@@ -11,14 +11,19 @@ Approved production copy. Sentence case for buttons and labels (existing rule). 
 | Group 1 | `Today` |
 | Group 2 | `The wine` |
 | Group 3 | `The business` |
-| Destinations | `Work orders` · `Cellar floor` · `Vineyard rounds` · `Fruit intake` · `Lots` · `Fermentations` · `Blends & trials` · `Bottling` · `Inventory` · `Compliance` · `Accounting` · `Records` · `Setup` |
+> **2026-07-28 (owner):** `Vineyard rounds` is now **`Vineyards`**. "Rounds" named the
+> walk, not the place, and the destination is the vineyard hub — field notes, maps,
+> weather, sprays. The search alias stays `field notes` (the LEGACY sidebar label, and
+> the one in muscle memory); `Vineyard rounds` never shipped outside the flag.
+
+| Destinations | `Work orders` · `Cellar floor` · `Vineyards` · `Fruit intake` · `Lots` · `Fermentations` · `Blends & trials` · `Bottling` · `Inventory` · `Compliance` · `Accounting` · `Records` · `Setup` |
 | Mobile tabs | `Work` · `Cellar` · `Vineyard` · `Find` |
 | Search placeholder | `Barrel, group, lot, tank, order…` |
 | Search placeholder (with AI) | `Search, or ask about the cellar` |
 | Skip link | `Skip to main content` |
 | Scan | `Scan` |
 
-Search aliases to keep for one release: `wine in-progress` → Cellar floor · `lot timeline` → Lots · `field notes` → Vineyard rounds · `harvest` → Fruit intake · `TTB` → Compliance.
+Search aliases to keep for one release: `wine in-progress` → Cellar floor · `lot timeline` → Lots · `field notes` → Vineyards · `harvest` → Fruit intake · `TTB` → Compliance.
 
 ## 2. Page headings and summaries
 

@@ -31,9 +31,9 @@ export interface NavDestination {
 }
 
 export interface NavGroup {
-  id: "today" | "wine" | "business";
+  id: "today" | "vineyards" | "wine" | "business";
   label: string;
-  /** `business` is collapsed by default; the other two are open. */
+  /** `business` is collapsed by default; the other three are open. */
   defaultOpen: boolean;
   items: NavDestination[];
 }
@@ -46,8 +46,40 @@ export const NAV_MODEL: NavGroup[] = [
     items: [
       { href: "/work-orders", label: "Work orders", badge: "workOrders" },
       { href: "/bulk", label: "Cellar floor", alias: "Wine in-progress" },
-      { href: "/vineyards/field-notes", label: "Vineyard rounds", alias: "Field notes", vineyard: true },
+      // Fruit intake stays in Today, not in The vineyards: it is the moment fruit
+      // BECOMES the winery's problem — weigh-tags, receiving, the crush pad — and it
+      // is a daily job during harvest, which is what Today is ordered by.
       { href: "/vineyards/harvest", label: "Fruit intake", alias: "Harvest", badge: "weighTags" },
+    ],
+  },
+  {
+    // 2026-07-28 (owner): the vineyard is not a sub-tab of one destination, it is a
+    // half of the business. Growing, and making wine from what you grew, are two
+    // equal things, so they are two equal groups and this one sits FIRST — the fruit
+    // exists before the wine does.
+    //
+    // This promotes Map Explorer, Weather & climate and Spray records from
+    // sub-navigation of /vineyards/field-notes to destinations in their own right,
+    // which is why NAV_MODEL is 16 and not the 13 Phase 3 shipped. The old 13 was
+    // never a target in itself — 31 unordered entries was the problem, and four
+    // named groups of four is still an IA you can hold in your head.
+    id: "vineyards",
+    label: "The vineyards",
+    defaultOpen: true,
+    items: [
+      // "Vineyard rounds" through 2026-07-28, then briefly "Vineyards" — which
+      // collided with the group name. "Scouting" is the actual job: walking the
+      // blocks and recording what you see. The alias stays "Field notes", the LEGACY
+      // sidebar label and the only one in anybody's muscle memory; the two interim
+      // names never shipped outside this flag.
+      { href: "/vineyards/field-notes", label: "Vineyard scouting", alias: "Field notes", vineyard: true },
+      // Maps and Weather scope their vineyard picker by membership, so a non-member
+      // would land on a working page with nothing in it — hide the link instead.
+      { href: "/vineyards/maps", label: "Map Explorer", vineyard: true },
+      { href: "/vineyards/weather", label: "Weather & climate", vineyard: true },
+      // Spray records does NOT scope: it lists every active vineyard to any ready
+      // user, so it is genuinely theirs and carries no flag.
+      { href: "/vineyards/sprays", label: "Spray records" },
     ],
   },
   {
@@ -74,35 +106,20 @@ export const NAV_MODEL: NavGroup[] = [
       // OD-1: `Records` stays visible to every role. The handoff's role matrix and
       // the shipped code already agreed on this, so it is a ratification, not a change.
       { href: "/audit", label: "Records" },
-      { href: "/settings", label: "Setup", admin: true },
+      // Plan 104 D4 (OD-3b-1): this used to point at `/settings` — a page about
+      // sparkling toggles and base currency, which is not what the label promises.
+      // `/setup` is a new grouped index; `/settings` is now one of its eight children
+      // (src/lib/nav/sections.ts). Nothing moved: /settings is still at /settings.
+      // NOT `admin: true`, and that is a deliberate change from the entry it replaces.
+      // `/settings` was admin-only and could be, because it is one admin screen. `/setup`
+      // is a HUB, and four of its eight children — Vessels, Locations, Varieties &
+      // vineyards, Vendors — are `requireActiveTenant()` only and sat UNGATED in the
+      // legacy sidebar. Gating the hub would have taken all four away from the cellar
+      // hand who uses them today, with Ctrl-K (desktop-only) as the sole fallback. The
+      // hub is open; each child keeps its own guard and `sections.ts` filters the cards.
+      { href: "/setup", label: "Setup" },
     ],
   },
-];
-
-/** Destinations removed from the sidebar but still reachable (doc 01 §4). */
-export const CONTEXTUAL_DESTINATIONS: { href: string; reachedFrom: string }[] = [
-  { href: "/assistant", reachedFrom: "the dock's expand control, and Ctrl-K" },
-  { href: "/help/feedback", reachedFrom: "the user menu in the sidebar footer" },
-  { href: "/reports", reachedFrom: "an Accounting sub-tab" },
-  { href: "/ferment/process", reachedFrom: "the Fermentations page primary action" },
-  { href: "/winemaking-calculator", reachedFrom: "any addition form, and Ctrl-K" },
-  { href: "/samples", reachedFrom: "a Lots sub-tab" },
-  { href: "/cellar/en-tirage", reachedFrom: "a Bottling sub-tab when sparkling is enabled" },
-  { href: "/vessels", reachedFrom: "Setup, and the cellar-floor vessel browser" },
-  { href: "/inbox", reachedFrom: "the avatar in the sidebar footer" },
-  { href: "/blend/trials", reachedFrom: "a Blends sub-tab" },
-  { href: "/finished-goods", reachedFrom: "an Inventory sub-tab" },
-  { href: "/bottled", reachedFrom: "an Inventory sub-tab" },
-  { href: "/work-orders/review", reachedFrom: "the Work orders header and sub-tab" },
-  { href: "/work-orders/templates", reachedFrom: "the Work orders header and sub-tab" },
-  { href: "/work-orders/task-types", reachedFrom: "Setup → Work orders" },
-  { href: "/setup/equipment", reachedFrom: "Setup" },
-  { href: "/vineyards/planting-setup", reachedFrom: "Setup → Vineyards" },
-  { href: "/vineyards/sprays/products", reachedFrom: "the Spray records sub-nav" },
-  { href: "/vineyards/maps", reachedFrom: "a Vineyard rounds sub-tab" },
-  { href: "/vineyards/weather", reachedFrom: "a Vineyard rounds sub-tab" },
-  { href: "/vineyards/sprays", reachedFrom: "a Vineyard rounds sub-tab" },
-  { href: "/vineyards/harvest/weigh-tags", reachedFrom: "a Fruit intake sub-tab" },
 ];
 
 /** Every global destination, flattened. */

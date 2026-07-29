@@ -8,23 +8,28 @@
 import { describe, expect, it } from "vitest";
 import {
   NAV_MODEL,
-  CONTEXTUAL_DESTINATIONS,
   allDestinations,
   isVisible,
   aliasMap,
 } from "@/lib/nav/model";
 
 describe("structure", () => {
-  it("has exactly 3 groups, replacing today's 4", () => {
-    expect(NAV_MODEL.map((g) => g.id)).toEqual(["today", "wine", "business"]);
+  it("has four groups, with the vineyards ABOVE the wine", () => {
+    // 2026-07-28 (owner): growing and making are two halves of the same business, so
+    // they are two equal groups rather than one destination with hidden sub-tabs.
+    // The vineyards comes first because the fruit exists before the wine does.
+    expect(NAV_MODEL.map((g) => g.id)).toEqual(["today", "vineyards", "wine", "business"]);
   });
 
-  it("has exactly 13 global destinations, down from 31 sidebar entries", () => {
-    // 31 entries is not navigable. This number is the whole point of the IA work.
-    expect(allDestinations()).toHaveLength(13);
+  it("has 16 global destinations, down from 31 sidebar entries", () => {
+    // 31 unordered entries is what was unnavigable — 13 was never a target in its own
+    // right. Promoting Map Explorer, Weather & climate and Spray records out of
+    // /vineyards/field-notes' sub-nav and into their own group took this to 16, and
+    // four named groups of about four is still an IA you can hold in your head.
+    expect(allDestinations()).toHaveLength(16);
   });
 
-  it("collapses only 'the business' by default", () => {
+  it("opens the three working groups and collapses only 'the business'", () => {
     expect(NAV_MODEL.filter((g) => !g.defaultOpen).map((g) => g.id)).toEqual(["business"]);
   });
 
@@ -56,9 +61,16 @@ describe("role visibility (doc 01 §3, OD-1)", () => {
     expect(isVisible(byHref("/audit"), user)).toBe(true);
   });
 
-  it("keeps Setup admin-only", () => {
-    expect(isVisible(byHref("/settings"), user)).toBe(false);
-    expect(isVisible(byHref("/settings"), admin)).toBe(true);
+  it("opens Setup to every role — it is a HUB now, not the Settings screen", () => {
+    // Plan 104 D4 repointed the destination from /settings to a new /setup index, and
+    // that changes the role answer. /settings is one admin screen and could be
+    // admin-only. /setup is a hub, and four of its eight children (Vessels,
+    // Locations, Varieties & vineyards, Vendors) are `requireActiveTenant()` only and
+    // were UNGATED in the legacy sidebar. Gating the hub would have quietly taken all
+    // four away from every non-admin, leaving Ctrl-K — which needs a keyboard — as
+    // the only way back. The children keep their own guards; the cards are filtered.
+    expect(isVisible(byHref("/setup"), user)).toBe(true);
+    expect(isVisible(byHref("/setup"), admin)).toBe(true);
   });
 
   it("keeps Compliance, Accounting and Blends admin-only", () => {
@@ -68,7 +80,7 @@ describe("role visibility (doc 01 §3, OD-1)", () => {
     }
   });
 
-  it("hides Vineyard rounds from a user with no vineyard, shows it with one", () => {
+  it("hides Vineyards from a user with no vineyard, shows it with one", () => {
     expect(isVisible(byHref("/vineyards/field-notes"), user)).toBe(false);
     expect(isVisible(byHref("/vineyards/field-notes"), vineyardUser)).toBe(true);
     expect(isVisible(byHref("/vineyards/field-notes"), admin)).toBe(true);
@@ -81,21 +93,12 @@ describe("role visibility (doc 01 §3, OD-1)", () => {
   });
 });
 
-describe("nothing is deleted (doc 01 §4)", () => {
-  it("records where every removed destination is still reached from", () => {
-    expect(CONTEXTUAL_DESTINATIONS.length).toBeGreaterThanOrEqual(20);
-    for (const c of CONTEXTUAL_DESTINATIONS) {
-      expect(c.href.startsWith("/")).toBe(true);
-      expect(c.reachedFrom.length, `${c.href} has no stated route back`).toBeGreaterThan(0);
-    }
-  });
-
-  it("does not list a destination as both global and contextual", () => {
-    const global = new Set(allDestinations().map((d) => d.href));
-    const both = CONTEXTUAL_DESTINATIONS.filter((c) => global.has(c.href));
-    expect(both.map((b) => b.href)).toEqual([]);
-  });
-});
+// The old `CONTEXTUAL_DESTINATIONS` block lived here. It was DELETED in plan 104:
+// it had no runtime consumers, and it actively contradicted `unnavigable.ts` —
+// listing /setup/equipment, /bottled, /finished-goods and /vineyards/planting-setup
+// as "reached from Setup / an Inventory sub-tab" while those four are redirect stubs
+// nothing links to. Two registries making opposite claims, both green, is the exact
+// drift this phase exists to kill. `test/route-reachability.test.ts` is the authority.
 
 describe("the four renames keep a search alias for one release", () => {
   it("maps every old label to its new destination", () => {

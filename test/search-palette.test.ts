@@ -22,6 +22,7 @@ const SRC = fileURLToPath(new URL("../src", import.meta.url));
 const PALETTE = readFileSync(join(SRC, "components", "CommandPalette.tsx"), "utf8");
 const QUERY = readFileSync(join(SRC, "lib", "search", "query.ts"), "utf8");
 const ACTIONS = readFileSync(join(SRC, "lib", "search", "actions.ts"), "utf8");
+const CONTEXT = readFileSync(join(SRC, "lib", "nav", "server-context.ts"), "utf8");
 
 const hit = (kind: SearchHit["kind"], label: string, subtitle?: string): SearchHit => ({
   kind,
@@ -182,9 +183,12 @@ describe("tenancy — the real risk in this phase (AC-P4)", () => {
 
   it("resolves the role from the SESSION, never from the client", () => {
     // A client-supplied isAdmin would turn search into a privilege-escalation path.
-    expect(ACTIONS).toContain("requireReadyUser()");
-    expect(ACTIONS).toMatch(/const role = String\(user\.role/);
+    // The derivation moved into navContext(), which is the SAME function the sub-navs
+    // use — so assert the action delegates and never re-derives.
+    expect(ACTIONS).toContain("navContext()");
     expect(code(ACTIONS)).not.toMatch(/isAdmin\s*[,:]\s*(?:input|params|args)\./);
+    expect(code(ACTIONS)).not.toContain("user.role");
+    expect(CONTEXT).toContain("requireReadyUser()");
   });
 
   it("filters destinations by role before returning them", () => {
@@ -192,6 +196,12 @@ describe("tenancy — the real risk in this phase (AC-P4)", () => {
     expect(QUERY).toContain("if (!isVisible(d, ctx)) continue;");
   });
 });
+
+// The D2 section-coverage and role-leak assertions USED to live here as
+// `expect(QUERY_SOURCE).toContain(...)`. They were vacuous: one `continue;` in the
+// section loop killed Ctrl-K for all 19 second-level routes and every one of them
+// stayed green. They now live in test/search-sections.test.ts, which CALLS
+// searchEverything() with prisma stubbed and asserts on the hits it returns.
 
 describe("the palette dialog", () => {
   it("is a labelled modal dialog", () => {

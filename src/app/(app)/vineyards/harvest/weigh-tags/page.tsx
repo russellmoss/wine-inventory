@@ -3,13 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { listOwnersCore } from "@/lib/owner/data";
 import { listGrowersCore } from "@/lib/grower/data";
 import { WeighTagIntake, type RecentTag } from "./WeighTagIntake";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 // Plan 093 Unit 10b: the weigh-tag entry screen — the wet-hands crush-pad receiving surface. Server
 // component loads the reference data (owners/growers/blocks) for the pickers + the recent tags.
 
 export const dynamic = "force-dynamic";
 
-export default async function WeighTagsPage() {
+async function WeighTagsPageBody() {
   await requireReadyUser();
   await requireActiveTenant();
 
@@ -57,5 +58,16 @@ export default async function WeighTagsPage() {
       blocks={blocks.map((b) => ({ id: b.id, label: `${b.vineyard.name} · ${b.blockLabel ?? b.code ?? b.id}` }))}
       recent={recent}
     />
+  );
+}
+
+/** Plan 104 — this is a SECTION of /vineyards/harvest, so it carries the same strip as its hub.
+    Without it the strip is a one-way door: you use it once and it disappears. */
+export default async function WeighTagsPage() {
+  return (
+    <>
+      <HubSectionNav hub="/vineyards/harvest" current="/vineyards/harvest/weigh-tags" />
+      <WeighTagsPageBody />
+    </>
   );
 }

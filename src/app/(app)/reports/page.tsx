@@ -5,6 +5,7 @@ import { getUnitPrefs } from "@/lib/settings/data";
 import { formatVolume, volumeUnitLabel } from "@/lib/units/display";
 import { casesAndLoose } from "@/lib/bottling/draw";
 import { Card, Eyebrow, Badge, ExportCsvButton } from "@/components/ui";
+import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 const sectionHead: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 };
 const h2Style: React.CSSProperties = { fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 24, margin: 0 };
@@ -56,7 +57,7 @@ async function finishedByCategoryLocation() {
 const th: React.CSSProperties = { padding: "10px 14px", fontWeight: 500, textAlign: "left", color: "var(--text-muted)" };
 const td: React.CSSProperties = { padding: "10px 14px", borderTop: "1px solid var(--border-strong)" };
 
-export default async function ReportsPage() {
+async function ReportsPageBody() {
   await requireActiveTenant();
   const unitPrefs = await getUnitPrefs();
   const volLabel = volumeUnitLabel(unitPrefs.volume);
@@ -134,5 +135,16 @@ export default async function ReportsPage() {
         </Card>
       </section>
     </div>
+  );
+}
+
+/** Plan 104 — this is a SECTION of /inventory, so it carries the same strip as its hub.
+    Without it the strip is a one-way door: you use it once and it disappears. */
+export default async function ReportsPage() {
+  return (
+    <>
+      <HubSectionNav hub="/inventory" current="/reports" />
+      <ReportsPageBody />
+    </>
   );
 }

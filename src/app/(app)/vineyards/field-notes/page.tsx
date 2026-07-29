@@ -30,11 +30,9 @@ const fieldNoteSelect = {
   createdAt: true,
 } as const;
 
-export default async function FieldNotesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ view?: string; vineyard?: string }>;
-}) {
+type FieldNotesPageProps = { searchParams: Promise<{ view?: string; vineyard?: string }> };
+
+export default async function FieldNotesPage({ searchParams }: FieldNotesPageProps) {
   const user = await requireReadyUser();
   await requireActiveTenant();
 

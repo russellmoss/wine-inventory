@@ -11,7 +11,11 @@ export interface MobileTab {
 }
 
 /**
- * MobileTabBar — four labelled bottom tabs, ≤1023px (doc 01 §9, v2 §B3).
+ * MobileTabBar — three or four labelled bottom tabs, ≤1023px (doc 01 §9, v2 §B3).
+ *
+ * The count is not fixed: Vineyard rounds drops out for a user with no vineyard
+ * membership, and Find drops out when the inbox is disabled. The grid sizes itself
+ * off `tabs.length`.
  *
  * Replaces the `☰` drawer, whose trigger measured 38×32px: the single most
  * important control on the phone, below the minimum target size.
@@ -34,7 +38,11 @@ export function MobileTabBar({ tabs, isActive }: { tabs: MobileTab[]; isActive: 
         right: 0,
         bottom: 0,
         zIndex: 40,
-        display: "grid",
+        // NO `display` here. globals.css sets `.bw-tabbar { display: grid }` and hides it
+        // at >=1024px; an INLINE display beats both, so the tab bar was rendering on
+        // desktop underneath the sidebar — two nav landmarks named "Main", two
+        // aria-current="page" elements, and the phone nav shown to desktop users.
+        // AppShell's own sidebarBox carries the same warning in a comment.
         gridTemplateColumns: `repeat(${tabs.length}, 1fr)`,
         background: "var(--surface-raised)",
         borderTop: "1px solid var(--border-strong)",
