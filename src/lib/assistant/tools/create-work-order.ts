@@ -2,6 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
+import { detectIssueIntent, hasIssueIntentContract, issueOnConfirmFromArgs } from "../issue-intent";
 import { resolveExactlyOne } from "./resolve";
 import { listWorkOrderTemplates } from "@/lib/work-orders/data";
 import { createWorkOrderFromTemplateAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
@@ -52,8 +53,12 @@ export const createWorkOrderTool: AssistantTool = {
 
     const due = resolveDueAt(input.dueDate, input.dueTime, ctx.timeZone);
     const asgClause = input.assigneeEmail ? `, assigned to ${input.assigneeEmail}` : "";
-    const preview = `Create and issue a work order from "${tpl.name}"${dueClause(due)}${asgClause}.`;
+    // Plan 105: draft unless the USER's own words asked for the order to go out. Decided here at
+    // propose time and signed into the token, so it cannot be re-derived or tampered with at commit.
+    const issueOnConfirm = detectIssueIntent(ctx.lastUserMessage);
+    const preview = `${issueOnConfirm ? "Create and issue" : "Create as a draft"} a work order from "${tpl.name}"${dueClause(due)}${asgClause}.`;
     const token = signProposal("create_work_order", {
+      issueOnConfirm,
       templateId: tpl.id,
       templateName: tpl.name,
       ...dueProposalArgs(due),
@@ -65,6 +70,13 @@ export const createWorkOrderTool: AssistantTool = {
 };
 
 export const commitCreateWorkOrder: Committer = async (_user, args) => {
+  // Plan 105 U1 (extended): a token minted before the issue-intent contract carries no
+  // `issueOnConfirm` key, so its card promised an issue while this code would draft. Refuse
+  // rather than quietly do something other than what the user pressed.
+  if (!hasIssueIntentContract(args)) {
+    throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
+  }
+  const issueOnConfirm = issueOnConfirmFromArgs(args);
   const { dueAt, dueAtHasTime } = dueFromCommitArgs(args);
   const created = unwrap(await createWorkOrderFromTemplateAction({
     templateId: String(args.templateId),
@@ -73,9 +85,16 @@ export const commitCreateWorkOrder: Committer = async (_user, args) => {
     dueAt,
     dueAtHasTime,
   }));
+  const from = String(args.templateName ?? "template");
+  if (!issueOnConfirm) {
+    return {
+      message: `Created draft work order #${created.number} from "${from}". Nobody can see it on the floor until you issue it.`,
+      navigate: { path: `/work-orders/${created.workOrderId}`, label: `Draft WO #${created.number}` },
+    };
+  }
   unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
   return {
-    message: `Created and issued work order #${created.number} from "${String(args.templateName ?? "template")}".`,
+    message: `Created and issued work order #${created.number} from "${from}".`,
     navigate: { path: `/work-orders/${created.workOrderId}`, label: `View WO #${created.number}` },
   };
 };

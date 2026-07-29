@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   detectIssueIntent,
   primaryActionLabel,
@@ -124,5 +127,41 @@ describe("hasIssueIntentContract — the deploy hazard (council C2)", () => {
     expect(hasIssueIntentContract({ issueOnConfirm: "true" })).toBe(false);
     expect(hasIssueIntentContract({ issueOnConfirm: null })).toBe(false);
     expect(hasIssueIntentContract({ issueOnConfirm: undefined })).toBe(false);
+  });
+});
+
+describe("every work-order committer is gated — the guard, not the fix", () => {
+  // Plan 105, extended after the first live test. FOUR tools create work orders and all four issued
+  // in one press; the original change gated only propose_work_order. The user's plain phrasing
+  // ("make me a work order for punch down on T5") routed to issue_cap_management_wo and would have
+  // published to the floor. Naming them individually would rot, so this asserts the RULE:
+  // if a tool can issue, it must consult the signed intent first.
+  const TOOLS_DIR = fileURLToPath(new URL("../src/lib/assistant/tools", import.meta.url));
+
+  it("any tool that calls issueWorkOrderAction also reads the signed issue intent", () => {
+    const offenders: string[] = [];
+    for (const name of readdirSync(TOOLS_DIR)) {
+      if (!name.endsWith(".ts")) continue;
+      const src = readFileSync(join(TOOLS_DIR, name), "utf8");
+      if (!src.includes("issueWorkOrderAction({")) continue; // does not issue — nothing to gate
+      const gated = src.includes("issueOnConfirmFromArgs(") && src.includes("hasIssueIntentContract(");
+      if (!gated) offenders.push(name);
+    }
+    expect(
+      offenders,
+      `these tools issue a work order without consulting the signed intent: ${offenders.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("covers the four known work-order paths (so the scan above is not vacuous)", () => {
+    const issuing = readdirSync(TOOLS_DIR)
+      .filter((n) => n.endsWith(".ts"))
+      .filter((n) => readFileSync(join(TOOLS_DIR, n), "utf8").includes("issueWorkOrderAction({"));
+    expect(issuing.sort()).toEqual([
+      "create-work-order.ts",
+      "issue-operation-wo.ts",
+      "propose-work-order.ts",
+      "work-orders-write.ts",
+    ]);
   });
 });

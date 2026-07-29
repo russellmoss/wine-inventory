@@ -2,6 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
+import { detectIssueIntent, hasIssueIntentContract, issueOnConfirmFromArgs } from "../issue-intent";
 import { entityPath } from "../routes";
 import { resolveVessel, type ResolvedVessel } from "../scope";
 import { instantiateTaskBuilds, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
@@ -147,7 +148,9 @@ export const issueOperationWoTool: AssistantTool = {
         : `${OP_TITLE[operation]} — ${count} ${count === 1 ? "vessel" : "vessels"}`;
 
     const asgClause = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
-    const preview = `Issue a ${OP_TITLE[operation].toLowerCase()} work order: ${verb} ${vesselList}${detail}${asgClause}${dueClause(due)}. One task per vessel (${count}); the crew records each on the floor.`;
+    // Plan 105: same rule as every other work-order path - the USER's words decide, not the tool name.
+    const issueOnConfirm = detectIssueIntent(ctx.lastUserMessage);
+    const preview = `${issueOnConfirm ? "Issue" : "Draft"} a ${OP_TITLE[operation].toLowerCase()} work order: ${verb} ${vesselList}${detail}${asgClause}${dueClause(due)}. One task per vessel (${count}); the crew records each on the floor.`;
 
     // Sign the fully-resolved task builds so the committer does no re-resolution (ids are pinned here).
     const tasks: TaskBuild[] = resolved.map((v) => ({
@@ -161,6 +164,7 @@ export const issueOperationWoTool: AssistantTool = {
     }));
 
     const token = signProposal("issue_operation_wo", {
+      issueOnConfirm,
       title,
       tasks,
       ...(assigneeEmail ? { assigneeEmail } : {}),
@@ -171,6 +175,13 @@ export const issueOperationWoTool: AssistantTool = {
 };
 
 export const commitIssueOperationWo: Committer = async (_user, args) => {
+  // Plan 105 U1 (extended): a token minted before the issue-intent contract carries no
+  // `issueOnConfirm` key, so its card promised an issue while this code would draft. Refuse
+  // rather than quietly do something other than what the user pressed.
+  if (!hasIssueIntentContract(args)) {
+    throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
+  }
+  const issueOnConfirm = issueOnConfirmFromArgs(args);
   const title = String(args.title);
   const assigneeEmail = args.assigneeEmail == null ? null : String(args.assigneeEmail);
   const { dueAt, dueAtHasTime } = dueFromCommitArgs(args);
@@ -179,11 +190,17 @@ export const commitIssueOperationWo: Committer = async (_user, args) => {
 
   const tasks = instantiateTaskBuilds(builds, await resolveTaskVocabulary());
   const created = unwrap(await createWorkOrderAction({ title, tasks, assigneeEmail, dueAt, dueAtHasTime }));
-  unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
-
   const asgSuffix = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
+  const taskWord = builds.length === 1 ? "task" : "tasks";
+  if (!issueOnConfirm) {
+    return {
+      message: `Created draft work order #${created.number} "${title}" with ${builds.length} ${taskWord}${asgSuffix}. Nobody can see it on the floor until you issue it.`,
+      navigate: { path: entityPath("workOrder", created.workOrderId), label: `Draft WO #${created.number}` },
+    };
+  }
+  unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
   return {
-    message: `Issued work order #${created.number} "${title}" with ${builds.length} ${builds.length === 1 ? "task" : "tasks"}${asgSuffix}.`,
+    message: `Issued work order #${created.number} "${title}" with ${builds.length} ${taskWord}${asgSuffix}.`,
     navigate: { path: entityPath("workOrder", created.workOrderId), label: `#${created.number} ${title}` },
   };
 };

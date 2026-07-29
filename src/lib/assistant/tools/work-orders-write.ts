@@ -2,6 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
+import { detectIssueIntent, hasIssueIntentContract, issueOnConfirmFromArgs } from "../issue-intent";
 import { entityPath } from "../routes";
 import { resolveVessel, type ResolvedVessel } from "../scope";
 import { CAP_KINDS, isCapKind, type CapKind } from "@/lib/cellar/treatments";
@@ -106,9 +107,14 @@ export const issueCapManagementWoTool: AssistantTool = {
     const vesselList = resolved.map((v) => label(v)).join(", ");
     const durClause = durationMin ? ` (${durationMin} min)` : "";
     const asgClause = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
-    const preview = `Issue a cap-management work order: ${CAP_LABELS[technique]} on ${vesselList}${durClause}${asgClause}${dueClause(due)}. One task per tank; the crew records each on the floor.`;
+    // Plan 105: the tool is NAMED issue_*, but the model picks it from phrasing like "make me a
+    // work order for punch down on T5" - where the user never asked to publish anything. The gate
+    // reads the USER's own words, not the tool name, and is signed into the token.
+    const issueOnConfirm = detectIssueIntent(ctx.lastUserMessage);
+    const preview = `${issueOnConfirm ? "Issue" : "Draft"} a cap-management work order: ${CAP_LABELS[technique]} on ${vesselList}${durClause}${asgClause}${dueClause(due)}. One task per tank; the crew records each on the floor.`;
 
     const token = signProposal("issue_cap_management_wo", {
+      issueOnConfirm,
       technique,
       durationMin,
       note,
@@ -122,6 +128,13 @@ export const issueCapManagementWoTool: AssistantTool = {
 };
 
 export const commitIssueCapManagementWo: Committer = async (_user, args) => {
+  // Plan 105 U1 (extended): a token minted before the issue-intent contract carries no
+  // `issueOnConfirm` key, so its card promised an issue while this code would draft. Refuse
+  // rather than quietly do something other than what the user pressed.
+  if (!hasIssueIntentContract(args)) {
+    throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
+  }
+  const issueOnConfirm = issueOnConfirmFromArgs(args);
   const technique = String(args.technique) as CapKind;
   const durationMin = args.durationMin == null ? undefined : Number(args.durationMin);
   const note = args.note == null ? undefined : String(args.note);
@@ -144,11 +157,17 @@ export const commitIssueCapManagementWo: Committer = async (_user, args) => {
 
   const { dueAt, dueAtHasTime } = dueFromCommitArgs(args);
   const created = unwrap(await createWorkOrderAction({ title, tasks, assigneeEmail, dueAt, dueAtHasTime }));
-  unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
-
   const asgSuffix = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
+  const taskWord = vessels.length === 1 ? "task" : "tasks";
+  if (!issueOnConfirm) {
+    return {
+      message: `Created draft work order #${created.number} "${title}" with ${vessels.length} ${taskWord}${asgSuffix}. Nobody can see it on the floor until you issue it.`,
+      navigate: { path: entityPath("workOrder", created.workOrderId), label: `Draft WO #${created.number}` },
+    };
+  }
+  unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
   return {
-    message: `Issued work order #${created.number} "${title}" with ${vessels.length} ${vessels.length === 1 ? "task" : "tasks"}${asgSuffix}.`,
+    message: `Issued work order #${created.number} "${title}" with ${vessels.length} ${taskWord}${asgSuffix}.`,
     navigate: { path: entityPath("workOrder", created.workOrderId), label: `#${created.number} ${title}` },
   };
 };
