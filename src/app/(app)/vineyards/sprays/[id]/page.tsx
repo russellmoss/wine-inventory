@@ -98,7 +98,7 @@ export default async function SprayDetailPage({ params }: { params: Promise<{ id
       <Card style={{ marginTop: 12, padding: 16 }}>
         <h3 style={{ marginTop: 0 }}>Materials</h3>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
+          <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
             <thead>
               <tr style={{ textAlign: "left", color: "var(--text-secondary)", fontSize: 13 }}>
                 <th style={{ padding: "6px 10px" }}>#</th>
@@ -159,7 +159,7 @@ export default async function SprayDetailPage({ params }: { params: Promise<{ id
       <Card style={{ marginTop: 12, padding: 16 }}>
         <h3 style={{ marginTop: 0 }}>Blocks</h3>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
+          <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
             <thead>
               <tr style={{ textAlign: "left", color: "var(--text-secondary)", fontSize: 13 }}>
                 <th style={{ padding: "6px 10px" }}>Block</th>

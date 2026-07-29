@@ -340,7 +340,7 @@ export function LotsClient({
           {/* Desktop: table */}
           <div className="hidden md:block">
             <Card padding="0">
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                   <tr style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border-strong)" }}>
                     <th style={TH}>Lot code</th>
@@ -361,8 +361,9 @@ export function LotsClient({
                       style={{
                         borderTop: "1px solid var(--border-strong)",
                         cursor: "pointer",
-                        background: hovered === r.id ? "var(--surface-sunken)" : "transparent",
-                        opacity: r.status === "ARCHIVED" ? 0.68 : 1,
+                        // Archived rows and hovered rows share the sunken surface; the
+                        // ARCHIVED status is carried by its own cell, not by dimming.
+                        background: hovered === r.id || r.status === "ARCHIVED" ? "var(--surface-sunken)" : "transparent",
                       }}
                     >
                       <td style={TD}>
@@ -404,7 +405,7 @@ export function LotsClient({
           {/* Mobile: stacked cards */}
           <div className="md:hidden" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {lots.map((r) => (
-              <Card key={r.id} as="div" padding="0" interactive style={{ opacity: r.status === "ARCHIVED" ? 0.68 : 1 }}>
+              <Card key={r.id} as="div" padding="0" interactive className={r.status === "ARCHIVED" ? "bw-inactive" : undefined}>
                 <Link
                   href={`/lots/${r.id}`}
                   style={{ display: "block", padding: "16px", color: "inherit" }}

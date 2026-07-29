@@ -79,7 +79,8 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
               <div
                 key={v.id}
                 id={`vessel-${v.id}`}
-                style={{ borderTop: "1px solid var(--border-strong)", scrollMarginTop: 80, opacity: v.isActive ? 1 : 0.55 }}
+                className={v.isActive ? undefined : "bw-inactive"}
+                style={{ borderTop: "1px solid var(--border-strong)", scrollMarginTop: 80 }}
               >
                 <button
                   onClick={() => setSelectedId(v.id)}

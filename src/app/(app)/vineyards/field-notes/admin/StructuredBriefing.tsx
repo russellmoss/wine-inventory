@@ -12,7 +12,7 @@ import type {
 
 const PRIORITY_META: Record<BriefingPriority, { label: string; color: string }> = {
   high: { label: "High", color: "var(--danger)" },
-  medium: { label: "Med", color: "var(--warning)" },
+  medium: { label: "Med", color: "var(--status-held-fg)" },
   low: { label: "Low", color: "var(--text-muted)" },
 };
 

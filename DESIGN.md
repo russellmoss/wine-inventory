@@ -86,7 +86,7 @@ Tokens: `src/styles/tokens/colors.css`. Always use the semantic aliases, not raw
 - **Text-safe ink variants (v2):** the editorial hues above are decorative-only —
   `--golden-yellow` is 2.1:1 on cream and cannot carry text. Use `--golden-ink`
   `#8A6414` · `--red-ink` `#A5342D` · `--green-ink` `#175242` · `--blue-ink` `#095972`
-  for glyphs and text on light surfaces, `--ink-500` `#8A8272` (via `--text-meta`) for
+  for glyphs and text on light surfaces, `--ink-500` `#736C5C` (via `--text-meta`) for
   eyebrows/column headers/timestamps, and `--warning-deep-text` `#5C440E` inside a
   warning tint. **Never** set text in golden-yellow, orange, lavender or bright-mauve.
 - **Surface tints (v2):** `--surface-tint-{warning,danger,info,success,accent}` — the

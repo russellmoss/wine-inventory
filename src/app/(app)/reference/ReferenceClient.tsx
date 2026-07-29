@@ -370,7 +370,10 @@ const rowStyle = (isActive: boolean): React.CSSProperties => ({
   gap: 8,
   padding: "8px 0",
   borderTop: "1px solid var(--border-strong)",
-  opacity: isActive ? 1 : 0.55,
+  // No `opacity` for inactive: it drags the muted text under 4.5:1. The sunken
+  // surface from .bw-inactive carries the state, and the row shows an "Inactive"
+  // badge so it is not signalled by appearance alone.
+  background: isActive ? undefined : "var(--surface-sunken)",
 });
 
 function VarietyList({ rows }: { rows: VarietyRow[] }) {
@@ -385,7 +388,7 @@ function VarietyList({ rows }: { rows: VarietyRow[] }) {
           <p style={{ color: "var(--text-muted)", fontSize: 14 }}>None yet.</p>
         ) : (
           rows.map((r) => (
-            <div key={r.id} style={{ borderTop: "1px solid var(--border-strong)", opacity: r.isActive ? 1 : 0.55 }}>
+            <div key={r.id} className={r.isActive ? undefined : "bw-inactive"} style={{ borderTop: "1px solid var(--border-strong)" }}>
               <div style={{ ...rowStyle(r.isActive), borderTop: "none" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <label

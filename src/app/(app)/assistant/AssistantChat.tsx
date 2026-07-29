@@ -1026,6 +1026,16 @@ export function AssistantChat({
         onScroll={(e) => {
           stickRef.current = shouldStickToBottom(e.currentTarget);
         }}
+        // A scroll container only a mouse can pan is a WCAG 2.1.1 trap: without a tab
+        // stop, a keyboard user cannot read back anything that has scrolled off the
+        // top of the conversation. `role="log"` + `aria-live="polite"` is the right
+        // shape for a transcript that grows at the bottom — it announces new turns
+        // without re-reading the whole history, and it gives the focusable region an
+        // accessible name so it is not just "group" in the rotor.
+        tabIndex={0}
+        role="log"
+        aria-live="polite"
+        aria-label="Conversation"
         style={{ flex: 1, minHeight: 60, overflowY: "auto" }}
       >
         <div style={{ ...column, display: "flex", flexDirection: "column", gap: "var(--space-5)", padding: "var(--space-4) 0 var(--space-6)" }}>

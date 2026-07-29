@@ -181,7 +181,7 @@ export default async function AccountingPage() {
           <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No DTC sales yet — margin appears once paid orders come in.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
+            <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
               <thead>
                 <tr style={{ textAlign: "left", color: "var(--text-secondary)", fontSize: 12.5 }}>
                   <th style={{ padding: "6px 8px" }}>Wine</th>

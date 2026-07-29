@@ -50,7 +50,7 @@ export default async function SpraysPage({ searchParams }: { searchParams: Promi
         <p style={{ color: "var(--text-muted)" }}>No spray records yet. Record the first pass to start the season history.</p>
       ) : (
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}>
+          <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}>
             <thead>
               <tr style={{ textAlign: "left", color: "var(--text-secondary)", fontSize: 13 }}>
                 <th style={{ padding: "8px 12px" }}>Started</th>

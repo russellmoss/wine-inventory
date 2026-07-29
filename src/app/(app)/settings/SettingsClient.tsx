@@ -492,7 +492,7 @@ export function SettingsClient({
           <a
             href="/api/compliance/calendar"
             style={{
-              display: "inline-flex", alignItems: "center", height: 40, padding: "0 16px", borderRadius: "var(--radius-md)",
+              display: "inline-flex", alignItems: "center", height: "var(--touch-min)", padding: "0 16px", borderRadius: "var(--radius-md)",
               border: "1px solid var(--border-strong)", background: "var(--surface-raised)", color: "var(--text-primary)",
               fontFamily: "var(--font-body)", fontSize: 14.5, textDecoration: "none",
             }}

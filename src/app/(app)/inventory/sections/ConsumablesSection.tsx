@@ -475,11 +475,12 @@ function SupplyRow({ mat, onOpen }: { mat: CellarMaterialDTO; onOpen: () => void
         padding: "10px 4px",
         borderTop: "1px solid var(--border-strong)",
         borderLeft: "none", borderRight: "none", borderBottom: "none",
-        background: "transparent",
+        // Inactive materials read as "set aside" via the surface, never via opacity —
+        // dimming drags the muted text under 4.5:1 (axe color-contrast).
+        background: mat.isActive === false ? "var(--surface-sunken)" : "transparent",
         cursor: "pointer",
         textAlign: "left",
         width: "100%",
-        opacity: mat.isActive === false ? 0.55 : 1,
       }}
     >
       <span style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>

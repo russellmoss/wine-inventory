@@ -102,7 +102,7 @@ export function DeveloperQueueList({
   return (
     <>
       <div className={styles.tableWrap}>
-        <table className={styles.queueTable}>
+        <table tabIndex={0} className={styles.queueTable}>
           <thead>
             <tr>
               <th aria-sort={sort === "attention" ? "ascending" : "none"}>

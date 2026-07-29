@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, Button, Input, Eyebrow } from "@/components/ui";
+import { Card, Button, Input, Eyebrow, StatusChip } from "@/components/ui";
 import { TASK_VOCABULARY, fieldLabel, type TaskTypeDef } from "@/lib/work-orders/template-vocabulary";
 import { CUSTOM_LOG_FIELD_TYPES, CUSTOM_LOG_STAGES, CUSTOM_LOG_DIMENSIONS, validateCustomLogFields, type CustomLogFieldSpec } from "@/lib/work-orders/custom-log-fields";
 import { hideableFieldsFor } from "@/lib/work-orders/overlays";
@@ -88,7 +88,7 @@ export function TaskTypesClient({ customLogs, overlays, isAdmin }: { customLogs:
         <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr", gap: 8, alignItems: "center", marginTop: 8 }}>
           {keys.map((k) => (
             <React.Fragment key={k}>
-              <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6, opacity: hideable.has(k) ? 1 : 0.5 }} title={hideable.has(k) ? "" : "Required by the operation — can't hide"}>
+              <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6, color: hideable.has(k) ? undefined : "var(--text-secondary)" }} title={hideable.has(k) ? "" : "Required by the operation — can't hide"}>
                 <input type="checkbox" disabled={!isAdmin || !hideable.has(k)} checked={hidden.has(k)} onChange={(e) => setHidden((prev) => { const n = new Set(prev); if (e.target.checked) n.add(k); else n.delete(k); return n; })} />
                 hide
               </label>
@@ -169,9 +169,9 @@ export function TaskTypesClient({ customLogs, overlays, isAdmin }: { customLogs:
           {customLogs.length === 0 ? <div style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 8 }}>None yet.</div> : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
               {customLogs.map((l) => (
-                <Card key={l.id} padding="10px 14px" style={{ opacity: l.archivedAt ? 0.6 : 1 }}>
+                <Card key={l.id} padding="10px 14px" className={l.archivedAt ? "bw-inactive" : undefined}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div><span style={{ fontWeight: 600 }}>{l.label}</span><span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}>{l.fields.length} field{l.fields.length === 1 ? "" : "s"} · {l.code}</span></div>
+                    <div><span style={{ fontWeight: 600 }}>{l.label}</span>{l.archivedAt ? <StatusChip variant="neutral" style={{ marginLeft: 8 }}>Archived</StatusChip> : null}<span style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 8 }}>{l.fields.length} field{l.fields.length === 1 ? "" : "s"} · {l.code}</span></div>
                     {isAdmin && <div style={{ display: "flex", gap: 8 }}><Button variant="ghost" onClick={() => startEditLog(l)}>Edit</Button><Button variant="ghost" onClick={() => toggleArchiveLog(l)}>{l.archivedAt ? "Restore" : "Archive"}</Button></div>}
                   </div>
                 </Card>

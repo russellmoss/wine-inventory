@@ -4,7 +4,7 @@ import { Card, Eyebrow, Badge, ExportCsvButton } from "@/components/ui";
 import type { Prisma } from "@prisma/client";
 
 const inputStyle: React.CSSProperties = {
-  height: 40,
+  height: "var(--touch-min)",
   padding: "0 12px",
   border: "1px solid var(--border-strong)",
   borderRadius: "var(--radius-md)",
@@ -59,7 +59,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
       </form>
 
       <Card padding="0">
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+        <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
               <th style={{ padding: "10px 14px", fontWeight: 500 }}>When</th>

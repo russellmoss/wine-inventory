@@ -112,6 +112,64 @@
   .app-main:has(~ .bw-tabbar) { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
 }
 
+/* The AA target-size floor for raw controls.
+ *
+ * Two different standards get confused here, so both are named. WCAG 2.5.5 Target
+ * Size at 44x44 is **AAA**, and it is also this project's house rule via
+ * `--touch-min`. WCAG 2.2 added 2.5.8 Target Size (Minimum) at **24x24 at AA** —
+ * with an explicit exception for targets inline in a sentence.
+ *
+ * A sweep at 390px found raw `<input>`/`<button>` elements rendering at **23px**:
+ * one pixel under the AA minimum, on eight inputs and three filter buttons, because
+ * they set a font-size and padding but no height and inherited the UA default. The
+ * design system's own `Input` has been 44/48/56 since Phase 1 — these are the sites
+ * that never went through it.
+ *
+ * 24px is deliberately the floor here and not 44. Raising every bespoke control to
+ * 44 would relayout a lot of dense screens, and that is a design decision with its
+ * own plan, not something to slip in to make a number go green. This closes the
+ * genuine AA failure and leaves the house standard visible as debt.
+ * Checkboxes and radios are excluded: their 20px visual sits inside a >=44px label
+ * target, which is the pattern v2 §B11 asks for. */
+.app-main input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+.app-main select,
+.app-main button,
+.app-main [role="button"] {
+  min-height: 24px;
+}
+
+/* Inactive / archived / superseded rows.
+
+   Deliberately NOT `opacity`. Opacity composites the TEXT against whatever is behind
+   it, so `--text-muted` (a comfortable 5.3:1 on white) lands at 2.5-3.4:1 once dimmed
+   — an axe `color-contrast` failure and a real WCAG 1.4.3 one. The maths does not
+   have a rescue: even at 0.9 opacity muted text only reaches ~4.4:1, still short of
+   4.5. The dimming has to come off the text.
+
+   A sunken surface plus secondary-weight text reads as "set aside" while keeping
+   every glyph above 4.5:1. Pair it with a visible "Archived" / "Inactive" badge —
+   dimming ALONE is state conveyed by appearance only, which is 1.4.1 regardless of
+   contrast, and is invisible to anyone who cannot perceive the difference. */
+.bw-inactive {
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+}
+
+/* An inline link inside prose must not be told apart by COLOUR ALONE (WCAG 1.4.1,
+   axe `link-in-text-block`). The app's link colour is wine `--text-accent` #722F37
+   and body prose is `--text-secondary` #4D4A42 — 1.09:1 against each other, so to
+   anyone who does not perceive that hue the link is invisible. Underline is the
+   cheapest honest fix and the one axe accepts.
+
+   Scoped to links INSIDE a paragraph or list item: standalone links, nav items and
+   link-wrapped buttons/cards are distinguishable by position and are excluded, which
+   is why this is not a blanket `a { text-decoration: underline }`. */
+.app-main p > a,
+.app-main li > a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Mobile: wide tables scroll horizontally instead of breaking the layout. */
 @media (max-width: 767px) {
   /* LEGACY mobile table treatment. `display: block` destroys table semantics —
@@ -124,6 +182,11 @@
      itself out, a partly-migrated app is always correct, and no table can end up
      with neither treatment. DELETE this rule once no `table:not([data-rt])`
      remains under .app-main. */
+  /* NOTE: `overflow-x: auto` here makes the TABLE ITSELF the scroll container, so
+     every un-migrated table needs `tabIndex={0}` in its JSX or a keyboard user can
+     never pan it — WCAG 2.1.1, and axe's `scrollable-region-focusable` fires on it
+     at 390px. ResponsiveTable already does this on its wrapper. The pairing is
+     enforced by test/table-a11y.test.ts, which fails on a raw <table> without it. */
   .app-main table:not([data-rt]) {
     display: block;
     overflow-x: auto;

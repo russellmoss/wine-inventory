@@ -174,7 +174,7 @@ export function WeighTagIntake({ owners, growers, blocks, recent }: { owners: Re
           <p style={{ color: "var(--text-secondary)", margin: "12px 0 0" }}>No weigh-tags yet. Issue the first one above when a truck arrives.</p>
         ) : (
           <div style={{ overflowX: "auto", marginTop: 12 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--text-body-sm)" }}>
+            <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--text-body-sm)" }}>
               <thead>
                 <tr style={{ textAlign: "left", color: "var(--text-secondary)" }}>
                   <th style={{ padding: "6px 10px 6px 0" }}>#</th>
@@ -222,7 +222,9 @@ function RecentRow({ tag }: { tag: RecentTag }) {
 
   return (
     <>
-      <tr style={{ borderTop: "1px solid var(--border-subtle)", opacity: voided ? 0.55 : 1, textDecoration: voided ? "line-through" : "none" }}>
+      {/* Voided tags keep full-contrast text: the strike-through and the sunken surface
+          carry the state, and dimming would drag it under 4.5:1. */}
+      <tr className={voided ? "bw-inactive" : undefined} style={{ borderTop: "1px solid var(--border-subtle)", textDecoration: voided ? "line-through" : "none" }}>
         <td style={{ padding: "8px 10px 8px 0", ...tabular, fontWeight: 600 }}>{tag.tagNumber}</td>
         <td style={{ padding: "8px 10px" }}>{tag.truck ?? "—"}</td>
         <td style={{ padding: "8px 10px", ...tabular }}>{tag.lineCount}</td>

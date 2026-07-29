@@ -114,7 +114,7 @@ export function UsersClient({
       </Card>
 
       <Card padding="0">
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
+        <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14.5 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
               <th style={{ padding: "12px 16px", fontWeight: 500 }}>User</th>
@@ -127,7 +127,7 @@ export function UsersClient({
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} style={{ borderTop: "1px solid var(--border-strong)", opacity: u.banned ? 0.55 : 1 }}>
+              <tr key={u.id} className={u.banned ? "bw-inactive" : undefined} style={{ borderTop: "1px solid var(--border-strong)" }}>
                 <td style={{ padding: "12px 16px" }}>
                   <div>{u.name}{u.isSelf ? " (you)" : ""}</div>
                   <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{u.email}</div>

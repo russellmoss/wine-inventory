@@ -202,7 +202,7 @@ function ReadingsTable({ series }: { series: Series[] }) {
       <h3 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 18, margin: "0 0 8px" }}>Readings</h3>
       <Card padding="0">
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
                 <th style={th}>Date</th>

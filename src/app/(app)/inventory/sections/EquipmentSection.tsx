@@ -138,7 +138,7 @@ export function EquipmentSection({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
             {equipment.map((e) => (
-              <Card key={e.id} padding="10px 14px" style={{ opacity: e.isActive ? 1 : 0.6 }}>
+              <Card key={e.id} padding="10px 14px" className={e.isActive ? undefined : "bw-inactive"}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div>
                     <span style={{ fontWeight: 600 }}>{e.name}</span>

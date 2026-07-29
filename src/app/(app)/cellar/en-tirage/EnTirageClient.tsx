@@ -41,7 +41,7 @@ function StyleChip({ rs, dosageGpl }: { rs: number; dosageGpl: number }) {
     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
       <Badge tone="maroon">{style.replace("_", " ")}</Badge>
       <span style={{ ...num, fontSize: 13, color: "var(--text-secondary)" }}>{rs} g/L RS</span>
-      {near && <span style={{ fontSize: 12.5, color: "var(--warning)" }}>· within 3 g/L of a band edge</span>}
+      {near && <span style={{ fontSize: 12.5, color: "var(--status-held-fg)" }}>· within 3 g/L of a band edge</span>}
       {dosageGpl === 0 && <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>· Brut Nature (0 g/L)</span>}
     </span>
   );
@@ -104,7 +104,7 @@ export function EnTirageClient({
       ) : (
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ textAlign: "left", background: "var(--surface-sunken)" }}>
                   {["Lot", "Method", "Bottles", "Months on lees", "Stage", "AF", "Location", ""].map((h) => (
@@ -164,7 +164,7 @@ export function EnTirageClient({
           </p>
           <Card style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                   <tr style={{ textAlign: "left", background: "var(--surface-sunken)" }}>
                     {["Lot", "SKU", "Bottles", "Finished", "Style", "Location", ""].map((h) => (

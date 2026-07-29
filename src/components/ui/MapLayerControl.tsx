@@ -31,7 +31,7 @@ export function MapLayerControl({
       <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6 }}>{title}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {layers.map((l, i) => (
-          <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", opacity: l.available ? 1 : 0.55 }}>
+          <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", color: l.available ? undefined : "var(--text-secondary)" }}>
             <input
               type="checkbox"
               checked={l.visible && l.available}

@@ -45,7 +45,7 @@ export type VesselOpt = { id: string; code: string; availableL: number };
 export type BottledOpt = { value: string; label: string; bottles: number };
 
 const sel: React.CSSProperties = {
-  height: 40, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
+  height: "var(--touch-min)", padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
   background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--text-primary)",
 };
 
@@ -228,7 +228,7 @@ export function ComplianceClient(props: {
             <Card style={{ marginBottom: 16, padding: 16 }}>
               <div style={{ fontWeight: 600, marginBottom: 8 }}>Lot tax classes {view.status === "FILED" ? "(filed — read only)" : "(override then regenerate)"}</div>
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
                   <thead>
                     <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                       <th scope="col" style={{ padding: "6px 8px" }}>Lot</th>
@@ -242,7 +242,7 @@ export function ComplianceClient(props: {
                       <tr key={l.lotId} style={{ borderTop: "1px solid var(--border-subtle)" }}>
                         <td style={{ padding: "6px 8px" }}>{l.lotCode}{l.needsAbvReview ? <Badge tone="red" variant="soft" style={{ marginLeft: 6 }}>needs ABV</Badge> : null}</td>
                         <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{l.abv == null ? "—" : `${l.abv}%`}</td>
-                        <td style={{ padding: "6px 8px" }}>{CLASS_LABEL[l.taxClass] ?? l.taxClass}{l.overridden ? <span style={{ color: "var(--warning)" }}> (overridden)</span> : null}</td>
+                        <td style={{ padding: "6px 8px" }}>{CLASS_LABEL[l.taxClass] ?? l.taxClass}{l.overridden ? <span style={{ color: "var(--status-held-fg)" }}> (overridden)</span> : null}</td>
                         <td style={{ padding: "6px 8px" }}>
                           <select aria-label="Tax class override"
                             disabled={view.status === "FILED" || pending}
@@ -264,8 +264,12 @@ export function ComplianceClient(props: {
 
           {/* Part X + actions */}
           <Card style={{ marginBottom: 16, padding: 16 }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Part X — Remarks</div>
+            {/* A real <label htmlFor>, not a styled <div>: this was the only control on
+                the TTB report with no accessible name at all, so a screen-reader user
+                filing a federal form heard "edit text, blank" and nothing else. */}
+            <label htmlFor="compliance-remarks" style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>Part X — Remarks</label>
             <textarea
+              id="compliance-remarks"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               disabled={view.status === "FILED"}
@@ -402,7 +406,7 @@ function SectionGrid(props: {
   return (
     <Card padding="0" style={{ marginBottom: 16, overflowX: "auto" }}>
       <div style={{ padding: "12px 14px", fontWeight: 600, borderBottom: "1px solid var(--border-subtle)" }}>{props.title}</div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 760 }}>
+      <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 760 }}>
         <thead>
           <tr style={{ color: "var(--text-muted)", background: "var(--surface-sunken)" }}>
             <th scope="col" style={{ padding: "8px 10px", textAlign: "left", position: "sticky", left: 0, background: "var(--surface-sunken)", minWidth: 220 }}>Item</th>

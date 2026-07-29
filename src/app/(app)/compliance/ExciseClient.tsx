@@ -30,7 +30,7 @@ export type ExciseView = {
 };
 
 const sel: React.CSSProperties = {
-  height: 40, padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
+  height: "var(--touch-min)", padding: "0 10px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
   background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 14, color: "var(--text-primary)",
 };
 
