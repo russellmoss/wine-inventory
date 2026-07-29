@@ -55,6 +55,10 @@ export type PendingProposal = {
   /** Absent on a Draft — a Draft is not committable, by voice or by tap (plan 081 U4). */
   token?: string;
   draft?: boolean;
+  /** Unresolved fields + blocking warnings, straight off the wire. The inline card needs these to
+   *  name what a Draft is waiting on; it deliberately does NOT render the full details table the
+   *  text card does — a 620px floor panel has no room for it (plan 105). */
+  details?: unknown;
   status: "pending" | "applying" | "done" | "error";
   result?: string;
 };
@@ -284,7 +288,14 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     const confirmProposal = () => {
       const p = proposalRef.current;
       if (!p || p.status !== "pending") return;
-      // A Draft has no token: saying "confirm" must not commit anything. Say why and leave it pending.
+      // A Draft has no token: saying "confirm" must not commit anything, and this early return is
+      // the second gate behind the card's own disabled button (plan 105 gave the inline card a real
+      // draft state — before that it rendered an armed Confirm over this silent refusal).
+      //
+      // Deliberately does NOT speak here. The session already reads the gaps aloud the moment the
+      // draft appears (see the `proposal` event below, plan 081 U8), and the reason is now on the
+      // card; `speak` is turn-scoped machinery — reaching into it from a UI callback would talk over
+      // a live turn and fight the supersede guard.
       if (!p.token) return;
       const token = p.token;
       setProp({ ...p, status: "applying" });
@@ -401,7 +412,12 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
               return;
             case "proposal": {
               const draft = evt.draft === true;
-              admit({ preview: evt.preview, ...(draft ? { draft: true } : { token: evt.token }), status: "pending" });
+              admit({
+                preview: evt.preview,
+                ...(draft ? { draft: true } : { token: evt.token }),
+                ...(evt.details !== undefined ? { details: evt.details } : {}),
+                status: "pending",
+              });
               // Plan 081 U8 — DEFINED voice behavior for a Draft: say what it needs, then defer to the
               // visual card. Deliberately NOT attempting in-voice field resolution: dictating an email
               // address or a lot code through STT is exactly where a wrong value gets committed, and a

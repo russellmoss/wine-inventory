@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui";
+import { proposalGate } from "@/lib/assistant/proposal-card";
 import { focusAction } from "@/lib/voice/focus";
 import { voiceAnnouncement, voiceControlAvailability } from "@/lib/voice/inline-ui";
 import type { VoiceState } from "@/lib/voice/state-types";
@@ -172,6 +173,9 @@ export function VoiceInlinePanel({
           preview={session.proposal.preview}
           status={session.proposal.status}
           result={session.proposal.result}
+          token={session.proposal.token}
+          draft={session.proposal.draft}
+          details={session.proposal.details}
           onConfirm={session.confirmProposal}
           onCancel={session.cancelProposal}
         />
@@ -251,17 +255,32 @@ function ProposalCard({
   preview,
   status,
   result,
+  token,
+  draft,
+  details,
   onConfirm,
   onCancel,
 }: {
   preview: string;
   status: "pending" | "applying" | "done" | "error";
   result?: string;
+  token?: string;
+  draft?: boolean;
+  details?: unknown;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const done = status === "done";
   const errored = status === "error";
+  // Plan 105. This card had NO draft gate: it always read "Confirm change" with an armed button,
+  // while useVoiceSession refused to commit a tokenless Draft. A cellar hand with gloves on, three
+  // feet from the screen, tapped a live-looking button and got silence.
+  //
+  // It reuses proposalGate — the SAME pure decision the text card uses, so the two can't disagree
+  // about what is committable — but deliberately NOT the details table. This panel is ~620px with a
+  // tablet keyboard eating half of it; the gate's one-line reason is what fits and what matters.
+  const gate = proposalGate({ token, draft, details: details as never });
+  const isDraft = !gate.canConfirm;
   return (
     <div
       style={{
@@ -271,11 +290,30 @@ function ProposalCard({
         padding: "var(--space-3)",
         borderRadius: "var(--radius-lg)",
         background: "var(--surface-raised)",
-        border: `1px solid ${done ? "var(--positive)" : errored ? "var(--danger)" : "var(--accent)"}`,
+        borderWidth: "1px",
+        borderColor: done
+          ? "var(--positive)"
+          : errored
+            ? "var(--danger)"
+            : isDraft
+              ? gate.blockingCount > 0
+                ? "var(--danger)"
+                : "var(--warning)"
+              : "var(--accent)",
+        // Dashed reads as "unfinished" at a glance — the same non-colour signal the text card uses.
+        borderStyle: isDraft && !done && !errored ? "dashed" : "solid",
       }}
     >
-      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)", marginBottom: 4 }}>
-        Confirm change
+      <div
+        style={{
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: "0.1em",
+          color: isDraft && !done && !errored ? "var(--warning-deep-text)" : "var(--text-muted)",
+          marginBottom: 4,
+        }}
+      >
+        {done || errored ? "Confirm change" : isDraft ? (gate.blockingCount > 0 ? "Draft — blocked" : "Draft — needs input") : "Confirm change"}
       </div>
       <div
         style={{
@@ -290,13 +328,25 @@ function ProposalCard({
         {preview}
       </div>
       {status === "pending" || status === "applying" ? (
-        <div style={{ display: "flex", gap: "var(--space-2)" }}>
-          <Button size="sm" onClick={onConfirm} disabled={status === "applying"}>
-            {status === "applying" ? "Applying…" : "Confirm"}
-          </Button>
-          <Button size="sm" variant="secondary" onClick={onCancel} disabled={status === "applying"}>
-            Cancel
-          </Button>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+          {gate.reason ? (
+            <div role="status" style={{ fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+              {gate.reason}
+            </div>
+          ) : null}
+          <div style={{ display: "flex", gap: "var(--space-2)" }}>
+            <Button
+              size="sm"
+              onClick={onConfirm}
+              disabled={!gate.canConfirm || status === "applying"}
+              title={gate.reason ?? undefined}
+            >
+              {status === "applying" ? "Applying…" : "Confirm"}
+            </Button>
+            <Button size="sm" variant="secondary" onClick={onCancel} disabled={status === "applying"}>
+              {gate.canConfirm ? "Cancel" : "Dismiss"}
+            </Button>
+          </div>
         </div>
       ) : (
         <div style={{ fontSize: "var(--text-body-sm)", color: done ? "var(--positive)" : "var(--danger)" }}>
