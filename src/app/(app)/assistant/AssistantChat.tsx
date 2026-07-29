@@ -1,13 +1,14 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui";
 import { Markdown } from "./Markdown";
 import { shouldStickToBottom } from "@/lib/assistant/scroll";
 import type { VoiceState } from "@/lib/voice/state-types";
 import type { VoiceSessionApi } from "./voice/VoiceInlinePanel";
 import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
+import { decidePostCommitNav, parseCommitNavTarget } from "@/lib/assistant/post-commit-nav";
 import {
   ConversationSidebar,
   type ConversationSummary,
@@ -207,6 +208,9 @@ export function AssistantChat({
   const itemsRef = React.useRef<Item[]>(items);
   itemsRef.current = items;
   const router = useRouter();
+  // Where the user is right now. Read for the post-commit navigation decision: leaving the
+  // full-page assistant would end the session, so that case must degrade to a link (plan 105 U2).
+  const pathname = usePathname();
 
   // When embedded in the dock, the chat stays mounted (display:none) after the dock collapses so its
   // history survives. `active` is false while the dock is closed — force any live voice session shut so
@@ -847,10 +851,9 @@ export function AssistantChat({
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.ok) {
-        const nav =
-          data.navigate && isSafeInternalPath(data.navigate.path) && typeof data.navigate.label === "string"
-            ? { path: data.navigate.path as string, label: data.navigate.label as string }
-            : undefined;
+        // The confirm route answers with plain JSON, not an AssistantEvent, so the exhaustive
+        // switch's `never` default cannot police this shape. parseCommitNavTarget is that gate.
+        const nav = parseCommitNavTarget(data.navigate) ?? undefined;
         setItems((prev) => updateProposal(prev, index, { status: "done", result: data.message, navigate: nav }));
         // The card has done its job. Hold the green state briefly, then fold it down so the
         // next card in the turn is not stranded behind it (feedback cmrwiky4p).
@@ -861,6 +864,17 @@ export function AssistantChat({
         // already-open or client-cached list until a hard browser refresh. router.refresh() clears the
         // client cache and refetches the current route with fresh server data (client state preserved).
         router.refresh();
+        // Plan 105 U2 (DM-55 / AC-W2): go to the thing we just made, so a wrong draft is fixed by a
+        // sentence instead of by starting over. The dock is a layout sibling of <main>, so it and this
+        // conversation survive the push. decidePostCommitNav owns every reason NOT to move — chiefly
+        // that leaving /assistant would end the session. On link_only the card's own "View X →"
+        // affordance is already rendered from the same payload, so the target stays one click away.
+        const decision = decidePostCommitNav({
+          target: nav,
+          currentPath: pathname,
+          hasUnsavedChanges: pageHasUnsavedChanges(),
+        });
+        if (decision.kind === "navigate") setNavPending({ path: decision.path, label: decision.label });
       } else {
         setItems((prev) => updateProposal(prev, index, { status: "error", result: data?.error ?? "Could not apply." }));
       }

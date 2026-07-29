@@ -14,6 +14,7 @@ import {
   type VoiceFocusSession,
   type VoiceProfileState,
 } from "@/lib/voice/focus";
+import { decidePostCommitNav, parseCommitNavTarget } from "@/lib/assistant/post-commit-nav";
 import { appendTurn, appendTurns } from "@/lib/voice/history";
 import { micErrorMessage } from "@/lib/voice/inline-ui";
 import type { VoiceState } from "@/lib/voice/state-types";
@@ -304,6 +305,16 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
             // Bust the client Router Cache so the page behind the overlay reflects the write (the
             // committer's server-side revalidatePath doesn't reach the client). Mirrors AssistantChat.
             router.refresh();
+            // Plan 105 U2: land on what we just made, same rules as the text path — the two
+            // consumers have drifted before, so they change together. Voice runs inline in the dock
+            // (plan 089), which survives navigation; the decision module still refuses to move the
+            // user off /assistant, where it would not.
+            const decision = decidePostCommitNav({
+              target: parseCommitNavTarget(data.navigate),
+              currentPath: window.location.pathname,
+              hasUnsavedChanges: false,
+            });
+            if (decision.kind === "navigate") router.push(decision.path);
           } else setProp({ ...p, status: "error", result: data?.error ?? "Could not apply." });
         } catch {
           setProp({ ...p, status: "error", result: "Network error." });
