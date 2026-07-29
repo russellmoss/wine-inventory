@@ -2,15 +2,15 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { detectIssueIntent, hasIssueIntentContract, issueOnConfirmFromArgs } from "../issue-intent";
 import { resolveExactlyOne } from "./resolve";
 import { listWorkOrderTemplates } from "@/lib/work-orders/data";
-import { createWorkOrderFromTemplateAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
+import { createWorkOrderFromTemplateAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import { DUE_AT_SCHEMA_PROPERTIES, dueClause, dueFromCommitArgs, dueProposalArgs, resolveDueAt } from "./due-at-args";
 
 // Assistant-coverage Wave 1 #3a — create AND issue a work order from a template by chat. Wraps the
-// existing template + lifecycle cores (createWorkOrderFromTemplateAction → issueWorkOrderAction); no db_*.
+// existing template core (createWorkOrderFromTemplateAction). Creates a DRAFT only — the assistant
+// never issues; Issue is a human press on the work order itself (plan 105).
 // Decision (interview 2026-07-05): one step → a live, assignable WO (create + issue), not a draft.
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -20,7 +20,7 @@ type CreateWoRawInput = { template?: string; dueDate?: string; dueTime?: string;
 export const createWorkOrderTool: AssistantTool = {
   name: "create_work_order",
   description:
-    "Create and ISSUE a work order from a TEMPLATE — a live, assignable order whose tasks come from the template AS-IS. Use ONLY when the user names a template or wants a general SOP order (e.g. 'issue the weekly barrel-care order for tomorrow'). Give the template by name; optionally a due date (plus dueTime for a requested clock time, e.g. 'tomorrow at 9am' → dueDate + dueTime '09:00'), assignee email, and a title. Does NOT save immediately — returns a preview to confirm. " +
+    "Create and ISSUE a work order from a TEMPLATE — a live, assignable order whose tasks come from the template AS-IS. Use ONLY when the user names a template or wants a general SOP order (e.g. 'issue the weekly barrel-care order for tomorrow'). Give the template by name; optionally a due date (plus dueTime for a requested clock time, e.g. 'tomorrow at 9am' → dueDate + dueTime '09:00'), assignee email, and a title. Does NOT save immediately — returns a preview to confirm. Confirming creates a DRAFT work order and takes the user to it; it does NOT issue. Issuing is a separate press the user makes on the work-order page after reviewing it, so never say you will issue it or that confirming issues it. " +
     "DO NOT use this when the user names SPECIFIC vessels for a whole-vessel operation (topping / filtration / addition / fining across 'barrels 1–5', 'tanks 3, 4 and 7', etc.) — this tool clones a fixed template and CANNOT fan out one task per vessel, so the vessel scope would be lost. For that, use issue_operation_wo. For cap work (punchdown / pumpover / cold-soak) across vessels, use issue_cap_management_wo.",
   kind: "write",
   inputSchema: {
@@ -53,12 +53,8 @@ export const createWorkOrderTool: AssistantTool = {
 
     const due = resolveDueAt(input.dueDate, input.dueTime, ctx.timeZone);
     const asgClause = input.assigneeEmail ? `, assigned to ${input.assigneeEmail}` : "";
-    // Plan 105: draft unless the USER's own words asked for the order to go out. Decided here at
-    // propose time and signed into the token, so it cannot be re-derived or tampered with at commit.
-    const issueOnConfirm = detectIssueIntent(ctx.lastUserMessage);
-    const preview = `${issueOnConfirm ? "Create and issue" : "Create as a draft"} a work order from "${tpl.name}"${dueClause(due)}${asgClause}.`;
+    const preview = `Create a DRAFT work order from "${tpl.name}"${dueClause(due)}${asgClause}. You will land on it to review and issue.`;
     const token = signProposal("create_work_order", {
-      issueOnConfirm,
       templateId: tpl.id,
       templateName: tpl.name,
       ...dueProposalArgs(due),
@@ -70,13 +66,6 @@ export const createWorkOrderTool: AssistantTool = {
 };
 
 export const commitCreateWorkOrder: Committer = async (_user, args) => {
-  // Plan 105 U1 (extended): a token minted before the issue-intent contract carries no
-  // `issueOnConfirm` key, so its card promised an issue while this code would draft. Refuse
-  // rather than quietly do something other than what the user pressed.
-  if (!hasIssueIntentContract(args)) {
-    throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
-  }
-  const issueOnConfirm = issueOnConfirmFromArgs(args);
   const { dueAt, dueAtHasTime } = dueFromCommitArgs(args);
   const created = unwrap(await createWorkOrderFromTemplateAction({
     templateId: String(args.templateId),
@@ -86,15 +75,8 @@ export const commitCreateWorkOrder: Committer = async (_user, args) => {
     dueAtHasTime,
   }));
   const from = String(args.templateName ?? "template");
-  if (!issueOnConfirm) {
-    return {
-      message: `Created draft work order #${created.number} from "${from}". Nobody can see it on the floor until you issue it.`,
-      navigate: { path: `/work-orders/${created.workOrderId}`, label: `Draft WO #${created.number}` },
-    };
-  }
-  unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
   return {
-    message: `Created and issued work order #${created.number} from "${from}".`,
-    navigate: { path: `/work-orders/${created.workOrderId}`, label: `View WO #${created.number}` },
+    message: `Created draft work order #${created.number} from "${from}". Taking you to it — review it, then press Issue when you are ready.`,
+    navigate: { path: `/work-orders/${created.workOrderId}`, label: `Draft WO #${created.number}` },
   };
 };

@@ -22,19 +22,24 @@ Commits, in the council's inverted order (correctness first, refactor last):
 Gates: `tsc` 0 · `eslint` 0 · `verify:ai-native` green · `eval:assistant` 167 pass / 114 key-gated,
 **no golden moved**. Full suite: see the plan.
 
-🛑 **TWO THINGS BEFORE THIS SHIPS.**
+✅ **THE RULE, after live testing: the assistant NEVER issues a work order.** It creates a DRAFT and
+takes you to it; Issue is your press on the work-order page, after you have seen it and edited it.
 
-1. **DRAFT work orders appear in NO list view.** `OPEN_STATUSES` = ISSUED/IN_PROGRESS/PENDING_APPROVAL,
-   `ARCHIVE_STATUSES` = APPROVED/CANCELLED (`work-orders/archive-filters.ts:6-7`). A draft is reachable
-   only by its own detail page or Ctrl-K search (global search has no status filter, so the "#318" in
-   the receipt does find it). Before U1 the assistant issued, so its orders landed in the open queue.
-   Now they do not. **Owner call:** add DRAFT to the open queue, add a Drafts section, or accept search
-   as the only route in.
-2. **U3 (the `AIProposalCard` extraction) is deliberately NOT done.** The chat and voice cards are
-   materially divergent — the voice one has NO draft gate at all, no details body, and is deliberately
-   sized for a 620px floor panel. Unifying them blind would either push a details table onto the floor
-   surface or drop the gate plan 081 built to stop Confirm becoming a reflex, and with no jsdom/RTL
-   neither is catchable by a test. Wants a browser session or a decision about what voice should show.
+Two earlier attempts were both wrong and are recorded so they are not re-tried:
+1. Four tools created-and-issued in one press; the first fix gated only `propose_work_order`. The
+   other three were missed — the MODEL picks the tool from the shape of the request, so "make me a
+   work order for punch down on T5" went down `issue_cap_management_wo` and would have published.
+2. The second gated all four on an "explicit issue verb" heuristic. Live testing killed it: a
+   request phrased "…issued to mike juergens" still published straight from the chat card. There is
+   no phrasing that should skip the review step.
+Now enforced structurally by `test/assistant-never-issues.test.ts` — no file under
+`src/lib/assistant/` may call `issueWorkOrderAction`/`Core`, every WO committer must return a deep
+link, and no receipt may claim an issue.
+
+✅ **`OPEN_STATUSES` now leads with `DRAFT`** (`work-orders/archive-filters.ts`). It had to: with the
+assistant only ever drafting, every work order it makes would otherwise be invisible in every list
+in the product. The assistant had literally told the user "open Work orders and it'll be at the top
+of the list" — which was false.
 
 ⚠️ **Still not browser-QA'd, and not QA'd as a NON-ADMIN.** Every browser pass so far ran as the Demo
 Winery owner. Phase 9 touches navigation, which is role-scoped. AC-W7/W8/W9 exist now but have not been

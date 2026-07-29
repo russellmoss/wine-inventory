@@ -58,7 +58,6 @@ function args(over: Record<string, unknown> = {}): Record<string, unknown> {
     dueTimeZone: null,
     taskBuilds: [{ taskType: "RACK", values: {} }],
     fingerprint: "fp-1",
-    issueOnConfirm: false,
     ...over,
   };
 }
@@ -73,9 +72,9 @@ describe("commitProposeWorkOrder — the default path leaves a DRAFT", () => {
     const res = await commitProposeWorkOrder(USER, args());
 
     expect(createCalls).toHaveLength(1);
-    expect(issueCalls).toHaveLength(0); // the whole point of plan 105 U1
+    expect(issueCalls).toHaveLength(0); // the whole point of plan 105
     expect(res.message).toContain("Created draft work order #318");
-    expect(res.message).toContain("Nobody can see it on the floor until you issue it.");
+    expect(res.message).toContain("Taking you to it");
     expect(res.message).not.toContain("Issued work order");
   });
 
@@ -85,31 +84,12 @@ describe("commitProposeWorkOrder — the default path leaves a DRAFT", () => {
   });
 });
 
-describe("commitProposeWorkOrder — an explicit issue intent still issues", () => {
-  it("creates AND issues when the signed flag says so", async () => {
+describe("commitProposeWorkOrder — there is no way to make it issue", () => {
+  it("ignores an issueOnConfirm flag entirely: the mechanism is gone, not merely defaulted", async () => {
+    // A token forged (or left over) with the old flag must not resurrect the published path.
     const res = await commitProposeWorkOrder(USER, args({ issueOnConfirm: true }));
-
-    expect(createCalls).toHaveLength(1);
-    expect(issueCalls).toEqual([{ workOrderId: "wo_1" }]);
-    expect(res.message).toContain("Issued work order #318");
-    expect(res.navigate?.path).toBe("/work-orders/wo_1");
-  });
-});
-
-describe("commitProposeWorkOrder — the deploy hazard (council C2)", () => {
-  it("refuses a token minted before the issue-intent contract instead of quietly drafting", async () => {
-    // Its card said "Create and issue". Doing something else silently is the failure mode.
-    const stale = args();
-    delete stale.issueOnConfirm;
-
-    await expect(commitProposeWorkOrder(USER, stale)).rejects.toThrow(/stale/i);
-    expect(createCalls).toHaveLength(0);
     expect(issueCalls).toHaveLength(0);
-  });
-
-  it("refuses a truthy-but-not-boolean flag rather than publishing on it", async () => {
-    await expect(commitProposeWorkOrder(USER, args({ issueOnConfirm: "true" }))).rejects.toThrow(/stale/i);
-    expect(issueCalls).toHaveLength(0);
+    expect(res.message).toContain("Created draft work order");
   });
 
   it("still refuses a stale schema version, before anything is created", async () => {

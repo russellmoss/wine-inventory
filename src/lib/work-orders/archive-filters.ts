@@ -4,7 +4,11 @@
 // column the range applies to (open → dueAt, archive → updatedAt when it was finalized).
 
 export const ARCHIVE_STATUSES = ["APPROVED", "CANCELLED"] as const;
-export const OPEN_STATUSES = ["ISSUED", "IN_PROGRESS", "PENDING_APPROVAL"] as const;
+// DRAFT leads: it is the only status that needs someone to DO something before the floor can see
+// it at all. Added plan 105 — the assistant now always creates drafts and never issues, so
+// without this every work order it makes would be invisible in every list in the product and
+// reachable only by the link it hands you or by Ctrl-K on its number.
+export const OPEN_STATUSES = ["DRAFT", "ISSUED", "IN_PROGRESS", "PENDING_APPROVAL"] as const;
 
 export type WorkOrderFilters = {
   status?: string; // narrows within the view's base status set

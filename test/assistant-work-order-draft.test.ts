@@ -96,42 +96,28 @@ describe("propose_work_order — Ready", () => {
     expect(proposal).not.toBeNull();
     expect(isDraftProposal(proposal!)).toBe(false);
     expect(typeof (proposal as { token?: string }).token).toBe("string");
-    // MOVED DELIBERATELY (plan 105 U1). This used to read 'Create and issue "…"'. The default
-    // outcome is now a DRAFT (03-interaction-spec.md:179), and this request's wording never asked
-    // for the order to go out, so the preview must not promise an issue.
+    // MOVED DELIBERATELY (plan 105). This used to read 'Create and issue "…"'. Confirming now
+    // always leaves a DRAFT and takes the user to it (03-interaction-spec.md:179), so the preview
+    // must not promise an issue under any wording.
     expect(proposal!.preview).toContain('Create as a draft "Work order: rack"');
     expect(proposal!.preview).toContain("1 task");
   });
 
-  it("signs issueOnConfirm=false into the token when the user only asked to create", async () => {
-    readiness.value = readinessResult({ status: "ready" });
-    const proposal = asProposal(await proposeWorkOrderTool.run(ctxSaying("make me a work order to rack T3 to T4"), INPUT))!;
-    // The flag rides INSIDE the signed payload, so it cannot be re-derived or swapped at commit.
-    expect(tokenArgs((proposal as { token: string }).token).issueOnConfirm).toBe(false);
-    expect(proposal.preview).toContain("Create as a draft");
-  });
-
-  it("signs issueOnConfirm=true and promises an issue when the user's own words said issue", async () => {
-    readiness.value = readinessResult({ status: "ready" });
-    const proposal = asProposal(await proposeWorkOrderTool.run(ctxSaying("issue a work order to rack T3 to T4"), INPUT))!;
-    expect(tokenArgs((proposal as { token: string }).token).issueOnConfirm).toBe(true);
-    expect(proposal.preview).toContain('Create and issue "Work order: rack"');
-  });
-
-  it("a negated issue ('but don't issue it yet') still drafts", async () => {
-    readiness.value = readinessResult({ status: "ready" });
-    const proposal = asProposal(
-      await proposeWorkOrderTool.run(ctxSaying("build the rack work order but don't issue it yet"), INPUT),
-    )!;
-    expect(tokenArgs((proposal as { token: string }).token).issueOnConfirm).toBe(false);
-  });
-
-  it("the model cannot smuggle an issue: the flag comes from ctx, never from tool input", async () => {
-    readiness.value = readinessResult({ status: "ready" });
-    const proposal = asProposal(
-      await proposeWorkOrderTool.run(ctxSaying("make me a work order"), { ...INPUT, issueOnConfirm: true }),
-    )!;
-    expect(tokenArgs((proposal as { token: string }).token).issueOnConfirm).toBe(false);
+  it("ALWAYS drafts, whatever the user's wording — even 'issued to mike'", async () => {
+    // The rule has no phrasing escape hatch. An earlier build let an explicit "issue" verb publish
+    // straight from the chat card; live testing killed that, because the whole point is that a human
+    // sees the work order before the floor does.
+    for (const utterance of [
+      "make me a work order to rack T3 to T4",
+      "issue a work order to rack T3 to T4",
+      "make me a work order for punch down on tank T5 issued to mike juergens",
+      "rack T3 to T4 and put it on the floor",
+    ]) {
+      readiness.value = readinessResult({ status: "ready" });
+      const proposal = asProposal(await proposeWorkOrderTool.run(ctxSaying(utterance), INPUT))!;
+      expect(proposal.preview, utterance).toContain("Create as a draft");
+      expect(tokenArgs((proposal as { token: string }).token).issueOnConfirm, utterance).toBeUndefined();
+    }
   });
 
   it("carries the full readiness details through to the card", async () => {
