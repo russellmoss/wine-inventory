@@ -131,6 +131,17 @@ describe("the flag contract", () => {
     expect(GLOBALS).toMatch(/min-width: 1024px\)[\s\S]*?\.bw-tabbar \{ display: none; \}/);
   });
 
+  it("does not let an INLINE display defeat that rule", () => {
+    // This assertion existed in CSS form only, and passed for months while the tab
+    // bar rendered on desktop anyway: MobileTabBar set `display: "grid"` in its
+    // inline style object, and inline beats any stylesheet rule including a media
+    // query. Two nav landmarks named "Main", two aria-current="page" items, and the
+    // phone navigation shown to every desktop user. AppShell's sidebarBox carries a
+    // comment warning about exactly this; the tab bar did not.
+    expect(code(TABBAR)).not.toMatch(/display:\s*"grid"/);
+    expect(GLOBALS).toContain(".bw-tabbar { display: grid; }");
+  });
+
   it("clears the main region so the last row is not under the tabs", () => {
     expect(GLOBALS).toContain("padding-bottom: calc(56px + env(safe-area-inset-bottom))");
   });

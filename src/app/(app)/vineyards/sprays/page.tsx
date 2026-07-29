@@ -3,7 +3,6 @@ import { requireReadyUser, requireActiveTenant } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { Badge, Button, Eyebrow } from "@/components/ui";
 import { loadSpraySeasonList } from "@/lib/spray/actions";
-import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 // S3a Unit 13 — the spray record season list. Summary-first, one nav entry (the P8 lesson).
 // Honesty rendering is the point: a record whose facts are not KNOWN carries a visible
@@ -96,7 +95,6 @@ async function SpraysPageBody({ searchParams }: { searchParams: Promise<{ vineya
 export default async function SpraysPage(props: { searchParams: Promise<{ vineyard?: string }> }) {
   return (
     <>
-      <HubSectionNav hub="/vineyards/field-notes" current="/vineyards/sprays" />
       <SpraysPageBody {...props} />
     </>
   );

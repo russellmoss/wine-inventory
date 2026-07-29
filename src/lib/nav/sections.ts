@@ -76,7 +76,7 @@ export interface SectionDef {
    * cannot call the same page three different things. An earlier draft invented
    * "Open work" / "Sync status" / "Bottling runs" here, and — worse — put back
    * "Field notes" and "Harvest", the two labels doc 01 §5 RETIRED in favour of
-   * "Vineyard rounds" and "Fruit intake" (they survive only as search aliases,
+   * "Vineyards" and "Fruit intake" (they survive only as search aliases,
    * `model.ts` `aliasMap`). The strip sat directly under a sidebar showing the new
    * name, undoing the rename on the one screen it applies to.
    *
@@ -153,21 +153,12 @@ export const SECTIONS: Record<string, SectionDef> = {
     items: [{ href: "/cellar/en-tirage", label: "En Tirage", requires: "sparkling" }],
   },
 
-  "/vineyards/field-notes": {
-    label: "Vineyard sections",
-    items: [
-      // Maps and Weather scope their vineyard list by membership, so a non-member
-      // lands on an empty page — hiding the link is the honest thing to do.
-      { href: "/vineyards/maps", label: "Map Explorer", vineyard: true },
-      { href: "/vineyards/weather", label: "Weather & climate", vineyard: true },
-      // Spray records does NOT scope (page.tsx:14 lists every active vineyard to any
-      // ready user), so it carries no flag. Gating it would take a surface away from
-      // the cellar hand who had it in the legacy sidebar and give nothing back: the
-      // hub above it is vineyard-gated either way, so this only decides whether
-      // Ctrl-K can still find it. It can.
-      { href: "/vineyards/sprays", label: "Spray records" },
-    ],
-  },
+  // NOTE: "/vineyards/field-notes" had a section here (Map Explorer · Weather ·
+  // Spray records) until 2026-07-28. The owner promoted all three to top-level
+  // destinations under a new "The vineyards" group, so they are in NAV_MODEL now —
+  // and an href may live in exactly one of the two models (asserted in
+  // test/nav-sections.test.ts). Sub-navigation was the wrong shape for them: it made
+  // the vineyard a sub-tab of one page rather than a half of the business.
 
   "/vineyards/harvest": {
     label: "Fruit intake sections",

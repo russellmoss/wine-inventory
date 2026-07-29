@@ -237,7 +237,14 @@ function SidebarContent({
               key={group.id}
               label={group.label}
               items={visible.map((d) => ({ href: d.href, label: d.label, badge: badgeFor(d.badge) }))}
-              open={openGroups[group.id] ?? group.defaultOpen}
+              // A group holding the route you are ON opens itself. "The business" is
+              // defaultOpen:false, so standing on Setup, Compliance, Accounting or
+              // Records rendered NO nav link at all for the current page — no
+              // highlight, no aria-current, nothing saying where you are. The legacy
+              // arm has done this since Phase 1 (wineryActive/setupActive below); the
+              // v2 arm read defaultOpen and stopped. An explicit toggle still wins,
+              // because openGroups is checked first.
+              open={openGroups[group.id] ?? (group.defaultOpen || visible.some((d) => isActive(d.href)))}
               setOpen={(fn) => setOpenGroups((prev) => ({ ...prev, [group.id]: fn(prev[group.id] ?? group.defaultOpen) }))}
               isActive={isActive}
               onNavigate={onNavigate}
@@ -514,7 +521,7 @@ export function AppShell({
           tabs={[
             { href: "/work-orders", label: "Work", glyph: "☑", badge: pendingWorkOrders },
             { href: "/bulk", label: "Cellar", glyph: "◍" },
-            ...(hasVineyard ? [{ href: "/vineyards/field-notes", label: "Vineyard", glyph: "❧" }] : []),
+            ...(hasVineyard ? [{ href: "/vineyards/field-notes", label: "Scouting", glyph: "❧" }] : []),
             // Gated on the same flag the desktop avatar link uses. /inbox calls
             // notFound() when the inbox is off, so an ungated tab is a 404 sitting in
             // the phone's primary navigation.

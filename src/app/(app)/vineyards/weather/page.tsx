@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { Eyebrow } from "@/components/ui";
 import { loadVineyardClimateSummary } from "@/lib/weather/actions";
 import { WeatherCard } from "./WeatherCard";
-import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 // VI-P8 Unit 10 — the grower climate card on the existing vineyard surface (vineyard-root only, R16). Simple
 // headline in the primary source's numbers; progressive disclosure for the spread. Renders offline from the
@@ -44,7 +43,6 @@ async function WeatherPageBody({ searchParams }: { searchParams: Promise<{ viney
 export default async function WeatherPage(props: { searchParams: Promise<{ vineyard?: string }> }) {
   return (
     <>
-      <HubSectionNav hub="/vineyards/field-notes" current="/vineyards/weather" />
       <WeatherPageBody {...props} />
     </>
   );

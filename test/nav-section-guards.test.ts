@@ -42,8 +42,6 @@ const CAPABILITY_GUARDS: Record<string, RegExp> = {
 const STRICTER_ON_PURPOSE: Record<string, string> = {
   "/settings": "exposes QuickBooks/Commerce7 connection config and COA mappings; the page's lack of a guard is a separate pre-existing gap, not licence to advertise it",
   "/work-orders/task-types": "an authoring surface — the page renders read-only for non-admins, so linking them there is a dead end with extra steps",
-  "/vineyards/maps": "scopes its vineyard picker by membership, so a non-member gets a working page with nothing in it",
-  "/vineyards/weather": "same empty-picker problem as Map Explorer",
   "/vineyards/harvest/weigh-tags": "matches the legacy sidebar's own customCrush gate (AppShell SETUP/VINEYARDS arrays)",
   "/setup/clients": "custom-crush programme surface; the page itself redirects when the programme is off",
 };

@@ -5,7 +5,6 @@ import { Eyebrow } from "@/components/ui";
 import { loadVineyardDetail } from "@/lib/vineyard/actions";
 import type { SerializedBlock } from "@/lib/vineyard/data";
 import { NdviConsole, type NdviJobRow, type NdviBlockRow, type NdviDatasetRow } from "../ndvi/NdviConsole";
-import { HubSectionNav } from "@/components/nav/HubSectionNav";
 
 // Map Explorer — the ONE vineyard map surface (VI). Pick a vineyard, see the satellite map with a
 // toggleable/reorderable LAYER STACK: blocks + NDVI (vigor) + soil (NRCS). Consolidates the old NDVI
@@ -81,7 +80,6 @@ async function MapExplorerPageBody({ searchParams }: { searchParams: Promise<{ v
 export default async function MapExplorerPage(props: { searchParams: Promise<{ vineyard?: string }> }) {
   return (
     <>
-      <HubSectionNav hub="/vineyards/field-notes" current="/vineyards/maps" />
       <MapExplorerPageBody {...props} />
     </>
   );

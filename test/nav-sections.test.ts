@@ -52,7 +52,7 @@ describe("shape", () => {
   it("names the self-link from the destination, so one page never has three names", () => {
     // There is no `hubLabel`. An earlier draft had one and it drifted immediately:
     // the strip said "Field notes" and "Harvest" — the two labels doc 01 §5 RETIRED —
-    // directly under a sidebar saying "Vineyard rounds" and "Fruit intake".
+    // directly under a sidebar saying "Vineyards" and "Fruit intake".
     for (const hub of sectionHubs()) {
       const items = sectionsFor(hub, ADMIN);
       if (items.length === 0) continue;
@@ -140,16 +140,9 @@ describe("role and capability visibility", () => {
     }
   });
 
-  it("gates Map Explorer and Weather on membership — they scope their picker by it", () => {
-    // NOT /vineyards/sprays: that page lists every active vineyard to any ready user,
-    // so it is genuinely theirs and carries no flag. Flagging it would have taken a
-    // surface the legacy sidebar gave every cellar hand.
-    for (const h of ["/vineyards/maps", "/vineyards/weather"]) {
-      expect(isSectionVisible(find(h), USER)).toBe(false);
-      expect(isSectionVisible(find(h), VINEYARD_USER)).toBe(true);
-      expect(isSectionVisible(find(h), ADMIN)).toBe(true);
-    }
-  });
+  // Map Explorer / Weather / Spray records were sections here until 2026-07-28. They
+  // are top-level destinations under "The vineyards" now, so their role matrix is
+  // asserted in test/nav-model.test.ts against NAV_MODEL instead.
 
   it("hides En Tirage when the sparkling program is off — the route 404s without it", () => {
     expect(isSectionVisible(find("/cellar/en-tirage"), { ...ADMIN, sparkling: false })).toBe(false);
@@ -173,7 +166,6 @@ describe("hubForRoute — the sidebar still says where you are on a section rout
     expect(hubForRoute("/vessels")).toBe("/setup");
     expect(hubForRoute("/settings")).toBe("/setup");
     expect(hubForRoute("/cellar/en-tirage")).toBe("/bottling");
-    expect(hubForRoute("/vineyards/maps")).toBe("/vineyards/field-notes");
     expect(hubForRoute("/work-orders/review")).toBe("/work-orders");
   });
 
@@ -185,7 +177,7 @@ describe("hubForRoute — the sidebar still says where you are on a section rout
   });
 
   it("follows a nested child up to the same hub", () => {
-    expect(hubForRoute("/vineyards/sprays/products")).toBe("/vineyards/field-notes");
+    expect(hubForRoute("/work-orders/templates/new")).toBe("/work-orders");
   });
 
   it("does not claim a route that merely shares a prefix", () => {
@@ -217,9 +209,9 @@ describe("the palette subtitle is its own disclosure surface", () => {
     }
   });
 
-  it("hides the vineyard parent from a user with no membership", () => {
-    expect(sectionParentLabel("/vineyards/field-notes", USER)).toBeUndefined();
-    expect(sectionParentLabel("/vineyards/field-notes", VINEYARD_USER)).toBe("Vineyard rounds");
+  it("hides the parent from a user who cannot see the hub", () => {
+    expect(sectionParentLabel("/accounting", USER)).toBeUndefined();
+    expect(sectionParentLabel("/vineyards/harvest", VINEYARD_USER)).toBe("Fruit intake");
   });
 });
 

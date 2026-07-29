@@ -135,12 +135,15 @@ test.describe("AC-F3 — aria-current", () => {
     test(`exactly one nav item is current on ${route}`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await goto(page, route);
-      // `:visible` matters once NAV_V2 is on. Both the desktop sidebar and the
-      // mobile tab bar are nav[aria-label="Main"], and BOTH are in the DOM at every
-      // width — the responsive classes hide one with `display: none`, which takes it
-      // out of the accessibility tree entirely. A locator that ignores CSS would
-      // count a landmark no screen reader can reach and report a defect that does
-      // not exist. What the criterion is actually about is what the user perceives.
+      // `:visible`, and the ORDER of that reasoning matters. Both the sidebar and the
+      // mobile tab bar are nav[aria-label="Main"] and both stay in the DOM at every
+      // width, so an unscoped count is 2 no matter what. Scoping to what the user can
+      // actually perceive is only honest if the hiding genuinely works — and it did
+      // not: MobileTabBar set `display: "grid"` INLINE, beating the >=1024px
+      // `display: none`, so the phone nav really was rendering on desktop. That bug
+      // is fixed in the component (test/shell-nav.test.ts guards the inline style),
+      // display:none now truly applies, and only then does `:visible` measure the
+      // thing this criterion is about instead of hiding a defect behind a selector.
       await expect(page.locator('nav[aria-label="Main"]:visible [aria-current="page"]')).toHaveCount(1);
     });
   }

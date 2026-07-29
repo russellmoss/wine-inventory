@@ -38,7 +38,11 @@ export function MobileTabBar({ tabs, isActive }: { tabs: MobileTab[]; isActive: 
         right: 0,
         bottom: 0,
         zIndex: 40,
-        display: "grid",
+        // NO `display` here. globals.css sets `.bw-tabbar { display: grid }` and hides it
+        // at >=1024px; an INLINE display beats both, so the tab bar was rendering on
+        // desktop underneath the sidebar — two nav landmarks named "Main", two
+        // aria-current="page" elements, and the phone nav shown to desktop users.
+        // AppShell's own sidebarBox carries the same warning in a comment.
         gridTemplateColumns: `repeat(${tabs.length}, 1fr)`,
         background: "var(--surface-raised)",
         borderTop: "1px solid var(--border-strong)",

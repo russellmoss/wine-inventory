@@ -14,16 +14,22 @@ import {
 } from "@/lib/nav/model";
 
 describe("structure", () => {
-  it("has exactly 3 groups, replacing today's 4", () => {
-    expect(NAV_MODEL.map((g) => g.id)).toEqual(["today", "wine", "business"]);
+  it("has four groups, with the vineyards ABOVE the wine", () => {
+    // 2026-07-28 (owner): growing and making are two halves of the same business, so
+    // they are two equal groups rather than one destination with hidden sub-tabs.
+    // The vineyards comes first because the fruit exists before the wine does.
+    expect(NAV_MODEL.map((g) => g.id)).toEqual(["today", "vineyards", "wine", "business"]);
   });
 
-  it("has exactly 13 global destinations, down from 31 sidebar entries", () => {
-    // 31 entries is not navigable. This number is the whole point of the IA work.
-    expect(allDestinations()).toHaveLength(13);
+  it("has 16 global destinations, down from 31 sidebar entries", () => {
+    // 31 unordered entries is what was unnavigable — 13 was never a target in its own
+    // right. Promoting Map Explorer, Weather & climate and Spray records out of
+    // /vineyards/field-notes' sub-nav and into their own group took this to 16, and
+    // four named groups of about four is still an IA you can hold in your head.
+    expect(allDestinations()).toHaveLength(16);
   });
 
-  it("collapses only 'the business' by default", () => {
+  it("opens the three working groups and collapses only 'the business'", () => {
     expect(NAV_MODEL.filter((g) => !g.defaultOpen).map((g) => g.id)).toEqual(["business"]);
   });
 
@@ -74,7 +80,7 @@ describe("role visibility (doc 01 §3, OD-1)", () => {
     }
   });
 
-  it("hides Vineyard rounds from a user with no vineyard, shows it with one", () => {
+  it("hides Vineyards from a user with no vineyard, shows it with one", () => {
     expect(isVisible(byHref("/vineyards/field-notes"), user)).toBe(false);
     expect(isVisible(byHref("/vineyards/field-notes"), vineyardUser)).toBe(true);
     expect(isVisible(byHref("/vineyards/field-notes"), admin)).toBe(true);

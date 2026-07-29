@@ -56,7 +56,7 @@ Finished goods, Reports and ~15 more. Ctrl-K does not rescue it: `search/query.t
 palette, so a surface cannot be reachable in one and invisible in the other. The deliverable is an
 **orphan guard**: a new route with nothing linking to it fails CI. Eleven handoff claims failed
 verification, including a live flag-gated bug — `hasVineyard` is hard-coded to `isAdmin`, so a real
-vineyard manager loses "Vineyard rounds" while mobile shows it to everyone.
+vineyard manager loses "Vineyards" while mobile shows it to everyone.
 **Both ODs ratified:** Setup gets its own `/setup` hub with grouped cards; the brand mark links to
 `/`. A four-reviewer adversarial pass is scheduled INTO the work, before the PR.
 
