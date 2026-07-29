@@ -107,10 +107,10 @@ Freshness key: `live` (must reflect the last write) · `session` (cache for the 
 | # | UI element | Source | Missing | Class |
 |---|---|---|---|---|
 | DM-54 | Draft card in the dock | existing assistant draft-card guarantee (plan 081) | — | A |
-| DM-55 | **"Review & create" navigates to the created object** | assistant tool result → route | The tool creates the record; the client does not navigate today | **C** |
+| DM-55 | **"Review & create" navigates to the created object** | assistant tool result → route | **This claim was wrong on both halves (plan 105).** The tool did not merely create — it created and then immediately ISSUED (`propose-work-order.ts:544`), contradicting `03-interaction-spec.md:179`. And a `navigate` payload already reached the client (`commit.ts:19` → `confirm/route.ts:30`), rendered as a "View X →" link. SHIPPED: draft by default, an explicit "issue it" still issues, and the client navigates unless the source or target is `/assistant` (where the session would end). | **C** |
 | DM-56 | Dock continues on the same object after navigation | conversation persistence (exists) + page context | Needs the page to pass its object context to the dock | C |
-| DM-57 | Provenance chips on an AI statement | the records the tool actually read | Tool calls are logged; surfacing them as user-facing links is new | C |
-| DM-58 | "Ranking is off right now" degraded state | AI availability | — | A |
+| DM-57 | Provenance chips on an AI statement | the records the tool actually read | **DEFERRED out of Phase 9 (plan 105, council).** `ProvenancePanel` (B33) ships with its first real producer, not before: an invisible component with a null-return contract is prop surface and test churn for zero user value. When it lands, note the rule is "the provenance PANEL is not shown" — gating the assistant's ANSWER on an unwired predicate would mute correct replies and read as a broken assistant. | C |
+| DM-58 | "Ranking is off right now" degraded state | AI availability | **Rescoped, plan 105 U5.** The approved copy describes the ranked "Now" queue — a Phase 5+ surface that does not exist (no `/now` route; `SavedViews`/`Narrow` unbuilt), so there is no working state to degrade from. BUILT instead: SC-12's row — the dock says the assistant is unavailable, from one server-owned gate shared with `/api/assistant`, and search/records/recording are provably unaffected. The ranked-queue copy lands with the ranked queue. | A |
 
 ## 9. Scan
 

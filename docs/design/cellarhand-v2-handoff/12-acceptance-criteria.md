@@ -40,6 +40,10 @@ Written so each can become a unit, integration, Playwright or visual-regression 
 | AC-C15 | `CommandPalette` groups render in the order Do → Go to → Ask, always | Unit |
 | AC-C16 | `ProvenanceBadge` renders on every derived quantity and exposes its derivation via `aria-describedby` | Screen tests |
 | AC-C17 | Every component in the migration map has a `/styleguide` entry | Static test against the export barrel |
+| AC-C18 | `AIProposalCard` renders the B32 anatomy: state label, title, rationale, what it would change, primary / secondary / tertiary actions, and the footer "A draft changes nothing until you confirm it." | Source-contract test (no jsdom in this repo) |
+| AC-C19 | `AIProposalCard` carries no sparkle glyph, gradient, or the words "AI-powered" / "smart" / "magic" / "I think" / "as an AI" | Static guard over `src/` |
+| AC-C20 | The card's primary action names the act the press performs: "Review & create" when the outcome is a draft, "Review & issue" only when the user's own words asked for an issue | Unit (`assistant-issue-intent`) |
+| AC-C21 | A voice user can advance a proposal card hands-free; no state requires touching the screen | Manual QA on the floor surface |
 
 ## 3. Screens
 
@@ -112,6 +116,9 @@ Written so each can become a unit, integration, Playwright or visual-regression 
 | AC-W3 | **Find one barrel in 8,142.** ⌘K → type a barrel number → open it in ≤2 keystrokes after the code. Repeat with scan. Repeat with the camera disabled and keyboard only. |
 | AC-W4 | **Winemaker, stalled ferment.** Tank board → spot the attention glyph → open T-09 → read the chart → read the tasting note → record a reading → verify it appears in the chart and history. |
 | AC-W5 | **Correction after a blend.** Attempt to correct a topping entry whose wine was later blended → verify the blocked message names WO #244 in prose and offers the LIFO unwind. |
+| AC-W7 | **The assistant creates a draft, not issued work.** Ask the assistant for a round without saying "issue" → Review & create → verify the work order is `DRAFT`, that no reservation was taken and no assignee was notified, and that the receipt says nobody can see it on the floor yet. |
+| AC-W8 | **An explicit "issue it" still issues.** Ask with the word "issue" → the card's primary action reads "Review & issue" → confirm → verify status `ISSUED` and the assignee notified. Repeat with "but don't issue it yet" and verify `DRAFT`. |
+| AC-W9 | **The conversation continues on the object.** From any page except `/assistant`, Review & create → land on the draft with the dock still open → say "change the schedule to Friday" without naming the order → verify it lands on that order. From `/assistant` itself, verify the app does NOT navigate (it would end the session) and the receipt link is offered instead. |
 | AC-W6 | **Seasonal worker, first day.** With no training, complete one topping round using only on-screen text. No step requires knowing a code, an abbreviation or an icon's meaning. |
 
 ## 5. Permissions
@@ -138,6 +145,8 @@ Written so each can become a unit, integration, Playwright or visual-regression 
 | ID | Criterion |
 |---|---|
 | AC-N1 | Offline: the primary capture action is disabled, the banner states the situation, and entered values persist on screen |
+| AC-N2 | Assistant unavailable: the dock says so before the user types, and the SAME server gate refuses `/api/assistant` — the composer and the route never disagree |
+| AC-N3 | Assistant unavailable: global search, the sidebar, the command palette and the manual New work order flow are all unaffected (03-interaction-spec.md:183 forbids AI-only affordances) |
 | AC-N2 | The words "queued", "synced", "will retry" and "offline-ready" appear nowhere unless a durable outbox exists and drains |
 | AC-N3 | A request that fails mid-record leaves nothing written and says so explicitly |
 | AC-N4 | Submitting the same `commandId` twice produces exactly one record |
