@@ -7,14 +7,30 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PHASE 9: ASSISTANT BEHAVIOUR (class C). Not started.**
-Spec: `docs/design/cellarhand-v2-handoff/11-implementation-sequence.md` §"Phase 9".
+**CELLARHAND UI/UX v2 — PHASE 9: ASSISTANT BEHAVIOUR (class C). PLANNED + COUNCIL-APPLIED. Ready for `/work` at PR B1.**
+Plan: `docs/plans/2026-07-29-105-feat-cellarhand-v2-phase9-assistant-behaviour-plan.md` (v2, 6 units, 5 PRs)
+Council: `docs/plans/council-feedback-105-phase9-assistant-behaviour.md`
+Branch `claude/cellarhand-v2-phase-9-bd9d68` off `f7040b7e`. The dock file stays byte-unchanged.
 
-Four items, risk LOW, the dock itself untouched:
-1. "Review & create" creates the draft **and navigates to it**
-2. The page passes object context to the dock, so the conversation continues on the same object
-3. `AIProposalCard` and `ProvenancePanel` become real components
-4. Degraded-AI states
+**THREE items, not four** — B33 `ProvenancePanel` was cut (see Follow-ups in the plan):
+1. Draft by default + **an explicit "issue it" still issues**, then **navigate to it**
+2. The page passes object context to the dock (provider + client bridge, dock untouched)
+3. `AIProposalCard` becomes one real component (it exists twice today, privately)
+4. Degraded-AI state, rescoped to the dock — the ranked-queue copy is deferred to Phase 5+
+
+⚠️ **The handoff was wrong about item 1, and it is the load-bearing fact.**
+`commitProposeWorkOrder` today creates a draft and then **immediately ISSUES it**
+(`propose-work-order.ts:544`), while the spec says `DRAFT`, never `ISSUED`
+(`03-interaction-spec.md:179`). So item 1 is a behaviour change on the busiest assistant write path,
+not a `router.push`. The navigate transport already exists (`commit.ts:19` → `confirm/route.ts:30` →
+client, rendered as a "View X →" link). 11 handoff conflicts logged; DM-58 had no host surface.
+
+🔪 **Council found four failure sequences the first draft missed** — deleting the issue call defers
+reservation conflicts to *after* the nonce burns (no retry); pre-deploy tokens carry stale semantics;
+the link-only downgrade can strand a created draft unreachable after a reload; and the nav rule
+guarded the destination but not the **source** (navigating away from `/assistant` ends the session).
+Each now has a mitigation and a branch-table row. **PR order is inverted from the first draft: the
+correctness fix (B1) ships before the refactor (A).**
 
 **Phase 3b is DONE and LIVE.** The v2 nav is ON in production as of 2026-07-29 —
 [#563](https://github.com/russellmoss/wine-inventory/pull/563) (a11y),
