@@ -7,60 +7,33 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PHASE 3b: FINISH THE IA. Plan 104 BUILT on
-`claude/cellarhand-v2-phase3b-ia-41e485`; four-reviewer adversarial pass then PR.**
+**CELLARHAND UI/UX v2 — PHASE 9: ASSISTANT BEHAVIOUR (class C). Not started.**
+Spec: `docs/design/cellarhand-v2-handoff/11-implementation-sequence.md` §"Phase 9".
 
-Phase 6 (tanks) MERGED as [#562](https://github.com/russellmoss/wine-inventory/pull/562) (`2613a828`) —
-board + five-tab detail, zero schema changes. Phases 0/1 [#555], 2/3 [#557], 4/5 [#561].
+Four items, risk LOW, the dock itself untouched:
+1. "Review & create" creates the draft **and navigates to it**
+2. The page passes object context to the dock, so the conversation continues on the same object
+3. `AIProposalCard` and `ProvenancePanel` become real components
+4. Degraded-AI states
 
-✅ **Closed.** Every static route is now nav-reachable, palette-findable, or exempt with a stated
-reason, and `test/route-reachability.test.ts` fails CI on the next orphan (verified by hand: adding
-an unlinked page fails it by name). `SectionNav` has six real consumers; `/setup` is a new grouped
-admin hub; `hasVineyard` derives from real membership on desktop, mobile AND search. All of it is
-gated on `NEXT_PUBLIC_NAV_V2`, so production is unchanged. **Turning the flag on is a separate
-decision with its own QA pass — this phase only made it possible.**
+**Phase 3b is DONE and LIVE.** The v2 nav is ON in production as of 2026-07-29 —
+[#563](https://github.com/russellmoss/wine-inventory/pull/563) (a11y),
+[#564](https://github.com/russellmoss/wine-inventory/pull/564) (IA),
+[#565](https://github.com/russellmoss/wine-inventory/pull/565) (flag flip), main at `13cbc62c`.
+Sidebar is now **Today · The vineyards · The wine · The business**, 16 destinations.
 
-**Crawled to prove it, not asserted:** a live BFS from `/` with the flag on, against the Demo
-tenant, following only links that actually render — **35 of 58 static routes reachable, up from
-17**, and the crawl hit its own 10-minute cap mid-queue so that is a floor. All 23 unreached are
-accounted for: 5 auth pages, 3 dev tools, 6 redirect stubs, 1 palette-only (`/assistant`, whose
-real surface is the dock FAB), 3 hidden because the Demo tenant has sparkling and custom-crush
-OFF (correct), and 5 contextual links on pages the crawl had not dequeued yet.
+⚠️ **Rollback is config, not code:** `NEXT_PUBLIC_NAV_V2=0` + redeploy restores the legacy
+31-entry sidebar byte-identically. The flag predicate is `!== "0"` precisely to keep that true.
 
-**A four-reviewer adversarial pass ran BEFORE the PR** (security · adversarial · maintainability ·
-design) and found five things that were green on 5,513 tests — an ungated page parked under an
-admin-only hub is unreachable (`/reports`, and four Setup children); a palette-only route is
-unreachable on a phone (`/winemaking-calculator`); a strip only on the hub is a one-way door; the
-D2 palette guard was six source-text assertions over code nothing executed; and `hubLabel` had
-resurrected two labels doc 01 §5 retired. All fixed. `CONTEXTUAL_DESTINATIONS` was deleted outright
-— zero consumers, and it contradicted `unnavigable.ts` about four routes.
+⚠️ **Not browser-QA'd as a NON-ADMIN.** Every browser pass ran as the Demo Winery owner
+(admin). The role matrix is unit-tested hard — a plain user and a vineyard manager are
+covered in `nav-model`/`nav-sections`/`search-sections` — but nobody has *looked* at the
+sidebar as a cellar hand. First thing worth doing if anything looks wrong on the floor.
 
-Two corrections against the plan, both verified in source: `/bottled` and `/finished-goods` are
-`redirect()` stubs into `/inventory` (plan 080 U6), so Unit 7's "Inventory sub-tabs" do not exist —
-`/inventory` gets no strip and both are classified as stubs. `/assistant` and
-`/winemaking-calculator` are palette-only (doc 01 §4's own "and Ctrl-K"), because `AssistantDock`
-had to stay diff-empty.
-
-<details><summary>The gap as it stood before this phase</summary>
-
-⚠️ **The v2 nav cannot be turned on yet, and that is now the blocking item.** Measured by crawling
-the running app with `NEXT_PUBLIC_NAV_V2=1` against the live Demo tenant: **17 of 56 static routes
-are reachable.** Phase 3 shipped 13 destinations and planned sub-navigation for the rest; the
-sub-navigation was never built. `SectionNav` shipped in Phase 2 with **zero consumers**. Nothing is
-deleted (route-stability guards that) — there is simply no way in to Vessels, Locations, Users,
-Vendors, Growers, Varieties & vineyards, Map Explorer, Weather, Spray records, Samples, Bottled,
-Finished goods, Reports and ~15 more. Ctrl-K does not rescue it: `search/query.ts` iterates
-`NAV_MODEL` only. **Production is safe because the flag is unset.**
-
-**Plan 104 — 13 units.** One data module (`nav/sections.ts`) feeds BOTH the sub-navs and the
-palette, so a surface cannot be reachable in one and invisible in the other. The deliverable is an
-**orphan guard**: a new route with nothing linking to it fails CI. Eleven handoff claims failed
-verification, including a live flag-gated bug — `hasVineyard` is hard-coded to `isAdmin`, so a real
-vineyard manager loses "Vineyards" while mobile shows it to everyone.
-**Both ODs ratified:** Setup gets its own `/setup` hub with grouped cards; the brand mark links to
-`/`. A four-reviewer adversarial pass is scheduled INTO the work, before the PR.
-
-</details>
+⚠️ **The 44px house rule still has a backlog.** WCAG AA (2.5.8, 24px) is now met app-wide;
+the project's own stricter 44px floor (2.5.5, AAA) is not. The remaining offenders are
+inline prose links (17-21px) whose "fix" is a visible redesign of body copy. Logged in
+TODOS.md; it wants its own plan and an owner decision, not a silent resize.
 
 ## 🔭 Also in flight
 
@@ -1338,6 +1311,19 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   parallel). Next: register CDO token + run the ~45-min point-API spike (de-risks the providers), then `/work`.
 
 ## ✅ Done recently
+
+- **✅ Phase 3b (plan 104) SHIPPED AND FLAG FLIPPED 2026-07-29** — three PRs, main at `13cbc62c`.
+  The v2 nav went from *un-shippable* (17 of 56 routes reachable) to live. `nav/sections.ts` feeds
+  BOTH the sub-navs and Ctrl-K; `route-reachability.test.ts` fails CI on any route nothing links to;
+  `/setup` is a real hub; "The vineyards" became a top-level group equal to "The wine".
+  Crawl: **17 → 38 of 58** reachable. Four independent reviewers ran before the PR.
+- **✅ App-wide WCAG remediation ([#563](https://github.com/russellmoss/wine-inventory/pull/563))** —
+  the authed axe gate had gone unrun for a phase and was hiding real defects, none of them
+  regressions: 26 tables that only a mouse could scroll, `opacity`-as-state dragging text to 2.5:1,
+  `--ink-500` shipping at 3.41:1 under a comment claiming 4.6:1, a fill colour used as a foreground,
+  and 23px controls under the AA minimum. **axe 82/82 green.** Three new guards compute the answer
+  instead of trusting a comment.
+
 
 - **✅ Plan 104 (Phase 3b — finish the v2 IA) BUILT 2026-07-28**, 5 commits on
   `claude/cellarhand-v2-phase3b-ia-41e485`. `src/lib/nav/sections.ts` (one module feeds BOTH the
