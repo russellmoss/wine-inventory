@@ -43,6 +43,18 @@ const { proposeWorkOrderTool } = await import("@/lib/assistant/tools/propose-wor
 
 const CTX = { user: { id: "u1", activeOrganizationId: "org_demo_winery", vineyardIds: [] } } as never;
 
+/** Plan 105 U1: the same context, plus the user's own wording — which is what decides issue-vs-draft. */
+function ctxSaying(lastUserMessage: string) {
+  return { user: { id: "u1", activeOrganizationId: "org_demo_winery", vineyardIds: [] }, lastUserMessage } as never;
+}
+
+/** Decode a signed proposal token's payload (base64url body before the ".sig"). */
+function tokenArgs(token: string): Record<string, unknown> {
+  const body = token.slice(0, token.lastIndexOf("."));
+  const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as { args: Record<string, unknown> };
+  return payload.args;
+}
+
 /** A readiness result shaped like the real engine's, with only the fields these branches read. */
 function readinessResult(over: Partial<WorkOrderProposal>): WorkOrderProposal {
   return {
@@ -84,9 +96,42 @@ describe("propose_work_order — Ready", () => {
     expect(proposal).not.toBeNull();
     expect(isDraftProposal(proposal!)).toBe(false);
     expect(typeof (proposal as { token?: string }).token).toBe("string");
-    // Unchanged from before the Draft work: the ready preview wording is the pre-existing one.
-    expect(proposal!.preview).toContain('Create and issue "Work order: rack"');
+    // MOVED DELIBERATELY (plan 105 U1). This used to read 'Create and issue "…"'. The default
+    // outcome is now a DRAFT (03-interaction-spec.md:179), and this request's wording never asked
+    // for the order to go out, so the preview must not promise an issue.
+    expect(proposal!.preview).toContain('Create as a draft "Work order: rack"');
     expect(proposal!.preview).toContain("1 task");
+  });
+
+  it("signs issueOnConfirm=false into the token when the user only asked to create", async () => {
+    readiness.value = readinessResult({ status: "ready" });
+    const proposal = asProposal(await proposeWorkOrderTool.run(ctxSaying("make me a work order to rack T3 to T4"), INPUT))!;
+    // The flag rides INSIDE the signed payload, so it cannot be re-derived or swapped at commit.
+    expect(tokenArgs((proposal as { token: string }).token).issueOnConfirm).toBe(false);
+    expect(proposal.preview).toContain("Create as a draft");
+  });
+
+  it("signs issueOnConfirm=true and promises an issue when the user's own words said issue", async () => {
+    readiness.value = readinessResult({ status: "ready" });
+    const proposal = asProposal(await proposeWorkOrderTool.run(ctxSaying("issue a work order to rack T3 to T4"), INPUT))!;
+    expect(tokenArgs((proposal as { token: string }).token).issueOnConfirm).toBe(true);
+    expect(proposal.preview).toContain('Create and issue "Work order: rack"');
+  });
+
+  it("a negated issue ('but don't issue it yet') still drafts", async () => {
+    readiness.value = readinessResult({ status: "ready" });
+    const proposal = asProposal(
+      await proposeWorkOrderTool.run(ctxSaying("build the rack work order but don't issue it yet"), INPUT),
+    )!;
+    expect(tokenArgs((proposal as { token: string }).token).issueOnConfirm).toBe(false);
+  });
+
+  it("the model cannot smuggle an issue: the flag comes from ctx, never from tool input", async () => {
+    readiness.value = readinessResult({ status: "ready" });
+    const proposal = asProposal(
+      await proposeWorkOrderTool.run(ctxSaying("make me a work order"), { ...INPUT, issueOnConfirm: true }),
+    )!;
+    expect(tokenArgs((proposal as { token: string }).token).issueOnConfirm).toBe(false);
   });
 
   it("carries the full readiness details through to the card", async () => {

@@ -2,6 +2,7 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal, signResume } from "../confirm";
+import { detectIssueIntent, hasIssueIntentContract, issueOnConfirmFromArgs } from "../issue-intent";
 import { entityPath } from "../routes";
 import { materialDisplayName } from "@/lib/cellar/materials";
 import { listMaterials } from "@/lib/cellar/materials";
@@ -322,11 +323,17 @@ async function resolveAssigneesForTasks(tenantId: string, draft: NlWorkOrderDraf
   return null;
 }
 
-function previewText(proposal: ReturnType<typeof proposalDetails>): string {
+/**
+ * Plan 105 U1: the preview must name the act the press actually performs. Confirming now leaves a
+ * DRAFT unless the user's own words asked for the order to go out (see ../issue-intent.ts), so
+ * "Create and issue" is only honest in the issue case.
+ */
+function previewText(proposal: ReturnType<typeof proposalDetails>, issueOnConfirm: boolean): string {
   const taskText = proposal.tasks.map((task) => `#${task.seq} ${task.summary}`).join("; ");
   const warningCount = proposal.warnings.length;
   const unknown = proposal.cost.hasUnknownCost ? " Unknown supply cost is flagged." : "";
-  return `Create and issue "${proposal.title}" with ${proposal.tasks.length} task${proposal.tasks.length === 1 ? "" : "s"}: ${taskText}.${warningCount ? ` ${warningCount} warning${warningCount === 1 ? "" : "s"} attached.` : ""}${unknown}`;
+  const verb = issueOnConfirm ? "Create and issue" : "Create as a draft";
+  return `${verb} "${proposal.title}" with ${proposal.tasks.length} task${proposal.tasks.length === 1 ? "" : "s"}: ${taskText}.${warningCount ? ` ${warningCount} warning${warningCount === 1 ? "" : "s"} attached.` : ""}${unknown}`;
 }
 
 /**
@@ -453,16 +460,33 @@ export const proposeWorkOrderTool: AssistantTool = {
     if (assigneeChoice) return assigneeChoice;
     const proposal = await buildNlWorkOrderProposal(draft);
     const details = proposalDetails(proposal);
+    // Plan 105 U1: does the USER's own wording ask for this to go out, or only to exist? Decided
+    // HERE, at propose time, off ctx.lastUserMessage (never model output), and signed into the
+    // token below so it cannot be re-derived or tampered with at commit.
+    const issueOnConfirm = detectIssueIntent(ctx.lastUserMessage);
     if (proposal.status !== "ready") {
       // DRAFT (plan 081 U5). Previously this returned a prose sentence, which the client renders as
       // chat text — so a work order that was one field short produced NO card at all, and the model,
       // knowing that, often skipped the tool and asked in prose instead. `details` already carries
       // `unresolved` (what is missing) and `warnings` (severity blocking / confirmable /
       // completion_check); the client already renders both. NO token is minted, so this cannot commit.
-      return { needsConfirmation: true, draft: true as const, preview: draftPreviewText(details), details };
+      return {
+        needsConfirmation: true,
+        draft: true as const,
+        preview: draftPreviewText(details),
+        details: { ...details, issueOnConfirm },
+      };
     }
-    const token = signProposal("propose_work_order", buildNlWorkOrderCommitArgs(proposal));
-    return { needsConfirmation: true, preview: previewText(details), token, details };
+    const token = signProposal("propose_work_order", {
+      ...buildNlWorkOrderCommitArgs(proposal),
+      issueOnConfirm,
+    });
+    return {
+      needsConfirmation: true,
+      preview: previewText(details, issueOnConfirm),
+      token,
+      details: { ...details, issueOnConfirm },
+    };
   },
 };
 
@@ -515,6 +539,12 @@ export const commitProposeWorkOrder: Committer = async (user, rawArgs) => {
   if (rawArgs.schemaVersion != null && rawArgs.schemaVersion !== NL_WORK_ORDER_SCHEMA_VERSION) {
     throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
   }
+  // Plan 105 U1: a token minted before the issue-intent contract carries no `issueOnConfirm` key, so
+  // its card said "Create and issue" while this code would draft. Refuse rather than quietly do
+  // something other than what the user pressed.
+  if (!hasIssueIntentContract(rawArgs)) {
+    throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
+  }
   const args = commitArgs(rawArgs);
   if (args.taskBuilds.length === 0) throw new Error("This work-order proposal has no tasks.");
   // Freshness fingerprint + pinned press-source liveness (the builder action re-gates readiness too, but
@@ -524,8 +554,14 @@ export const commitProposeWorkOrder: Committer = async (user, rawArgs) => {
   // Plan 055 U4 (LOCKED eng decision): commit through the SAME builder action the visual builder uses, so
   // equipment attach (attachTaskEquipmentCore, inside the action) + any WO→WO deps ride ONE deterministic
   // path. equipmentIds/assigneeId ride INSIDE the already-signed taskBuilds (never a new top-level arg), so
-  // signed-payload integrity holds. The builder action creates a DRAFT; we then issue it, preserving the
-  // existing "draft created, not issued" recovery when issue fails (e.g. a reservation conflict).
+  // signed-payload integrity holds. The builder action creates a DRAFT.
+  //
+  // Plan 105 U1: it now STOPS there unless the user explicitly asked for the order to go out.
+  // Issuing publishes to the floor, takes reservations and notifies the assignee — a second,
+  // deliberate act (03-interaction-spec.md:179: "A WorkOrder in DRAFT. Never ISSUED"). The flag was
+  // decided at propose time from the user's own words and SIGNED into this token, so it cannot be
+  // re-derived or tampered with here.
+  const issueOnConfirm = issueOnConfirmFromArgs(rawArgs);
   const tenantId = user.activeOrganizationId;
   const taskBuilds = tenantId ? await revalidateSignedIds(tenantId, args.taskBuilds) : args.taskBuilds;
   const taskCount = taskBuilds.length;
@@ -540,12 +576,25 @@ export const commitProposeWorkOrder: Committer = async (user, rawArgs) => {
     readinessFingerprint: args.fingerprint,
   }));
 
+  const plural = `task${taskCount === 1 ? "" : "s"}`;
+
+  // The default outcome. Nothing is reserved and nobody is notified until a human presses Issue on
+  // the work order itself — which is the point of the change, and what the receipt has to say.
+  if (!issueOnConfirm) {
+    return {
+      message: `Created draft work order #${created.number} "${args.title}" with ${taskCount} ${plural}. Nobody can see it on the floor until you issue it.`,
+      navigate: { path: entityPath("workOrder", created.workOrderId), label: `Draft WO #${created.number}` },
+    };
+  }
+
+  // The user's own words asked for this to go out. The try/catch stays: issue is a second write, and
+  // if it fails the draft still exists, so the receipt must say so rather than imply nothing happened.
   try {
     const issued = unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
     const warningSuffix =
       issued.reservationWarnings.length > 0 ? ` Warnings: ${issued.reservationWarnings.join(" ")}` : "";
     return {
-      message: `Issued work order #${created.number} "${args.title}" with ${taskCount} task${taskCount === 1 ? "" : "s"}.${warningSuffix}`,
+      message: `Issued work order #${created.number} "${args.title}" with ${taskCount} ${plural}.${warningSuffix}`,
       navigate: { path: entityPath("workOrder", created.workOrderId), label: `#${created.number} ${args.title}` },
     };
   } catch (e) {
