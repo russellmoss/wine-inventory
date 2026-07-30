@@ -596,3 +596,33 @@ TEMPLATE — copy for each new invariant / finding:
 - Rasters are stored as **private** blobs with `addRandomSuffix`, under the existing `<pathPrefix>/<tenantId>/` convention, and read back through an authenticated path. Range requests on a private blob were confirmed to return HTTP 206, so a range-indexed layout is available without making anything public.
 - P0 writes **no database rows at all**, so the spike carried no tenancy risk. That posture ends at P1, where the Phase-12 tenancy checklist applies in full to `VineyardPlantingArea` and every derived product.
 - **Status:** 🟢 (measured and pinned 2026-07-24; `npm run verify:gis-live` exercises the real egress path)
+
+### Scan-to-context tags: no inbound rate limiting exists, and "tenant-scoped" has one correct implementation (RFC-004, PROPOSED)
+- **Context:** RFC-004 proposes a `/t/<tagToken>` resolver so a cellar hand can scan a barrel instead
+  of picking it from a list. Recorded here at the **proposed** stage because the RFC states a
+  security requirement the codebase cannot currently meet — the failure mode where a control exists
+  on paper only. Nothing is built; this is a prerequisite note, not a finding against shipped code.
+- **Gap 1 — inbound rate limiting does not exist.** RFC-004 §3.5 requires *"Rate-limit token
+  resolution to prevent enumeration."* Verified on `91cd1dcd`: **every** `rateLimit` symbol in
+  `src/` gates an OUTBOUND third-party client (`gis/satellite/client.ts`, `gis/satellite/token.ts`,
+  `weather/providers/fetch-util.ts`, `knowledge/embed.ts`), and `assistant/run.ts:400` merely
+  *catches* `Anthropic.RateLimitError`. There is no primitive that gates an inbound route. Building
+  one is unscoped work; the owner decision (scope it / defer it knowingly / drop the requirement) is
+  recorded in RFC-004 §3.5.1 so it cannot ship unmet by default.
+- **Gap 2 — the tempting implementation of "tenant-scoped" violates TENANT-1.** A global token index
+  plus an app-code tenant comparison leaks existence through timing (found-then-rejected takes a
+  measurably different path from never-found). The correct shape is a **tenant-scoped read through
+  the RLS-extended client**, so a foreign token returns nothing and the "unknown tag" copy fires —
+  satisfying RFC-004 AC-3 by construction, because the code cannot distinguish the two cases either.
+  Two schema consequences: the unique must be **`@@unique([tenantId, tagToken])`, never a global
+  unique on `tagToken`** (a global unique leaks cross-tenant existence via insert conflict), and the
+  resolver must never use `prismaBase`/`$queryRaw` (TENANT-2) — raw SQL goes through
+  `runInTenantRawTx`.
+- **Residual risk if rate limiting is deferred (the defensible option):** the resolver is auth-gated
+  AND tenant-scoped, so this is not open enumeration — it is an authenticated insider probing their
+  own tenant's token space, against opaque, revocable tokens. Materially smaller than the
+  requirement's wording implies. **Defer knowingly or build it; do not leave the line standing while
+  not building it.**
+- **Tripwire:** any `tagToken` lookup outside the tenant-extended client; a global `@@unique` on
+  `tagToken`; a `/t/` route merged while RFC-004 §3.5.1 is still unanswered.
+- **Status:** ⚪ proposed — nothing built. Revisit at Phase 10 planning.

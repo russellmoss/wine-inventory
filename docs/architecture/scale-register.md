@@ -372,3 +372,36 @@ TEMPLATE — copy this block for each new decision:
   inside the loop.
 - **Status:** 🟢 (shipped plan 098; 4,654-test suite + goldens pin the resolver contract and the
   imperial-tenant assistant payload; live-QAed on Demo Winery).
+
+### Keg close-out cannot be one atomic ledger transaction, and the assistant registry is 2.4x over its cliff (RFC-002/003, PROPOSED)
+- **Context:** recorded at the **proposed** stage during the Cellarhand v2 RFC amendment pass
+  (`91cd1dcd`). Two scale calls that are too small for an ADR but wrong to lose.
+- **Choice 1 — close-out atomicity is scoped to the RECORD, not to N ledger writes.** RFC-002 AC-3
+  originally demanded the whole close-out be atomic ("a failure writes nothing"). That contradicts
+  the mechanism its own AC-7 depends on: `applyToGroup` is deliberately **one transaction per
+  member**, catching per-vessel failures and always completing
+  (`src/lib/cellar/group-apply.ts:233-270`) — which is what makes "57 of 60 recorded, 3 named" true
+  today. The keg fill's close-out record flips `OPEN → CLOSED` atomically; the N per-barrel writes
+  are per-member transactions sharing one `batchId`.
+- **Fine until:** a close-out fans out to more barrels than `runLedgerWrite`'s ceiling allows.
+  `runLedgerWrite` is `SERIALIZABLE` with a **20 s timeout** (`src/lib/ledger/write.ts:62-63`), and
+  each barrel needs a `decideCombineRoute` preflight, a fold, a capacity read and a co-residence
+  assert. **At the real estate (22 barrels) this is tight; at the 420-barrel round the handoff
+  describes, a single transaction will not finish.** The per-member shape sidesteps the ceiling
+  entirely rather than raising it.
+- **What breaks at scale:** nothing, if the per-member shape holds. The self-correcting property is
+  that a barrel which failed simply leaves its share in the keg — the keg's own balance absorbs the
+  discrepancy, so a partial close-out is arithmetically consistent rather than short. `TOPPING-1` is
+  therefore scoped to what was actually drawn, not to the nominal fill.
+- **Choice 2 — the assistant registry is already 2.4x over its stated cliff.** `ALL_TOOLS` holds
+  **96 tools** (`src/lib/assistant/registry.ts:143`, counted on `91cd1dcd`) against the ~40-tool
+  selection-accuracy cliff in `data_model_coalescence.md:102-104`. **The register's own line says
+  "~86" — it is stale by ten**, which is how a ratchet quietly stops ratcheting. RFC-001/002 must
+  therefore add **one domain-composite topping tool** (fill → tick → close out) and extend two
+  existing tools, never the naive five-tool decomposition (`create_barrel_group`, `tick_barrel`,
+  `close_out_keg`, `correct_keg_fill`, `query_groups`).
+- **Tripwire:** a single `runLedgerWrite` wrapping more than one member's close-out; `ALL_TOOLS`
+  exceeding 96 without a consolidation plan; a new `verify:ai-native` gap parked rather than covered
+  (`MAX_ALLOWED = 2` in `scripts/ai-native-allowlist.mjs:156` only ever decrements).
+- **Status:** ⚪ proposed — nothing built. 96 tools probably warrants its own consolidation pass
+  before anything new is added; raise it as its own decision, not as a rider on Phase 7.

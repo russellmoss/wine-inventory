@@ -7,7 +7,35 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**NONE — Phase 9 SHIPPED. Pick the next phase.**
+**⛔ OWNER DECISION GATE — the Cellarhand v2 domain RFCs are amended and true; two answers unblock Phase 7.**
+
+**RFC AMENDMENT PASS — DONE 2026-07-29, docs-only, against `main` @ `91cd1dcd`.** All four RFCs in
+`docs/design/cellarhand-v2-handoff/rfc/` are now implementable against the code that exists. They
+stay **`proposed`** — the pass made them true, it did not approve them. New companion:
+`RFC-000-cross-cutting-implementation-notes.md` (migration order · live-tenant plan · assistant
+coverage · parity). New: **ADR 0013** (balanced-op shape) + 6 `status: planned` invariant notes
+(GROUP-1/2, TOPPING-1/2, PROV-1/2). `verify:invariants` green (57 notes, 50 guarded, 100%).
+
+**🔴 THE OWNER MUST DECIDE TWO THINGS — nothing else blocks Phase 7:**
+1. **OD-3's second half** — effective-dated membership **or** a work-order member snapshot?
+   RFC-001 §4.3.1 lays out both and **deliberately does not pick**. Effective-dating collides with
+   `SPRAY-2` (re-deriving repaints history); snapshot answers only the work-order question. **Gates
+   the M2 migration — the two options have different columns.**
+2. **OD-4** — may a keg fill be recorded at its nominal stamped volume, or must every fill state a
+   measured number? **⛔ NOT READY as recommended:** nominal-badged-as-measured is the exact
+   dishonesty RFC-003 exists to prevent. The gap and the candidate third enum value are written up
+   in **RFC-003 §3.6**. **One-way door — Postgres cannot drop an enum value — and it gates M1.**
+
+**✅ READY TO RATIFY:** OD-5 (re-fan — needed a *spec*, not a decision; now RFC-002 §3.6.1 as a
+**partial** re-fan with exact copy), OD-6 (with RFC-004 §3.5.1's rate-limit answer attached), and
+**OD-7 — already implemented**, Phase 9 shipped it.
+
+**⚠️ THE TRAP FOR THE NEXT READER: `VesselType` is `BARREL | TANK` — there is no `KEG`.** No handoff
+document mentioned this. It is a **second** enum-only migration and the single most likely way
+Phase 8 stalls mid-flight. It goes in M1 beside `CaptureMethod.DERIVED`; enum values must be merged
+**and deployed** before any code writes them.
+
+---
 
 **CELLARHAND UI/UX v2 — PHASE 9: ASSISTANT BEHAVIOUR — MERGED + LIVE IN PRODUCTION 2026-07-30.**
 [#566](https://github.com/russellmoss/wine-inventory/pull/566) squash-merged as `408f8aa5`.
@@ -2111,3 +2139,10 @@ model's now-broader tool calls fell through to a nonsense default and derailed t
 with real-shaped stubs plus three tool-description cross-references, then a shared regex fix for
 brittle paraphrase-matching in the other three cases. All 4 legality-refusal cases score 5/5 live
 against the real Anthropic API. Spray Wave 1 and Cellarhand v2 objectives unchanged by this work._
+
+_Last updated: 2026-07-29 — **Cellarhand v2 RFC AMENDMENT PASS complete** (docs-only, `91cd1dcd`).
+All four RFCs amended in place with dated changelogs; still `proposed`. Struck one wrong finding in
+the gate brief (**OD-7** — Phase 9 HAD landed; the brief was written from a checkout one commit
+behind, at `f7040b7e`). Reversed RFC-002 §3.4 toward the shipped `topping.ts` because the proposed
+op shape violates `LEDGER-6` and its `EXTERNAL` workaround would silently break the 5120.17 fold.
+Owner now owes exactly two answers: **OD-3's membership half** and **OD-4**. Spray Wave 1 unchanged._
