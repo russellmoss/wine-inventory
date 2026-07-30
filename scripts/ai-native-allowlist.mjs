@@ -25,6 +25,29 @@
 
 // Permanent — no conversational surface is appropriate. Not ratcheted.
 export const INTERNAL = {
+  // Cellarhand v2 Phase 7 (plan 106 D5/F8). The core lands in a `*-core.ts` file DELIBERATELY, so the
+  // gate discovers it and the exemption has to be written down here rather than hiding behind a
+  // filename the discovery regex happens not to match. The pre-existing group CRUD in
+  // `src/lib/vessels/groups.ts` is invisible to this gate for exactly that accidental reason, and an
+  // INTERNAL key naming it would be stale and fail CI. Silence is not an exemption.
+  //
+  // NOTE this core currently reads as graph-REACHABLE (an unrelated import chain from add-addition
+  // touches it). That is an import-graph fact, not conversational coverage — nobody can configure a
+  // barrel group by talking, and shouldn't. The entry stays so the intent is on the record if that
+  // import ever moves.
+  "src/lib/vessels/group-core.ts": {
+    owner: "russellmoss",
+    reason:
+      "Barrel-group CONFIGURATION — type/status/location/settings, member order, archive. This is " +
+      "desk-with-coffee work, not wet-hands work: a manager sits down once and defines a rack, then " +
+      "the definition is reused for months. It is a GUI surface (SC-09, /cellar/groups) and it is " +
+      "admin-gated (RFC-001 4.10), so it is deliberately NOT conversational. Emitting create/rename/" +
+      "archive/settings tools here would add five tools to a 96-tool registry against a ~40-tool " +
+      "selection cliff, which RFC-000 3 names as the thing to reject at review. The READ capability " +
+      "IS conversational and is covered: query_cellar_contents gained a `barrelGroup` parameter " +
+      "(what's in rack 14, what's due, which barrels haven't been topped) rather than a new tool.",
+    coveredBy: "query_cellar_contents (barrelGroup param) for reads; /cellar/groups GUI for configuration",
+  },
   "src/lib/ferment/panel-core.ts": {
     owner: "winemaking",
     reason:

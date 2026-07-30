@@ -215,6 +215,57 @@ export async function getGroupRollupsCore(groupId: string): Promise<GroupRollups
   };
 }
 
+/** Per-member topping recency — what "which barrels haven't been topped" actually needs. */
+export type GroupMemberToppingStatus = {
+  vesselId: string;
+  code: string;
+  label: string;
+  position: number;
+  /** Null means NEVER TOPPED, which is a different fact from "topped a long time ago". */
+  lastToppedAt: string | null;
+};
+
+export async function getGroupToppingStatusCore(groupId: string): Promise<GroupMemberToppingStatus[]> {
+  const members = await prisma.vesselGroupMember.findMany({
+    where: { groupId },
+    orderBy: [{ position: "asc" }, { id: "asc" }],
+    select: { position: true, vessel: { select: { id: true, code: true, type: true } } },
+  });
+  if (members.length === 0) return [];
+
+  const rows = await prisma.lotOperationLine.findMany({
+    where: { vesselId: { in: members.map((m) => m.vessel.id) }, operation: { type: "TOPPING" } },
+    orderBy: { operation: { observedAt: "desc" } },
+    distinct: ["vesselId"],
+    select: { vesselId: true, operation: { select: { observedAt: true } } },
+  });
+  const lastByVessel = new Map(rows.map((r) => [r.vesselId, r.operation.observedAt]));
+
+  return members.map((m) => ({
+    vesselId: m.vessel.id,
+    code: m.vessel.code,
+    label: vesselLabel(m.vessel),
+    position: m.position,
+    lastToppedAt: lastByVessel.get(m.vessel.id)?.toISOString() ?? null,
+  }));
+}
+
+/** Resolve a group by name for a READ path, returning null rather than throwing on a miss. */
+export async function findGroupByNameCore(name: string): Promise<VesselGroupDetailDTO | null> {
+  const trimmed = name?.trim();
+  if (!trimmed) return null;
+  const exact = await prisma.vesselGroup.findFirst({ where: { name: trimmed }, select: { id: true } });
+  if (exact) return getGroupDetailCore(exact.id);
+  const partial = await prisma.vesselGroup.findMany({
+    where: { name: { contains: trimmed, mode: "insensitive" } },
+    select: { id: true },
+    take: 2,
+  });
+  // Two matches is ambiguous and must not silently pick one — the caller asks which.
+  if (partial.length !== 1) return null;
+  return getGroupDetailCore(partial[0].id);
+}
+
 // ── configuration ────────────────────────────────────────────────────────────────────────────────
 
 export type ConfigureGroupInput = {

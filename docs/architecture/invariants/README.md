@@ -33,7 +33,8 @@ three things that run without you:
 
 ## Coverage snapshot
 
-**30 invariant notes: 29 guarded, 0 planned, 1 deferred.** The 29 guarded ones (ledger DB +
+**58 invariant notes: 53 guarded, 4 planned, 1 deferred.** (Counted from the directory, not
+remembered — this line claimed 30/29/0/1 while the real figures had moved twice.) The 53 guarded ones (ledger DB +
 pure + correction, tenancy, cost, compliance, work-orders, naming NAMING-1/2, bond +
 tax-class BOND-1/TAXCLASS-1/TAXPAID-1/AMEND-1, migration MIGRATE-1, and the inbox
 INBOX-1 recipient-isolation guard `verify:inbox-isolation`) are asserted by

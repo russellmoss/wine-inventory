@@ -384,6 +384,45 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   attributed append-only override row. A null block `finishedAt` yields REI/residual UNKNOWN and never
   borrows the header timestamp (G2/C14 — worker safety, not data quality).
 
+## Barrel groups — Cellarhand v2 Phase 7 (RFC-001 / ADR 0014)
+
+> Machine-readable notes: [[GROUP-1-one-operational-group-per-vessel]],
+> [[GROUP-2-group-is-never-a-vessel]], [[GROUP-3-work-order-member-snapshot-is-frozen]].
+
+- **One operational group per vessel (GROUP-1, high, database).** A vessel belongs to at most one
+  `OPERATIONAL` `VesselGroup`; `AD_HOC` membership is unbounded and may overlap freely. Without it
+  the same barrel is scheduled into two competing topping rounds and double-topped — a correctness
+  gap, not an ergonomics one, and equally wrong at 22 barrels and at 8,142. Enforced by a **partial
+  unique index** on `(tenantId, vesselId) WHERE groupType = 'OPERATIONAL'`. The predicate reads the
+  DENORMALISED `groupType`, not the group's `type`, because **a partial index predicate cannot
+  reference another table**; two triggers — not application discipline — keep that column true, so
+  the index is enforced against a column no app code can write. Guarded by
+  `npm run verify:group-membership`, which checks the data AND the continued existence of the index
+  and both triggers.
+
+- **A group is never a vessel and never a lot (GROUP-2, high, pure-code).** A `VesselGroup` holds no
+  volume, has no capacity of its own, appears in no `LotOperationLine`, and never appears in
+  `LotLineage`. A group action stays ONE user intent fanned out to member vessels sharing
+  `LotOperation.batchId`. This is what keeps the group layer from quietly becoming a second, parallel
+  ledger; it pairs with [[LEDGER-12-one-lot-per-vessel]] — the atomic vessel stays 1:1 with its lot,
+  while the group above it may *associate* mixed lots without ever holding them. Guarded by
+  `npm run verify:group-not-a-vessel`, derived from `Prisma.dmmf` rather than a hand-list.
+
+- **An issued work order's member list is frozen (GROUP-3, high, core).** A work order issued against
+  a group **snapshots its member list at issue**, and that list is immutable thereafter. No membership
+  edit — add, remove, reorder, split, merge, archive, or retroactive admin correction — may change
+  what an already-issued work order covers. **The freeze point is ISSUE, not create:** a `DRAFT` reads
+  live membership because nothing has been committed to yet, which is only meaningful because Phase 9
+  made *issue* a separate, deliberate human act ([[WORKORDER-1-status-machine]]). Historical reads
+  read the snapshot; there is no as-of query on membership.
+  **Corollary, and it is a tripwire:** `VesselGroupMember` carries **no** `addedAt`/`removedAt`. The
+  owner chose the work-order snapshot over effective-dated membership (ADR 0014) precisely because
+  effective-dating plus RFC-001 §4.9's retroactive correction reproduces the failure
+  [[SPRAY-2-facts-as-of-snapshot]] forbids — a correction silently repainting what a closed decision
+  meant. A membership table that grows date columns later is the sign this has been abandoned; both
+  the structural migration and `verify:group-not-a-vessel` fail if either column appears. Guarded by
+  `npm run verify:wo-member-snapshot`.
+
 ## Knowledge base — the corpus/relational boundary (SKB)
 
 > Machine-readable note: [[KB-1-product-table-is-not-corpus]]. Guarded by `npm run verify:kb-boundary`.

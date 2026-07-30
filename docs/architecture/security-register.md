@@ -626,3 +626,33 @@ TEMPLATE — copy for each new invariant / finding:
 - **Tripwire:** any `tagToken` lookup outside the tenant-extended client; a global `@@unique` on
   `tagToken`; a `/t/` route merged while RFC-004 §3.5.1 is still unanswered.
 - **Status:** ⚪ proposed — nothing built. Revisit at Phase 10 planning.
+
+## Cellarhand v2 Phase 7 — the member snapshot as an integrity boundary
+
+_Added 2026-07-30 (plan 106, Units 5-6, 9). Status: 🟢 built and guarded (GROUP-3)._
+
+- **Decision — an issued work order's member list is FROZEN, and the freeze is structural.** RFC-001
+  originally proposed effective-dated membership with historical reads re-deriving as-of the work
+  order's date. Combined with §4.9's retroactive membership correction, that reproduces exactly the
+  failure `SPRAY-2` exists to forbid: **an admin fixing a mis-dated membership row silently changes
+  what a CLOSED work order covered.** The owner chose the snapshot (ADR 0014, 2026-07-29).
+- **Why this belongs in the SECURITY register and not only the scale one:** the thing being protected
+  is the truthfulness of a record someone may later be asked to defend. A falsified record of what
+  happened is a compliance and dispute problem, and it is equally wrong at 22 barrels and at 8,142.
+  The snapshot makes repainting **structurally impossible** rather than merely forbidden — strictly
+  stronger than a copy-verbatim rule that every future correction path has to keep honouring.
+- **The freeze is enforced at the DATABASE, twice, and both matter.** The snapshot write is
+  `updateMany ... WHERE memberSnapshotAt IS NULL` (once-only), and the `DRAFT -> ISSUED` flip is a
+  conditional `updateMany` asserting exactly one row. The second was a pre-existing TOCTOU window in
+  `issueWorkOrderCore` — status read outside the transaction, unconditional update under READ
+  COMMITTED. It merely doubled reservations before; under GROUP-3 it would write two immutable
+  snapshots, so closing it became mandatory rather than tidy.
+- **What this forecloses, stated honestly:** standalone membership history as a QUERYABLE structure.
+  "Which barrels were in rack 14 on 3 March" means reading the audit log forward, which is a weaker
+  surface than a table query. Recoverable but awkward. **That is the accepted cost**, and it does not
+  affect work orders, which carry their own answer.
+- **Tripwire, and it is a hard one:** `VesselGroupMember` gaining `addedAt` or `removedAt`. That is
+  the sign the snapshot has been quietly abandoned and the SPRAY-2 failure mode has been re-admitted.
+  Three independent things now fail if it happens — the structural migration's self-verify block,
+  `npm run verify:group-not-a-vessel`, and GROUP-3's own note. Also: any code path that RE-RESOLVES a
+  non-DRAFT task's members from live membership instead of reading `memberSnapshot`.

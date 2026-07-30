@@ -405,3 +405,38 @@ TEMPLATE — copy this block for each new decision:
   (`MAX_ALLOWED = 2` in `scripts/ai-native-allowlist.mjs:156` only ever decrements).
 - **Status:** ⚪ proposed — nothing built. 96 tools probably warrants its own consolidation pass
   before anything new is added; raise it as its own decision, not as a rider on Phase 7.
+
+## Cellarhand v2 Phase 7 — enforcing OD-3 on an empty table, and where the group layer stops scaling
+
+_Added 2026-07-30 (plan 106, Units 2-9). Status: 🟢 built and guarded._
+
+- **Decision — GROUP-1 is enforced IN THE MIGRATION, not reported first.** The pre-amendment RFC-001
+  §4.13 said "do not enforce it in the migration; report violations, let an admin resolve them,
+  enable the constraint afterwards." That was prudence against **unknown** data. The data is known:
+  **0 groups, 0 memberships, 0 vessels in 2+ groups, across all 11 tenants** (re-verified read-only
+  2026-07-30). A report-don't-enforce phase buys nothing and costs a second migration plus a window
+  in which the constraint is documented but not true.
+- **Why that is the safe choice rather than the bold one:** rollback is `DROP INDEX` and nothing
+  else — no data change, no column drop. That is the cheapest rollback in the whole set, which is
+  precisely why enforcing now is cheap.
+- **The formulation, because RFC-001 §6.1's one-line sketch is not implementable.** The index must
+  be partial on the GROUP's type, but **a partial index predicate cannot reference another table**.
+  Resolved by denormalising `groupType` onto `vessel_group_member` and giving TWO TRIGGERS ownership
+  of it. Cost: every membership insert/update fires a single-row lookup, and a group RETYPE is
+  `O(members)`. At 22 barrels that is free; at the 8,142-barrel framing a retype of one 420-barrel
+  group is one bounded `UPDATE`, still fine.
+- **Fine until:** a rule-based membership feature (RFC-001 §6.2, deferred to v2) starts re-evaluating
+  membership on a schedule. Then the propagation trigger fires per re-evaluation rather than per
+  human edit, and the `O(members)` retype becomes a hot path.
+- **The snapshot's real scale cost is storage, and it is accepted.** `WorkOrderTask.memberSnapshot`
+  duplicates the member list per group task. A 420-barrel round stores 420 rows of `{vesselId, code,
+  label, position}` per issued work order, forever. ADR 0014 accepted this explicitly in exchange for
+  making retroactive repainting structurally impossible; it is also why the snapshot is **Json and
+  not a join table** (a member table would be a new tenant-scoped table needing all nine Phase-12
+  steps, to store data ADR 0014 decided does not need to be queryable).
+- **What breaks at scale:** the group INDEX page computes rollups per group with a per-group query
+  (`getGroupRollupsCore` in a `Promise.all`). At 11 tenants x a handful of groups this is fine; at
+  the "8,142 barrels become ~132 browsable objects" framing it is 132 round trips per page paint.
+- **Tripwire:** `/cellar/groups` render time growing with group count; a rule-based-membership PR that
+  does not first batch `getGroupRollupsCore`; `vessel_group_member` gaining `addedAt`/`removedAt` (see
+  the security register — that one is an integrity tripwire, not a scale one).
