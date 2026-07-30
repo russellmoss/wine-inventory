@@ -7,6 +7,7 @@ import { resolveCreateLead } from "@/lib/work-orders/lead-resolve";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import { assertWorkOrderTransition, rollUpWorkOrderStatus } from "@/lib/work-orders/status";
+import { freezeGroupSnapshotsTx } from "@/lib/work-orders/group-snapshot";
 import { reserveForWorkOrderTx, releaseReservationsForWorkOrderTx } from "@/lib/work-orders/reservations";
 import { emitNotificationTx, buildWorkOrderNotificationPayload } from "@/lib/inbox/notifications";
 
@@ -98,6 +99,10 @@ export type CreateTaskInput = {
   scheduledStart?: Date | null;
   scheduledEnd?: Date | null;
   locationId?: string | null; // plan 053 B9
+  // Cellarhand v2 Phase 7 (F3): the saved VesselGroup this task's member list came from. Null for a
+  // range (B101-B110) or a comma list, whose payload list IS already the frozen list. Derived from
+  // the payload by canonicalColumns (A6), never passed independently, so it cannot drift from it.
+  vesselGroupId?: string | null;
   plannedPayload: Prisma.InputJsonValue;
 };
 
@@ -221,6 +226,7 @@ async function createWorkOrderTx(actor: LedgerActor, input: CreateWorkOrderInput
             scheduledStart: t.scheduledStart ?? null,
             scheduledEnd: t.scheduledEnd ?? null,
             locationId: t.locationId ?? null,
+            vesselGroupId: t.vesselGroupId ?? null,
             plannedPayload: t.plannedPayload,
           })),
         },
@@ -266,11 +272,31 @@ export async function issueWorkOrderCore(
 
   const result = await runInTenantTx(async (tx) => {
     const now = new Date();
-    const updated = await tx.workOrder.update({
-      where: { id: wo.id },
+    // TOCTOU (plan 106, Unit 6). The DRAFT check above is OUTSIDE this transaction and the update was
+    // unconditional, under READ COMMITTED — so two concurrent issues could both pass the guard and
+    // both run, doubling the reservations. That window was survivable before; it is not now, because
+    // GROUP-3 says the snapshot written below is immutable, and a race that writes two of them is a
+    // race that breaks an invariant.
+    //
+    // `updateMany` with `status: "DRAFT"` in the WHERE makes the transition itself the lock: the
+    // second writer matches zero rows and is told so, rather than proceeding on a stale read.
+    const claimed = await tx.workOrder.updateMany({
+      where: { id: wo.id, status: "DRAFT" },
       data: { status: "ISSUED", issuedAt: now, issuedById: actor.actorUserId, issuedByEmail: actor.actorEmail },
+    });
+    if (claimed.count !== 1) {
+      throw new ActionError("That work order was already issued by someone else.", "CONFLICT");
+    }
+    const updated = await tx.workOrder.findUniqueOrThrow({
+      where: { id: wo.id },
       select: { id: true, number: true, status: true },
     });
+
+    // GROUP-3: freeze each group-backed task's member list HERE — inside the same transaction as the
+    // ISSUED flip and BEFORE the reservations, so "issued" and "frozen" can never disagree. Refuses
+    // the whole issue if a task points at an archived, emptied or deleted group (D3).
+    await freezeGroupSnapshotsTx(tx, wo.id, now);
+
     const warnings = await reserveForWorkOrderTx(tx, { workOrderId: wo.id, validUntil: input.validUntil });
     await writeAudit(tx, {
       ...actor,
