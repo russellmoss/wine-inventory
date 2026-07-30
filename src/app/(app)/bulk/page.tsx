@@ -7,6 +7,7 @@ import { listMaterials } from "@/lib/cellar/materials";
 import { listGroups } from "@/lib/vessels/groups";
 import { BulkClient, type VesselWithContents, type Option, type BlockOption, type SubblockOption } from "./BulkClient";
 import { HubSectionNav } from "@/components/nav/HubSectionNav";
+import { CELLAR_VESSEL_TYPE_FILTER, isCellarVessel } from "@/lib/vessels/cellar-types";
 
 /** Staleness only looks back 24h, so a 30-day window cannot change any answer. */
 const READING_WINDOW_DAYS = 30;
@@ -22,7 +23,10 @@ export default async function BulkPage() {
   const [vessels, varieties, vineyards, blocks, subblocks, materials, groups, lastReadings, lotScopedReadings] =
     await Promise.all([
     prisma.vessel.findMany({
-      where: { isActive: true },
+      // Plan 106 / M1: the cellar-floor board is barrels and tanks (RFC-000 §2 "filter on type").
+      // KEG/BIN land in the enum at M1 but nothing writes them until Phase 8, which brings its own
+      // keg surface — a keg must never appear here as a tank.
+      where: { isActive: true, type: { in: CELLAR_VESSEL_TYPE_FILTER } },
       orderBy: { code: "asc" },
       include: {
         components: {
@@ -105,7 +109,7 @@ export default async function BulkPage() {
 
   const varietyNameById = new Map(varieties.map((v) => [v.id, v.name]));
 
-  const data: VesselWithContents[] = vessels.map((v) => {
+  const data: VesselWithContents[] = vessels.filter(isCellarVessel).map((v) => {
     const comps = v.components.map((c) => ({
       id: c.id,
       varietyId: c.variety.id,
