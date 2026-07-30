@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
+import { requireActiveTenant, requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { classifyBlend } from "@/lib/bulk/blend";
 import { computeFill } from "@/lib/vessels/fill";
 import { tankState } from "@/lib/vessels/tank-state";
@@ -13,10 +13,14 @@ import { CELLAR_VESSEL_TYPE_FILTER, isCellarVessel } from "@/lib/vessels/cellar-
 const READING_WINDOW_DAYS = 30;
 
 export default async function BulkPage() {
+  // requireActiveTenant() STAYS. It is the guard that redirects when no tenant resolves; dropping it
+  // for requireReadyUser (which only proves auth) means a revoked membership or a developer without a
+  // support session falls through to `prisma.vessel.findMany` and gets a raw "Tenant context
+  // required" 500 instead of a redirect.
+  await requireActiveTenant();
   // Plan 106 D7 / RFC-001 4.10: the page stays open to every ready user (view + record work); only
   // the group-manager controls are admin-gated, and the actions enforce it server-side regardless.
-  const user = await requireReadyUser();
-  const isAdmin = isTenantAdminLike(user);
+  const isAdmin = isTenantAdminLike(await requireReadyUser());
   // One clock read for the whole render, and the staleness window both reading queries are
   // bounded by. Anything older than this cannot change a "stale?" answer, so there is no
   // reason to scan the tenant's entire panel history on every board paint.

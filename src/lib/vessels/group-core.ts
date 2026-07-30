@@ -1,7 +1,8 @@
-import type { Prisma, VesselGroupStatus, VesselGroupType } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { VesselGroupStatus, VesselGroupType } from "@prisma/client";
 import { ActionError } from "@/lib/action-error";
 import { prisma } from "@/lib/prisma";
-import { runInTenantTx } from "@/lib/tenant/tx";
+import { runInTenantTx, runInTenantRawTx } from "@/lib/tenant/tx";
 import { diff, writeAudit } from "@/lib/audit";
 import { vesselLabel } from "@/lib/cellar/addition";
 import { OPEN_STATUSES } from "@/lib/work-orders/archive-filters";
@@ -182,23 +183,8 @@ export async function getGroupRollupsCore(groupId: string): Promise<GroupRollups
     }
   }
 
-  // Last topped, per vessel, from the ledger — TOPPING legs against these vessels.
-  //
-  // `distinct` + `orderBy` rather than `groupBy`: the date lives on LotOperation (`observedAt` — WHEN
-  // IT HAPPENED, not when it was typed in), and a groupBy cannot reach through the relation to
-  // aggregate it. Prisma's distinct-with-orderBy keeps this ONE row per vessel, so a 420-barrel
-  // group does not drag every topping line it ever had across the wire.
-  const lastToppedRows =
-    vesselIds.length === 0
-      ? []
-      : await prisma.lotOperationLine.findMany({
-          where: { vesselId: { in: vesselIds }, operation: { type: "TOPPING" } },
-          orderBy: { operation: { observedAt: "desc" } },
-          distinct: ["vesselId"],
-          select: { vesselId: true, operation: { select: { observedAt: true } } },
-        });
-
-  const topped = lastToppedRows.map((r) => r.operation.observedAt).filter((d): d is Date => d instanceof Date);
+  // Last topped, per vessel, from the ledger — one DISTINCT ON, see lastToppedByVessel.
+  const topped = [...(await lastToppedByVessel(vesselIds)).values()];
   const oldest = topped.length > 0 ? topped.reduce((a, b) => (a < b ? a : b)) : null;
 
   return {
@@ -215,39 +201,82 @@ export async function getGroupRollupsCore(groupId: string): Promise<GroupRollups
   };
 }
 
-/** Per-member topping recency — what "which barrels haven't been topped" actually needs. */
-export type GroupMemberToppingStatus = {
+/** Per-member state: what a barrel holds, and when it was last topped. */
+export type GroupMemberState = {
   vesselId: string;
   code: string;
   label: string;
   position: number;
+  volumeL: number;
+  capacityL: number;
+  lotCodes: string[];
   /** Null means NEVER TOPPED, which is a different fact from "topped a long time ago". */
   lastToppedAt: string | null;
 };
 
-export async function getGroupToppingStatusCore(groupId: string): Promise<GroupMemberToppingStatus[]> {
+/**
+ * Every member of a group, with its contents and topping recency.
+ *
+ * DELIBERATELY NOT built on `queryCellarContents`. The first version of the assistant's barrel-group
+ * lens ran a tenant-wide contents query and filtered to members in JS — but that query is capped
+ * (DEFAULT_LIMIT 25 / MAX_LIMIT 50), so in a tenant with more vessels than the cap most members came
+ * back missing and the assistant reported barrels as EMPTY while the rollups said 4,950 L. It would
+ * have stated both numbers in one answer. This reads the members directly: no cap, no post-filter.
+ */
+export async function getGroupMemberStatesCore(groupId: string): Promise<GroupMemberState[]> {
   const members = await prisma.vesselGroupMember.findMany({
     where: { groupId },
     orderBy: [{ position: "asc" }, { id: "asc" }],
-    select: { position: true, vessel: { select: { id: true, code: true, type: true } } },
+    select: {
+      position: true,
+      vessel: {
+        select: {
+          id: true,
+          code: true,
+          type: true,
+          capacityL: true,
+          vesselLots: { select: { volumeL: true, lot: { select: { code: true } } } },
+        },
+      },
+    },
   });
   if (members.length === 0) return [];
 
-  const rows = await prisma.lotOperationLine.findMany({
-    where: { vesselId: { in: members.map((m) => m.vessel.id) }, operation: { type: "TOPPING" } },
-    orderBy: { operation: { observedAt: "desc" } },
-    distinct: ["vesselId"],
-    select: { vesselId: true, operation: { select: { observedAt: true } } },
-  });
-  const lastByVessel = new Map(rows.map((r) => [r.vesselId, r.operation.observedAt]));
+  const lastByVessel = await lastToppedByVessel(members.map((m) => m.vessel.id));
 
   return members.map((m) => ({
     vesselId: m.vessel.id,
     code: m.vessel.code,
     label: vesselLabel(m.vessel),
     position: m.position,
+    volumeL: Math.round(m.vessel.vesselLots.reduce((a, vl) => a + Number(vl.volumeL ?? 0), 0) * 100) / 100,
+    capacityL: Number(m.vessel.capacityL ?? 0),
+    lotCodes: m.vessel.vesselLots.map((vl) => vl.lot.code),
     lastToppedAt: lastByVessel.get(m.vessel.id)?.toISOString() ?? null,
   }));
+}
+
+/**
+ * Last TOPPING per vessel, as one set-based statement.
+ *
+ * Raw SQL because Prisma's `distinct` + `orderBy` only compiles to `DISTINCT ON` when the orderBy
+ * LEADS with the distinct fields — here it leads with a relation field (`operation.observedAt`), so
+ * Prisma would fetch every topping line ever written for these vessels and dedupe in memory. A
+ * 420-barrel group topped weekly for two years is ~44,000 rows per call, and the group index calls
+ * this once per group. `runInTenantRawTx` because raw SQL bypasses the tenant extension (TENANT-2).
+ */
+async function lastToppedByVessel(vesselIds: string[]): Promise<Map<string, Date>> {
+  if (vesselIds.length === 0) return new Map();
+  const rows = await runInTenantRawTx(async (tx) =>
+    tx.$queryRaw<{ vesselId: string; observedAt: Date }[]>`
+      SELECT DISTINCT ON (l."vesselId") l."vesselId" AS "vesselId", o."observedAt" AS "observedAt"
+      FROM "lot_operation_line" l
+      JOIN "lot_operation" o ON o."id" = l."operationId"
+      WHERE l."vesselId" IN (${Prisma.join(vesselIds)}) AND o."type" = 'TOPPING'
+      ORDER BY l."vesselId", o."observedAt" DESC
+    `,
+  );
+  return new Map(rows.map((r) => [r.vesselId, r.observedAt]));
 }
 
 /** Resolve a group by name for a READ path, returning null rather than throwing on a miss. */
@@ -395,13 +424,25 @@ export async function archiveGroupCore(
   const group = await prisma.vesselGroup.findUnique({ where: { id: input.groupId } });
   if (!group) throw new ActionError("Group not found.");
 
-  const openWorkOrderCount = await countOpenWorkOrdersForGroup(input.groupId);
+  const { draft, issued } = await countWorkOrdersForGroup(input.groupId);
+  const openWorkOrderCount = draft + issued;
   const nextStatus: VesselGroupStatus = input.archived ? "ARCHIVED" : "ACTIVE";
 
   if (input.archived && openWorkOrderCount > 0 && !input.confirmOpenWorkOrders) {
+    const parts: string[] = [];
+    if (issued > 0) {
+      parts.push(
+        `${issued} issued work order${issued === 1 ? "" : "s"} ${issued === 1 ? "is" : "are"} unaffected — ${issued === 1 ? "its barrel list was" : "their barrel lists were"} frozen at issue`,
+      );
+    }
+    if (draft > 0) {
+      // The important half, and the half the first version of this message got backwards.
+      parts.push(
+        `${draft} DRAFT work order${draft === 1 ? "" : "s"} will NOT be issuable until this group is restored`,
+      );
+    }
     throw new ActionError(
-      `"${group.name}" is referenced by ${openWorkOrderCount} open work order${openWorkOrderCount === 1 ? "" : "s"}. ` +
-        `Archiving hides the group but does not change those work orders — their barrel lists are already frozen. Confirm to archive.`,
+      `"${group.name}" is referenced by ${openWorkOrderCount} open work order${openWorkOrderCount === 1 ? "" : "s"}: ${parts.join("; ")}. Confirm to archive.`,
       "CONFLICT",
     );
   }
@@ -511,6 +552,9 @@ export async function removeGroupMemberCore(
   ]);
   if (!group) throw new ActionError("Group not found.");
   if (!vessel) throw new ActionError("Vessel not found.");
+  // Same guard as add: without it an archived group's membership stayed freely mutable, so a group
+  // could be silently emptied while archived and then restored missing its barrels.
+  if (group.status === "ARCHIVED") throw new ActionError("That group is archived. Restore it before editing membership.");
 
   await runInTenantTx(async (tx) => {
     const removed = await tx.vesselGroupMember.deleteMany({
@@ -544,6 +588,7 @@ export async function reorderGroupMembersCore(
 ): Promise<VesselGroupDetailDTO> {
   const group = await prisma.vesselGroup.findUnique({ where: { id: input.groupId } });
   if (!group) throw new ActionError("Group not found.");
+  if (group.status === "ARCHIVED") throw new ActionError("That group is archived. Restore it before editing membership.");
 
   const members = await prisma.vesselGroupMember.findMany({
     where: { groupId: input.groupId },
@@ -644,10 +689,30 @@ async function findOperationalConflictForGroup(
  * moment a status is added, and this count is what the archive confirmation copy is built on.
  */
 export async function countOpenWorkOrdersForGroup(groupId: string): Promise<number> {
-  return prisma.workOrder.count({
-    where: {
-      status: { in: [...OPEN_STATUSES] },
-      tasks: { some: { vesselGroupId: groupId } },
-    },
+  const { draft, issued } = await countWorkOrdersForGroup(groupId);
+  return draft + issued;
+}
+
+/**
+ * Split by whether the order's barrel list is actually FROZEN yet, because archiving does two very
+ * different things to the two halves and the confirmation copy has to tell the truth about both:
+ *
+ *  - ISSUED (and beyond) — genuinely unaffected. Their lists were frozen at issue (GROUP-3).
+ *  - DRAFT — NOT frozen, and archiving BLOCKS them: `freezeGroupSnapshotsTx` refuses to issue against
+ *    an archived group. The first version of this counted both and told the user "their barrel lists
+ *    are already frozen", which was the opposite of what happens to a draft.
+ */
+export async function countWorkOrdersForGroup(groupId: string): Promise<{ draft: number; issued: number }> {
+  const rows = await prisma.workOrder.groupBy({
+    by: ["status"],
+    where: { status: { in: [...OPEN_STATUSES] }, tasks: { some: { vesselGroupId: groupId } } },
+    _count: { _all: true },
   });
+  let draft = 0;
+  let issued = 0;
+  for (const r of rows) {
+    if (r.status === "DRAFT") draft += r._count._all;
+    else issued += r._count._all;
+  }
+  return { draft, issued };
 }

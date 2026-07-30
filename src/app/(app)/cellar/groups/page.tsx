@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
+import { requireActiveTenant, requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { HubSectionNav } from "@/components/nav/HubSectionNav";
 import { PageHeader, Card, EmptyState, StatusChip, Badge } from "@/components/ui";
 import { getGroupRollupsCore, listGroupDetailsCore, type GroupRollups } from "@/lib/vessels/group-core";
+import { Rollup } from "./Rollup";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Barrel groups" };
@@ -51,11 +52,11 @@ function twoWinesNote(rollups: GroupRollups) {
 }
 
 export default async function BarrelGroupsPage() {
-  const user = await requireReadyUser();
-  if (!user.activeOrganizationId) {
-    return <div style={{ padding: 24 }}>Your account isn&apos;t attached to a winery.</div>;
-  }
-  const isAdmin = isTenantAdminLike(user);
+  // requireActiveTenant resolves `supportOrganizationId ?? activeOrganizationId` and redirects when
+  // neither is set. A hand-rolled `!user.activeOrganizationId` check is blind to a support session
+  // and would dead-end a developer on a page that works fine.
+  await requireActiveTenant();
+  const isAdmin = isTenantAdminLike(await requireReadyUser());
 
   const groups = await listGroupDetailsCore({ status: "ALL" });
   const rollups = new Map<string, GroupRollups>(
@@ -148,7 +149,7 @@ export default async function BarrelGroupsPage() {
                   <Rollup label="Wines" value={r.distinctLotCount === 0 ? "—" : String(r.distinctLotCount)} />
                   {/* DESIGN.md: a group's volume is a SUM OF DERIVED barrel volumes, not a
                       measurement, so it is always "≈ estimated" and never "measured". */}
-                  <Rollup label="Volume" value={r.volumeL === 0 ? "—" : `≈ ${r.volumeL.toLocaleString()} L`} note="estimated" />
+                  <Rollup label="Volume" value={r.volumeL === 0 ? "—" : `≈ ${r.volumeL.toLocaleString()} L`} derivation="estimated" />
                   <Rollup
                     label="Oldest topped"
                     value={
@@ -159,7 +160,7 @@ export default async function BarrelGroupsPage() {
                           : "Never"
                     }
                     // Absence and staleness are different facts and must not collapse into one.
-                    note={r.neverToppedCount > 0 && r.memberCount > 0 ? `${r.neverToppedCount} never topped` : undefined}
+                    derivation={r.neverToppedCount > 0 && r.memberCount > 0 ? `${r.neverToppedCount} never topped` : undefined}
                   />
                   <Rollup label="Open work orders" value={String(r.openWorkOrderCount)} />
                 </dl>
@@ -176,19 +177,5 @@ export default async function BarrelGroupsPage() {
         </div>
       )}
     </>
-  );
-}
-
-function Rollup({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div>
-      <dt style={{ fontSize: 12.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
-        {label}
-      </dt>
-      <dd style={{ margin: "2px 0 0", fontSize: 15, color: "var(--text-primary)" }}>
-        {value}
-        {note ? <span style={{ color: "var(--text-muted)", fontSize: 12.5 }}> · {note}</span> : null}
-      </dd>
-    </div>
   );
 }

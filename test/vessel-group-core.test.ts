@@ -35,6 +35,8 @@ const db = {
   members: [] as Member[],
   vessels: [] as { id: string; code: string; type: string }[],
   openWorkOrders: 0,
+  openDraftWorkOrders: 0,
+  openIssuedWorkOrders: 0,
 };
 
 const audits: { summary: string; changes?: Record<string, { from: unknown; to: unknown }> }[] = [];
@@ -115,7 +117,16 @@ const prismaMock = {
     findUnique: async ({ where }: { where: { id: string } }) => (where.id === "loc1" ? { id: "loc1" } : null),
     findMany: async () => [{ id: "loc1", name: "Barrel hall" }],
   },
-  workOrder: { count: async () => db.openWorkOrders },
+  workOrder: {
+    count: async () => db.openWorkOrders,
+    // Archiving now splits the count: an ISSUED order really is unaffected (its list was frozen at
+    // issue), but a DRAFT is BLOCKED — freezeGroupSnapshotsTx refuses to issue against an archived
+    // group. The old copy told the user drafts were "already frozen", which was backwards.
+    groupBy: async () => [
+      { status: "DRAFT", _count: { _all: db.openDraftWorkOrders } },
+      { status: "ISSUED", _count: { _all: db.openIssuedWorkOrders } },
+    ],
+  },
 };
 
 function membersOf(groupId: string) {
@@ -159,6 +170,8 @@ const ACTOR = { actorUserId: "u1", actorEmail: "cellar@demo.test" };
 beforeEach(() => {
   audits.length = 0;
   db.openWorkOrders = 0;
+  db.openDraftWorkOrders = 0;
+  db.openIssuedWorkOrders = 0;
   db.vessels = [
     { id: "v1", code: "B101", type: "BARREL" },
     { id: "v2", code: "B102", type: "BARREL" },
@@ -231,21 +244,32 @@ describe("member order", () => {
 
 describe("archive", () => {
   it("warns rather than silently archiving when open work orders reference the group", async () => {
-    db.openWorkOrders = 2;
+    db.openIssuedWorkOrders = 2;
     await expect(archiveGroupCore(ACTOR, { groupId: "g1", archived: true })).rejects.toThrow(
       /referenced by 2 open work orders/,
     );
   });
 
-  it("says archiving does not change those work orders, because it does not (GROUP-3)", async () => {
-    db.openWorkOrders = 1;
+  it("says an ISSUED order is unaffected because its list was frozen at issue", async () => {
+    db.openIssuedWorkOrders = 1;
     await expect(archiveGroupCore(ACTOR, { groupId: "g1", archived: true })).rejects.toThrow(
-      /barrel lists are already frozen/,
+      /1 issued work order is unaffected — its barrel list was frozen at issue/,
+    );
+  });
+
+  it("tells the truth about DRAFTS: archiving BLOCKS them, it does not leave them alone", async () => {
+    // The first version of this copy counted drafts and issued orders together and told the user
+    // "their barrel lists are already frozen". A DRAFT has no snapshot, and archiving makes it
+    // permanently un-issuable (freezeGroupSnapshotsTx refuses an archived group). The warning
+    // asserted the opposite of what actually happens.
+    db.openDraftWorkOrders = 3;
+    await expect(archiveGroupCore(ACTOR, { groupId: "g1", archived: true })).rejects.toThrow(
+      /3 DRAFT work orders will NOT be issuable until this group is restored/,
     );
   });
 
   it("proceeds once confirmed", async () => {
-    db.openWorkOrders = 1;
+    db.openIssuedWorkOrders = 1;
     const res = await archiveGroupCore(ACTOR, { groupId: "g1", archived: true, confirmOpenWorkOrders: true });
     expect(res.status).toBe("ARCHIVED");
     expect(res.openWorkOrderCount).toBe(1);

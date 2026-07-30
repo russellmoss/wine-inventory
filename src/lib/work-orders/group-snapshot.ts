@@ -120,6 +120,53 @@ export function resolveTaskMembers(
   };
 }
 
+/** True when this payload carries a barrel-group member set (either shape). */
+export function payloadHasGroupBlock(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const p = payload as Record<string, unknown>;
+  const block = p.groupRack ?? p.groupActivity;
+  return !!(block && typeof block === "object" && !Array.isArray(block));
+}
+
+/**
+ * Rewrite a task payload's member arrays so they match the frozen snapshot.
+ *
+ * Returns null when the payload carries no group block (nothing to reconcile). Only the member id and
+ * code arrays are touched — direction, drawL, lossL, activityType, doses and every other planned input
+ * are left exactly as authored.
+ */
+export function reconcilePayloadToSnapshot(
+  payload: Prisma.JsonValue | null,
+  snapshot: MemberSnapshot,
+): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const p = { ...(payload as Record<string, unknown>) };
+  const ids = snapshot.members.map((m) => m.vesselId);
+  const codes = snapshot.members.map((m) => m.code);
+
+  const rack = p.groupRack;
+  if (rack && typeof rack === "object" && !Array.isArray(rack)) {
+    const r = { ...(rack as Record<string, unknown>) };
+    // Barrel-down writes the members as DESTINATIONS; rack-to-tank writes them as SOURCES. Replace
+    // whichever key this task actually uses, never both — writing the absent one would invent a leg.
+    if (Array.isArray(r.destVesselIds)) r.destVesselIds = ids;
+    if (Array.isArray(r.sourceVesselIds)) r.sourceVesselIds = ids;
+    r.memberCodes = codes;
+    p.groupRack = r;
+    return p;
+  }
+
+  const activity = p.groupActivity;
+  if (activity && typeof activity === "object" && !Array.isArray(activity)) {
+    const a = { ...(activity as Record<string, unknown>) };
+    a.memberVesselIds = ids;
+    a.memberCodes = codes;
+    p.groupActivity = a;
+    return p;
+  }
+  return null;
+}
+
 /**
  * Freeze every group-backed task on a work order. Called INSIDE `issueWorkOrderCore`'s transaction,
  * between the DRAFT->ISSUED flip and the reservations, so the freeze and the status change commit
@@ -138,7 +185,7 @@ export async function freezeGroupSnapshotsTx(
 ): Promise<number> {
   const tasks = await tx.workOrderTask.findMany({
     where: { workOrderId, vesselGroupId: { not: null }, memberSnapshotAt: null },
-    select: { id: true, title: true, vesselGroupId: true },
+    select: { id: true, title: true, vesselGroupId: true, plannedPayload: true },
   });
   if (tasks.length === 0) return 0;
 
@@ -193,11 +240,31 @@ export async function freezeGroupSnapshotsTx(
       })),
     };
 
+    // THE PAYLOAD IS RECONCILED TO THE SNAPSHOT, and this is what makes GROUP-3 real rather than
+    // decorative.
+    //
+    // The first version of this wrote `memberSnapshot` and stopped there — and NOTHING IN THE PRODUCT
+    // READ IT. The worksheet, the execute form and the completion path all build their member list
+    // from `plannedPayload.groupRack` / `.groupActivity` (see buildGroupRackViews in data.ts). So the
+    // frozen list was never shown and never executed; the crew worked whatever was in the payload.
+    // That is exactly the F3 failure this phase was written to fix, reproduced one level up: an
+    // invariant enforced on a column no surface consults is a green check over a no-op.
+    //
+    // Rather than rewire every read path, the freeze now makes the payload AGREE with the snapshot.
+    // The list the crew executes IS the frozen list, through the surface that already exists. Paired
+    // with updateWorkOrderCore's refusal to edit a frozen task's payload, the member list of an issued
+    // work order genuinely cannot change.
+    const reconciled = reconcilePayloadToSnapshot(task.plannedPayload, snapshot);
+
     // `updateMany` with `memberSnapshotAt: null` in the WHERE makes the write ONCE-ONLY at the
     // database, not by prior inspection. Two concurrent issues cannot both write a snapshot.
     const written = await tx.workOrderTask.updateMany({
       where: { id: task.id, memberSnapshotAt: null },
-      data: { memberSnapshot: snapshot as unknown as Prisma.InputJsonValue, memberSnapshotAt: now },
+      data: {
+        memberSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+        memberSnapshotAt: now,
+        ...(reconciled ? { plannedPayload: reconciled as Prisma.InputJsonValue } : {}),
+      },
     });
     frozen += written.count;
   }

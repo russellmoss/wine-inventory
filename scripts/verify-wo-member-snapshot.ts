@@ -23,6 +23,7 @@
 import { prisma } from "@/lib/prisma";
 import { runAsTenant } from "@/lib/tenant/context";
 import { createWorkOrderCore, issueWorkOrderCore } from "@/lib/work-orders/lifecycle";
+import { updateWorkOrderCore } from "@/lib/work-orders/update-core";
 import { addGroupMemberCore, removeGroupMemberCore, configureGroupCore, archiveGroupCore } from "@/lib/vessels/group-core";
 import { resolveTaskMembers } from "@/lib/work-orders/group-snapshot";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
@@ -54,6 +55,20 @@ async function cleanup() {
   await prisma.vesselGroupMember.deleteMany({ where: { OR: [{ groupId: { in: groupIds } }, { vesselId: { in: vesselIds } }] } }).catch(() => {});
   await prisma.vesselGroup.deleteMany({ where: { id: { in: groupIds } } }).catch(() => {});
   await prisma.vessel.deleteMany({ where: { id: { in: vesselIds } } }).catch(() => {});
+}
+
+/**
+ * THE PAYLOAD the crew actually executes, read the way `data.ts` / `ExecuteClient` read it.
+ * `groupRack` carries the members under destVesselIds (barrel-down) or sourceVesselIds
+ * (rack-to-tank); `groupActivity` carries them under memberVesselIds.
+ */
+async function executedMembers(taskId: string): Promise<string[]> {
+  const t = await prisma.workOrderTask.findUniqueOrThrow({ where: { id: taskId }, select: { plannedPayload: true } });
+  const p = (t.plannedPayload ?? {}) as Record<string, unknown>;
+  const block = (p.groupRack ?? p.groupActivity) as Record<string, unknown> | undefined;
+  if (!block) return [];
+  const ids = (block.memberVesselIds ?? block.destVesselIds ?? block.sourceVesselIds) as unknown;
+  return Array.isArray(ids) ? ids.map(String) : [];
 }
 
 /** Read a task back and render exactly what the app would report as its member list. */
@@ -186,6 +201,55 @@ async function main() {
       }
       assert(refusedReissue, "an already-issued work order cannot be re-issued (no second snapshot)");
       assert(JSON.stringify(await reportedMembers(task.id)) === serializedAtIssue, "and its frozen list is still byte-identical");
+
+      // ── 8) THE LOAD-BEARING ONE: the payload the crew EXECUTES is the frozen list ──
+      // An earlier version of this verifier only checked `resolveTaskMembers`, a function NO PRODUCT
+      // SURFACE CALLED — so it stayed green while the frozen list was never rendered and never
+      // executed. A guard that reads a path nothing uses is the same no-op the phase set out to kill.
+      const executedAtIssue = (await executedMembers(task.id)).slice().sort();
+      const expectedFrozen = [barrels[0].id, barrels[1].id].slice().sort();
+      assert(
+        JSON.stringify(executedAtIssue) === JSON.stringify(expectedFrozen),
+        "the EXECUTED payload (what the worksheet and execute form actually read) IS the frozen list",
+      );
+
+      // ── 9) an issued task's barrel list cannot be edited through the builder ──
+      const issuedTask = await prisma.workOrderTask.findFirstOrThrow({
+        where: { workOrderId: wo.workOrderId },
+        select: { id: true, seq: true, groupSeq: true, title: true, vesselGroupId: true },
+      });
+      let editRefused = false;
+      try {
+        await updateWorkOrderCore(ACTOR, {
+          workOrderId: wo.workOrderId,
+          slots: [
+            {
+              seq: issuedTask.seq,
+              groupSeq: issuedTask.groupSeq,
+              existingTaskId: issuedTask.id,
+              locked: false,
+              input: {
+                seq: issuedTask.seq,
+                kind: "MAINTENANCE",
+                title: issuedTask.title,
+                activityType: "CLEAN",
+                vesselGroupId: issuedTask.vesselGroupId,
+                // The attack: swap the barrel list on an ALREADY-ISSUED work order. Before this was
+                // closed, the payload was rewritten while memberSnapshot sat frozen and unread — the
+                // snapshot said one rack, the crew worked another.
+                plannedPayload: { groupActivity: { activityType: "CLEAN", memberVesselIds: [barrels[2].id], memberCodes: [barrels[2].code] } },
+              },
+            },
+          ],
+        });
+      } catch (e) {
+        editRefused = /frozen when this work order was issued/.test(e instanceof Error ? e.message : "");
+      }
+      assert(editRefused, "editing an ISSUED work order's barrel list through the builder is REFUSED");
+      assert(
+        JSON.stringify((await executedMembers(task.id)).slice().sort()) === JSON.stringify(executedAtIssue),
+        "and the executed payload survived the attempt byte-identical",
+      );
 
       console.log(`\nGROUP-3 verifier passed (${passed} assertions).`);
     } finally {

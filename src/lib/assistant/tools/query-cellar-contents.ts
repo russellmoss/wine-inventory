@@ -6,7 +6,7 @@ import {
   isBottledInventoryForm,
   type CellarContentsQuery,
 } from "@/lib/cellar/contents-query";
-import { findGroupByNameCore, getGroupRollupsCore, getGroupToppingStatusCore } from "@/lib/vessels/group-core";
+import { findGroupByNameCore, getGroupMemberStatesCore, getGroupRollupsCore } from "@/lib/vessels/group-core";
 
 type Input = CellarContentsQuery & {
   emptyOnly?: boolean;
@@ -106,17 +106,15 @@ export const queryCellarContentsTool: AssistantTool = {
           message: `No single barrel group matches "${input.barrelGroup}". Name it exactly, or ask which barrel groups exist.`,
         };
       }
-      const [rollups, topping] = await Promise.all([
+      // Members are read DIRECTLY (getGroupMemberStatesCore), never by post-filtering a tenant-wide
+      // contents query. That earlier shape was capped at MAX_LIMIT 50, so in a tenant with more
+      // vessels than the cap most members came back missing and this tool would report barrels as
+      // EMPTY in the same answer whose rollups said 4,950 L.
+      const [rollups, memberStates] = await Promise.all([
         getGroupRollupsCore(group.id),
-        getGroupToppingStatusCore(group.id),
+        getGroupMemberStatesCore(group.id),
       ]);
-      const memberIds = new Set(group.members.map((m) => m.vesselId));
-      const contents = await queryCellarContents({ ...input, vessel: undefined, onlyNonEmpty: false });
-      const inGroup = contents.vessels.filter((v) => memberIds.has(v.vesselId));
-      const members = (input.neverToppedOnly ? topping.filter((t) => t.lastToppedAt === null) : topping).map((t) => ({
-        ...t,
-        contents: inGroup.find((v) => v.vesselId === t.vesselId) ?? null,
-      }));
+      const members = input.neverToppedOnly ? memberStates.filter((m) => m.lastToppedAt === null) : memberStates;
       return {
         scope: "barrel-group",
         found: true,
@@ -130,7 +128,7 @@ export const queryCellarContentsTool: AssistantTool = {
         // Every rollup is COMPUTED, never stored. `volumeL` is a sum of DERIVED barrel volumes, so
         // say so here too — the assistant must not report it as a measurement.
         rollups: { ...rollups, volumeLBasis: "estimated — sum of derived barrel volumes" },
-        neverToppedCount: topping.filter((t) => t.lastToppedAt === null).length,
+        neverToppedCount: memberStates.filter((m) => m.lastToppedAt === null).length,
         memberCount: group.members.length,
         members,
         note:

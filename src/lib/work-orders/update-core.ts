@@ -4,6 +4,7 @@ import { ActionError } from "@/lib/action-error";
 import { writeAudit } from "@/lib/audit";
 import type { LedgerActor } from "@/lib/vessels/rack-core";
 import type { CreateTaskInput } from "@/lib/work-orders/lifecycle";
+import { payloadHasGroupBlock } from "@/lib/work-orders/group-snapshot";
 import { resolveAssigneeIdByEmail } from "@/lib/work-orders/lifecycle";
 import {
   syncReservationsForTaskTx,
@@ -57,8 +58,10 @@ export async function updateWorkOrderCore(actor: LedgerActor, input: UpdateWorkO
       throw new ActionError("A finalized or cancelled work order can no longer be edited.", "CONFLICT");
     }
 
-    const existing = await tx.workOrderTask.findMany({ where: { workOrderId: wo.id }, select: { id: true, status: true } });
+    const existing = await tx.workOrderTask.findMany({ where: { workOrderId: wo.id }, select: { id: true, status: true, memberSnapshotAt: true } });
     const statusById = new Map(existing.map((t) => [t.id, t.status]));
+    // GROUP-3: a task whose barrel list has been FROZEN at issue may never have that list edited.
+    const frozenIds = new Set(existing.filter((t) => t.memberSnapshotAt !== null).map((t) => t.id));
     const editableIds = new Set(existing.filter((t) => t.status === "PENDING").map((t) => t.id));
 
     // Validate every slot's existingTaskId + locked flag against reality (guards against editing an
@@ -72,6 +75,24 @@ export async function updateWorkOrderCore(actor: LedgerActor, input: UpdateWorkO
         if (!slot.locked && !isPending) throw new ActionError("That task has already been recorded and can't be edited — reverse it first.", "CONFLICT");
       }
       if (!slot.locked && !slot.input) throw new ActionError("Internal: editable slot missing task content.");
+
+      // GROUP-3 — an issued work order's member list is immutable, and this is the hole that made
+      // that claim false. A task stays PENDING after the work order is ISSUED, and this core
+      // explicitly permits editing ISSUED / IN_PROGRESS / PENDING_APPROVAL orders. So the barrel list
+      // could be rewritten straight through plannedPayload while memberSnapshot sat frozen and
+      // unread: the snapshot said Rack 14, the crew executed Rack 9, and nothing noticed.
+      //
+      // Refuse the edit rather than silently re-freeze: re-freezing would let a membership change
+      // reach an already-issued order, which is the exact repaint ADR 0014 exists to prevent.
+      if (slot.existingTaskId && !slot.locked && frozenIds.has(slot.existingTaskId)) {
+        if (payloadHasGroupBlock(slot.input?.plannedPayload)) {
+          throw new ActionError(
+            "That task's barrel list was frozen when this work order was issued and can't be changed. " +
+              "Cancel the work order and draft a new one if the barrels are wrong.",
+            "CONFLICT",
+          );
+        }
+      }
     }
 
     // Deletes: editable (PENDING) tasks the edit no longer includes. Guard the delete on status="PENDING"
@@ -110,6 +131,11 @@ export async function updateWorkOrderCore(actor: LedgerActor, input: UpdateWorkO
         lotId: t.lotId ?? null,
         materialId: t.materialId ?? null,
         blockId: t.blockId ?? null,
+        // Without this, a task authored or re-pointed in the BUILDER lost its group pointer:
+        // a new task got null (so issue never snapshotted it, and countOpenWorkOrdersForGroup
+        // under-reported, telling an admin a group had 0 open work orders when it had one), and
+        // an edited task kept the OLD group id while its payload named the new one.
+        vesselGroupId: t.vesselGroupId ?? null,
         assigneeId: t.assigneeId ?? null,
         assigneeEmail: t.assigneeEmail ?? null,
         priority: t.priority ?? null,

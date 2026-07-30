@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
+import { requireActiveTenant, requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { PageHeader, Card, EmptyState, StatusChip, Badge, ResponsiveTable, DataRow, DataCell, DataHeadCell } from "@/components/ui";
 import { getGroupDetailCore, getGroupRollupsCore } from "@/lib/vessels/group-core";
+import { Rollup, SECTION_HEADING } from "../Rollup";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Barrel group" };
@@ -18,11 +19,11 @@ const MEMBER_PREVIEW = 12;
 
 export default async function BarrelGroupDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireReadyUser();
-  if (!user.activeOrganizationId) {
-    return <div style={{ padding: 24 }}>Your account isn&apos;t attached to a winery.</div>;
-  }
-  const isAdmin = isTenantAdminLike(user);
+  // requireActiveTenant resolves `supportOrganizationId ?? activeOrganizationId` and redirects when
+  // neither is set. A hand-rolled `!user.activeOrganizationId` check is blind to a support session
+  // and would dead-end a developer on a page that works fine.
+  await requireActiveTenant();
+  const isAdmin = isTenantAdminLike(await requireReadyUser());
 
   const group = await getGroupDetailCore(id);
   if (!group) notFound();
@@ -86,7 +87,7 @@ export default async function BarrelGroupDetailPage({ params }: { params: Promis
       ) : null}
 
       <Card style={{ marginBottom: "var(--space-4)" }}>
-        <h2 style={{ fontSize: 15, margin: "0 0 10px" }}>Rollups</h2>
+        <h2 style={SECTION_HEADING}>Rollups</h2>
         <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "var(--space-3)", margin: 0 }}>
           <Rollup label="Barrels" value={String(rollups.memberCount)} derivation="counted members" />
           <Rollup
@@ -122,7 +123,7 @@ export default async function BarrelGroupDetailPage({ params }: { params: Promis
       </Card>
 
       <Card>
-        <h2 style={{ fontSize: 15, margin: "0 0 10px" }}>Members</h2>
+        <h2 style={SECTION_HEADING}>Members</h2>
         {group.members.length === 0 ? (
           <EmptyState
             title="No barrels in this group"
@@ -171,17 +172,5 @@ export default async function BarrelGroupDetailPage({ params }: { params: Promis
         ) : null}
       </Card>
     </>
-  );
-}
-
-function Rollup({ label, value, derivation }: { label: string; value: string; derivation: string }) {
-  return (
-    <div>
-      <dt style={{ fontSize: 12.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
-        {label}
-      </dt>
-      <dd style={{ margin: "2px 0 0", fontSize: 15, color: "var(--text-primary)" }}>{value}</dd>
-      <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-muted)" }}>{derivation}</p>
-    </div>
   );
 }
