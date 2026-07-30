@@ -7,49 +7,49 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND v2 — PHASE 7 (BARREL GROUPS): UNITS 1–12 ALL BUILT ON
-`claude/cellarhand-v2-phase7-barrel-groups-2e50fe`. NEXT ACTION = OPEN THE PR.**
-Plan: `docs/plans/2026-07-30-106-feat-cellarhand-v2-phase7-barrel-groups-plan.md` (deep · 12 units).
-M1 was already merged + deployed (`e8fa98ce`); Units 2–12 are 6 commits on the branch above.
+**CELLARHAND v2 — PHASE 7 (BARREL GROUPS): MERGED AND LIVE IN PRODUCTION 2026-07-30.**
+[#569](https://github.com/russellmoss/wine-inventory/pull/569) squash-merged as `1a1e2d1a`. All 12
+units. Plan: `docs/plans/2026-07-30-106-feat-cellarhand-v2-phase7-barrel-groups-plan.md`.
 
-**⚠️ NOT YET DEPLOYED. Four migrations are pending on production:**
-`..._vessel_group_enums` → `..._vessel_group_structure` → `..._vessel_group_od3_index` →
-`..._work_order_task_group_snapshot`. `/cellar/groups` queries columns production does not have, so
-**the route 500s until they are applied.** All four were test-applied to a disposable Neon branch
-forked from production (`br-flat-sky-atnwgd45`) and pass their self-verify blocks.
+**Verified against the live database, not inferred from the merge:** all four migrations applied
+2026-07-30 19:57, 1 step each, no rollback — `_vessel_group_enums`, `_vessel_group_structure`,
+`_vessel_group_od3_index`, `_work_order_task_group_snapshot`. OD-3 partial index present, all 3
+triggers present, the 3 `work_order_task` columns present and **all still NULLABLE** (73 work orders
+survived), 3 composite tenant FKs present, 0 `addedAt`/`removedAt`. `verify:group-membership` and
+`verify:group-not-a-vessel` PASS against production. `/cellar/groups` returns 302 (auth), not 500.
 
-**What shipped, and the two things worth remembering:**
-- **The OD-3 partial index question is RESOLVED.** RFC-001 §6.1's sketch is not implementable — a
-  partial index predicate **cannot reference another table**. `groupType` is denormalised onto
-  `vessel_group_member` and **two triggers, not app discipline, own it**: a BEFORE trigger overwrites
-  whatever the caller supplied, an AFTER trigger propagates a group retype. So the index is enforced
-  against a column no application code can write. `verify:group-membership` checks the triggers still
-  exist, because without them the data check passes while the column lies.
-- **F3 was the real work.** `WorkOrderTask` had **no group reference at all**, so ADR 0014's premise
-  ("a DRAFT reads live membership") was false and GROUP-3 would have been a green check over a no-op.
-  Identity (`vesselGroupId`) had to be built before the freeze could mean anything.
+**⚠️ THE LESSON WORTH KEEPING — an adversarial review found the phase's HEADLINE CLAIM was false,
+and CI was green the whole time.** `grep` over `src/` found ZERO production readers of
+`memberSnapshot`: the worksheet, execute form and completion path all read `plannedPayload`. So the
+frozen list was never shown and never executed, and 33 tests plus a 17-assertion guard all exercised
+a read path **no product surface called**. That is the F3 failure the phase was written to fix,
+reproduced one level up. Fixed (`55d437fc`) by making the freeze RECONCILE the payload to the
+snapshot, so the list the crew executes IS the frozen list — and the guard now reads the real path
+and attacks an issued order through `updateWorkOrderCore`. 20/20, shown RED without the fix.
 
-**Also closed on the way past:** the TOCTOU window in `issueWorkOrderCore` (it merely doubled
-reservations before; under GROUP-3 it would write two immutable snapshots, so it became mandatory).
+**Six more real defects the same review found**, all verified before fixing: an issued WO's payload
+was still editable; `updateWorkOrderCore` never wrote `vesselGroupId`; **`/bulk` lost
+`requireActiveTenant()`** (a regression introduced while adding `isAdmin`);
+`createMany({skipDuplicates})` silently swallowed the new OD-3 index (a 22-barrel selection became
+16, and merge dropped every row then archived the source); the assistant lens post-filtered a
+capped query; the archive warning told the user DRAFTs were "already frozen" when archiving actually
+makes them permanently un-issuable.
 
-**GROUP-1/2/3 are `guarded` with three real guards, EACH SHOWN FAILING FIRST** — `verify:invariants`
-is 53/53 (was 50) and never runs the scripts, so a guard that has only ever been green proves
-nothing. Red tests: dropped the index + inserted the violation; added `VesselGroup.volumeL` +
-`VesselGroupMember.addedAt`; disabled the freeze.
+**Take from this: green CI is not evidence that a change does what it claims.** The tests were green
+because they tested the wrong path.
 
-**Green:** `tsc --noEmit` · full vitest 456 files / 5671 tests · `verify:invariants` ·
-`verify:invariant-frontmatter` (58) · `verify:ai-native` · `verify:naming` (25) ·
-`verify:wo-member-snapshot` 17/17 end-to-end · SC-09 walked in the browser at 390px and 1440px.
+**🚩 Carried forward, deliberately NOT built:**
+- **`/cellar/groups` is READ-ONLY.** The admin-gated write cores exist and are tested; the editing
+  UI is not. Membership editing still happens on `/bulk`.
+- **`AD_HOC` is an enum VALUE only** — no creation path, no auto-archive. RFC-001 §6 decision 4 open.
+- `/vessels/[id]` barrel detail (SC-08); rule-based membership (v2).
+- **Behaviour change now live (D7):** creating/deactivating a barrel group on `/bulk` is admin-only.
 
-**🚩 Carried forward, deliberately NOT built (say so rather than let it look done):**
-- **`AD_HOC` groups ship as an enum VALUE only** — no creation path, no auto-archive lifecycle. The
-  value exists because GROUP-1's partial index needs a type to be partial on. Every group created in
-  Phase 7 is `OPERATIONAL`. RFC-001 §6 decision 4 is still open.
-- **`/cellar/groups` is READ-ONLY.** Editing membership/settings still happens on `/bulk`. The write
-  cores + admin-gated actions exist and are tested; the editing UI is not built.
-- **`/vessels/[id]` barrel detail (SC-08)** — out of scope per the plan, still unbuilt.
-- **The `/bulk` admin gating is a BEHAVIOUR CHANGE** (D7): creating/deactivating a barrel group was
-  reachable by any ready user and is now admin-only. Call it out in the PR body.
+**Known follow-ups the review raised and this PR did NOT take** (all informational, none blocking):
+the `/cellar/groups` index runs ~3 queries per group (fine at today's counts, flagged in the scale
+register); `reorderGroupMembersCore` does 2N round-trips inside a 5 s interactive tx, so a very large
+rack would time out; `findOperationalConflictForGroup` is an N+1; positions have no unique
+constraint so concurrent adds can tie; trigger functions lack `SET search_path`.
 
 ---
 
@@ -2233,3 +2233,9 @@ predicate cannot reference another table. F3 was the real work: WorkOrderTask ha
 at all, so the snapshot had nothing to snapshot from. Deliberately NOT built: AD_HOC creation, the
 group EDITING UI (/cellar/groups is read-only), SC-08. /bulk group create+deactivate is now
 admin-only — a real behaviour change, D7. Spray Wave 1 unchanged._
+
+_Last updated: 2026-07-30 (evening) — **Cellarhand v2 Phase 7 MERGED + LIVE** (#569 -> `1a1e2d1a`;
+four migrations applied to production 19:57, verified against the live DB). An adversarial review
+caught that GROUP-3 was enforced on a column nothing read — green CI, wrong path — fixed in
+`55d437fc` and the guard rebuilt to read the real one. Pruned the empty `phase7-m2` collision branch
+and two merged worktrees. Spray Wave 1 unchanged._
