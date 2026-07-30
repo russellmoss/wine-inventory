@@ -7,33 +7,47 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**⛔ OWNER DECISION GATE — the Cellarhand v2 domain RFCs are amended and true; two answers unblock Phase 7.**
+**✅ CELLARHAND v2 DOMAIN GATE — CLEARED. The owner answered both blocking questions 2026-07-29.
+Phase 7 is unblocked and ready to plan.**
 
-**RFC AMENDMENT PASS — DONE 2026-07-29, docs-only, against `main` @ `91cd1dcd`.** All four RFCs in
-`docs/design/cellarhand-v2-handoff/rfc/` are now implementable against the code that exists. They
-stay **`proposed`** — the pass made them true, it did not approve them. New companion:
+**RFC AMENDMENT PASS — DONE 2026-07-29, docs-only, against `main` @ `91cd1dcd`.**
+[#567](https://github.com/russellmoss/wine-inventory/pull/567). All four RFCs in
+`docs/design/cellarhand-v2-handoff/rfc/` are implementable against the code that exists, and both
+owner decisions are recorded in them. They stay **`proposed`** pending formal ratification, but
+**nothing is waiting on the owner any more.** Companion:
 `RFC-000-cross-cutting-implementation-notes.md` (migration order · live-tenant plan · assistant
-coverage · parity). New: **ADR 0013** (balanced-op shape) + 6 `status: planned` invariant notes
-(GROUP-1/2, TOPPING-1/2, PROV-1/2). `verify:invariants` green (57 notes, 50 guarded, 100%).
+coverage · parity). **ADR 0013** (balanced-op shape) + **ADR 0014** (work-order snapshot) + 7
+`status: planned` invariant notes (GROUP-1/2/3, TOPPING-1/2, PROV-1/2). `verify:invariants` green
+(58 notes, 50 guarded, 100%).
 
-**🔴 THE OWNER MUST DECIDE TWO THINGS — nothing else blocks Phase 7:**
-1. **OD-3's second half** — effective-dated membership **or** a work-order member snapshot?
-   RFC-001 §4.3.1 lays out both and **deliberately does not pick**. Effective-dating collides with
-   `SPRAY-2` (re-deriving repaints history); snapshot answers only the work-order question. **Gates
-   the M2 migration — the two options have different columns.**
-2. **OD-4** — may a keg fill be recorded at its nominal stamped volume, or must every fill state a
-   measured number? **⛔ NOT READY as recommended:** nominal-badged-as-measured is the exact
-   dishonesty RFC-003 exists to prevent. The gap and the candidate third enum value are written up
-   in **RFC-003 §3.6**. **One-way door — Postgres cannot drop an enum value — and it gates M1.**
+**✅ THE TWO OWNER DECISIONS — both answered, both recorded:**
+1. **OD-3 second half → the WORK-ORDER SNAPSHOT** (*"do the worksheet approach"*). A work order
+   freezes its barrel list at **issue**; membership is NOT effective-dated. `addedAt`/`removedAt`
+   never get built, and the OD-3 partial index loses its `removedAt` clause. The
+   retroactive-repaint hazard (`SPRAY-2`'s failure mode) is now **structurally impossible** rather
+   than guarded by a rule. **ADR 0014 · invariant GROUP-3.**
+   ⚠️ **Tripwire: if `addedAt`/`removedAt` ever appear on `vessel_group_member`, this decision has
+   been reversed by drift rather than by decision.**
+2. **OD-4 → NOMINAL IS ALLOWED, badged *nominal*, never *measured*.** The crew accepts the stamped
+   keg size (*"it holds what it holds"*), so requiring a measured number would have fabricated one.
+   **`CaptureMethod.NOMINAL` ships in M1 alongside `DERIVED`** and **provenance becomes a TRINARY**:
+   measured / nominal / estimated. Ratified **as amended** — the original recommendation badged the
+   nominal default as *measured*, which was the defect. **RFC-003 §3.1 + §3.6.**
+   → **Follow-on for design:** `05-design-system-v2.md` §A5 was specified for a binary badge. The
+   **nominal** state needs its own token and must read as *weaker* than measured.
 
-**✅ READY TO RATIFY:** OD-5 (re-fan — needed a *spec*, not a decision; now RFC-002 §3.6.1 as a
-**partial** re-fan with exact copy), OD-6 (with RFC-004 §3.5.1's rate-limit answer attached), and
-**OD-7 — already implemented**, Phase 9 shipped it.
+**Also ready to ratify:** OD-5 (needed a *spec*, not a decision — now a **partial** re-fan per
+`LEDGER-3`/`LEDGER-11`, with exact user copy), OD-6 (with RFC-004 §3.5.1's rate-limit answer
+attached — the one remaining owner call, and it is a Phase-10 item, not a blocker), and **OD-7,
+already implemented** (Phase 9 shipped it; the gate brief's claim to the contrary was struck).
 
-**⚠️ THE TRAP FOR THE NEXT READER: `VesselType` is `BARREL | TANK` — there is no `KEG`.** No handoff
-document mentioned this. It is a **second** enum-only migration and the single most likely way
-Phase 8 stalls mid-flight. It goes in M1 beside `CaptureMethod.DERIVED`; enum values must be merged
-**and deployed** before any code writes them.
+**⚠️ THE TRAP FOR WHOEVER PLANS PHASE 8: `VesselType` is `BARREL | TANK` — there is no `KEG`.** No
+handoff document mentioned it. It is a **second** enum-only migration and the single most likely way
+Phase 8 stalls mid-flight. It goes in **M1** beside `CaptureMethod.DERIVED` + `NOMINAL`; enum values
+must be merged **and deployed** before any code writes them.
+
+**Next:** plan Phase 7 (barrel groups) against `RFC-000` §1's migration order — M1 enum-only and
+alone, then M2 structure, then M3 enforce.
 
 ---
 
@@ -2146,3 +2160,10 @@ the gate brief (**OD-7** — Phase 9 HAD landed; the brief was written from a ch
 behind, at `f7040b7e`). Reversed RFC-002 §3.4 toward the shipped `topping.ts` because the proposed
 op shape violates `LEDGER-6` and its `EXTERNAL` workaround would silently break the 5120.17 fold.
 Owner now owes exactly two answers: **OD-3's membership half** and **OD-4**. Spray Wave 1 unchanged._
+
+_Last updated: 2026-07-29 (later) — **Cellarhand v2 domain gate CLEARED.** Owner answered both
+blocking questions: OD-3's membership half → **work-order snapshot** (ADR 0014, invariant GROUP-3,
+no `addedAt`/`removedAt`), and OD-4 → **nominal allowed and badged *nominal*** (`CaptureMethod.NOMINAL`
+joins `DERIVED` in M1; provenance is now a trinary). Both recorded in the RFCs, the ADRs and the gate
+brief. Phase 7 is unblocked. Only open owner call left is RFC-004 §3.5.1's rate limit, a Phase-10
+item. Spray Wave 1 unchanged._

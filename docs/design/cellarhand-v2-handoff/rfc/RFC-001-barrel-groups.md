@@ -1,6 +1,6 @@
 # RFC-001 · Barrel groups as a configurable operational working set
 
-**Status:** proposed · **Owner decision required:** yes (OD-3, and a second half — see §4.3) · **Blocks:** the topping runner, group settings, group-scoped work orders
+**Status:** proposed · **Owner decisions:** OD-3 recommended one-operational-group · OD-3 second half ✅ RESOLVED 2026-07-29 (**work-order snapshot**, ADR 0014) · **Blocks:** the topping runner, group settings, group-scoped work orders
 
 > [!note] Changelog
 > **2026-07-29 — RFC amendment pass, against `main` @ `91cd1dcd`.** Amended to be implementable
@@ -19,6 +19,13 @@
 > - **§4.12 gains the missing migration step**: `VesselGroup` has no `@@unique([tenantId, id])`,
 >   so the composite tenant FK it specifies has no target yet.
 > - **AC-3 restated** so it does not presuppose the effective-dating answer.
+>
+> **2026-07-29 (later the same day) — OWNER DECISION RECORDED.** The owner answered the §4.3.1
+> question: **"do the worksheet approach"** — a work order freezes its member list at **issue**;
+> membership is **not** effective-dated. `addedAt`/`removedAt` drop out of the migration, the OD-3
+> partial index loses its `removedAt` clause, and §4.8/§4.9 are restated in snapshot terms. The
+> retroactive-repaint hazard §4.9 carried is now **structurally impossible** rather than guarded.
+> Recorded as **ADR 0014** + invariant **GROUP-3**.
 
 ---
 
@@ -81,7 +88,7 @@ Each gap is now classified against the **real** estate (22 barrels), because "we
 
 | Need | Present today? | Class | Why that class |
 |---|---|---|---|
-| **Historical membership** — which barrels were in the group when a round was recorded | No. Membership is current-state only, so a past work order re-reads a changed set | **(c)** | **The load-bearing one.** Move a barrel between racks today and a work order from last month silently changes what it says it did. That is a falsified record, not a missing feature, and it is equally false at any barrel count. See §4.3 — *how* to fix it is an open owner question; *that* it must be fixed is not. |
+| **Historical membership** — which barrels were in the group when a round was recorded | No. Membership is current-state only, so a past work order re-reads a changed set | **(c)** | **The load-bearing one.** Move a barrel between racks today and a work order from last month silently changes what it says it did. That is a falsified record, not a missing feature, and it is equally false at any barrel count. See §4.3.1 — resolved 2026-07-29 by a work-order snapshot (ADR 0014). |
 | Whether a vessel may be in **two groups at once** | Undefined | **(c)** | An undefined answer means the same barrel can be scheduled into two competing topping rounds and double-topped. A correctness gap, not an ergonomics one. This is OD-3. |
 | Group-level **configuration** (topping interval, source, keg preset, SO₂ target, sampling rule, default crew) | No. Only `name`, `note`, `isActive` | **(a)** | A 22-barrel round still needs a source keg and an interval to generate from. Without it every round is hand-configured. |
 | A stable **order** for walking the members | No. Membership is an unordered set; the runner needs "barrel 10 of 22" | **(a)** | An unordered set means a crew that breaks off mid-round cannot resume deterministically. Bites at 22; is fatal at 420. |
@@ -122,19 +129,28 @@ Existing rows migrate to `OPERATIONAL`.
 - **Manual** membership at minimum. **Rule-based** membership (e.g. "every barrel in Hall C rack 14") is desirable but should be a *materialised* set with a stated rule, not a live query — otherwise a past work order changes meaning when a barrel moves. Recommend: manual in v1, rules in v2.
 - Membership carries a **position** (`Int`) giving the walk order. Positions are per group, contiguous, and reorderable.
 - Removing a barrel from a group never touches its wine, its history or its ledger position.
-- **How historical membership is preserved is an OPEN OWNER QUESTION — see below.** The
-  requirement is settled (§3, class (c)); the mechanism is not.
+- **Historical membership is preserved by a work-order snapshot taken at issue** — not by dating
+  the membership rows. Owner decision, 2026-07-29; see §4.3.1 and ADR 0014.
 
-#### 4.3.1 ⚖️ OPEN OWNER QUESTION — effective-dated membership, or a work-order snapshot?
+#### 4.3.1 ✅ RESOLVED — the work order carries a member snapshot (Option B)
 
-> [!important] This RFC previously decided this. It no longer does.
-> The original text read: *"Membership is **effective-dated**: `addedAt`, `removedAt` (nullable).
-> … This is the single most important addition."* That decision is **withdrawn pending the owner**,
-> because it collides with a registered `critical` invariant. Both options are laid out below with
-> no recommendation. **The owner picks. Do not implement either until they have.**
+> [!success] OWNER DECISION, 2026-07-29: **"do the worksheet approach."**
+> **A work order freezes its member list when it is issued.** Effective-dated membership
+> (`addedAt`/`removedAt`) is **NOT** built. See **ADR 0014**.
 >
-> This must be settled **before the RFC-001 structural migration is written**, because the two
-> options have different columns.
+> Consequences, now binding on the migration:
+> - `addedAt` / `removedAt` **drop out of M2 entirely.** `VesselGroupMember` gains `position` and
+>   the composite tenant FK, nothing else.
+> - The OD-3 partial unique index simplifies to
+>   `UNIQUE (tenantId, vesselId) WHERE type = 'OPERATIONAL'` — **no `removedAt IS NULL` clause**,
+>   because there is no `removedAt`.
+> - §4.8 (splits/merges) and §4.9 (retroactive correction) are restated below in snapshot terms.
+> - "When did barrel 14 join rack 9?" is answered from the **audit log** (§4.11), which already
+>   records every membership change with actor and before/after — not from the membership table.
+>
+> The original text read: *"Membership is **effective-dated**… This is the single most important
+> addition."* That framing is **withdrawn**. Both options are preserved below because the reasoning
+> matters if this is ever revisited.
 
 **The requirement both options satisfy.** A work order recorded on 27 July must report the
 membership *as it was on 27 July*, and must keep doing so after barrels move.
@@ -168,17 +184,25 @@ it is **issued**; historical reads read the snapshot.
 - ⚠️ Snapshot storage per work order, and a defined answer for what a **DRAFT** work order shows
   (proposal: a draft reads live membership; the freeze happens at issue).
 
-**The honest state of the argument.** The SPRAY-2 precedent is strong and the retroactive-correction
-hazard under Option A is real. But effective-dating is *also* a pattern this codebase uses — bond
-affiliation is derived point-in-time from ledger lines rather than snapshotted
-([`schema.prisma:2706-2712`](prisma/schema.prisma:2706)) — so "we snapshot here" is not a universal
-house rule. And this RFC's author called effective-dating the single most important addition, which
-suggests a use case the schema does not reveal. **That is the gap only the owner can close.**
+**How it was decided.** The question put to the owner was: *do you ever need to ask "where was this
+barrel back then?" as a question in its own right, or do you only ever care what a given job
+covered?* The answer was the latter — **"do the worksheet approach."** Option A's standalone
+membership-history query is capability nobody needs, bought at the price of a closed work order that
+can be silently repainted. That is a bad trade, and the owner made it explicitly rather than
+inheriting it.
 
-**If Option A is chosen**, §4.9's retroactive membership correction must be constrained so it
-cannot alter any *closed* work order's covered set, or SPRAY-2 is violated in spirit.
-**If Option B is chosen**, `addedAt`/`removedAt` drop out of the migration entirely and §4.8's
-"closes the original's memberships at the split date" needs restating in snapshot terms.
+**Where the freeze happens.** At **issue**, not at create. This lands cleanly on top of Phase 9
+(shipped as `408f8aa5`), which made *issue* a genuinely separate, deliberate human act — the
+assistant now only ever produces a `DRAFT` and hands the user to the builder. So there is a real
+moment, performed by a named person, at which the worksheet is printed. A `DRAFT` work order reads
+**live** membership (it has not been committed to yet); the snapshot is taken when the human presses
+*Issue*, and is immutable thereafter.
+
+**What this forecloses, stated honestly.** Standalone membership history as a *queryable* structure.
+Recovering "which barrels were in rack 14 on 3 March" means reading the audit log forward, which is
+a weaker surface than a table query. If that ever becomes a real need — a dispute, an audit — it is
+recoverable but awkward. **That is the accepted cost.** Note it does *not* affect work orders, which
+carry their own answer.
 
 ### 4.4 Group-level vs. member-level properties
 
@@ -205,14 +229,21 @@ Already solved by the existing fan-out: per-member records, progressive completi
 
 ### 4.8 Transfers in and out, splits and merges
 
-- Moving a barrel between groups is a **membership** change, effective-dated. It is not a wine operation and writes no ledger entry.
-- Splitting a group creates two groups and closes the original's memberships at the split date.
+- Moving a barrel between groups is a **membership** change. It is not a wine operation and writes no ledger entry. *(Amended 2026-07-29: "effective-dated" removed — §4.3.1 Option B. The move rewrites current membership and writes an audit entry; already-issued work orders are unaffected because they carry their own frozen list.)*
+- Splitting a group creates two groups and **reassigns** the original's memberships between them. *(Amended: was "closes the original's memberships at the split date" — there are no dated memberships to close. Work orders already issued against the original keep their snapshot and stay valid.)*
 - Merging is the inverse. Neither touches lineage.
 - If a barrel's *wine* changes (racked out, refilled from a different lot), the barrel stays in the group and the group's distinct-lot count changes. The UI surfaces this; the domain does not resist it.
 
 ### 4.9 Correction and undo
 
 Membership changes are correctable by an admin and appear in the group's own history with actor and timestamp. Ledger operations produced by a group action are corrected through the existing `CORRECTION` mechanism, per-member.
+
+> [!success] Amended 2026-07-29 — the hazard here is now structurally gone.
+> This clause was the dangerous half of the effective-dating proposal: an admin correcting a
+> membership row retroactively would have silently changed what a **closed** work order covered
+> (the `SPRAY-2` failure mode). **Under the snapshot decision (§4.3.1) that is impossible** — a
+> membership correction touches only current membership and the audit trail. **No issued work order
+> can be altered by any membership edit, ever.** Nothing needs guarding here; the shape prevents it.
 
 ### 4.10 Permissions
 
@@ -244,7 +275,7 @@ Everything is tenant-scoped exactly as the existing models are: `tenantId` on bo
 
 - Existing `VesselGroup` rows → `type = OPERATIONAL`, `status` derived from `isActive`.
 - Existing `VesselGroupMember` rows → `position` assigned by vessel code natural sort.
-  (`addedAt`/`removedAt` only if §4.3.1 Option A is chosen.)
+  **No `addedAt`/`removedAt`** — the owner chose the work-order snapshot (§4.3.1, ADR 0014).
 - No existing row is deleted. No existing behaviour changes until the UI opts in.
 - **The OD-3 constraint is enforced immediately, in the migration.**
 
@@ -271,9 +302,9 @@ Covered in `02-screen-inventory.md` SC-09: loading, empty (no groups), empty (no
    `UNIQUE (tenantId, vesselId) WHERE type = 'OPERATIONAL'`, which does not conflict with the
    existing `@@unique([tenantId, groupId, vesselId])`
    ([`schema.prisma:3086`](prisma/schema.prisma:3086)).
-1b. **OD-3, second half (NEW, added 2026-07-29)** — **effective-dated membership, or a work-order
-   member snapshot?** See §4.3.1. This RFC makes **no recommendation**; it gates the structural
-   migration because the two options have different columns. *Owner decision required.*
+1b. ~~**OD-3, second half** — effective-dated membership, or a work-order member snapshot?~~
+   ✅ **RESOLVED 2026-07-29 by the owner: the work-order snapshot.** See §4.3.1 and **ADR 0014**.
+   `addedAt`/`removedAt` are not built. **No longer blocking.**
 2. Rule-based membership in v1 or v2? Recommend v2, materialised.
 3. Does a group's location come from a new field, or from the existing `Location` model? Recommend reusing `Location` if racks are modelled there; a free-text `rackLabel` otherwise.
 4. Should `AD_HOC` groups be visible in the group index at all, or only from their work order?

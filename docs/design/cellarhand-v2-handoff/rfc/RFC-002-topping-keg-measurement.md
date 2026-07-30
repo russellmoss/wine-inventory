@@ -1,6 +1,6 @@
 # RFC-002 · Topping measurement by keg
 
-**Status:** proposed · **Owner decisions required:** OD-4 (⛔ **NOT READY** — see RFC-003 §3.6) · **Depends on:** RFC-001 (member order), RFC-003 (provenance) · **Blocks:** the topping runner
+**Status:** proposed · **Owner decisions:** OD-4 ✅ RESOLVED 2026-07-29 (nominal allowed, badged *nominal*) · OD-5 ✅ ready to ratify · **Depends on:** RFC-001 (member order), RFC-003 (provenance) · **Blocks:** the topping runner
 
 > [!note] Changelog
 > **2026-07-29 — RFC amendment pass, against `main` @ `91cd1dcd`.** Amended to be implementable
@@ -62,7 +62,15 @@ What crews *do* know precisely is **how much wine left the keg**, and which barr
 
 ### 3.1 The model in one paragraph
 
-A **keg** is a small, portable, reusable vessel used to carry topping wine. A **keg fill** draws a measured volume from a source tank. During a round, each barrel the crew tops is **ticked** — no volume. When the keg runs out, the crew closes it out: the fill's volume is divided evenly across the barrels that fill served, and Cellarhand writes **one measured withdrawal** from the source tank and **N estimated topping additions**, all sharing one `batchId`, each carrying the divisor.
+A **keg** is a small, portable, reusable vessel (`VesselType.KEG`) used to carry topping wine. A **keg fill** moves wine from a source tank into the keg — one ordinary balanced transfer, recorded at the keg's stamped size unless somebody measured it. During a round, each barrel the crew tops is **ticked** — no volume, no numeric entry. When the keg runs out, the crew closes it out: the volume actually drawn is divided across the barrels that fill served, and Cellarhand writes **one balanced keg → barrel transfer per barrel**, all sharing one `batchId`, each wholly derived and each carrying the divisor. Whatever is left sits in the keg, because the keg is a real container.
+
+> [!note] Rewritten 2026-07-29 — this paragraph described a shape that could not be written.
+> It previously said close-out writes *"one measured withdrawal from the source tank and N estimated
+> topping additions"*. The tank is debited **at fill time**, not at close-out, and there is no lone
+> withdrawal — every operation is a balanced two-legged transfer (§3.4, ADR 0013). It also said the
+> fill *"draws a measured volume"*; per OD-4 the normal case is **nominal**, not measured (§3.2).
+> And "divided evenly" is now "divided" — the split is exact-to-the-centilitre by largest remainder,
+> so shares differ by up to 0.01 L (§3.3).
 
 ### 3.2 Entities
 
@@ -78,15 +86,21 @@ A **keg** is a small, portable, reusable vessel used to carry topping wine. A **
 
 **Open question OD-4:** is a keg's volume nominal (stamped) or measured per fill? ~~Recommend **nominal by default, overridable per fill**, with the override badged as measured and the default badged as nominal.~~
 
-> [!danger] ⛔ OD-4 is **NOT READY for ratification**. Do not answer it yet.
-> The recommendation as written — *nominal by default, badged as measured* — ships the exact
-> dishonesty RFC-003 exists to prevent. A nominal-accepted fill is **assumed**: neither measured
-> (nobody read it) nor derived (nothing computed it), and RFC-003's binary has no word for it.
-> Adding one is a **one-way door** — Postgres cannot drop an enum value.
+> [!success] ✅ OD-4 RESOLVED 2026-07-29 by the owner — **nominal is allowed, and it is badged as nominal.**
+> Asked whether the crew can actually measure a keg fill, the owner answered: *"if we fill it up it
+> holds what it holds and it's what is stamped on it — that's what we know."*
 >
-> **The full write-up, the candidate third values and what each commits us to now live in
-> RFC-003 §3.6.** OD-4 cannot be answered before that gap is closed, because the answer *is* a
-> `CaptureMethod` decision. **No enum value is being added by this pass.**
+> **The decision:** a keg fill defaults to the keg's stamped size, is stored as the new
+> `CaptureMethod.NOMINAL`, and is badged **nominal · 30 L stamped** — **never "measured"**. A crew
+> that does weigh a fill overrides the number and it stores as `MANUAL`, badged **measured**. The
+> per-barrel shares stay `DERIVED`, badged **≈ estimated**. Provenance is now a **trinary**;
+> full reasoning in **RFC-003 §3.6** and §3.1.
+>
+> **This ratifies OD-4 as AMENDED, not as originally written.** The original recommendation badged
+> the nominal default as *measured*, which is the dishonesty RFC-003 exists to prevent — and worse
+> than a display bug, because every per-barrel figure downstream inherits its credibility from the
+> fill number. **`NOMINAL` now ships in the M1 enum migration alongside `DERIVED`** (both are
+> one-way doors — Postgres cannot drop an enum value). No enum value is added by this docs pass.
 >
 > Note what OD-4 is *not*: it is not a schema question about keg volume. A keg's nominal volume is
 > `Vessel.capacityL` ([`schema.prisma:1382`](prisma/schema.prisma:1382)), which already exists, and
@@ -451,10 +465,11 @@ Ticking: `user`. Closing out: `user`. Correcting a closed fill: `admin`, or the 
 
 ## 6. Unresolved decisions
 
-1. **OD-4** nominal vs. measured keg volume. ⛔ **NOT READY — do not ratify.** The recommendation
-   as written (nominal default, badged measured) is unsafe; the provenance gap it opens is written
-   up in **RFC-003 §3.6**, and the fix is a one-way `CaptureMethod` decision. *Owner decision
-   required, but only after reading RFC-003 §3.6.*
+1. ~~**OD-4** nominal vs. measured keg volume.~~ ✅ **RESOLVED 2026-07-29 by the owner: nominal is
+   allowed, stored as `CaptureMethod.NOMINAL`, and badged *nominal · 30 L stamped* — never
+   *measured*.** This winery accepts the stamped keg size, so requiring a measured number would
+   fabricate one. Ratified **as amended**, not as originally recommended. See §3.2 and RFC-003 §3.6.
+   **No longer blocking.**
 2. **OD-5** re-fan on correction. **Recommend yes — and this needs no owner decision.** The
    principle is sound; what it needed was a *specification* of partial re-fan, now written as
    §3.6.1. **Ready to ratify.**

@@ -1,6 +1,6 @@
 # RFC-003 · Measured vs. estimated quantities
 
-**Status:** proposed · **Depends on:** nothing · **Blocks:** RFC-002 close-out, the barrel volume display, lineage volumes · **Carries:** OD-4's unresolved provenance gap (§3.6)
+**Status:** proposed · **Depends on:** nothing · **Blocks:** RFC-002 close-out, the barrel volume display, lineage volumes · **OD-4** ✅ RESOLVED 2026-07-29 — provenance is a **trinary** (§3.6)
 
 > [!note] Changelog
 > **2026-07-29 — RFC amendment pass, against `main` @ `91cd1dcd`.** Amended to be implementable
@@ -16,6 +16,14 @@
 >   are listed with what each commits us to. **OD-4 is marked NOT READY. No enum value is added by
 >   this pass** — enum values cannot be dropped in Postgres, so this is a one-way door.
 > - **§3.3 rule 6 added** so `DERIVED` has a defined meaning on the five non-ledger models.
+>
+> **2026-07-29 (later the same day) — OWNER DECISION RECORDED, and it changes §3.1.** Asked whether
+> the crew can measure a keg fill, the owner answered: *"if we fill it up it holds what it holds and
+> it's what is stamped on it — that's what we know."* So **`NOMINAL` is added alongside `DERIVED`**
+> and **provenance becomes a TRINARY**: measured / nominal / estimated (§3.1, §3.6). Requiring a
+> measured number was rejected on evidence — it would have manufactured a typed-in `30` wearing the
+> word *measured*. §3.4's badge spec now needs a third design token, and chained provenance must
+> name a nominal input rather than hiding it behind a derived figure.
 
 ---
 
@@ -39,12 +47,24 @@ All four describe **how the number reached the system**, not **whether it was me
 
 ### 3.1 The distinction
 
-| Class | Definition | Examples |
-|---|---|---|
-| **Measured** | A person or instrument read this value | Keg fill volume, rack volume, bottle count, a Brix reading, a weigh-tag |
-| **Estimated** | The system computed it from other values | Per-barrel topping share, a barrel's current volume, a group's volume rollup |
+| Class | Definition | Stored as | Badge | Examples |
+|---|---|---|---|---|
+| **Measured** | A person or instrument **read** this value | `MANUAL` (or `VOICE`/`SENSOR`/`IMPORT`) | **measured** | Rack volume, bottle count, a Brix reading, a weigh-tag, a keg fill somebody actually weighed |
+| **Nominal** | Nobody read it and nothing computed it — it is a **stated capacity accepted as-is** | `NOMINAL` | **nominal · 30 L stamped** | A keg fill accepted at its stamped size |
+| **Estimated** | The system **computed** it from other values | `DERIVED` | **≈ estimated** | Per-barrel topping share, a barrel's current volume, a group's volume rollup |
+
+*(Amended 2026-07-29 — this table was a binary. It is now a trinary; see §3.6 for the decision and
+why the binary could not survive contact with how kegs are actually filled.)*
 
 Estimated is **not** the same as uncertain, approximate or provisional. It means *derived*, and it is always reproducible from stored inputs.
+
+**Nominal is the honest name for an assumption.** It is neither read nor computed, so it belongs to
+neither of the other two classes, and collapsing it into either one is a lie in a different
+direction: calling it *measured* overstates it, calling it *estimated* implies a computation that
+never happened. It is the weakest of the three claims, and the UI must never let it borrow the
+credibility of the other two — **especially** because a nominal fill volume is the input from which
+`DERIVED` per-barrel shares are computed. One accepted stamp can otherwise launder itself across
+twenty-one barrels.
 
 ### 3.2 Where the flag lives — recommendation
 
@@ -98,7 +118,12 @@ The derivation *detail* — the divisor, the source fill, the method — goes in
 3. A derived quantity is **never** silently promoted to measured. If someone measures the real value later, that is a correction with a stated reason.
 4. Derived quantities participate in the ledger normally — they are real volume movements, not annotations. The balance identity still holds.
 5. A figure computed *at read time* for display only (a group volume rollup, a percentage full) is **not** a ledger row and carries no `captureMethod`; the UI still labels it as derived.
-6. **(Added 2026-07-29)** `DERIVED` is meaningful **only** on `LotOperation` and `LotStateEvent`.
+6. **(Added 2026-07-29)** A `NOMINAL` quantity is **never silently promoted** either — the same rule
+   as 3. If somebody later weighs the keg, that is a correction with a stated reason, not a
+   reclassification. And a figure **derived from a nominal input** stays `DERIVED`, but its
+   explanation must name the nominal source, so the weakest link in the chain stays visible rather
+   than being averaged away.
+7. **(Added 2026-07-29)** `DERIVED` and `NOMINAL` are meaningful **only** on `LotOperation` and `LotStateEvent`.
    On `AnalysisPanel`, `LotTastingNote`, `Sample` and `SprayApplication` it is **refused at the
    core**, because nothing in those domains computes a quantity by division today and a permissive
    default would let provenance drift into records governed by `SPRAY-2`. If a lab-domain case for
@@ -107,7 +132,17 @@ The derivation *detail* — the divisor, the source fill, the method — goes in
 
 ### 3.4 UI requirement
 
-Every derived quantity in the interface carries a `ProvenanceBadge` reading **≈ estimated**, and every measured one reads **measured** where the two appear side by side. Tokens are in `05-design-system-v2.md` §A5. The badge's `aria-describedby` states the derivation: *"30 L ÷ 21 barrels, keg K-3, 27 July"*.
+Every derived quantity in the interface carries a `ProvenanceBadge` reading **≈ estimated**, every measured one reads **measured**, and every nominal one reads **nominal · 30 L stamped**, wherever two or more appear side by side. Tokens are in `05-design-system-v2.md` §A5. The badge's `aria-describedby` states the derivation: *"30 L ÷ 21 barrels, keg K-3, 27 July"*.
+
+> [!warning] Amended 2026-07-29 — the badge is three states, and the third needs a design token.
+> `05-design-system-v2.md` §A5 was specified for a **binary**. A `nominal` badge state has no token
+> yet. It must read as **weaker than measured**, not as a variant of it — that is the whole point of
+> the trinary, and a nominal badge styled like a measured one gives the assumption back the
+> credibility the model just took away.
+>
+> **Chained provenance:** where a derived figure was computed from a nominal input, the accessible
+> description must say so — *"30 L stamped ÷ 21 barrels, keg K-3, 27 July"*, **not** *"30 L ÷ 21
+> barrels"*. The weakest link stays visible all the way down (§3.3 rule 6).
 
 Places this is mandatory:
 
@@ -122,10 +157,35 @@ Places this is mandatory:
 
 A TTB figure that includes derived volumes must be able to state that. This RFC does not propose a reporting change; it makes the reporting change **possible** later by keeping the classification queryable. Flag this to whoever owns compliance before the first period that contains derived topping volumes.
 
-### 3.6 ⛔ The `assumed` gap — OD-4's provenance hole (NEW, 2026-07-29)
+### 3.6 ✅ The `assumed` gap — RESOLVED: provenance is a TRINARY (2026-07-29)
 
-> [!danger] OD-4 is NOT READY for ratification, and this section is why.
-> **Do not answer OD-4 yet. No enum value is being added by this pass.**
+> [!success] OWNER DECISION, 2026-07-29 — **Option A. `NOMINAL` joins `DERIVED` in the M1 enum migration.**
+> The question put to the owner was *"when you fill a keg, do you actually know how much went in?"*
+> The answer: **"if we fill it up it holds what it holds and it's what is stamped on it — that's
+> what we know."**
+>
+> So the winery does **not** measure keg fills, and Option B (require a measured number every fill)
+> is rejected **on evidence, not taste**: forcing a number this crew does not have would produce a
+> typed-in `30` labelled **measured** — manufacturing the exact dishonesty this RFC exists to
+> prevent, and doing it under a stronger claim than the honest default. Option B is only correct for
+> a winery with a scale or a meter at the keg. This one does not have that.
+>
+> **The model is therefore a trinary, not a binary** (see §3.1 as amended):
+> - crew measured the fill → `MANUAL` → badge **measured**
+> - crew accepted the stamped size → **`NOMINAL`** → badge **nominal · 30 L stamped**
+> - per-barrel share → `DERIVED` → badge **≈ estimated**
+>
+> **Binding consequence:** `NOMINAL` is no longer conditional in the M1 migration — it ships
+> alongside `DERIVED` in the same enum-only commit. Both are one-way doors. **No enum value is
+> added by this docs pass;** M1 is implementation work.
+>
+> **OD-4 is now ready to ratify — but as amended, NOT as originally recommended.** The original
+> said *"the default badged as nominal"* in one clause and *"nominal by default, overridable per
+> fill, with the override badged as measured"* in another, which in practice shipped an assumed
+> number wearing the word measured. The decision above is narrower and explicit: **a number nobody
+> read is never badged measured.**
+
+The reasoning that produced this decision is preserved below.
 
 **The hole.** RFC-002's OD-4 recommends a keg fill default to its **nominal** (stamped) volume,
 overridable, *"with the override badged as measured and the default badged as nominal."* But this
@@ -155,16 +215,25 @@ Deciding OD-4 *after* M1 is the expensive order.
 | **B. Require a measured number per fill; drop nominal entirely.** The crew states the volume when the keg is filled. | Nothing new in the model. The binary holds. Arguably better cellar practice. | **One extra thought per keg, not per barrel** — and it happens *before* the round, so RFC-002 AC-1 ("zero numeric entry until close-out") is untouched. Friction where RFC-002 wanted none. |
 | **C. Ship OD-4 as recommended** (nominal default, badged measured). | — | ❌ **Not defensible.** It is the exact failure this RFC was written to prevent. Listed only to be explicitly rejected. |
 
-**Assessment, stated with its uncertainty.** Option C is out; **that** judgement is high-confidence.
-Between **A and B this is genuinely close, and it is the closest call in the whole gate.** A is
-honest but permanently complicates the model; B is simpler and arguably better practice but
-reintroduces the friction RFC-002 was written to remove. **This RFC does not pick.** A weak lean to
-**A** — because a winery that never weighs a keg is a real and common case, and B's friction lands
-on the crew every single fill — but the lean is weak enough that the owner should decide it
-deliberately rather than inherit it.
+**Assessment as it stood before the owner answered.** Option C was out; that judgement was
+high-confidence. Between **A and B it was genuinely close** — A is honest but permanently
+complicates the model; B is simpler but reintroduces friction RFC-002 was written to remove. The
+RFC deliberately did not pick, with a weak lean to A.
 
-**Whichever is chosen, one rule is non-negotiable: a number nobody read is never badged as
+**What actually settled it was not a preference — it was a fact about this cellar.** The deciding
+question turned out to be answerable rather than a matter of taste: *does the crew have a way to
+measure a keg fill?* No. Given that, B does not deliver the honesty it promises; it delivers a
+fabricated measurement. **The lean to A was right, but for a firmer reason than the one originally
+given.** Worth remembering as a pattern: a close call between two designs often resolves the moment
+someone asks what the users actually do, instead of which design is more elegant.
+
+**The non-negotiable rule, now enforced by the trinary: a number nobody read is never badged as
 measured.**
+
+**Revisit condition.** If this winery — or a future tenant — installs a scale or a flow meter at the
+keg, `MANUAL` is already the right value for those fills and nothing needs to change. `NOMINAL`
+simply stops being the common case. The trinary supports both wineries; the binary would have
+forced a lie in one of them.
 
 ### 3.7 Per-line provenance — an explicit costed proposal, NOT an acceptance criterion
 
@@ -195,9 +264,10 @@ that proposal as the signal to re-examine the *operation*, not to add the column
 
 ## 4. Unresolved decisions
 
-0. **⛔ OD-4's `assumed` gap (§3.6) — the blocking one.** Add a third value (`NOMINAL`), or require
-   a measured number per fill? A one-way door; it gates the M1 enum migration. **Owner decision
-   required. RFC-002's OD-4 cannot be ratified until this is answered.**
+0. ~~**OD-4's `assumed` gap (§3.6)** — add a third value (`NOMINAL`), or require a measured number per fill?~~
+   ✅ **RESOLVED 2026-07-29 by the owner: add `NOMINAL`.** This winery accepts the stamped keg size;
+   forcing a measured number would fabricate one. `NOMINAL` ships in M1 beside `DERIVED`. Provenance
+   is a **trinary** (§3.1). **No longer blocking.**
 1. Should `DERIVED` be exclusive with `VOICE`? A voice-dictated keg volume is measured; the per-barrel split is derived. They are different operations, so exclusivity is fine — but confirm no flow needs both on one row.
    *(Confirmed 2026-07-29 for the amended RFC-002 shape: the fill and the close-out are separate
    operations, so no row needs both. `captureMethod` being a single scalar makes exclusivity

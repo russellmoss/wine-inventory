@@ -18,7 +18,8 @@ tags:
 > Any `LotOperation` written with `captureMethod = DERIVED` carries enough in `metadata` to
 > recompute its magnitude exactly (`{ method, divisor, fillVolumeL, kegFillId, computedAt }`).
 > A derived quantity is **never silently promoted to measured**: if someone measures the real value
-> later, that is a `CORRECTION` with a stated reason, not an in-place reclassification.
+> later, that is a `CORRECTION` with a stated reason, not an in-place reclassification. The same
+> rule binds `NOMINAL` — an accepted stamped volume is never quietly relabelled `MANUAL`.
 
 **Guarded by:** _planned_ — intended guard `npm run verify:provenance`, asserting every `DERIVED`
 operation carries a well-formed `metadata.derivation`.
@@ -34,6 +35,11 @@ Flip to `guarded` + add `verify:` as part of that phase's definition of done.
 which is sufficient because the RFC-002 close-out shape makes every operation
 provenance-homogeneous (see [[ADR-0013]]). A mixed-provenance operation would put this invariant out
 of reach — which is a reason to reject such an operation, not to add a column.
+
+**Provenance is a trinary, not a binary** (owner decision, 2026-07-29 — RFC-003 §3.6): `MANUAL`
+= measured, **`NOMINAL`** = a stated capacity accepted as-is, `DERIVED` = computed. A figure derived
+FROM a nominal input stays `DERIVED`, but its `metadata` explanation must name the nominal source so
+the weakest link in the chain stays visible rather than being averaged away.
 
 **Scope caution.** `CaptureMethod` is shared by six models across the ledger, lab, tasting and
 **spray-record** domains. `DERIVED` is meaningful only on `LotOperation` and `LotStateEvent`; it is

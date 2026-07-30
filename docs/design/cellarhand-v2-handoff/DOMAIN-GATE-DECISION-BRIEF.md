@@ -665,18 +665,30 @@ Each needs a typed note in `docs/architecture/invariants/`. There are currently 
 
 ## 8. What the owner must answer before Phase 7 can be planned
 
-Five questions. The first two are the ones that actually gate work; the rest can be answered in
-the plan review.
+~~Five questions.~~ **Two of the five — the two that actually gated work — were answered by the
+owner on 2026-07-29 and are struck below. The remaining three are plan-review items, not blockers.**
 
-1. **OD-3 — one operational group per vessel: yes or no?** *(gates M2/M3)*
-   And a second half the handoff does not ask: **effective-dated membership, or a member snapshot
-   on the work order?** I recommend snapshot (§1/OD-3). This changes the schema, so it must be
-   settled before M2 is written, not during.
+1. **OD-3 — one operational group per vessel: yes or no?** *(gates M2/M3)* — recommended **yes**,
+   enforced immediately (0 violations exist).
+   ✅ **The second half is ANSWERED. Owner, 2026-07-29: the work-order snapshot** — *"do the
+   worksheet approach."* A work order freezes its member list at **issue**; membership is not
+   effective-dated. `addedAt`/`removedAt` drop out of M2 and the OD-3 partial index loses its
+   `removedAt` clause. Recorded as **ADR 0014** + invariant **GROUP-3**. The retroactive-repaint
+   hazard is now structurally impossible rather than guarded by a rule. **No longer blocking.**
 
-2. **OD-4 — may a fill be recorded at nominal, or must every fill state a measured number?**
-   *(gates M1, which is a one-way door — enum values cannot be dropped)*
-   If nominal is allowed, `NOMINAL` goes into M1 alongside `DERIVED`. If it is not, M1 is smaller.
-   Either is defensible; **shipping nominal-badged-as-measured is not.**
+2. ✅ **OD-4 — ANSWERED. Owner, 2026-07-29: nominal is allowed, and it is badged *nominal*.**
+   *"If we fill it up it holds what it holds and it's what is stamped on it — that's what we know."*
+   The crew has no way to measure a keg fill, so requiring a number would have **manufactured** one:
+   a typed-in `30` wearing the word *measured*. `NOMINAL` therefore ships in M1 alongside `DERIVED`,
+   and **provenance becomes a trinary** (measured / nominal / estimated — RFC-003 §3.1, §3.6).
+   Note this ratifies OD-4 **as amended, not as originally recommended**: the original badged the
+   nominal default as *measured*, which is the failure this brief flagged. **No longer blocking.**
+
+   *Retrospective worth keeping:* this was called "the closest call of the five" and I leaned
+   `NOMINAL` while flagging low confidence. The lean was right, but the reasoning that settled it was
+   not a design preference — it was one question about what the crew actually does at the keg.
+   **A close call between two designs often stops being close the moment someone asks about
+   practice instead of elegance.**
 
 3. ~~**OD-7 — do you want Phase 9 landed before the RFC-002 runner?**~~ **RESOLVED — no longer a
    question.** Phase 9 shipped as `408f8aa5`; the assistant already creates a DRAFT and never

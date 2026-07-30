@@ -20,7 +20,7 @@ right — but it names **one** enum-only migration where there are **two**.
 ```
 M1  ENUM-ONLY · ALONE · FIRST · ITS OWN COMMIT · MERGED **AND DEPLOYED** BEFORE M2
     ALTER TYPE "CaptureMethod" ADD VALUE 'DERIVED';      ← RFC-003
-    ALTER TYPE "CaptureMethod" ADD VALUE 'NOMINAL';      ← ONLY IF OD-4 resolves to option A
+    ALTER TYPE "CaptureMethod" ADD VALUE 'NOMINAL';      ← ✅ CONFIRMED (OD-4, owner 2026-07-29)
     ALTER TYPE "VesselType"    ADD VALUE 'KEG';          ← ⚠️ RFC-002; NO handoff doc mentions this
     ALTER TYPE "VesselType"    ADD VALUE 'BIN';          ← free ride; register P-item, unblocks weigh-tag tare
         ↓  must be a MERGED, DEPLOYED commit before ANY code references these values
@@ -29,11 +29,12 @@ M2  RFC-001 STRUCTURE
                         += type, status, location, settings
     vessel_group_member += position
                         += composite tenant FK (tenantId, groupId) → vessel_group(tenantId, id)
-                        += addedAt/removedAt  ← ONLY IF §4.3.1 Option A (effective-dating) is chosen
+                        ❌ NO addedAt/removedAt — owner chose the work-order snapshot (ADR 0014)
+    work_order          += member snapshot, frozen at ISSUE (ADR 0014, GROUP-3)
         ↓
 M3  RFC-001 ENFORCE — partial unique index for OD-3:
     CREATE UNIQUE INDEX … ON vessel_group_member (tenantId, vesselId)
-      WHERE type = 'OPERATIONAL' [AND "removedAt" IS NULL ← only under Option A]
+      WHERE type = 'OPERATIONAL'          ← no removedAt clause; there is no removedAt
     (No backfill step: 0 rows. See §2.)
         ↓
 M4  RFC-002 STRUCTURE — keg_fill + topping_tick (both NEW, both tenant-scoped → full Phase-12 walk).
@@ -54,6 +55,7 @@ M6  RFC-004 — tagToken/tagIssuedAt/tagRevokedAt on vessel (+ vessel_group), @@
 | M1 split across two commits instead of one | Two deploy cycles for zero benefit. **Batch every enum value into M1** — which is exactly why OD-4 must be decided *before* M1, not after. |
 | M2 without `vessel_group.@@unique([tenantId, id])` | M2's own composite tenant FK has **no unique target** and cannot be created → Phase-12 checklist step 5 fails. You discover it while writing the FK, not while planning. Verified: `VesselGroup`'s only composite unique is `@@unique([tenantId, name])` ([`schema.prisma:3073`](prisma/schema.prisma:3073)). |
 | M3's partial unique index before M2's `type` column exists | Index references a non-existent column. |
+| `addedAt`/`removedAt` added to `vessel_group_member` "for future flexibility" | **Silently abandons ADR 0014 / `GROUP-3`.** Dated membership columns are the tripwire that the snapshot decision has been reversed by drift rather than by decision. |
 | RFC-002 code **merged before M1 is deployed** (not merely merged) | Runtime `invalid input value for enum` on the first close-out — in production, on the floor. Merge ≠ deploy. |
 | M6's `tagToken` unique added as a **global** unique | Cross-tenant enumeration via insert conflict. Must be `@@unique([tenantId, tagToken])` — RFC-004 §3.5.2. |
 | `prisma migrate diff` used to author any of these | **Unsafe on this repo — it drops tenant FKs.** Hand-author the SQL. |
@@ -91,10 +93,11 @@ M5, whose *code* reverts but whose *overfilled barrels stay overfilled* (RFC-002
 
 | Change | Backfill | Enforce | Rollback |
 |---|---|---|---|
-| `CaptureMethod` += `DERIVED` (+`NOMINAL`?) | **None.** No existing row is reclassified (RFC-003 §3.2); 0 rows would qualify anyway. | Additive value — nothing to enforce. Add the §3.3 rule-6 core refusal for the five non-ledger models. | ⚠️ **Enum values cannot be dropped.** Code-only rollback. **One-way door — decide OD-4 first.** |
+| `CaptureMethod` += `DERIVED` **and** `NOMINAL` | **None.** No existing row is reclassified (RFC-003 §3.2); 0 rows would qualify anyway. | Additive values — nothing to enforce. Add the §3.3 rule-7 core refusal for the four non-ledger models, and the rule-6 no-silent-promotion rule for both new values. | ⚠️ **Enum values cannot be dropped.** Code-only rollback. **One-way door — OD-4 decided 2026-07-29, so M1 is now fully specified.** |
 | `VesselType` += `KEG` (+`BIN`) | None. | Picker + capacity call sites must filter on `type`. | Same one-way door; code-only. |
 | `vessel_group` += `type`, `status`, `location`, `settings`, `@@unique([tenantId, id])` | 0 rows. Spec anyway (RFC-001 §4.13): `type='OPERATIONAL'`, `status` from `isActive`. | `NOT NULL` on `type`/`status` **in the same migration** — safe on 0 rows. | Drop columns + index. Zero data loss. |
-| `vessel_group_member` += `position` (+ `addedAt`/`removedAt` under Option A), composite tenant FK | 0 rows. Spec: position by vessel-code natural sort. | `NOT NULL` on `position`; FK `(tenantId, groupId) → vessel_group(tenantId, id)` `ON DELETE RESTRICT`. | Drop columns + FK. |
+| `vessel_group_member` += `position`, composite tenant FK (**no** `addedAt`/`removedAt` — ADR 0014) | 0 rows. Spec: position by vessel-code natural sort. | `NOT NULL` on `position`; FK `(tenantId, groupId) → vessel_group(tenantId, id)` `ON DELETE RESTRICT`. | Drop columns + FK. |
+| `work_order` += member snapshot, frozen at ISSUE (ADR 0014 / `GROUP-3`) | 0 rows to snapshot — no group-scoped work order exists. | Immutable after issue; a `DRAFT` reads live membership. Enforced in the issue core, not by a constraint. | Drop the column. **No history is lost, because there is none yet.** |
 | OD-3 partial unique index | **0 violations — verified.** | `CREATE UNIQUE INDEX … WHERE type='OPERATIONAL'`. **Enforce immediately.** | `DROP INDEX` — instant, no data change. The cheapest rollback in the set, which is *why* enforcing now is the conservative choice. |
 | `keg_fill` (**NEW**) | n/a | Full Phase-12 walk below. | `DROP TABLE`. |
 | `topping_tick` (**NEW**) | n/a | Full Phase-12 walk below. | `DROP TABLE`. |

@@ -27,6 +27,11 @@ existing `@@unique([tenantId, groupId, vesselId])` (`prisma/schema.prisma:3086`)
 **Status:** `planned` because the `type` column does not exist yet (RFC-001 migration M2/M3).
 Flip to `guarded` + add `verify:` **as part of the definition of done** for that phase.
 
+**No `removedAt` clause.** The index is unconditional on membership dates because there are none —
+the owner chose the work-order snapshot over effective-dated membership
+([[0014-work-order-member-snapshot-over-effective-dating]], 2026-07-29). See
+[[GROUP-3-work-order-member-snapshot-is-frozen]].
+
 **Decision:** OD-3 — see [[INVARIANTS]] and RFC-001 §4.2/§4.13.
 **Applies to:** `src/lib/cellar/`, `prisma/schema.prisma`
 
