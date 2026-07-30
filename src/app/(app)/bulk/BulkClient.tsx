@@ -165,7 +165,7 @@ function AddWineForm({
   );
 }
 
-export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, materials, groups }: { vessels: VesselWithContents[]; varieties: Option[]; vineyards: Option[]; blocks: BlockOption[]; subblocks: SubblockOption[]; materials: CellarMaterialDTO[]; groups: VesselGroupDTO[] }) {
+export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, materials, groups, isAdmin }: { vessels: VesselWithContents[]; varieties: Option[]; vineyards: Option[]; blocks: BlockOption[]; subblocks: SubblockOption[]; materials: CellarMaterialDTO[]; groups: VesselGroupDTO[]; isAdmin: boolean }) {
   const vol = useUnitPrefs().volume;
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -336,6 +336,7 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
           materials={materials}
           varietyNames={varieties.map((v) => v.name)}
           vineyardNames={vineyards.map((v) => v.name)}
+          isAdmin={isAdmin}
         />
       ) : null}
 

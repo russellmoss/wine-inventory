@@ -15,6 +15,7 @@ import {
   previewGroupApplyAction,
 } from "@/lib/cellar/actions";
 import { formatVolume, volumeInputToLiters, volumeUnitLabel } from "@/lib/units/display";
+import { unwrap } from "@/lib/action-result";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
 
 // Group actions on /bulk (Phase 3, Unit 9, D13). Target a saved group OR an ad-hoc
@@ -61,12 +62,17 @@ export function GroupActions({
   materials,
   varietyNames,
   vineyardNames,
+  isAdmin,
 }: {
   groups: VesselGroupDTO[];
   vessels: GroupVessel[];
   materials: CellarMaterialDTO[];
   varietyNames: string[];
   vineyardNames: string[];
+  /** Plan 106 D7 / RFC-001 §4.10: DEFINING a group is admin work; RECORDING WORK against one is not.
+   *  This hides only the group-manager controls — the fan-out panel above them stays open to every
+   *  ready user, which is the whole point of the split. */
+  isAdmin: boolean;
 }) {
   const vol = useUnitPrefs().volume;
   const [open, setOpen] = React.useState(false);
@@ -193,7 +199,9 @@ export function GroupActions({
     setError(null);
     startTransition(async () => {
       try {
-        await createGroupAction({ name: newGroupName.trim(), vesselIds: [...adhoc] });
+        // Plan 106 D7: now a `safeAdminAction`, so the failure comes back as data and `unwrap`
+        // rethrows the real message. A thrown ActionError would have been redacted in production.
+        unwrap(await createGroupAction({ name: newGroupName.trim(), vesselIds: [...adhoc] }));
         setNewGroupName("");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't create the group.");
@@ -395,8 +403,8 @@ export function GroupActions({
           {/* Result summary */}
           {result ? <GroupResult result={result} pending={pending} onUndo={undoBatch} /> : null}
 
-          {/* Group manager (create from the current ad-hoc selection) */}
-          {!groupId ? (
+          {/* Group manager (create from the current ad-hoc selection) — admin-only per §4.10 */}
+          {!groupId && isAdmin ? (
             <div style={{ borderTop: "1px solid var(--border-strong)", marginTop: 18, paddingTop: 14, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span style={{ fontSize: 12.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>Save selection as a group</span>
               <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="Group name" style={{ ...fieldStyle, flex: "1 1 180px" }} aria-label="New group name" />
@@ -413,7 +421,7 @@ export function GroupActions({
   function undoBatchDeactivate(id: string) {
     startTransition(async () => {
       try {
-        await deactivateGroupAction(id);
+        unwrap(await deactivateGroupAction(id));
         setGroupId("");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't deactivate the group.");

@@ -1,7 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { action, safeAction } from "@/lib/actions";
+import { action, safeAction, safeAdminAction } from "@/lib/actions";
+import {
+  addGroupMemberCore,
+  archiveGroupCore,
+  configureGroupCore,
+  removeGroupMemberCore,
+  reorderGroupMembersCore,
+  type ArchiveGroupResult,
+  type ConfigureGroupInput,
+  type VesselGroupDetailDTO,
+} from "@/lib/vessels/group-core";
 import {
   receiveConsumableCore,
   adjustConsumableCore,
@@ -211,42 +221,105 @@ export const topVesselAction = action(
 );
 
 // ── Vessel groups (CRUD + fan-out) ──
+//
+// PLAN 106 D7/F6 — THIS IS A DELIBERATE BEHAVIOUR CHANGE ON THE SHIPPED /bulk PANEL, not a
+// greenfield choice. RFC-001 §4.10 gates create / rename / archive / settings / membership to
+// `admin`, but all six of these actions shipped wrapped in plain `action(...)`, reachable by any
+// ready tenant user, and `/bulk`'s GroupActions.tsx had no isAdmin reference at all. Building to
+// spec therefore TAKES AWAY something a non-admin could do yesterday. Called out here so it is a
+// decision on the record rather than a surprise in a changelog.
+//
+// What stays open per §4.10: VIEWING groups and RECORDING WORK against them (applyToGroupAction,
+// previewGroupApplyAction below) — a cellar hand still runs the round, they just can't redefine it.
+//
+// `safeAdminAction` rather than `adminAction`: these all have user-facing failure modes now (the
+// OD-3 conflict names the other group, archive warns about open work orders), and a THROWN
+// ActionError is redacted to an opaque string in production. Failures must come back as data.
+// Clients call `unwrap(...)`.
 
-export const createGroupAction = action(
+export const createGroupAction = safeAdminAction(
   async ({ actor }, input: { name: string; note?: string; vesselIds?: string[] }): Promise<VesselGroupDTO> => {
     const dto = await createGroupCore(actor, input);
-    revalidatePath("/bulk");
+    revalidateGroupSurfaces();
     return dto;
   },
 );
 
-export const renameGroupAction = action(async ({ actor }, groupId: string, name: string): Promise<void> => {
+export const renameGroupAction = safeAdminAction(async ({ actor }, groupId: string, name: string): Promise<void> => {
   await renameGroupCore(actor, groupId, name);
-  revalidatePath("/bulk");
+  revalidateGroupSurfaces();
 });
 
-export const deactivateGroupAction = action(async ({ actor }, groupId: string): Promise<void> => {
+export const deactivateGroupAction = safeAdminAction(async ({ actor }, groupId: string): Promise<void> => {
   await deactivateGroupCore(actor, groupId);
-  revalidatePath("/bulk");
+  revalidateGroupSurfaces();
 });
 
-export const addGroupMemberAction = action(async ({ actor }, groupId: string, vesselId: string): Promise<void> => {
+export const addGroupMemberAction = safeAdminAction(async ({ actor }, groupId: string, vesselId: string): Promise<void> => {
   await addMemberCore(actor, groupId, vesselId);
-  revalidatePath("/bulk");
+  revalidateGroupSurfaces();
 });
 
-export const removeGroupMemberAction = action(async ({ actor }, groupId: string, vesselId: string): Promise<void> => {
+export const removeGroupMemberAction = safeAdminAction(async ({ actor }, groupId: string, vesselId: string): Promise<void> => {
   await removeMemberCore(actor, groupId, vesselId);
-  revalidatePath("/bulk");
+  revalidateGroupSurfaces();
 });
 
-export const mergeGroupMembershipAction = action(
+export const mergeGroupMembershipAction = safeAdminAction(
   async ({ actor }, input: { sourceGroupId: string; targetGroupId: string; deactivateSource?: boolean }): Promise<VesselGroupDTO> => {
     const dto = await mergeGroupMembershipCore(actor, input);
-    revalidatePath("/bulk");
+    revalidateGroupSurfaces();
     return dto;
   },
 );
+
+// ── Vessel groups: Phase 7 configuration (plan 106 Unit 4) ──
+
+export const configureGroupAction = safeAdminAction(
+  async ({ actor }, input: ConfigureGroupInput): Promise<VesselGroupDetailDTO> => {
+    const dto = await configureGroupCore(actor, input);
+    revalidateGroupSurfaces();
+    return dto;
+  },
+);
+
+export const archiveGroupAction = safeAdminAction(
+  async ({ actor }, input: { groupId: string; archived: boolean; confirmOpenWorkOrders?: boolean }): Promise<ArchiveGroupResult> => {
+    const res = await archiveGroupCore(actor, input);
+    revalidateGroupSurfaces();
+    return res;
+  },
+);
+
+export const addGroupMemberDetailedAction = safeAdminAction(
+  async ({ actor }, input: { groupId: string; vesselId: string }): Promise<VesselGroupDetailDTO> => {
+    const dto = await addGroupMemberCore(actor, input);
+    revalidateGroupSurfaces();
+    return dto;
+  },
+);
+
+export const removeGroupMemberDetailedAction = safeAdminAction(
+  async ({ actor }, input: { groupId: string; vesselId: string }): Promise<VesselGroupDetailDTO> => {
+    const dto = await removeGroupMemberCore(actor, input);
+    revalidateGroupSurfaces();
+    return dto;
+  },
+);
+
+export const reorderGroupMembersAction = safeAdminAction(
+  async ({ actor }, input: { groupId: string; vesselIds: string[] }): Promise<VesselGroupDetailDTO> => {
+    const dto = await reorderGroupMembersCore(actor, input);
+    revalidateGroupSurfaces();
+    return dto;
+  },
+);
+
+/** `/bulk` renders the group picker; `/cellar/groups` is the group's own home. Both go stale together. */
+function revalidateGroupSurfaces(): void {
+  revalidatePath("/bulk");
+  revalidatePath("/cellar/groups");
+}
 
 export const previewGroupApplyAction = action(
   async (_ctx, target: GroupTarget, spec: GroupOpSpec): Promise<GroupApplyPreview> => previewGroupApply(target, spec),

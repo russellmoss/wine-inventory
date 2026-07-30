@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { requireActiveTenant } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { classifyBlend } from "@/lib/bulk/blend";
 import { computeFill } from "@/lib/vessels/fill";
 import { tankState } from "@/lib/vessels/tank-state";
@@ -13,7 +13,10 @@ import { CELLAR_VESSEL_TYPE_FILTER, isCellarVessel } from "@/lib/vessels/cellar-
 const READING_WINDOW_DAYS = 30;
 
 export default async function BulkPage() {
-  await requireActiveTenant();
+  // Plan 106 D7 / RFC-001 4.10: the page stays open to every ready user (view + record work); only
+  // the group-manager controls are admin-gated, and the actions enforce it server-side regardless.
+  const user = await requireReadyUser();
+  const isAdmin = isTenantAdminLike(user);
   // One clock read for the whole render, and the staleness window both reading queries are
   // bounded by. Anything older than this cannot change a "stale?" answer, so there is no
   // reason to scan the tenant's entire panel history on every board paint.
@@ -178,6 +181,7 @@ export default async function BulkPage() {
       subblocks={subblocks as SubblockOption[]}
       materials={materials}
       groups={groups}
+      isAdmin={isAdmin}
     />
     </>
   );
