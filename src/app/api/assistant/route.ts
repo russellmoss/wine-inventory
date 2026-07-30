@@ -10,6 +10,9 @@ import {
   touchConversation,
   listMessagesForReplay,
 } from "@/lib/assistant/conversations";
+import { assistantAvailability } from "@/lib/assistant/availability";
+import { parseObjectContextHint } from "@/lib/assistant/object-context";
+import { resolveObjectContext } from "@/lib/assistant/object-context-resolve";
 import { buildReplayMessages, windowReplayRows } from "@/lib/assistant/replay";
 import { generateTitle } from "@/lib/assistant/title";
 import { getWineryTimeZone, getUnitPrefs } from "@/lib/settings/data";
@@ -26,6 +29,14 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user || user.banned || user.mustChangePassword) {
     return Response.json({ error: "Not signed in." }, { status: 401 });
+  }
+
+  // Plan 105 U5 / DM-58: the SAME gate the dock reads, so the composer's "assistant is off" and this
+  // route can never disagree. Refused here rather than mid-stream in run.ts, which only surfaced
+  // after the user had already typed and sent.
+  const availability = assistantAvailability();
+  if (!availability.available) {
+    return Response.json({ error: availability.unavailableReason }, { status: 503 });
   }
 
   let body: unknown;
@@ -55,6 +66,11 @@ export async function POST(req: Request) {
   // degrades rather than failing the turn.
   const rawTz = (body as { timeZone?: unknown })?.timeZone;
   const viewerTimeZone = typeof rawTz === "string" && rawTz.length > 0 && rawTz.length <= 64 ? rawTz : undefined;
+
+  // Plan 105 U4 / DM-56: the object the page says the user is looking at, so "change the schedule"
+  // lands on the right record. A HINT, never a fact — it is narrowed here and re-resolved
+  // tenant-scoped below before a single character of it reaches the prompt.
+  const objectContextHint = parseObjectContextHint((body as { objectContext?: unknown })?.objectContext);
 
   const lastUserMessage = messages[messages.length - 1].content;
 
@@ -142,7 +158,14 @@ export async function POST(req: Request) {
           /* unconfigured → tools and prompt behave exactly as before the setting existed */
         }
 
-        const run = await runAssistant({ user, messages: replayed, send, voice: isVoice, timeZone, units });
+        // Plan 105 U4: resolve the page's object HERE, for the same reason as the zone and units —
+        // the run loop stays free of DB reads. Tenant passed explicitly, uncached, never throws.
+        const objectContext = await resolveObjectContext(
+          user.supportOrganizationId ?? user.activeOrganizationId,
+          objectContextHint,
+        );
+
+        const run = await runAssistant({ user, messages: replayed, send, voice: isVoice, timeZone, units, objectContext });
         // Persist when there is text OR any tool call. A turn that emitted only a card has no text;
         // dropping it (the old `run.text.trim()` gate) threw away exactly the tool evidence replay
         // needs, so the next turn would look like the assistant answered a write request with nothing.

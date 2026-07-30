@@ -297,9 +297,49 @@ export function normalizeDoseUnit(unit: string): string {
   return /^ppm$/i.test(trimmed) ? "mg/L" : trimmed;
 }
 
+/**
+ * Human words for each task kind, for the work-order TITLE.
+ *
+ * The title is prose a cellar hand reads on the floor and on the card. It used to be
+ * `i.kind.toLowerCase()`, which leaked the raw enum for every multi-word kind: "Work order:
+ * cap_mgmt", "harvest_weigh_in", "temp_setpoint". `09-content-terminology.md` is explicit — never
+ * expose an internal id in prose.
+ *
+ * Typed as an exhaustive Record over the union, so adding a task kind without a label is a
+ * COMPILE error rather than a leak that ships.
+ */
+const INTENT_TITLE_LABEL: Record<NlWorkOrderIntent["kind"], string> = {
+  RACK: "racking",
+  TOPPING: "topping",
+  ADDITION: "addition",
+  FINING: "fining",
+  FILTRATION: "filtration",
+  CAP_MGMT: "cap work",
+  TEMP_SETPOINT: "temperature set point",
+  CLEAN: "cleaning",
+  SANITIZE: "sanitising",
+  STEAM: "steaming",
+  OZONE: "ozone",
+  GAS: "gassing",
+  SO2: "SO₂",
+  WET_STORAGE: "wet storage",
+  CRUSH: "crush",
+  PRESS: "press",
+  HARVEST_WEIGH_IN: "harvest weigh-in",
+  PANEL: "panel",
+  BRIX: "Brix",
+  SAMPLE_PULL: "sample pull",
+  BARREL_DOWN: "barrel-down",
+  RACK_TO_TANK: "rack to tank",
+  BOTTLE: "bottling",
+  EQUIPMENT_SERVICE: "equipment service",
+  NOTE: "note",
+};
+
 function titleFromIntents(intents: NlWorkOrderIntent[]): string {
   if (intents.length === 0) return "Natural-language work order";
-  const labels = intents.map((i) => (i.kind === "PANEL" ? "panel" : i.kind.toLowerCase()));
+  // Fall back to the kind only if a future variant somehow slips past the exhaustive map above.
+  const labels = intents.map((i) => INTENT_TITLE_LABEL[i.kind] ?? i.kind.toLowerCase().replace(/_/g, " "));
   const unique = [...new Set(labels)];
   return `Work order: ${unique.join(" + ")}`;
 }

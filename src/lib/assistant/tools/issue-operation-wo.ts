@@ -2,11 +2,11 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { entityPath } from "../routes";
+import { entityPath, workOrderLandingPath } from "../routes";
 import { resolveVessel, type ResolvedVessel } from "../scope";
 import { instantiateTaskBuilds, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
-import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
+import { createWorkOrderAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { resolveDoseUnit } from "@/lib/cellar/additions-math";
@@ -17,7 +17,7 @@ import { DUE_AT_SCHEMA_PROPERTIES, dueClause, dueFromCommitArgs, dueProposalArgs
 // list of vessels ("top barrels 1-5", "filter tanks 3, 4 and 7", "add 30 g/hL KMBS to barrels 1-8").
 // This is the general sibling of issue_cap_management_wo (which is cap-work-only): the template path
 // (create_work_order) clones a fixed template and CANNOT fan out across a vessel selection, which is the
-// gap this closes. Wraps the same lifecycle actions (createWorkOrderAction → issueWorkOrderAction) — no
+// gap this closes. Wraps createWorkOrderAction and stops at DRAFT (plan 105: the assistant never issues) — no
 // db_*, no re-implemented op logic; the crew records each task's real op on the floor at completion.
 //
 // Scope: the single-target, whole-vessel operations. TOPPING/FILTRATION need only a target vessel;
@@ -55,7 +55,7 @@ type RawInput = {
 export const issueOperationWoTool: AssistantTool = {
   name: "issue_operation_wo",
   description:
-    "Issue ONE work order that fans out across MULTIPLE vessels — one task per vessel — for a whole-vessel cellar operation: topping, filtration, an addition, or a fining. Use when the user wants a single work order covering several tanks/barrels at once ('top barrels 1 through 5', 'filter tanks 3, 4 and 7', 'add 30 g/hL KMBS to barrels 1-8'). Give the operation and the list of vessels in plain language; for an addition or fining also give the material + dose. This is the tool for multi-vessel selection — NOT create_work_order (that clones a fixed template and can't fan out) and NOT issue_cap_management_wo (that's cap work: punchdown/pumpover/cold-soak). Two-vessel racking is not supported here. Optionally set an assignee email, a due date (plus dueTime for a requested clock time, e.g. 'tomorrow at 9am' → dueDate + dueTime '09:00'), and a title. Does NOT save immediately — returns a preview to confirm.",
+    "Issue ONE work order that fans out across MULTIPLE vessels — one task per vessel — for a whole-vessel cellar operation: topping, filtration, an addition, or a fining. Use when the user wants a single work order covering several tanks/barrels at once ('top barrels 1 through 5', 'filter tanks 3, 4 and 7', 'add 30 g/hL KMBS to barrels 1-8'). Give the operation and the list of vessels in plain language; for an addition or fining also give the material + dose. This is the tool for multi-vessel selection — NOT create_work_order (that clones a fixed template and can't fan out) and NOT issue_cap_management_wo (that's cap work: punchdown/pumpover/cold-soak). Two-vessel racking is not supported here. Optionally set an assignee email, a due date (plus dueTime for a requested clock time, e.g. 'tomorrow at 9am' → dueDate + dueTime '09:00'), and a title. Does NOT save immediately — returns a preview to confirm. Confirming creates a DRAFT work order and takes the user to it; it does NOT issue. Issuing is a separate press the user makes on the work-order page after reviewing it, so never say you will issue it or that confirming issues it.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -147,7 +147,7 @@ export const issueOperationWoTool: AssistantTool = {
         : `${OP_TITLE[operation]} — ${count} ${count === 1 ? "vessel" : "vessels"}`;
 
     const asgClause = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
-    const preview = `Issue a ${OP_TITLE[operation].toLowerCase()} work order: ${verb} ${vesselList}${detail}${asgClause}${dueClause(due)}. One task per vessel (${count}); the crew records each on the floor.`;
+    const preview = `Draft a ${OP_TITLE[operation].toLowerCase()} work order: ${verb} ${vesselList}${detail}${asgClause}${dueClause(due)}. One task per vessel (${count}). You will land on the draft to review and issue.`;
 
     // Sign the fully-resolved task builds so the committer does no re-resolution (ids are pinned here).
     const tasks: TaskBuild[] = resolved.map((v) => ({
@@ -179,11 +179,10 @@ export const commitIssueOperationWo: Committer = async (_user, args) => {
 
   const tasks = instantiateTaskBuilds(builds, await resolveTaskVocabulary());
   const created = unwrap(await createWorkOrderAction({ title, tasks, assigneeEmail, dueAt, dueAtHasTime }));
-  unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
-
   const asgSuffix = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
+  const taskWord = builds.length === 1 ? "task" : "tasks";
   return {
-    message: `Issued work order #${created.number} "${title}" with ${builds.length} ${builds.length === 1 ? "task" : "tasks"}${asgSuffix}.`,
-    navigate: { path: entityPath("workOrder", created.workOrderId), label: `#${created.number} ${title}` },
+    message: `Created draft work order #${created.number} "${title}" with ${builds.length} ${taskWord}${asgSuffix}. Taking you to it — review it, then press Issue when you are ready.`,
+    navigate: { path: workOrderLandingPath(created.workOrderId), label: `Draft WO #${created.number}` },
   };
 };

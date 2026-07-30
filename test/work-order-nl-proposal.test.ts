@@ -535,3 +535,53 @@ describe("per-task meta stays attached to the right task when a partial is dropp
     expect(byKind.TOPPING).toBe("d@x.test");
   });
 });
+
+describe("the derived work-order TITLE is prose, never a raw enum", () => {
+  // Plan 105. The title used to be `intent.kind.toLowerCase()`, which shipped the enum verbatim for
+  // every multi-word kind — a real card read `Create as a draft "Work order: cap_mgmt"`.
+  // 09-content-terminology.md: never expose an internal id in prose. The label map is an exhaustive
+  // Record over the intent union, so a NEW kind without a label is a compile error; this asserts the
+  // runtime half.
+  const EVERY_KIND = [
+    "RACK", "TOPPING", "ADDITION", "FINING", "FILTRATION", "CAP_MGMT", "TEMP_SETPOINT",
+    "CLEAN", "SANITIZE", "STEAM", "OZONE", "GAS", "SO2", "WET_STORAGE",
+    "CRUSH", "PRESS", "HARVEST_WEIGH_IN", "PANEL", "BRIX", "SAMPLE_PULL",
+    "BARREL_DOWN", "RACK_TO_TANK", "BOTTLE", "EQUIPMENT_SERVICE", "NOTE",
+  ] as const;
+
+  it("no task kind produces a title containing an underscore or SCREAMING_CASE", () => {
+    const leaks: string[] = [];
+    for (const kind of EVERY_KIND) {
+      const draft = canonicalizeNlWorkOrderDraft({
+        sourceText: `work order for ${kind}`,
+        // Enough shape for the canonicalizer to keep the intent; unresolved fields are fine here
+        // because only the TITLE is under test.
+        tasks: [{ kind, vessel: "tank 5", from: "tank 5", to: "tank 6", material: "KMBS", amount: 1, equipment: "press" }],
+      });
+      if (draft.intents.length === 0) continue; // kind needs more shape than this fixture gives
+      if (/_/.test(draft.title) || /\b[A-Z]{2,}_[A-Z]/.test(draft.title)) leaks.push(`${kind} -> ${draft.title}`);
+    }
+    expect(leaks, `these titles leak the raw enum: ${leaks.join("; ")}`).toEqual([]);
+  });
+
+  it("names the specific leak that was reported", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "make me a work order to punch down tank T5 for 20 minutes",
+      tasks: [{ kind: "CAP_MGMT", vessel: "tank T5", durationMin: 20 }],
+    });
+    expect(draft.title).toBe("Work order: cap work");
+    expect(draft.title).not.toContain("cap_mgmt");
+  });
+
+  it("still reads well when several kinds combine", () => {
+    const draft = canonicalizeNlWorkOrderDraft({
+      sourceText: "rack T3 to T4, punch down T5, and set T4 to 14C",
+      tasks: [
+        { kind: "RACK", from: "T3", to: "T4" },
+        { kind: "CAP_MGMT", vessel: "T5" },
+        { kind: "TEMP_SETPOINT", vessel: "T4", targetValue: 14, targetUnit: "C" },
+      ],
+    });
+    expect(draft.title).toBe("Work order: racking + cap work + temperature set point");
+  });
+});

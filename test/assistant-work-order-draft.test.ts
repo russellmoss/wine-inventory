@@ -43,6 +43,18 @@ const { proposeWorkOrderTool } = await import("@/lib/assistant/tools/propose-wor
 
 const CTX = { user: { id: "u1", activeOrganizationId: "org_demo_winery", vineyardIds: [] } } as never;
 
+/** Plan 105 U1: the same context, plus the user's own wording — which is what decides issue-vs-draft. */
+function ctxSaying(lastUserMessage: string) {
+  return { user: { id: "u1", activeOrganizationId: "org_demo_winery", vineyardIds: [] }, lastUserMessage } as never;
+}
+
+/** Decode a signed proposal token's payload (base64url body before the ".sig"). */
+function tokenArgs(token: string): Record<string, unknown> {
+  const body = token.slice(0, token.lastIndexOf("."));
+  const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as { args: Record<string, unknown> };
+  return payload.args;
+}
+
 /** A readiness result shaped like the real engine's, with only the fields these branches read. */
 function readinessResult(over: Partial<WorkOrderProposal>): WorkOrderProposal {
   return {
@@ -84,9 +96,28 @@ describe("propose_work_order — Ready", () => {
     expect(proposal).not.toBeNull();
     expect(isDraftProposal(proposal!)).toBe(false);
     expect(typeof (proposal as { token?: string }).token).toBe("string");
-    // Unchanged from before the Draft work: the ready preview wording is the pre-existing one.
-    expect(proposal!.preview).toContain('Create and issue "Work order: rack"');
+    // MOVED DELIBERATELY (plan 105). This used to read 'Create and issue "…"'. Confirming now
+    // always leaves a DRAFT and takes the user to it (03-interaction-spec.md:179), so the preview
+    // must not promise an issue under any wording.
+    expect(proposal!.preview).toContain('Create as a draft "Work order: rack"');
     expect(proposal!.preview).toContain("1 task");
+  });
+
+  it("ALWAYS drafts, whatever the user's wording — even 'issued to mike'", async () => {
+    // The rule has no phrasing escape hatch. An earlier build let an explicit "issue" verb publish
+    // straight from the chat card; live testing killed that, because the whole point is that a human
+    // sees the work order before the floor does.
+    for (const utterance of [
+      "make me a work order to rack T3 to T4",
+      "issue a work order to rack T3 to T4",
+      "make me a work order for punch down on tank T5 issued to mike juergens",
+      "rack T3 to T4 and put it on the floor",
+    ]) {
+      readiness.value = readinessResult({ status: "ready" });
+      const proposal = asProposal(await proposeWorkOrderTool.run(ctxSaying(utterance), INPUT))!;
+      expect(proposal.preview, utterance).toContain("Create as a draft");
+      expect(tokenArgs((proposal as { token: string }).token).issueOnConfirm, utterance).toBeUndefined();
+    }
   });
 
   it("carries the full readiness details through to the card", async () => {

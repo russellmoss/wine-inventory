@@ -71,3 +71,31 @@ export function readDraftGaps(details: unknown): { unresolved: number; blocking:
   ).length;
   return { unresolved: unresolved.length, blocking, labels };
 }
+
+/**
+ * The primary action's label.
+ *
+ * Most write proposals do one thing and finish: "Confirm" is honest for logging a Brix reading,
+ * because there is nowhere to go afterwards. Work-order proposals are different — confirming creates
+ * a DRAFT and lands you on it, where you can edit it, cancel it, or issue it. Calling that "Confirm"
+ * undersells it and reads as "commit this now", which is exactly the reflex the draft flow exists to
+ * prevent. It says "Review" because that is what the press actually buys you.
+ *
+ * Keyed on the tool that produced the card. The set matches the work-order committers pinned by
+ * test/assistant-never-issues.test.ts, so the two cannot drift apart silently.
+ */
+const LANDS_ON_A_WORK_ORDER = new Set([
+  "propose_work_order",
+  "create_work_order",
+  "issue_operation_wo",
+  "issue_cap_management_wo",
+]);
+
+export function primaryActionLabel(tool: string | undefined): string {
+  return tool && LANDS_ON_A_WORK_ORDER.has(tool) ? "Review" : "Confirm";
+}
+
+/** Present-participle shown while the write is in flight, matched to the label above. */
+export function primaryActionPendingLabel(tool: string | undefined): string {
+  return tool && LANDS_ON_A_WORK_ORDER.has(tool) ? "Creating…" : "Applying…";
+}

@@ -4,7 +4,9 @@ import { buildArchiveWhere, buildOpenWhere, parseArchiveFilters, parseOpenFilter
 describe("buildOpenWhere (open dashboard filters)", () => {
   it("defaults to the open status set and applies the date range to dueAt", () => {
     const w = buildOpenWhere({ from: "2026-07-01" }) as { status: unknown; dueAt: { gte: Date } };
-    expect(w.status).toEqual({ in: ["ISSUED", "IN_PROGRESS", "PENDING_APPROVAL"] });
+    // DRAFT leads as of plan 105: the assistant now only ever creates drafts and never issues, so
+    // without it in this set every work order it makes is invisible in every list in the product.
+    expect(w.status).toEqual({ in: ["DRAFT", "ISSUED", "IN_PROGRESS", "PENDING_APPROVAL"] });
     expect(w.dueAt.gte).toBeInstanceOf(Date);
   });
   it("narrows to a single open status and shares the common filters (vessel/assignee/q)", () => {

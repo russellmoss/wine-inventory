@@ -580,7 +580,12 @@ export async function getWorkOrderDashboard(
       taskCount: r.tasks.length,
       doneCount: r.tasks.filter((t) => t.status === "APPROVED" || t.status === "DONE").length,
     }));
-    const open = list.filter((r) => r.status === "ISSUED" || r.status === "IN_PROGRESS");
+    // DRAFT belongs here (plan 105). It is the one status that needs a HUMAN to do something before
+    // the floor can see it at all, so hiding it is the worst of both worlds. The assistant now only
+    // ever creates drafts, and this filter — not the Prisma where-clause above — is what actually
+    // decided visibility, so widening OPEN_STATUSES alone left every assistant-made work order
+    // invisible in the only list a manager looks at.
+    const open = list.filter((r) => r.status === "DRAFT" || r.status === "ISSUED" || r.status === "IN_PROGRESS");
     const pendingApproval = list.filter((r) => r.status === "PENDING_APPROVAL");
     // Bucket on the WINERY's calendar, not the server's (UTC in production): a WO due 9pm Eastern is
     // 01:00Z the next day, and would otherwise read "upcoming" on the evening the crew has to do it.

@@ -2,13 +2,13 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal, signResume } from "../confirm";
-import { entityPath } from "../routes";
+import { entityPath, workOrderLandingPath } from "../routes";
 import { materialDisplayName } from "@/lib/cellar/materials";
 import { listMaterials } from "@/lib/cellar/materials";
 import { findScopedBlocks, type ScopedBlock } from "../scope";
 import type { AppUser } from "@/lib/access";
 import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
-import { createWorkOrderFromBuildsAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
+import { createWorkOrderFromBuildsAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import type { TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { findEquipmentByName, listEquipment, equipmentKindLabel, type EquipmentRow } from "@/lib/equipment/equipment";
@@ -322,11 +322,15 @@ async function resolveAssigneesForTasks(tenantId: string, draft: NlWorkOrderDraf
   return null;
 }
 
+/**
+ * Plan 105: the preview names the act the press actually performs. Confirming ALWAYS leaves a
+ * DRAFT and takes the user to it — the assistant never issues.
+ */
 function previewText(proposal: ReturnType<typeof proposalDetails>): string {
   const taskText = proposal.tasks.map((task) => `#${task.seq} ${task.summary}`).join("; ");
   const warningCount = proposal.warnings.length;
   const unknown = proposal.cost.hasUnknownCost ? " Unknown supply cost is flagged." : "";
-  return `Create and issue "${proposal.title}" with ${proposal.tasks.length} task${proposal.tasks.length === 1 ? "" : "s"}: ${taskText}.${warningCount ? ` ${warningCount} warning${warningCount === 1 ? "" : "s"} attached.` : ""}${unknown}`;
+  return `Create as a draft "${proposal.title}" with ${proposal.tasks.length} task${proposal.tasks.length === 1 ? "" : "s"}: ${taskText}.${warningCount ? ` ${warningCount} warning${warningCount === 1 ? "" : "s"} attached.` : ""}${unknown}`;
 }
 
 /**
@@ -459,7 +463,12 @@ export const proposeWorkOrderTool: AssistantTool = {
       // knowing that, often skipped the tool and asked in prose instead. `details` already carries
       // `unresolved` (what is missing) and `warnings` (severity blocking / confirmable /
       // completion_check); the client already renders both. NO token is minted, so this cannot commit.
-      return { needsConfirmation: true, draft: true as const, preview: draftPreviewText(details), details };
+      return {
+        needsConfirmation: true,
+        draft: true as const,
+        preview: draftPreviewText(details),
+        details,
+      };
     }
     const token = signProposal("propose_work_order", buildNlWorkOrderCommitArgs(proposal));
     return { needsConfirmation: true, preview: previewText(details), token, details };
@@ -524,8 +533,11 @@ export const commitProposeWorkOrder: Committer = async (user, rawArgs) => {
   // Plan 055 U4 (LOCKED eng decision): commit through the SAME builder action the visual builder uses, so
   // equipment attach (attachTaskEquipmentCore, inside the action) + any WO→WO deps ride ONE deterministic
   // path. equipmentIds/assigneeId ride INSIDE the already-signed taskBuilds (never a new top-level arg), so
-  // signed-payload integrity holds. The builder action creates a DRAFT; we then issue it, preserving the
-  // existing "draft created, not issued" recovery when issue fails (e.g. a reservation conflict).
+  // signed-payload integrity holds. The builder action creates a DRAFT.
+  //
+  // Plan 105: it STOPS there. The assistant never issues — issuing publishes to the floor, takes
+  // reservations and notifies the assignee, so it is a human press on the work order itself
+  // (03-interaction-spec.md:179: "A WorkOrder in DRAFT. Never ISSUED").
   const tenantId = user.activeOrganizationId;
   const taskBuilds = tenantId ? await revalidateSignedIds(tenantId, args.taskBuilds) : args.taskBuilds;
   const taskCount = taskBuilds.length;
@@ -540,20 +552,12 @@ export const commitProposeWorkOrder: Committer = async (user, rawArgs) => {
     readinessFingerprint: args.fingerprint,
   }));
 
-  try {
-    const issued = unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
-    const warningSuffix =
-      issued.reservationWarnings.length > 0 ? ` Warnings: ${issued.reservationWarnings.join(" ")}` : "";
-    return {
-      message: `Issued work order #${created.number} "${args.title}" with ${taskCount} task${taskCount === 1 ? "" : "s"}.${warningSuffix}`,
-      navigate: { path: entityPath("workOrder", created.workOrderId), label: `#${created.number} ${args.title}` },
-    };
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : "Issue failed.";
-    return {
-      message: `Draft created, not issued: work order #${created.number} "${args.title}". ${reason}`,
-      navigate: { path: entityPath("workOrder", created.workOrderId), label: `Draft WO #${created.number}` },
-    };
-  }
+  const plural = `task${taskCount === 1 ? "" : "s"}`;
+
+  // Nothing is reserved and nobody is notified. The user lands on the draft and presses Issue there.
+  return {
+    message: `Created draft work order #${created.number} "${args.title}" with ${taskCount} ${plural}. Taking you to it — review it, then press Issue when you are ready.`,
+    navigate: { path: workOrderLandingPath(created.workOrderId), label: `Draft WO #${created.number}` },
+  };
 };
 

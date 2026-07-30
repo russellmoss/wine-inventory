@@ -2,19 +2,19 @@ import "server-only";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { entityPath } from "../routes";
+import { entityPath, workOrderLandingPath } from "../routes";
 import { resolveVessel, type ResolvedVessel } from "../scope";
 import { CAP_KINDS, isCapKind, type CapKind } from "@/lib/cellar/treatments";
 import { instantiateTaskBuilds } from "@/lib/work-orders/template-vocabulary";
 import { resolveTaskVocabulary } from "@/lib/work-orders/vocabulary-resolver";
-import { createWorkOrderAction, issueWorkOrderAction } from "@/lib/work-orders/actions";
+import { createWorkOrderAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import { DUE_AT_SCHEMA_PROPERTIES, dueClause, dueFromCommitArgs, dueProposalArgs, resolveDueAt } from "./due-at-args";
 
 // Plan 043: the assistant can ISSUE a cap-management work order by chat ("punch down tanks 3, 4, 5 this
 // afternoon"). Draft→confirm (D10): run() resolves the vessels + technique and returns a signed proposal;
 // the committer creates + issues the WO via the existing (auth + tenant + audit) actions. NOT admin-only —
-// issuing WOs is open in the UI (createWorkOrderAction/issueWorkOrderAction use action(), not adminAction);
+// creating WOs is open in the UI (createWorkOrderAction uses action(), not adminAction);
 // approval of the resulting tasks stays admin-gated (canApprove). The completion still writes the real op.
 
 const CAP_LABELS: Record<CapKind, string> = {
@@ -44,7 +44,7 @@ type IssueInput = {
 export const issueCapManagementWoTool: AssistantTool = {
   name: "issue_cap_management_wo",
   description:
-    "Issue a cap-management WORK ORDER for a red ferment across one or more tanks — pumpover, punchdown, cold-soak, maceration, or pulse-air. Use when the user wants to ASSIGN cap work to the crew ('punch down tanks 3, 4, 5 this afternoon', 'issue pumpovers for the ferments'). This creates a work order the cellar hand completes on the floor — it does NOT itself log the operation. To record a single cap op you just did, that's a different flow. Refer to tanks in plain language like 'tank 3'. Pass the assignee's email if the user names who should do the work. When the user says WHEN the work should happen, pass dueDate (and dueTime for a clock time — 'tomorrow at 9am' is dueDate + dueTime '09:00'); durationMin is how LONG the work takes, which is a different thing. This does NOT save immediately — it returns a preview to confirm.",
+    "Issue a cap-management WORK ORDER for a red ferment across one or more tanks — pumpover, punchdown, cold-soak, maceration, or pulse-air. Use when the user wants to ASSIGN cap work to the crew ('punch down tanks 3, 4, 5 this afternoon', 'issue pumpovers for the ferments'). This creates a work order the cellar hand completes on the floor — it does NOT itself log the operation. To record a single cap op you just did, that's a different flow. Refer to tanks in plain language like 'tank 3'. Pass the assignee's email if the user names who should do the work. When the user says WHEN the work should happen, pass dueDate (and dueTime for a clock time — 'tomorrow at 9am' is dueDate + dueTime '09:00'); durationMin is how LONG the work takes, which is a different thing. This does NOT save immediately — it returns a preview to confirm. Confirming creates a DRAFT work order and takes the user to it; it does NOT issue. Issuing is a separate press the user makes on the work-order page after reviewing it, so never tell the user you will issue it or that confirming issues it — say you will take them to the draft to review.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -106,7 +106,7 @@ export const issueCapManagementWoTool: AssistantTool = {
     const vesselList = resolved.map((v) => label(v)).join(", ");
     const durClause = durationMin ? ` (${durationMin} min)` : "";
     const asgClause = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
-    const preview = `Issue a cap-management work order: ${CAP_LABELS[technique]} on ${vesselList}${durClause}${asgClause}${dueClause(due)}. One task per tank; the crew records each on the floor.`;
+    const preview = `Draft a cap-management work order: ${CAP_LABELS[technique]} on ${vesselList}${durClause}${asgClause}${dueClause(due)}. One task per tank. You will land on the draft to review and issue.`;
 
     const token = signProposal("issue_cap_management_wo", {
       technique,
@@ -144,11 +144,10 @@ export const commitIssueCapManagementWo: Committer = async (_user, args) => {
 
   const { dueAt, dueAtHasTime } = dueFromCommitArgs(args);
   const created = unwrap(await createWorkOrderAction({ title, tasks, assigneeEmail, dueAt, dueAtHasTime }));
-  unwrap(await issueWorkOrderAction({ workOrderId: created.workOrderId }));
-
   const asgSuffix = assigneeEmail ? `, assigned to ${assigneeEmail}` : "";
+  const taskWord = vessels.length === 1 ? "task" : "tasks";
   return {
-    message: `Issued work order #${created.number} "${title}" with ${vessels.length} ${vessels.length === 1 ? "task" : "tasks"}${asgSuffix}.`,
-    navigate: { path: entityPath("workOrder", created.workOrderId), label: `#${created.number} ${title}` },
+    message: `Created draft work order #${created.number} "${title}" with ${vessels.length} ${taskWord}${asgSuffix}. Taking you to it — review it, then press Issue when you are ready.`,
+    navigate: { path: workOrderLandingPath(created.workOrderId), label: `Draft WO #${created.number}` },
   };
 };

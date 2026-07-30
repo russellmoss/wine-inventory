@@ -7,28 +7,54 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND UI/UX v2 — PHASE 9: ASSISTANT BEHAVIOUR (class C). Not started.**
-Spec: `docs/design/cellarhand-v2-handoff/11-implementation-sequence.md` §"Phase 9".
+**CELLARHAND UI/UX v2 — PHASE 9: ASSISTANT BEHAVIOUR. BUILT, 5 of 6 units, on branch — not PR'd.**
+Plan: `docs/plans/2026-07-29-105-feat-cellarhand-v2-phase9-assistant-behaviour-plan.md` (v2, council-applied)
+Council: `docs/plans/council-feedback-105-phase9-assistant-behaviour.md`
+Branch `claude/cellarhand-v2-phase-9-bd9d68` off `f7040b7e`. `AssistantDock.tsx` is byte-unchanged.
 
-Four items, risk LOW, the dock itself untouched:
-1. "Review & create" creates the draft **and navigates to it**
-2. The page passes object context to the dock, so the conversation continues on the same object
-3. `AIProposalCard` and `ProvenancePanel` become real components
-4. Degraded-AI states
+Commits, in the council's inverted order (correctness first, refactor last):
+- `26e02339` U1 — draft by default; an explicit "issue it" still issues (signed into the token)
+- `a2dd56f9` U2 — navigate to the created object, keeping the conversation
+- (U4) object context: pages publish what they show, via a provider above the dock
+- `eaeca9aa` U5 — degraded-AI state from one server-owned gate
+- `74da50f0` U6 — the Phase 9 acceptance criteria the handoff never wrote (AC-C18..21, W7..9, N2..3)
 
-**Phase 3b is DONE and LIVE.** The v2 nav is ON in production as of 2026-07-29 —
-[#563](https://github.com/russellmoss/wine-inventory/pull/563) (a11y),
-[#564](https://github.com/russellmoss/wine-inventory/pull/564) (IA),
-[#565](https://github.com/russellmoss/wine-inventory/pull/565) (flag flip), main at `13cbc62c`.
-Sidebar is now **Today · The vineyards · The wine · The business**, 16 destinations.
+Gates: `tsc` 0 · `eslint` 0 · `verify:ai-native` green · `eval:assistant` 167 pass / 114 key-gated,
+**no golden moved**. Full suite: see the plan.
 
-⚠️ **Rollback is config, not code:** `NEXT_PUBLIC_NAV_V2=0` + redeploy restores the legacy
-31-entry sidebar byte-identically. The flag predicate is `!== "0"` precisely to keep that true.
+✅ **THE RULE: the assistant NEVER issues a work order.** It creates a DRAFT and takes you to it;
+Issue is your press on the work-order page, after you have reviewed and edited it. The card's primary
+action reads **Review**, not Confirm, and Review navigates immediately.
 
-⚠️ **Not browser-QA'd as a NON-ADMIN.** Every browser pass ran as the Demo Winery owner
-(admin). The role matrix is unit-tested hard — a plain user and a vineyard manager are
-covered in `nav-model`/`nav-sections`/`search-sections` — but nobody has *looked* at the
-sidebar as a cellar hand. First thing worth doing if anything looks wrong on the floor.
+**Browser-verified end to end** on Demo Winery, 2026-07-29, using the phrasing that broke it:
+"make me a work order for punch down on tank T5 **issued to** mike juergens" → card reads *"Draft a
+cap-management work order…"* → Review → `/vessels` → `/work-orders/<id>`, h1 `#68 · Punch-down — 1
+tank`, status **draft**, dock still open, page offers Issue / Edit / Cancel WO. Console clean.
+(QA leftovers in Demo Winery: WO **#68**, **#69** — delete when done with them.)
+
+Three earlier attempts were wrong and are recorded so they are not re-tried:
+1. Four tools created-and-issued in one press; the first fix gated only `propose_work_order`. The
+   MODEL picks the tool from the request's shape, so "make me a work order for punch down on T5"
+   went down `issue_cap_management_wo` and would have published.
+2. The second gated all four on an "explicit issue verb" heuristic — a request saying "…issued to
+   mike" still published straight from the card. No phrasing should skip the review step.
+3. Widening `OPEN_STATUSES` did NOT surface drafts: `getWorkOrderDashboard` re-filters to
+   ISSUED/IN_PROGRESS **in memory after the query**, and that is what decides visibility. Fixing it
+   immediately surfaced a real invisible draft (#34 bottling, overdue since 18 Jul).
+Enforced structurally by `test/assistant-never-issues.test.ts` (no file under `src/lib/assistant/`
+may call `issueWorkOrderAction`/`Core`) and `test/assistant-proposal-action-label.test.ts` (the
+Review set is derived from the tools directory, so a fifth WO tool fails rather than shipping
+"Confirm").
+
+⚠️ **Dev-server gotcha, cost an hour:** a stale `.next/` in a worktree made `POST
+/api/assistant/confirm` return **404 with an HTML body** while `/api/assistant` itself worked. Not a
+code bug. `rm -rf .next` and restart. First compile of the confirm route is ~110s (it pulls all 96
+tool modules), so give it time before concluding anything.
+
+⚠️ **Still not browser-QA'd, and not QA'd as a NON-ADMIN.** Every browser pass so far ran as the Demo
+Winery owner. Phase 9 touches navigation, which is role-scoped. AC-W7/W8/W9 exist now but have not been
+run. Also worth checking while there: `routes.ts:45-69` `SECTION_ROUTES` has **no role gating** while the
+v2 nav gates admin/feature/vineyard — the assistant will walk a cellar hand to `/settings`. Own ticket.
 
 ⚠️ **The 44px house rule still has a backlog.** WCAG AA (2.5.8, 24px) is now met app-wide;
 the project's own stricter 44px floor (2.5.5, AAA) is not. The remaining offenders are

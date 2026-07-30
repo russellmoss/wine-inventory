@@ -1,20 +1,22 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui";
 import { Markdown } from "./Markdown";
 import { shouldStickToBottom } from "@/lib/assistant/scroll";
 import type { VoiceState } from "@/lib/voice/state-types";
 import type { VoiceSessionApi } from "./voice/VoiceInlinePanel";
 import { type AssistantEvent, parseEvent, splitNdjsonLines, isSafeInternalPath } from "@/lib/assistant/assistant-events";
+import { decidePostCommitNav, parseCommitNavTarget } from "@/lib/assistant/post-commit-nav";
+import { useAssistantObjectContext, useAssistantUnavailableReason } from "@/components/assistant/AssistantObjectContext";
 import {
   ConversationSidebar,
   type ConversationSummary,
   type SearchResult,
 } from "./ConversationSidebar";
 import { messagesToItems } from "@/lib/assistant/history";
-import { proposalGate } from "@/lib/assistant/proposal-card";
+import { proposalGate, primaryActionLabel, primaryActionPendingLabel } from "@/lib/assistant/proposal-card";
 import {
   RESOLVED_CARD_LINGER_MS,
   collapsesAfterLinger,
@@ -43,6 +45,9 @@ type Role = "user" | "assistant";
 type TextItem = { kind: "text"; id?: string; role: Role; content: string };
 type ProposalItem = {
   kind: "proposal";
+  /** Which write tool produced this card. Decides the primary action's wording — a work-order card
+   *  lands you ON the object, so it says "Review", not "Confirm" (plan 105). */
+  tool?: string;
   preview: string;
   /** Present ONLY on a Ready card. A Draft has no token and therefore cannot be confirmed at all. */
   token?: string;
@@ -207,6 +212,15 @@ export function AssistantChat({
   const itemsRef = React.useRef<Item[]>(items);
   itemsRef.current = items;
   const router = useRouter();
+  // Where the user is right now. Read for the post-commit navigation decision: leaving the
+  // full-page assistant would end the session, so that case must degrade to a link (plan 105 U2).
+  const pathname = usePathname();
+  // What the page under the dock is showing, if it published anything (plan 105 U4). Null on the
+  // full-page assistant and on any page that has not opted in — the turn is then unchanged.
+  const objectContext = useAssistantObjectContext();
+  // Plan 105 U5: why the assistant is off, from the ONE server-owned gate /api/assistant also uses
+  // (so the composer and the route cannot disagree). Null when it is on.
+  const assistantUnavailableReason = useAssistantUnavailableReason();
 
   // When embedded in the dock, the chat stays mounted (display:none) after the dock collapses so its
   // history survives. `active` is false while the dock is closed — force any live voice session shut so
@@ -715,7 +729,15 @@ export function AssistantChat({
         headers: { "Content-Type": "application/json" },
         // timeZone: the server is UTC, so a due date/time the assistant resolves ("tomorrow at 9am")
         // needs the viewer's own clock to land on the right instant.
-        body: JSON.stringify({ messages: clampHistoryForSend(history), conversationId, timeZone: browserTimeZone() }),
+        // objectContext (plan 105 U4): what the page under the dock is showing, so "change the
+        // schedule" resolves to the record in front of the user. A hint only — the server
+        // re-resolves it tenant-scoped before any of it reaches the prompt.
+        body: JSON.stringify({
+          messages: clampHistoryForSend(history),
+          conversationId,
+          timeZone: browserTimeZone(),
+          ...(objectContext ? { objectContext } : {}),
+        }),
       });
       if (!res.ok || !res.body) {
         const msg = await res.json().catch(() => null);
@@ -745,6 +767,7 @@ export function AssistantChat({
               ...prev,
               {
                 kind: "proposal",
+                tool: evt.tool,
                 preview: evt.preview,
                 ...(evt.draft ? { draft: true } : { token: evt.token }),
                 details: asWorkOrderProposalDetails(evt.details),
@@ -847,10 +870,9 @@ export function AssistantChat({
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.ok) {
-        const nav =
-          data.navigate && isSafeInternalPath(data.navigate.path) && typeof data.navigate.label === "string"
-            ? { path: data.navigate.path as string, label: data.navigate.label as string }
-            : undefined;
+        // The confirm route answers with plain JSON, not an AssistantEvent, so the exhaustive
+        // switch's `never` default cannot police this shape. parseCommitNavTarget is that gate.
+        const nav = parseCommitNavTarget(data.navigate) ?? undefined;
         setItems((prev) => updateProposal(prev, index, { status: "done", result: data.message, navigate: nav }));
         // The card has done its job. Hold the green state briefly, then fold it down so the
         // next card in the turn is not stranded behind it (feedback cmrwiky4p).
@@ -861,6 +883,26 @@ export function AssistantChat({
         // already-open or client-cached list until a hard browser refresh. router.refresh() clears the
         // client cache and refetches the current route with fresh server data (client state preserved).
         router.refresh();
+        // Plan 105 U2 (DM-55 / AC-W2): go to the thing we just made, so a wrong draft is fixed by a
+        // sentence instead of by starting over. The dock is a layout sibling of <main>, so it and this
+        // conversation survive the push. decidePostCommitNav owns every reason NOT to move — chiefly
+        // that leaving /assistant would end the session. On link_only the card's own "View X →"
+        // affordance is already rendered from the same payload, so the target stays one click away.
+        const decision = decidePostCommitNav({
+          target: nav,
+          currentPath: pathname,
+          hasUnsavedChanges: pageHasUnsavedChanges(),
+        });
+        // Straight there, no countdown. The 3s cancellable delay belongs to the navigate TOOL, where
+        // the assistant decided to move you and you deserve a chance to say no. Here you pressed a
+        // button labelled "Review" — waiting three seconds to honour it just feels broken.
+        if (decision.kind === "navigate") {
+          router.push(decision.path);
+          // Announce the arrival for screen readers, matching the navigate-tool path.
+          setTimeout(() => {
+            (document.querySelector("main h1, main h2") as HTMLElement | null)?.focus?.();
+          }, 150);
+        }
       } else {
         setItems((prev) => updateProposal(prev, index, { status: "error", result: data?.error ?? "Could not apply." }));
       }
@@ -1132,6 +1174,27 @@ export function AssistantChat({
         {error ? (
           <div style={{ ...column, color: "var(--danger)", fontFamily: "var(--font-body)", fontSize: "var(--text-body-sm)", paddingBottom: "var(--space-2)" }}>{error}</div>
         ) : null}
+        {/* Plan 105 U5 / DM-58: say it here, where the user is about to type, rather than letting
+            them compose a message and discover it mid-stream. The sentence names what still works
+            (search, records, recording) because 03-interaction-spec.md:183 forbids AI-only
+            affordances — nothing else on this page or in the app degrades with it. */}
+        {assistantUnavailableReason ? (
+          <div
+            role="status"
+            style={{
+              ...column,
+              padding: "var(--space-3) var(--space-4)",
+              borderRadius: "var(--radius-md)",
+              background: "var(--surface-tint-info)",
+              border: "1px solid var(--border-strong)",
+              color: "var(--text-primary)",
+              fontFamily: "var(--font-body)",
+              fontSize: "var(--text-body-sm)",
+            }}
+          >
+            {assistantUnavailableReason}
+          </div>
+        ) : null}
         <div
           style={{
             ...column,
@@ -1146,8 +1209,8 @@ export function AssistantChat({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             rows={1}
-            placeholder="Ask a question…"
-            disabled={busy}
+            placeholder={assistantUnavailableReason ? "The assistant is off right now" : "Ask a question…"}
+            disabled={busy || !!assistantUnavailableReason}
             style={{
               flex: embedded ? "0 0 auto" : 1,
               width: embedded ? "100%" : undefined,
@@ -1198,7 +1261,7 @@ export function AssistantChat({
           <Button size="lg" variant="secondary" onClick={() => setTicketOpen(true)} disabled={busy}>
             Report bug
           </Button>
-          <Button size="lg" onClick={() => void send()} disabled={busy || input.trim().length === 0}>
+          <Button size="lg" onClick={() => void send()} disabled={busy || !!assistantUnavailableReason || input.trim().length === 0}>
             {busy ? "…" : "Send"}
           </Button>
           </div>
@@ -1540,7 +1603,12 @@ function ProposalCard({
         padding: "var(--space-3) var(--space-4)",
         borderRadius: "var(--radius-lg)",
         background: "var(--surface-raised)",
-        border: `1px solid ${edge}`,
+        // Longhand, not `border: 1px solid ${edge}` plus a borderStyle override. React warns on
+        // mixing a shorthand with a longhand for the same property during a rerender, because the
+        // two can be applied in either order and the result depends on which lands last — the card
+        // re-renders on every status change (pending → applying → done), so it hit that every time.
+        borderWidth: "1px",
+        borderColor: edge,
         // A draft is visibly provisional, not just differently-worded: a dashed edge reads as
         // "unfinished" at a glance, which is the defence against Confirm becoming a reflex.
         borderStyle: isDraft && !done && !errored ? "dashed" : "solid",
@@ -1567,7 +1635,9 @@ function ProposalCard({
               disabled={!gate.canConfirm || item.status === "applying"}
               title={gate.reason ?? undefined}
             >
-              {item.status === "applying" ? "Applying…" : "Confirm"}
+              {item.status === "applying"
+                ? primaryActionPendingLabel(item.tool)
+                : primaryActionLabel(item.tool)}
             </Button>
             <Button variant="secondary" onClick={onCancel} disabled={item.status === "applying"}>
               {gate.canConfirm ? "Cancel" : "Dismiss"}
