@@ -7,8 +7,37 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**✅ CELLARHAND v2 DOMAIN GATE — CLEARED. The owner answered both blocking questions 2026-07-29.
-Phase 7 is unblocked and ready to plan.**
+**CELLARHAND v2 — PHASE 7 (BARREL GROUPS): PLANNED, APPROVED, M1 IN FLIGHT.**
+Plan: `docs/plans/2026-07-30-106-feat-cellarhand-v2-phase7-barrel-groups-plan.md` (deep · 12 units ·
+4 PRs). Owner approved 2026-07-30: **start M1, merge #567 in parallel.** #567 is **MERGED**
+(`0da23c88`), so the amended RFCs, ADR 0013/0014 and the GROUP-1/2/3 notes are now on `main`.
+
+**M1 (Unit 1) is built and PR'd** — `claude/cellarhand-v2-m1-enums`. Four
+`ALTER TYPE … ADD VALUE IF NOT EXISTS` in one isolated migration
+(`20260730100000_cellarhand_v2_enum_values`): `CaptureMethod.DERIVED`/`NOMINAL`,
+`VesselType.KEG`/`BIN`. **Nothing writes any of the four until Phase 8.**
+
+> ⛔ **UNIT 2 IS BLOCKED UNTIL M1 IS *DEPLOYED*, NOT MERGED.** Vercel's production build runs
+> `prisma migrate deploy`, so the values only exist in the live enum after a successful production
+> deploy. Postgres refuses `ALTER TYPE … ADD VALUE` in the same transaction as code that uses it —
+> it passes CI and fails on deploy.
+
+**M1 was NOT purely additive — the plan got this wrong and it is worth remembering.** Widening
+`VesselType` broke `tsc` in three files: `VesselOpt`, `VesselWithContents` and `VesselRow` each pin
+`type: "BARREL" | "TANK"` as a literal union in a component file, so the grep for
+`Record<VesselType>`/switches missed them. `tsc` is a hard CI gate, so this was mandatory scope.
+Fixed the way RFC-000 §2 already prescribed for this enum ("picker + capacity call sites must filter
+on `type`"): new `src/lib/vessels/cellar-types.ts` + a `where` filter and a narrowing predicate at
+the three call sites — so a keg can never render as a tank once Phase 8 creates one.
+**Lesson: an additive enum value is additive at the DATABASE only. In TypeScript it is a widening,
+and every narrow hand-written union over that enum is a call site.**
+
+**Next after the M1 deploy:** `/work` the plan from Unit 2 (M2 structure) — it needs BOTH M1
+deployed and #567 merged, and the latter is done.
+
+---
+
+**✅ CELLARHAND v2 DOMAIN GATE — CLEARED. The owner answered both blocking questions 2026-07-29.**
 
 **RFC AMENDMENT PASS — DONE 2026-07-29, docs-only, against `main` @ `91cd1dcd`.**
 [#567](https://github.com/russellmoss/wine-inventory/pull/567). All four RFCs in
@@ -2167,3 +2196,12 @@ no `addedAt`/`removedAt`), and OD-4 → **nominal allowed and badged *nominal***
 joins `DERIVED` in M1; provenance is now a trinary). Both recorded in the RFCs, the ADRs and the gate
 brief. Phase 7 is unblocked. Only open owner call left is RFC-004 §3.5.1's rate limit, a Phase-10
 item. Spray Wave 1 unchanged._
+
+_Last updated: 2026-07-30 — **Phase 7 PLANNED + APPROVED; M1 built and PR'd.** Plan 106 written
+against `main` @ `91cd1dcd` with 13 RFC-vs-code findings; PR #567 merged (`0da23c88`) so the amended
+RFCs + ADR 0013/0014 + GROUP-1/2/3 are on `main`. **F3 is the finding that resized the phase:**
+`WorkOrderTask` has no group reference and `resolveGroupMembers` discards the group id, so ADR 0014's
+"a DRAFT reads live membership" is false against the code — GROUP-3 would have been a green check
+over a no-op. **F13 was found while building M1:** the enum widening broke `tsc` in three files, so
+M1 also carries RFC-000 §2's "filter on type" enforce step. **Unit 2 is blocked on the M1 DEPLOY, not
+the merge.** Spray Wave 1 unchanged._

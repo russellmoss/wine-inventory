@@ -6,13 +6,16 @@ import { getUnitPrefs } from "@/lib/settings/data";
 import { formatVolume } from "@/lib/units/display";
 import type { MaterialPickerOption } from "@/components/work-orders/MaterialFilterPicker";
 import { HubSectionNav } from "@/components/nav/HubSectionNav";
+import { CELLAR_VESSEL_TYPE_FILTER, isCellarVessel } from "@/lib/vessels/cellar-types";
 
 export default async function BottlingPage() {
   await requireActiveTenant();
   const unitPrefs = await getUnitPrefs();
   const [vessels, locations, runs, packagingMaterials, packagingOnHand] = await Promise.all([
     prisma.vessel.findMany({
-      where: { isActive: true },
+      // Plan 106 / M1: the bottling SOURCE picker is bulk cellar vessels only (RFC-000 §2 "filter on
+      // type"). KEG/BIN land in the enum at M1 but nothing writes them until Phase 8.
+      where: { isActive: true, type: { in: CELLAR_VESSEL_TYPE_FILTER } },
       orderBy: { code: "asc" },
       include: { components: { include: { variety: { select: { name: true } }, vineyard: { select: { name: true } } } } },
     }),
@@ -42,7 +45,7 @@ export default async function BottlingPage() {
   }));
 
   const vesselOpts: VesselOpt[] = vessels
-    .slice()
+    .filter(isCellarVessel)
     .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))
     .map((v) => ({
       id: v.id,

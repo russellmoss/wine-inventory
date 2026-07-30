@@ -2,10 +2,14 @@ import { prisma } from "@/lib/prisma";
 import { requireActiveTenant } from "@/lib/dal";
 import { computeFill } from "@/lib/vessels/fill";
 import { VesselsClient, type VesselRow } from "./VesselsClient";
+import { CELLAR_VESSEL_TYPE_FILTER, isCellarVessel } from "@/lib/vessels/cellar-types";
 
 export default async function VesselsPage() {
   await requireActiveTenant();
-  const vessels = await prisma.vessel.findMany({
+  const vessels = (await prisma.vessel.findMany({
+    // Plan 106 / M1: bulk-cellar vessels only. KEG/BIN exist in the enum from M1 but nothing writes
+    // them until Phase 8; this list is barrels and tanks (RFC-000 §2 "filter on type").
+    where: { type: { in: CELLAR_VESSEL_TYPE_FILTER } },
     include: {
       // What the wine is MADE OF (variety / vineyard / vintage, attributed through lineage).
       components: {
@@ -15,7 +19,7 @@ export default async function VesselsPage() {
       // The vessel's wine (LEDGER-12 = at most one row) and the authoritative fill.
       vesselLots: { orderBy: { volumeL: "desc" }, include: { lot: { select: { id: true, code: true } } } },
     },
-  });
+  })).filter(isCellarVessel);
   // Natural sort: codes are strings ("1","2","10"), so sort numerically not lexically.
   vessels.sort((a, b) =>
     a.isActive !== b.isActive
