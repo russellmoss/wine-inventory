@@ -7,22 +7,23 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND v2 — PHASE 7 (BARREL GROUPS): PLANNED, APPROVED, M1 IN FLIGHT.**
+**CELLARHAND v2 — PHASE 7 (BARREL GROUPS): M1 SHIPPED + LIVE. NEXT ACTION = `/work` FROM UNIT 2.**
 Plan: `docs/plans/2026-07-30-106-feat-cellarhand-v2-phase7-barrel-groups-plan.md` (deep · 12 units ·
-4 PRs). Owner approved 2026-07-30: **start M1, merge #567 in parallel.** #567 is **MERGED**
-(`0da23c88`), so the amended RFCs, ADR 0013/0014 and the GROUP-1/2/3 notes are now on `main`.
+4 PRs). Owner approved 2026-07-30: **start M1, merge #567 in parallel.** Both done.
 
-**M1 (Unit 1) is built and PR'd** — `claude/cellarhand-v2-m1-enums`. Four
-`ALTER TYPE … ADD VALUE IF NOT EXISTS` in one isolated migration
-(`20260730100000_cellarhand_v2_enum_values`): `CaptureMethod.DERIVED`/`NOMINAL`,
-`VesselType.KEG`/`BIN`. **Nothing writes any of the four until Phase 8.**
+**✅ Both blockers on Unit 2 are cleared:**
+1. **#567 MERGED** (`0da23c88`) — the amended RFCs, ADR 0013/0014 and the GROUP-1/2/3 notes are on
+   `main`. The register is now 58 notes / 50 guarded / 7 planned / 1 deferred.
+2. **M1 MERGED *AND DEPLOYED*** — [#568](https://github.com/russellmoss/wine-inventory/pull/568)
+   squash-merged as `e8fa98ce`; migration `20260730100000_cellarhand_v2_enum_values` applied to
+   production **2026-07-30 15:49:55**, 1 step, no rollback. **Verified against the live database, not
+   inferred from the merge:**
+   - `CaptureMethod` = `MANUAL, VOICE, SENSOR, IMPORT, DERIVED, NOMINAL`
+   - `VesselType` = `BARREL, TANK, KEG, BIN`
+   - 0 KEG/BIN vessels · 0 DERIVED/NOMINAL ops — the values exist and **nothing writes them**, which
+     is the required state until Phase 8.
 
-> ⛔ **UNIT 2 IS BLOCKED UNTIL M1 IS *DEPLOYED*, NOT MERGED.** Vercel's production build runs
-> `prisma migrate deploy`, so the values only exist in the live enum after a successful production
-> deploy. Postgres refuses `ALTER TYPE … ADD VALUE` in the same transaction as code that uses it —
-> it passes CI and fails on deploy.
-
-**M1 was NOT purely additive — the plan got this wrong and it is worth remembering.** Widening
+**M1 was NOT purely additive — the plan got this wrong (F13) and it is worth remembering.** Widening
 `VesselType` broke `tsc` in three files: `VesselOpt`, `VesselWithContents` and `VesselRow` each pin
 `type: "BARREL" | "TANK"` as a literal union in a component file, so the grep for
 `Record<VesselType>`/switches missed them. `tsc` is a hard CI gate, so this was mandatory scope.
@@ -32,8 +33,19 @@ the three call sites — so a keg can never render as a tank once Phase 8 create
 **Lesson: an additive enum value is additive at the DATABASE only. In TypeScript it is a widening,
 and every narrow hand-written union over that enum is a call site.**
 
-**Next after the M1 deploy:** `/work` the plan from Unit 2 (M2 structure) — it needs BOTH M1
-deployed and #567 merged, and the latter is done.
+**▶ NEXT: `/work docs/plans/2026-07-30-106-feat-cellarhand-v2-phase7-barrel-groups-plan.md` starting
+at Unit 2.** Nothing blocks it. A worktree branch is already cut off the post-M1 main:
+`claude/cellarhand-v2-phase7-m2` @ `e8fa98ce`.
+
+**Read before writing M2's SQL — two things the plan flags that will otherwise bite:**
+- **Unit 3's partial unique index is under-specified in RFC-001 §6.1.** `UNIQUE (tenantId, vesselId)
+  WHERE type = 'OPERATIONAL'` cannot work as written — a partial index predicate **cannot reference
+  another table**, and `type` lives on `vessel_group`, not `vessel_group_member`. Resolve it while
+  writing the SQL (denormalise `type` onto the member row and keep it consistent in the core is the
+  plan's recommendation) and **state which was chosen**.
+- **Composite FKs are `ON DELETE CASCADE`, not `RESTRICT`** (plan D6/F5) — RFC-000 §2 says RESTRICT,
+  which contradicts the existing `vessel_group_member_groupId_fkey` (CASCADE since the ledger spine)
+  and would make deleting any non-empty group fail.
 
 ---
 
@@ -2197,7 +2209,9 @@ joins `DERIVED` in M1; provenance is now a trinary). Both recorded in the RFCs, 
 brief. Phase 7 is unblocked. Only open owner call left is RFC-004 §3.5.1's rate limit, a Phase-10
 item. Spray Wave 1 unchanged._
 
-_Last updated: 2026-07-30 — **Phase 7 PLANNED + APPROVED; M1 built and PR'd.** Plan 106 written
+_Last updated: 2026-07-30 (later) — **M1 SHIPPED AND LIVE IN PRODUCTION** (#568 -> e8fa98ce; migration applied 15:49:55, verified against the live enum, not inferred from the merge). #567 merged (0da23c88). Unit 2 is unblocked; next action is /work from Unit 2 on claude/cellarhand-v2-phase7-m2._
+
+_2026-07-30 — **Phase 7 PLANNED + APPROVED; M1 built and PR'd.** Plan 106 written
 against `main` @ `91cd1dcd` with 13 RFC-vs-code findings; PR #567 merged (`0da23c88`) so the amended
 RFCs + ADR 0013/0014 + GROUP-1/2/3 are on `main`. **F3 is the finding that resized the phase:**
 `WorkOrderTask` has no group reference and `resolveGroupMembers` discards the group id, so ADR 0014's
