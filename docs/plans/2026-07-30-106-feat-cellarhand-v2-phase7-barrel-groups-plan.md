@@ -1,5 +1,28 @@
 # Plan 106 — Cellarhand v2 Phase 7: barrel groups (RFC-001) + the M1 enum migration
 
+> [!success] STATUS: COMPLETED 2026-07-30. All 12 units built.
+> Unit 1 (M1) merged + deployed as `e8fa98ce` (#568). Units 2-12 are six commits on
+> `claude/cellarhand-v2-phase7-barrel-groups-2e50fe`.
+>
+> **Four migrations are pending on production** — `/cellar/groups` 500s until they are applied.
+> All four were test-applied to a disposable Neon branch forked from production and pass their
+> self-verify blocks.
+>
+> **Answers to the two things this plan left open:**
+> - **Unit 3's partial index (§7 "Medium" risk).** Resolved by denormalising `groupType` onto
+>   `vessel_group_member`, with TWO TRIGGERS — not app discipline — owning it. A partial index
+>   predicate cannot reference another table, and a generated column cannot either, so this was the
+>   only formulation where the constraint is a real unique index.
+> - **`AD_HOC` (§3 "Still open").** Unchanged: shipped as an enum VALUE only. No creation path, no
+>   auto-archive. Still an open question for the owner.
+>
+> **Deliberately NOT built, so it does not read as done:** the group EDITING UI (`/cellar/groups` is
+> read-only; the admin-gated write cores exist and are tested), `/vessels/[id]` (SC-08), `AD_HOC`
+> creation, rule-based membership.
+>
+> **One behaviour change to call out in the PR (D7):** creating and deactivating a barrel group on
+> `/bulk` was reachable by any ready user and is now admin-only.
+
 - **Date:** 2026-07-30
 - **Type:** feat
 - **Depth:** Deep — 12 units across 4 PRs

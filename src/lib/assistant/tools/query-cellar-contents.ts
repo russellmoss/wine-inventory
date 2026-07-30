@@ -113,7 +113,6 @@ export const queryCellarContentsTool: AssistantTool = {
       const memberIds = new Set(group.members.map((m) => m.vesselId));
       const contents = await queryCellarContents({ ...input, vessel: undefined, onlyNonEmpty: false });
       const inGroup = contents.vessels.filter((v) => memberIds.has(v.vesselId));
-      const toppingByVessel = new Map(topping.map((t) => [t.vesselId, t]));
       const members = (input.neverToppedOnly ? topping.filter((t) => t.lastToppedAt === null) : topping).map((t) => ({
         ...t,
         contents: inGroup.find((v) => v.vesselId === t.vesselId) ?? null,
