@@ -136,17 +136,29 @@ Postgres requires enum additions in a dedicated migration ahead of the code that
 
 ## Phase 7 · Barrel groups (class D — RFC-001)
 
+> [!warning] Corrected 2026-07-30 (plan 106, F9). Three rows of this table were reversed by the
+> owner's decision of 2026-07-29 (**ADR 0014**) and the amended RFC-001 §4.13, but PR #567 did not
+> touch this file — so it went on describing the superseded design after the design changed.
+> **Effective-dated membership is NOT built.** There is no `addedAt` and no `removedAt`, and OD-3 is
+> enforced in the migration rather than merely reported.
+
 | Work |
 |---|
-| Migration: type, position, effective-dated membership, location, status, settings |
-| Backfill: existing groups → `OPERATIONAL`; positions by natural sort; `addedAt = createdAt` |
-| Report (do not enforce) OD-3 violations |
+| Migration: type, position, location, status, settings — **no effective-dated membership** |
+| Backfill: existing groups → `OPERATIONAL`; `status` from `isActive`; positions by natural sort |
+| **Enforce** OD-3 in the migration (0 violations exist on any tenant; rollback is `DROP INDEX`) |
+| `WorkOrderTask.vesselGroupId` — group identity on the task, the prerequisite for the snapshot |
+| `memberSnapshot` frozen at **issue**, immutable thereafter (GROUP-3) |
 | `/cellar/groups` index and `/cellar/groups/[id]` settings |
 | `/vessels/[id]` individual barrel detail |
 | Group-scoped work orders; rollups computed and labelled as derived |
 
 **Stopping point:** safe. Groups are useful before the runner exists.
-**Risk:** medium-high — effective-dated membership is the subtle part; test the "historical round reads historical membership" case first.
+**Risk:** medium-high — but NOT for the reason this file used to give. The subtle part is not
+effective-dating (which was rejected); it is that a work order had **no group reference at all**, so
+"a draft reads live membership" was false against the code and the snapshot had nothing to snapshot
+from. Build the identity column first, then the freeze. Test the outcome — issue, then ADD and REMOVE
+a barrel, and assert the reported list is byte-identical.
 
 ---
 

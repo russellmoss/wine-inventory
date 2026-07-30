@@ -202,7 +202,10 @@ export async function searchEverything(query: string, ctx: SearchContext): Promi
   }
 
   for (const g of groups) {
-    hits.push({ kind: "group", id: g.id, label: g.name, subtitle: "barrel group", href: "/bulk" });
+    // Cellarhand v2 Phase 7 (F11): every group hit used to land on /bulk, which is the cellar-floor
+    // board, not the group. Now that /cellar/groups/[id] exists the hit goes to the thing you
+    // searched for.
+    hits.push({ kind: "group", id: g.id, label: g.name, subtitle: "barrel group", href: `/cellar/groups/${g.id}` });
   }
 
   return rankHits(hits, q);

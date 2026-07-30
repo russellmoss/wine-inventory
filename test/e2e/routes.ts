@@ -22,6 +22,7 @@ export const AUDITED_ROUTES: readonly string[] = [
   "/bottled",
   "/bottling",
   "/bulk",
+  "/cellar/groups", // Cellarhand v2 Phase 7 (SC-09)
   "/compliance",
   "/finished-goods",
   "/help/feedback",

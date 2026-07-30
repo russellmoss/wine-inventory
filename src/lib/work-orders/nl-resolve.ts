@@ -148,14 +148,34 @@ async function loadVesselStateById(id: string): Promise<ResolvedVesselState> {
 const sortByLabel = (xs: ResolvedVesselState[]): ResolvedVesselState[] =>
   [...xs].sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
 
+/** What a group expression resolved to: the member set, plus the SAVED group's id when there was one. */
+type ResolvedGroup = {
+  members: ResolvedVesselState[];
+  /**
+   * Cellarhand v2 Phase 7 — the fix for plan 106 finding F3.
+   *
+   * This function used to return only `ResolvedVesselState[]`, so THE GROUP'S IDENTITY WAS DISCARDED
+   * AT AUTHORING: the member list was flattened into plannedPayload as bare id + code arrays and
+   * nothing on the task remembered where it came from. That is why ADR 0014's premise ("a DRAFT reads
+   * live membership; the snapshot is taken at issue") was false against the code — a draft read a list
+   * frozen when the DRAFT was written, so freezing again at issue would have changed nothing and
+   * GROUP-3 would have been a green check over a no-op.
+   *
+   * Null for a RANGE or a COMMA LIST, which is correct rather than a gap: those were never a group,
+   * their membership was always a literal list, and the payload list already IS the frozen list.
+   */
+  vesselGroupId: string | null;
+};
+
 /**
  * Phase 9.4a: resolve a group expression to an ordered, deduped member set — a range ("B101-B110"), a
  * saved VesselGroup name, or a comma/and-separated list. Throws a relayable message when it can't
  * (empty / single / ambiguous group), so the proposal stays honest rather than faking a group.
  */
-async function resolveGroupMembers(expr: string): Promise<ResolvedVesselState[]> {
+async function resolveGroupMembers(expr: string): Promise<ResolvedGroup> {
   const range = expandVesselRange(expr); // throws on inverted/oversized
   let members: ResolvedVesselState[];
+  let vesselGroupId: string | null = null;
   if (range) {
     members = await Promise.all(range.map((code) => resolveVesselState(code)));
   } else {
@@ -163,6 +183,7 @@ async function resolveGroupMembers(expr: string): Promise<ResolvedVesselState[]>
     if (g.kind === "many") throw new Error(`Several groups match "${expr}": ${g.names.join(", ")}. Name one.`);
     if (g.kind === "one") {
       members = await Promise.all(g.members.map((m) => loadVesselStateById(m.id)));
+      vesselGroupId = g.groupId;
     } else {
       const parts = expr.split(/\s*(?:,|\band\b)\s*/i).map((s) => s.trim()).filter(Boolean);
       if (parts.length < 2) {
@@ -172,7 +193,7 @@ async function resolveGroupMembers(expr: string): Promise<ResolvedVesselState[]>
     }
   }
   const byId = new Map(members.map((m) => [m.id, m]));
-  return sortByLabel([...byId.values()]);
+  return { members: sortByLabel([...byId.values()]), vesselGroupId };
 }
 
 async function resolvePressSource(intent: { sourceVessel?: string; sourceLot?: string }): Promise<{
@@ -452,7 +473,8 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
 
     if (intent.kind === "BARREL_DOWN") {
       const src = await resolveVesselState(intent.from);
-      const members = (await resolveGroupMembers(intent.toGroup)).filter((m) => m.id !== src.id);
+      const resolvedGroup = await resolveGroupMembers(intent.toGroup);
+      const members = resolvedGroup.members.filter((m) => m.id !== src.id);
       if (members.length === 0) throw new Error("A barrel-down needs at least one destination barrel.");
       const lossL = intent.lossL ?? 0;
       const groupRack = {
@@ -462,6 +484,10 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         ...(intent.drawL != null ? { drawL: intent.drawL } : {}),
         ...(lossL > 0 ? { lossL } : {}),
         memberCodes: members.map((m) => m.code),
+        // F3: the saved group this list came from, so the DRAFT can re-resolve and ISSUE can freeze.
+        // Null for a range/comma list — those were never a group. canonicalColumns mirrors it to the
+        // WorkOrderTask.vesselGroupId column.
+        ...(resolvedGroup.vesselGroupId ? { vesselGroupId: resolvedGroup.vesselGroupId } : {}),
       };
       const values = { sourceVesselId: src.id, groupRack, ...(intent.note ? { note: intent.note } : {}) };
       taskBuilds.push({ taskType: "GROUP_RACK", title: `Barrel down ${src.label} to ${members.length} ${members.length === 1 ? "barrel" : "barrels"}`, values, taskKey: randomUUID() });
@@ -478,7 +504,8 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
 
     if (intent.kind === "RACK_TO_TANK") {
       const dest = await resolveVesselState(intent.to);
-      const members = (await resolveGroupMembers(intent.fromGroup)).filter((m) => m.id !== dest.id);
+      const resolvedGroup = await resolveGroupMembers(intent.fromGroup);
+      const members = resolvedGroup.members.filter((m) => m.id !== dest.id);
       if (members.length === 0) throw new Error("Racking barrels to a tank needs at least one source barrel.");
       const lossL = intent.lossL ?? 0;
       const groupRack = {
@@ -487,6 +514,7 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
         sourceVesselIds: members.map((m) => m.id),
         ...(lossL > 0 ? { lossL } : {}),
         memberCodes: members.map((m) => m.code),
+        ...(resolvedGroup.vesselGroupId ? { vesselGroupId: resolvedGroup.vesselGroupId } : {}),
       };
       const values = { destVesselId: dest.id, groupRack, ...(intent.note ? { note: intent.note } : {}) };
       taskBuilds.push({ taskType: "GROUP_RACK", title: `Rack ${members.length} ${members.length === 1 ? "barrel" : "barrels"} to ${dest.label}`, values, taskKey: randomUUID() });
@@ -626,7 +654,8 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
       const sharedFiltered = Object.fromEntries(Object.entries(sharedCandidate).filter(([k]) => k in fields));
 
       if (intent.vesselGroup) {
-        const members = await resolveGroupMembers(intent.vesselGroup); // ordered + deduped (or a relayable error)
+        const resolvedGroup = await resolveGroupMembers(intent.vesselGroup); // ordered + deduped (or a relayable error)
+        const members = resolvedGroup.members;
         // All-at-once completion writes N events in ONE tx; cap the range so that tx stays bounded (and
         // doesn't hold the shared overhead SupplyLot lock too long). Bigger ranges must be split.
         if (members.length > GROUP_MAINTENANCE_MAX_MEMBERS) {
@@ -639,6 +668,7 @@ async function resolveDraftToTaskBuilds(draft: NlWorkOrderDraft): Promise<Resolv
           activityType: intent.kind,
           memberVesselIds: members.map((m) => m.id),
           memberCodes: members.map((m) => m.code),
+          ...(resolvedGroup.vesselGroupId ? { vesselGroupId: resolvedGroup.vesselGroupId } : {}),
         };
         const values = { groupActivity, ...sharedFiltered };
         const span = members.length === 1 ? members[0].code : `${members[0].code}…${members.at(-1)!.code}`;

@@ -374,6 +374,7 @@ export function canonicalizeTemplateSpec(spec: TemplateSpec, vocab: ResolvedTask
 /** Canonical columns (A6) extracted from a task's payload — mirror the JSON for querying + composite FKs. */
 function canonicalColumns(taskType: string, payload: Record<string, unknown>) {
   const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const group = (v: unknown) => (v && typeof v === "object" ? (v as { vesselGroupId?: unknown }) : null);
   const destVesselId =
     taskType === "PRESS"
       ? s(payload.toVesselId) ?? s(payload.vesselId)
@@ -388,6 +389,12 @@ function canonicalColumns(taskType: string, payload: Record<string, unknown>) {
     // Plan 039: the HARVEST_WEIGH_IN block target (a vineyard block). Null at issue; the block is chosen
     // at run time on the execute sub-form, then mirrored here for querying + the composite FK.
     blockId: s(payload.blockId),
+    // Cellarhand v2 Phase 7 (F3/D2). The group id rides INSIDE groupRack/groupActivity rather than at
+    // the payload top level, because those two objects are already proven to survive
+    // sanitizeTaskPayload (they ride outside the `k in fields` filter as governed built-ins). A new
+    // top-level key would be stripped for every non-governed task type. Mirrored to the column here so
+    // the archive-warning count and the group detail page can query it without parsing JSON.
+    vesselGroupId: s(group(payload.groupRack)?.vesselGroupId) ?? s(group(payload.groupActivity)?.vesselGroupId),
   };
 }
 
@@ -458,6 +465,7 @@ export function instantiateTaskBuilds(builds: TaskBuild[], vocab: ResolvedTaskVo
       lotId: canon.lotId,
       materialId: canon.materialId,
       blockId: canon.blockId,
+      vesselGroupId: canon.vesselGroupId,
       plannedPayload: payload as CreateTaskInput["plannedPayload"],
     };
   });
@@ -482,6 +490,7 @@ export function instantiateTasksFromSpec(spec: TemplateSpec, vocab: ResolvedTask
       lotId: canon.lotId,
       materialId: canon.materialId,
       blockId: canon.blockId,
+      vesselGroupId: canon.vesselGroupId,
       plannedPayload: payload as CreateTaskInput["plannedPayload"],
     };
   });

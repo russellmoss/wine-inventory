@@ -3077,19 +3077,56 @@ model CellarMaterial {
   @@map("cellar_material")
 }
 
+// RFC-001 §4.2. OPERATIONAL is the durable working set (a rack, a hall row, an aging set) and is
+// what GROUP-1/OD-3 constrains to one per vessel; AD_HOC is a transient selection with unlimited
+// overlap. Phase 7 ships AD_HOC as a VALUE ONLY — no creation path, no auto-archive lifecycle. It
+// exists because the OD-3 partial unique index needs a type to be partial on.
+enum VesselGroupType {
+  OPERATIONAL
+  AD_HOC
+}
+
+// RFC-001 §4.5. Archiving hides the group from pickers and indexes and keeps all history. It does
+// NOT affect open work orders that already reference it — those carry their own frozen member list
+// (GROUP-3), which is the whole point of the snapshot.
+enum VesselGroupStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 // A named set of vessels (e.g. a barrel group) so one operation can fan out to its
-// members (D13). Structure-only in Phase 1; the fan-out UI/logic lands in Phase 3.
+// members (D13). Structure-only in Phase 1; the fan-out UI/logic landed in Phase 3;
+// Cellarhand v2 Phase 7 (RFC-001) made it a configurable operational object.
 model VesselGroup {
-  tenantId  String              @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
-  id        String              @id @default(cuid())
-  name      String
-  note      String?
-  isActive  Boolean             @default(true)
+  tenantId String @default("") // Phase 12 tenant scope (nullable U2 -> backfill U3 -> NOT NULL U5); FK+RLS at DB level
+  id       String @id @default(cuid())
+  name     String
+  note     String?
+  // `status` is AUTHORITATIVE; `isActive` survives as a legacy mirror because live read paths still
+  // filter on it (listGroups -> resolveGroupByName -> the whole work-order NL group resolver). A DB
+  // CHECK + BEFORE trigger (20260730110100_vessel_group_structure) make the two impossible to drift,
+  // so this is a compatibility mirror rather than a second source of truth.
+  isActive Boolean            @default(true)
+  type     VesselGroupType    @default(OPERATIONAL)
+  status   VesselGroupStatus  @default(ACTIVE)
+  // D4: the hall/room is a real Location; the RACK is not (Location.kind is
+  // cellar/warehouse/crush_pad/lab/bottling/external/other — racks are not modelled there).
+  // Composite tenant FK (tenantId, locationId) -> location(tenantId, id), raw SQL (K11).
+  locationId String?
+  rackLabel  String?
+  // RFC-001 §4.4 group settings: topping interval + source, keg preset, SO2 target, sampling rule,
+  // default crew, default WO template. DEFAULTS FOR GENERATED WORK ORDERS, never a live constraint.
+  // Json because the set is explicitly open and none of it is queried.
+  settings  Json?
   createdAt DateTime            @default(now())
+  updatedAt DateTime?           @updatedAt
   members   VesselGroupMember[]
 
   @@unique([tenantId, name])
+  @@unique([tenantId, id]) // RFC-001 §4.12: composite-tenant-FK target for vessel_group_member AND work_order_task (K11)
   @@index([tenantId])
+  @@index([tenantId, status, type])
+  @@index([tenantId, locationId])
   @@map("vessel_group")
 }
 
@@ -3098,12 +3135,25 @@ model VesselGroupMember {
   id       String      @id @default(cuid())
   groupId  String
   vesselId String
+  // RFC-001 §4.3: per-group, contiguous, reorderable walk order ("barrel 10 of 22"). 0 is the
+  // "caller didn't say" sentinel — a BEFORE INSERT trigger assigns MAX+1 so legacy createMany()
+  // call sites that pass only {groupId, vesselId} still get a deterministic order.
+  position Int         @default(0)
+  // DENORMALISED from VesselGroup.type, and NEVER written by app code — a BEFORE INSERT OR UPDATE
+  // trigger overwrites whatever is supplied with the group's real type. It exists because GROUP-1's
+  // partial unique index is `WHERE groupType = 'OPERATIONAL'` and a partial index predicate cannot
+  // reference another table. The trigger is what makes the denormalisation safe to enforce on.
+  groupType VesselGroupType @default(OPERATIONAL)
   group    VesselGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   vessel   Vessel      @relation(fields: [vesselId], references: [id], onDelete: Cascade)
 
+  // NO addedAt / removedAt, deliberately and permanently. The owner chose the work-order member
+  // snapshot over effective-dated membership (ADR 0014). GROUP-3's corollary: a membership table
+  // that grows date columns later is the tripwire that the invariant has been abandoned.
   @@unique([tenantId, groupId, vesselId])
   @@index([vesselId])
   @@index([tenantId])
+  @@index([tenantId, groupId, position])
   @@map("vessel_group_member")
 }
 
@@ -5127,6 +5177,22 @@ model WorkOrderTask {
   scheduledStart       DateTime?
   scheduledEnd         DateTime?
   locationId           String? // plan 053 B9: where this task happens (plain ref → location.id; K11/K12)
+  // ── Cellarhand v2 Phase 7 (RFC-001 / ADR 0014 / GROUP-3). ALL THREE NULLABLE — work_order_task
+  // holds 106 live rows, so a SET NOT NULL here fails on deploy after CI passes (plan 106 F2).
+  //
+  // `vesselGroupId` is the group this task's member list CAME FROM, and it is the prerequisite F3
+  // exposed: without it a DRAFT has nothing to re-resolve from and issue has nothing to snapshot.
+  // Null means the members were always a literal list (a range like B101-B110, or a comma list) —
+  // that case needs no snapshot because the payload list IS the frozen list.
+  // Composite tenant FK (tenantId, vesselGroupId) -> vessel_group(tenantId, id), ON DELETE SET NULL
+  // (raw SQL, K11) — deleting a group must never delete work-order history.
+  vesselGroupId        String?
+  // The frozen list, written ONCE inside the same transaction as the DRAFT->ISSUED flip. Non-null
+  // `memberSnapshotAt` IS the "frozen" flag; a DB CHECK keeps the pair honest. Json rather than a
+  // join table per D1 — ADR 0014 explicitly decided this does not need to be queryable, and a member
+  // table drifts toward the parallel ledger GROUP-2 forbids.
+  memberSnapshot       Json?
+  memberSnapshotAt     DateTime?
   plannedPayload       Json // snapshot of the planned inputs (target rate + basis, note, etc.)
   currentAttemptId     String? // A4: the attempt currently owning this task's ledger op (plain scalar, no FK)
   completionNote       String?

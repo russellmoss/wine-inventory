@@ -138,7 +138,15 @@ export const SECTIONS: Record<string, SectionDef> = {
   // answer, and a cellar hand on a phone has no Ctrl key.
   "/bulk": {
     label: "Cellar floor sections",
-    items: [{ href: "/winemaking-calculator", label: "Calculator" }],
+    items: [
+      { href: "/winemaking-calculator", label: "Calculator" },
+      // Cellarhand v2 Phase 7 (SC-09). Under `/bulk` and NOT flagged `admin`: RFC-001 §4.10 gives
+      // VIEW to every authenticated user in the tenant and only gates create/rename/archive/settings/
+      // membership. Flagging it admin would be "stricter than the page", which costs a cellar hand
+      // the only way to see what a rack contains. The page itself must therefore never turn a
+      // non-admin away — test/nav-section-guards.test.ts checks that direction.
+      { href: "/cellar/groups", label: "Barrel groups" },
+    ],
   },
 
   "/inventory": {

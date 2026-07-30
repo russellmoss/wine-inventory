@@ -236,6 +236,8 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
     await owner.namingTemplate.deleteMany({ where: { id: { in: ["isov_nt_a", "isov_nt_b"] } } });
     await owner.calculationLog.deleteMany({ where: { id: { in: ["isov_calc_a", "isov_calc_b"] } } });
     await owner.vesselActivityEvent.deleteMany({ where: { id: { in: ["isov_vae_b", "isov_vae_x"] } } });
+    await owner.vesselGroupMember.deleteMany({ where: { groupId: "isov_grp_a" } });
+    await owner.vesselGroup.deleteMany({ where: { id: "isov_grp_a" } });
     await owner.vessel.deleteMany({ where: { id: "isov_vessel_b" } });
     await owner.workOrder.deleteMany({ where: { id: { in: ["isov_wo_a", "isov_wo_b", "isov_wo_x"] } } });
     await owner.complianceReport.deleteMany({ where: { id: { in: ["isov_rep_a", "isov_rep_b"] } } });
@@ -418,6 +420,28 @@ describe.skipIf(!ENABLED)("cross-tenant isolation (as app_rls)", () => {
         await db.lotOperationLine.create({ data: { tenantId: A, operationId: op.id, lotId: "isov_b", deltaL: 1, bucket: "EXTERNAL", lotCode: "X" } });
       }),
     ).rejects.toThrow();
+  });
+
+  it("vessel_group membership composite-FK cross-tenant reference rejected (K11, Cellarhand v2 Phase 7)", async () => {
+    // Two new composite tenant FKs landed with the barrel-group structure migration:
+    //   (tenantId, groupId)  -> vessel_group(tenantId, id)
+    //   (tenantId, vesselId) -> vessel(tenantId, id)
+    // This is the second one, and it is NOT hypothetical: a QA seed script written during plan 106
+    // read cross-tenant (a Neon-OWNER connection carries BYPASSRLS, so `runAsTenant` READS are not
+    // filtered) and tried to put a Bhutan barrel in a Demo Winery group. This FK is what refused it.
+    // Without it the write would have silently created cross-tenant membership.
+    await expect(
+      asTenant(A, async (db) => {
+        const g = await db.vesselGroup.create({ data: { id: "isov_grp_a", tenantId: A, name: "ISOV group A" }, select: { id: true } });
+        await db.vesselGroupMember.create({ data: { tenantId: A, groupId: g.id, vesselId: "isov_vessel_b" } });
+      }),
+    ).rejects.toThrow();
+    // ...and the group side: a member in A pointing at a group that does not exist in A.
+    await expect(
+      asTenant(A, (db) => db.vesselGroupMember.create({ data: { tenantId: A, groupId: "isov_grp_nonexistent", vesselId: "isov_vessel_b" } })),
+    ).rejects.toThrow();
+    await owner.vesselGroupMember.deleteMany({ where: { groupId: "isov_grp_a" } });
+    await owner.vesselGroup.deleteMany({ where: { id: "isov_grp_a" } });
   });
 
   it("spray_application + spray_block_line tenant-isolated (S3a): A can't see B's; foreign INSERT + cross-tenant block FK rejected", async () => {

@@ -7,45 +7,49 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**CELLARHAND v2 — PHASE 7 (BARREL GROUPS): M1 SHIPPED + LIVE. NEXT ACTION = `/work` FROM UNIT 2.**
-Plan: `docs/plans/2026-07-30-106-feat-cellarhand-v2-phase7-barrel-groups-plan.md` (deep · 12 units ·
-4 PRs). Owner approved 2026-07-30: **start M1, merge #567 in parallel.** Both done.
+**CELLARHAND v2 — PHASE 7 (BARREL GROUPS): UNITS 1–12 ALL BUILT ON
+`claude/cellarhand-v2-phase7-barrel-groups-2e50fe`. NEXT ACTION = OPEN THE PR.**
+Plan: `docs/plans/2026-07-30-106-feat-cellarhand-v2-phase7-barrel-groups-plan.md` (deep · 12 units).
+M1 was already merged + deployed (`e8fa98ce`); Units 2–12 are 6 commits on the branch above.
 
-**✅ Both blockers on Unit 2 are cleared:**
-1. **#567 MERGED** (`0da23c88`) — the amended RFCs, ADR 0013/0014 and the GROUP-1/2/3 notes are on
-   `main`. The register is now 58 notes / 50 guarded / 7 planned / 1 deferred.
-2. **M1 MERGED *AND DEPLOYED*** — [#568](https://github.com/russellmoss/wine-inventory/pull/568)
-   squash-merged as `e8fa98ce`; migration `20260730100000_cellarhand_v2_enum_values` applied to
-   production **2026-07-30 15:49:55**, 1 step, no rollback. **Verified against the live database, not
-   inferred from the merge:**
-   - `CaptureMethod` = `MANUAL, VOICE, SENSOR, IMPORT, DERIVED, NOMINAL`
-   - `VesselType` = `BARREL, TANK, KEG, BIN`
-   - 0 KEG/BIN vessels · 0 DERIVED/NOMINAL ops — the values exist and **nothing writes them**, which
-     is the required state until Phase 8.
+**⚠️ NOT YET DEPLOYED. Four migrations are pending on production:**
+`..._vessel_group_enums` → `..._vessel_group_structure` → `..._vessel_group_od3_index` →
+`..._work_order_task_group_snapshot`. `/cellar/groups` queries columns production does not have, so
+**the route 500s until they are applied.** All four were test-applied to a disposable Neon branch
+forked from production (`br-flat-sky-atnwgd45`) and pass their self-verify blocks.
 
-**M1 was NOT purely additive — the plan got this wrong (F13) and it is worth remembering.** Widening
-`VesselType` broke `tsc` in three files: `VesselOpt`, `VesselWithContents` and `VesselRow` each pin
-`type: "BARREL" | "TANK"` as a literal union in a component file, so the grep for
-`Record<VesselType>`/switches missed them. `tsc` is a hard CI gate, so this was mandatory scope.
-Fixed the way RFC-000 §2 already prescribed for this enum ("picker + capacity call sites must filter
-on `type`"): new `src/lib/vessels/cellar-types.ts` + a `where` filter and a narrowing predicate at
-the three call sites — so a keg can never render as a tank once Phase 8 creates one.
-**Lesson: an additive enum value is additive at the DATABASE only. In TypeScript it is a widening,
-and every narrow hand-written union over that enum is a call site.**
+**What shipped, and the two things worth remembering:**
+- **The OD-3 partial index question is RESOLVED.** RFC-001 §6.1's sketch is not implementable — a
+  partial index predicate **cannot reference another table**. `groupType` is denormalised onto
+  `vessel_group_member` and **two triggers, not app discipline, own it**: a BEFORE trigger overwrites
+  whatever the caller supplied, an AFTER trigger propagates a group retype. So the index is enforced
+  against a column no application code can write. `verify:group-membership` checks the triggers still
+  exist, because without them the data check passes while the column lies.
+- **F3 was the real work.** `WorkOrderTask` had **no group reference at all**, so ADR 0014's premise
+  ("a DRAFT reads live membership") was false and GROUP-3 would have been a green check over a no-op.
+  Identity (`vesselGroupId`) had to be built before the freeze could mean anything.
 
-**▶ NEXT: `/work docs/plans/2026-07-30-106-feat-cellarhand-v2-phase7-barrel-groups-plan.md` starting
-at Unit 2.** Nothing blocks it. A worktree branch is already cut off the post-M1 main:
-`claude/cellarhand-v2-phase7-m2` @ `e8fa98ce`.
+**Also closed on the way past:** the TOCTOU window in `issueWorkOrderCore` (it merely doubled
+reservations before; under GROUP-3 it would write two immutable snapshots, so it became mandatory).
 
-**Read before writing M2's SQL — two things the plan flags that will otherwise bite:**
-- **Unit 3's partial unique index is under-specified in RFC-001 §6.1.** `UNIQUE (tenantId, vesselId)
-  WHERE type = 'OPERATIONAL'` cannot work as written — a partial index predicate **cannot reference
-  another table**, and `type` lives on `vessel_group`, not `vessel_group_member`. Resolve it while
-  writing the SQL (denormalise `type` onto the member row and keep it consistent in the core is the
-  plan's recommendation) and **state which was chosen**.
-- **Composite FKs are `ON DELETE CASCADE`, not `RESTRICT`** (plan D6/F5) — RFC-000 §2 says RESTRICT,
-  which contradicts the existing `vessel_group_member_groupId_fkey` (CASCADE since the ledger spine)
-  and would make deleting any non-empty group fail.
+**GROUP-1/2/3 are `guarded` with three real guards, EACH SHOWN FAILING FIRST** — `verify:invariants`
+is 53/53 (was 50) and never runs the scripts, so a guard that has only ever been green proves
+nothing. Red tests: dropped the index + inserted the violation; added `VesselGroup.volumeL` +
+`VesselGroupMember.addedAt`; disabled the freeze.
+
+**Green:** `tsc --noEmit` · full vitest 456 files / 5671 tests · `verify:invariants` ·
+`verify:invariant-frontmatter` (58) · `verify:ai-native` · `verify:naming` (25) ·
+`verify:wo-member-snapshot` 17/17 end-to-end · SC-09 walked in the browser at 390px and 1440px.
+
+**🚩 Carried forward, deliberately NOT built (say so rather than let it look done):**
+- **`AD_HOC` groups ship as an enum VALUE only** — no creation path, no auto-archive lifecycle. The
+  value exists because GROUP-1's partial index needs a type to be partial on. Every group created in
+  Phase 7 is `OPERATIONAL`. RFC-001 §6 decision 4 is still open.
+- **`/cellar/groups` is READ-ONLY.** Editing membership/settings still happens on `/bulk`. The write
+  cores + admin-gated actions exist and are tested; the editing UI is not built.
+- **`/vessels/[id]` barrel detail (SC-08)** — out of scope per the plan, still unbuilt.
+- **The `/bulk` admin gating is a BEHAVIOUR CHANGE** (D7): creating/deactivating a barrel group was
+  reachable by any ready user and is now admin-only. Call it out in the PR body.
 
 ---
 
@@ -2219,3 +2223,13 @@ RFCs + ADR 0013/0014 + GROUP-1/2/3 are on `main`. **F3 is the finding that resiz
 over a no-op. **F13 was found while building M1:** the enum widening broke `tsc` in three files, so
 M1 also carries RFC-000 §2's "filter on type" enforce step. **Unit 2 is blocked on the M1 DEPLOY, not
 the merge.** Spray Wave 1 unchanged._
+
+_Last updated: 2026-07-30 (later still) — **Cellarhand v2 Phase 7 Units 2–12 BUILT** on
+`claude/cellarhand-v2-phase7-barrel-groups-2e50fe` (6 commits). Four migrations pending on
+production: /cellar/groups 500s until they are applied. GROUP-1/2/3 flipped to `guarded` with three
+guards, each observed FAILING before it passed (verify:invariants 53/53). The OD-3 partial-index
+question is resolved by denormalising `groupType` with two triggers owning it — a partial index
+predicate cannot reference another table. F3 was the real work: WorkOrderTask had no group reference
+at all, so the snapshot had nothing to snapshot from. Deliberately NOT built: AD_HOC creation, the
+group EDITING UI (/cellar/groups is read-only), SC-08. /bulk group create+deactivate is now
+admin-only — a real behaviour change, D7. Spray Wave 1 unchanged._

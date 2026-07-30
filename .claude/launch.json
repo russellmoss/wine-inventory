@@ -4,15 +4,37 @@
     {
       "name": "dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true
     },
     {
-      "//": "Pinned port for the Cellarhand UI/UX v2 branch. This box routinely has 2-3 worktree dev servers running at once, and :3000/:3005 are usually taken by other branches — a shared port makes 'is localhost showing my code?' unanswerable. Keep this one distinct.",
+      "//": "Plan 106 Phase 7 (barrel groups). Its own port because this box routinely runs 2-3 worktree dev servers and a shared port makes 'is localhost showing my code?' unanswerable. NOTE this worktree's .env points at a DISPOSABLE NEON BRANCH, not production: the Phase-7 migrations are not deployed yet and /cellar/groups queries columns production does not have.",
+      "name": "phase7-groups",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3009"
+      ],
+      "port": 3009
+    },
+    {
+      "//": "Pinned port for the Cellarhand UI/UX v2 branch. This box routinely has 2-3 worktree dev servers running at once, and :3000/:3005 are usually taken by other branches \u2014 a shared port makes 'is localhost showing my code?' unanswerable. Keep this one distinct.",
       "name": "cellarhand-v2",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "-p", "3007"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3007"
+      ],
       "port": 3007
     }
   ]

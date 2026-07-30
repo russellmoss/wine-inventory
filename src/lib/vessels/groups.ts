@@ -58,6 +58,27 @@ export async function createGroupCore(
   }
   const vesselIds = [...new Set(input.vesselIds ?? [])];
 
+  // GROUP-1/OD-3. `createMany({ skipDuplicates: true })` below emits ON CONFLICT DO NOTHING, which is
+  // UNQUALIFIED — it matches ANY unique index, including the new partial
+  // `vessel_group_member_one_operational_group_per_vessel`. Left alone, saving a 22-barrel selection
+  // where 6 barrels already sit in another operational group would silently create a 16-member group,
+  // report success, and let the audit summary claim 22. A correctness index must never be absorbed by
+  // ON CONFLICT DO NOTHING. Every group created here is OPERATIONAL, so this is the ordinary path.
+  const conflicts = vesselIds.length
+    ? await prisma.vesselGroupMember.findMany({
+        where: { vesselId: { in: vesselIds }, groupType: "OPERATIONAL" },
+        select: { vessel: { select: { code: true, type: true } }, group: { select: { name: true } } },
+      })
+    : [];
+  if (conflicts.length > 0) {
+    const named = conflicts.slice(0, 3).map((c) => `${label(c.vessel)} (in "${c.group.name}")`).join(", ");
+    const more = conflicts.length > 3 ? ` and ${conflicts.length - 3} more` : "";
+    throw new ActionError(
+      `${conflicts.length === 1 ? "That vessel is" : "Those vessels are"} already in another operational barrel group: ${named}${more}. Remove ${conflicts.length === 1 ? "it" : "them"} first, or leave ${conflicts.length === 1 ? "it" : "them"} out of this group.`,
+      "CONFLICT",
+    );
+  }
+
   const group = await runInTenantTx(async (tx) => {
     const g = existing
       ? await tx.vesselGroup.update({ where: { id: existing.id }, data: { note: input.note?.trim() || null } })
@@ -178,10 +199,26 @@ export async function mergeGroupMembershipCore(
 
   await runInTenantTx(async (tx) => {
     if (sourceMembers.length > 0) {
-      await tx.vesselGroupMember.createMany({
-        data: sourceMembers.map((m) => ({ groupId: input.targetGroupId, vesselId: m.vesselId })),
-        skipDuplicates: true,
-      });
+      // GROUP-1/OD-3: a MERGE between two OPERATIONAL groups is the worst case for
+      // `createMany({ skipDuplicates: true })`. Every member of the source is, by definition, already
+      // in an operational group (the source), so ON CONFLICT DO NOTHING would drop EVERY row — and
+      // then `deactivateSource` (default true) archives the source anyway. Net effect: target
+      // unchanged, source archived and no longer editable, audit log cheerfully reporting "merged 22
+      // members". MOVE the rows instead of inserting copies: one UPDATE satisfies the index at commit
+      // because each vessel still holds exactly one operational membership throughout.
+      const already = new Set(
+        (await tx.vesselGroupMember.findMany({ where: { groupId: input.targetGroupId }, select: { vesselId: true } })).map((m) => m.vesselId),
+      );
+      const moving = sourceMembers.filter((m) => !already.has(m.vesselId)).map((m) => m.vesselId);
+      if (moving.length > 0) {
+        await tx.vesselGroupMember.updateMany({
+          where: { groupId: input.sourceGroupId, vesselId: { in: moving } },
+          data: { groupId: input.targetGroupId },
+        });
+      }
+      // A vessel already in the target keeps that membership; its source row is dropped so the merge
+      // does not leave the vessel in two operational groups.
+      await tx.vesselGroupMember.deleteMany({ where: { groupId: input.sourceGroupId } });
     }
     if (input.deactivateSource ?? true) {
       await tx.vesselGroup.update({ where: { id: input.sourceGroupId }, data: { isActive: false } });
