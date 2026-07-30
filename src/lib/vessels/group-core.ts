@@ -132,6 +132,89 @@ export async function listGroupDetailsCore(
   return groups.map((g) => toDetail(g, g.locationId ? (names.get(g.locationId) ?? null) : null));
 }
 
+// ── rollups (Unit 7) ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * RFC-001 §4.6 / AC-10: COMPUTED, NEVER STORED.
+ *
+ * Every figure here states its derivation, because they are not the same KIND of number and the UI
+ * must not present them as if they were. `volumeL` is a sum of DERIVED barrel volumes — a ledger
+ * projection, not a measurement — so per DESIGN.md it is rendered "≈ estimated", never "measured".
+ * `lotCodes` is what makes the two-wines warning row possible (SC-09's Partial state: legal, not an
+ * error). `oldestLastToppedAt` is null when nothing in the group has ever been topped, which is a
+ * different fact from "topped a long time ago" and must not collapse into one.
+ */
+export type GroupRollups = {
+  memberCount: number;
+  lotCodes: string[];
+  distinctLotCount: number;
+  volumeL: number;
+  capacityL: number;
+  oldestLastToppedAt: string | null;
+  /** Null when the group has members but NONE has ever been topped — absence, not staleness. */
+  neverToppedCount: number;
+  openWorkOrderCount: number;
+};
+
+export async function getGroupRollupsCore(groupId: string): Promise<GroupRollups> {
+  const members = await prisma.vesselGroupMember.findMany({
+    where: { groupId },
+    select: {
+      vesselId: true,
+      vessel: {
+        select: {
+          capacityL: true,
+          vesselLots: { select: { volumeL: true, lot: { select: { code: true } } } },
+        },
+      },
+    },
+  });
+
+  const vesselIds = members.map((m) => m.vesselId);
+  const lotCodes = new Set<string>();
+  let volumeL = 0;
+  let capacityL = 0;
+  for (const m of members) {
+    capacityL += Number(m.vessel.capacityL ?? 0);
+    for (const vl of m.vessel.vesselLots) {
+      volumeL += Number(vl.volumeL ?? 0);
+      lotCodes.add(vl.lot.code);
+    }
+  }
+
+  // Last topped, per vessel, from the ledger — TOPPING legs against these vessels.
+  //
+  // `distinct` + `orderBy` rather than `groupBy`: the date lives on LotOperation (`observedAt` — WHEN
+  // IT HAPPENED, not when it was typed in), and a groupBy cannot reach through the relation to
+  // aggregate it. Prisma's distinct-with-orderBy keeps this ONE row per vessel, so a 420-barrel
+  // group does not drag every topping line it ever had across the wire.
+  const lastToppedRows =
+    vesselIds.length === 0
+      ? []
+      : await prisma.lotOperationLine.findMany({
+          where: { vesselId: { in: vesselIds }, operation: { type: "TOPPING" } },
+          orderBy: { operation: { observedAt: "desc" } },
+          distinct: ["vesselId"],
+          select: { vesselId: true, operation: { select: { observedAt: true } } },
+        });
+
+  const topped = lastToppedRows.map((r) => r.operation.observedAt).filter((d): d is Date => d instanceof Date);
+  const oldest = topped.length > 0 ? topped.reduce((a, b) => (a < b ? a : b)) : null;
+
+  return {
+    memberCount: members.length,
+    lotCodes: [...lotCodes].sort(),
+    distinctLotCount: lotCodes.size,
+    volumeL: Math.round(volumeL * 100) / 100,
+    capacityL: Math.round(capacityL * 100) / 100,
+    // Only meaningful once EVERY member has been topped at least once. While some never have, the
+    // oldest topping date would understate the group's true worst case.
+    oldestLastToppedAt: oldest && topped.length === members.length ? oldest.toISOString() : null,
+    neverToppedCount: members.length - topped.length,
+    openWorkOrderCount: await countOpenWorkOrdersForGroup(groupId),
+  };
+}
+
 // ── configuration ────────────────────────────────────────────────────────────────────────────────
 
 export type ConfigureGroupInput = {
