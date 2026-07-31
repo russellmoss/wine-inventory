@@ -7,6 +7,49 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**RECORDED-VOLUME CORRECTION (feedback `cms8a9nau0005i8045l65vomp`) — BUILT + DB-PROVEN, PR OPEN,
+REBASED ONTO `main` @ `5db70812` 2026-08-03.**
+[#571](https://github.com/russellmoss/wine-inventory/pull/571) — CI green (check / review /
+tenant-isolation / GitGuardian), awaiting merge.
+
+Demo Winery barrel B3: a 225 L barrique SEEDed at 100 L. The reporter typed 225 into the `/bulk`
+composition row, nothing happened, and the only path left was a rack/top-up — which moves real wine
+and, from a different-variety source, mints a blend to fix a typo.
+
+**The feature request was half the story; there was also a real defect.**
+`updateComponentVolume` routed BOTH directions through `computeProportionalDraw`, which throws
+`"draw exceeds available volume"` once the amount exceeds the position. +125 L onto a 100 L barrel is
+the ORDINARY case, not an overdraw — so it threw a raw `Error` (redacted in prod) and the input just
+looked inert. **That is exactly the reported symptom.** Split the directions: draws stay capped,
+increases go through a new `allocateProportionalIncrease` with the same integer-centilitre
+largest-remainder exactness. `/bulk`'s editor is fixed too, not just the new path.
+
+Shipped: `RecordedVolumeEditor` ("Recorded volume · 100 L · Edit") at the TOP of the vessel detail
+panel — corrected volume + **mandatory reason**, signed-delta preview, Undo after. One `ADJUST` (never
+a silent `vessel_lot` overwrite), reason in metadata + note, audit row, `adjust` counter-leg so the
+TTB fold treats it as an ordinary book-vs-physical difference (§A9 gain / §A30 loss). Assistant tool
+`correct_recorded_volume` + 2 golden cases (one asserts it does NOT route to `rack_wine`/`top_up`).
+
+**Proof that is not just green CI** (the Phase 7 lesson, applied): `npm run verify:volume-correction`
+rebuilds the reported fixture on Demo Winery and asserts `vessel_lot` ACTUALLY reads 225 afterwards —
+19/19 against the live DB. Plus 28 unit tests, tsc clean, full suite 5690 pass (the one failure,
+`assistant-commit-tenant-context`, is the documented whole-suite contention flake and passes alone).
+
+⚠️ **B3 itself is deliberately UNTOUCHED at 100 L** — the ticket asked for the capability, not for me
+to edit the reporter's data. All QA fixtures (`ZZ-VOLCORR-*`) were cleaned up; verified by query.
+⚠️ **Local `node_modules/@prisma/client` was an EMPTY DIRECTORY** — repaired this session
+(`npm install @prisma/client@^6.19.3` + `prisma generate`); `package-lock.json` unchanged. Note the
+generated client follows whichever checkout ran `prisma generate` last, and the MAIN checkout sits on
+a stale `docs/s2b-...` branch whose schema predates Phase 7.
+
+⚠️ **It sat 3 days unmergeable on THIS file alone.** `NOW.md` was the *only* overlap between the
+branch's 15 files and the 21 main touched while it waited (#572 / #573 / #574) — proven with
+`git merge-tree`, which named exactly one conflicting path. Every line of feature code auto-merged
+clean. The focus-spine convention blocked its own feature; a rebase is cheap, so rebase early rather
+than letting a docs stamp age into a stale PR.
+
+---
+
 **PROD OAUTH LOGIN REPORT — THE 500 WAS NOT REPRODUCIBLE; THE REAL DEFECT WAS THAT SENTRY COULD NOT
 SEE IT. MERGED AND LIVE 2026-08-02.** [#573](https://github.com/russellmoss/wine-inventory/pull/573)
 squash-merged as `b46d90f5`; Vercel production deploy succeeded. Owner report, no plan file.
@@ -2323,7 +2366,11 @@ at all, so the snapshot had nothing to snapshot from. Deliberately NOT built: AD
 group EDITING UI (/cellar/groups is read-only), SC-08. /bulk group create+deactivate is now
 admin-only — a real behaviour change, D7. Spray Wave 1 unchanged._
 
-_Last updated: 2026-07-30 (evening) — **Cellarhand v2 Phase 7 MERGED + LIVE** (#569 -> `1a1e2d1a`;
+_Last updated: 2026-07-30 (late) — **recorded-volume correction built + DB-proven** on
+`claude/barrel-volume-edit-d09b07` @ `c738b391` (feedback `cms8a9nau0005i8045l65vomp`). The feature
+request also uncovered a real defect: an upward volume adjustment was routed through the DRAW helper
+and threw, which is why the reporter's edit appeared inert. Awaiting browser QA, then PR. Previously:
+**Cellarhand v2 Phase 7 MERGED + LIVE** (#569 -> `1a1e2d1a`;
 four migrations applied to production 19:57, verified against the live DB). An adversarial review
 caught that GROUP-3 was enforced on a column nothing read — green CI, wrong path — fixed in
 `55d437fc` and the guard rebuilt to read the real one. Pruned the empty `phase7-m2` collision branch
@@ -2352,3 +2399,12 @@ _Last updated: 2026-08-02 — **assistant read-aloud shipped and live**
 tenant-isolation / GitGuardian green, Vercel production deploy succeeded). A 🔊 speaker on every finished
 assistant reply, mic-free, reusing `/api/assistant/speak`. Live QA is the owner's — it was not
 browser-verified locally._
+
+_Last updated: 2026-08-03 — **recorded-volume correction rebased onto `main` @ `5db70812`**
+([#571](https://github.com/russellmoss/wine-inventory/pull/571), still OPEN). No code changed: the PR
+had been unmergeable for 3 days on a single conflicting path, `NOW.md` itself — the only overlap
+between its 15 files and the 21 that main touched in #572 / #573 / #574. `git merge-tree` named that
+one path and nothing else; all 969 lines of feature code auto-merged clean. Resolved by keeping both
+histories and promoting the recorded-volume block to the current objective. Still unmerged, and still
+carrying the `computeProportionalDraw` defect fix — `/bulk`'s volume input has been silently inert for
+increases the whole time it waited._
