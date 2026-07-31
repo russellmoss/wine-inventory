@@ -39,6 +39,7 @@ import { commitReviewTask } from "./tools/review-task";
 import { commitManageWorkOrder } from "./tools/manage-work-order";
 import { commitGroupRackBatch } from "./tools/group-rack-batch";
 import { commitTopUp } from "./tools/top-up";
+import { commitCorrectRecordedVolume } from "./tools/correct-recorded-volume";
 import { commitFilterVessel } from "./tools/filter-vessel";
 import { commitLogCapManagement } from "./tools/log-cap-management";
 import { commitBlendLots } from "./tools/blend-lots";
@@ -108,6 +109,7 @@ const COMMITTERS: Record<string, Committer> = {
   manage_work_order: commitManageWorkOrder,
   group_rack_batch: commitGroupRackBatch,
   top_up: commitTopUp,
+  correct_recorded_volume: commitCorrectRecordedVolume,
   filter_vessel: commitFilterVessel,
   log_cap_management: commitLogCapManagement,
   blend_lots: commitBlendLots,

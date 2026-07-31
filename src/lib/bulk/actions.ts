@@ -10,6 +10,7 @@ import { runLedgerWrite, writeLotOperation } from "@/lib/ledger/write";
 import type { LedgerLine } from "@/lib/ledger/math";
 import { nextLotCode, isUniqueViolation } from "@/lib/lot/generate";
 import { planComponentVolumeUpdate } from "@/lib/bulk/component-adjust";
+import { allocateProportionalIncrease } from "@/lib/cellar/volume-correction-plan";
 import { normalizeToken } from "@/lib/lot/code";
 
 const PATH = "/bulk";
@@ -198,16 +199,21 @@ export const updateComponentVolume = action(async ({ actor }, componentId: strin
 
   const delta = plan.deltaL;
 
-  // Distribute the change across the tuple's lots proportionally to current volume.
-  const shares = computeProportionalDraw(
-    lots.map((r) => ({ id: r.lotId, volumeL: Number(r.volumeL) })),
-    Math.abs(delta),
-  );
-  const sign = delta > 0 ? 1 : -1;
+  // Distribute the change across the tuple's lots proportionally to current volume. The two
+  // directions need DIFFERENT helpers: computeProportionalDraw caps each share at the position it
+  // splits over and throws "draw exceeds available volume" otherwise, which is right for taking
+  // wine out and wrong for putting it back. Sending an INCREASE through it is why raising a
+  // 100 L barrel to 225 L silently failed here (feedback cms8a9nau0005i8045l65vomp) — a raw Error,
+  // redacted in production, so the field just appeared not to accept the change.
+  const positions = lots.map((r) => ({ id: r.lotId, volumeL: Number(r.volumeL) }));
+  const shares =
+    delta > 0
+      ? allocateProportionalIncrease(positions, delta).map((s) => ({ id: s.id, amount: s.addL }))
+      : computeProportionalDraw(positions, -delta).map((s) => ({ id: s.id, amount: -s.deduct }));
   const lines: LedgerLine[] = [];
   for (const s of shares) {
-    if (s.deduct <= 0) continue;
-    const d = round2(sign * s.deduct);
+    if (s.amount === 0) continue;
+    const d = round2(s.amount);
     lines.push({ lotId: s.id, vesselId: comp.vesselId, deltaL: d });
     lines.push({ lotId: s.id, vesselId: null, deltaL: round2(-d), reason: "adjust" });
   }

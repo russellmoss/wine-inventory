@@ -34,6 +34,11 @@ import {
   type FiltrationInput,
 } from "@/lib/cellar/treatments";
 import { recordLossCore, type RecordLossInput } from "@/lib/cellar/loss";
+import {
+  correctRecordedVolumeCore,
+  type CorrectRecordedVolumeInput,
+  type CorrectRecordedVolumeResult,
+} from "@/lib/cellar/volume-correction-core";
 import { recordLongTailOperationCore, type LongTailOperationInput, type LongTailOperationResult } from "@/lib/cellar/long-tail";
 import { topVesselCore, type ToppingInput, type ToppingResult } from "@/lib/cellar/topping";
 import { upsertMaterialCore, createStockMaterialCore, updateMaterialCore, type CellarMaterialDTO, type UpsertMaterialInput, type CreateStockMaterialInput, type UpdateMaterialInput } from "@/lib/cellar/materials";
@@ -206,6 +211,20 @@ export const recordLossAction = action(
 export const recordLongTailOperationAction = action(
   async ({ actor }, input: LongTailOperationInput): Promise<LongTailOperationResult> => {
     const res = await recordLongTailOperationCore(actor, input);
+    revalidateCaptureSurfaces();
+    return res;
+  },
+);
+
+/**
+ * Correct a vessel's RECORDED volume — a data-entry fix, not a physical move (feedback
+ * cms8a9nau0005i8045l65vomp). Deliberately plain `action(...)`, matching every other capture path
+ * on this panel: the cellar hand who mistyped the fill volume is the one who notices, and forcing
+ * an admin round-trip is what pushed the last winemaker into faking a rack instead.
+ */
+export const correctRecordedVolumeAction = action(
+  async ({ actor }, input: CorrectRecordedVolumeInput): Promise<CorrectRecordedVolumeResult> => {
+    const res = await correctRecordedVolumeCore(actor, input);
     revalidateCaptureSurfaces();
     return res;
   },
