@@ -5,6 +5,7 @@ import { SatelliteMap } from "@/components/ui/SatelliteMap.client";
 import type { SerializedBlock } from "@/lib/vineyard/data";
 import type { MapOverlay } from "@/lib/gis/overlay";
 import type { NdviDataset } from "./NdviMapPanel";
+import { MAP_EXPLORER_COMPARE_HEIGHT } from "./map-height";
 
 type SideMeta = { bbox: [number, number, number, number] | null; min: number; max: number };
 
@@ -110,11 +111,11 @@ export function NdviCompare({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
           <div style={{ ...labelS, marginBottom: 4 }}>A · {acqOf(aId)}</div>
-          <SatelliteMap lat={center?.lat ?? null} lng={center?.lng ?? null} blocks={blocks} unit="imperial" overlays={overlayFor(aId, aMeta)} height={340} exportName={`${vineyardName}-A`} />
+          <SatelliteMap lat={center?.lat ?? null} lng={center?.lng ?? null} blocks={blocks} unit="imperial" overlays={overlayFor(aId, aMeta)} height={MAP_EXPLORER_COMPARE_HEIGHT} exportName={`${vineyardName}-A`} />
         </div>
         <div>
           <div style={{ ...labelS, marginBottom: 4 }}>B · {acqOf(bId)}</div>
-          <SatelliteMap lat={center?.lat ?? null} lng={center?.lng ?? null} blocks={blocks} unit="imperial" overlays={overlayFor(bId, bMeta)} height={340} exportName={`${vineyardName}-B`} />
+          <SatelliteMap lat={center?.lat ?? null} lng={center?.lng ?? null} blocks={blocks} unit="imperial" overlays={overlayFor(bId, bMeta)} height={MAP_EXPLORER_COMPARE_HEIGHT} exportName={`${vineyardName}-B`} />
         </div>
       </div>
       <p style={{ margin: 0, fontSize: 11, color: "var(--text-secondary)" }}>

@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, MapLayerControl, type LayerRow } from "@/components/ui";
+import { Card, type LayerRow } from "@/components/ui";
 import { SatelliteMap } from "@/components/ui/SatelliteMap.client";
 import type { SerializedBlock } from "@/lib/vineyard/data";
 import type { MapOverlay } from "@/lib/gis/overlay";
+import { BLOCKS_LAYER_ID, moveInOrder, resolveMapStack } from "@/lib/map/layer-stack";
+import { effectiveColor } from "@/lib/vineyard/colors";
+import { MAP_EXPLORER_MAP_HEIGHT } from "./map-height";
 import { PALETTES, type ColorScaleMode } from "@/lib/gis/color";
 import { NdviLegend, type DisplayMetaLite } from "./NdviLegend";
 import { NdviCompare } from "./NdviCompare";
@@ -15,7 +18,9 @@ import { SoilUnitPanel } from "../maps/SoilUnitPanel";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
 import { resolveAreaUnit, resolveSpacingUnit } from "@/lib/units/display";
 
-type LayerId = "ndvi" | "soil";
+// The stack: the block polygons are a LAYER like any other — reorderable against NDVI/soil, switchable
+// as a whole, and switchable one block at a time (the children rows in the on-map key).
+type LayerId = "ndvi" | "soil" | typeof BLOCKS_LAYER_ID;
 
 export type NdviDataset = { id: string; acquiredAt: string | null };
 
@@ -67,8 +72,10 @@ export function NdviMapPanel({
   const [soilData, setSoilData] = useState<VineyardSoilOverlays | null>(null);
   const [soilLoading, setSoilLoading] = useState(false);
   const [selectedSoilMukey, setSelectedSoilMukey] = useState<string | null>(null);
-  const [layerOrder, setLayerOrder] = useState<LayerId[]>(["soil", "ndvi"]);
-  const [layerVisible, setLayerVisible] = useState<Record<LayerId, boolean>>({ ndvi: true, soil: false });
+  const [layerOrder, setLayerOrder] = useState<LayerId[]>([BLOCKS_LAYER_ID, "soil", "ndvi"]);
+  const [layerVisible, setLayerVisible] = useState<Record<LayerId, boolean>>({ ndvi: true, soil: false, blocks: true });
+  // Blocks switched off individually. Ids, not a boolean per block, so a block added later shows by default.
+  const [hiddenBlockIds, setHiddenBlockIds] = useState<string[]>([]);
 
   const resampling = nearest ? "nearest" : "bilinear";
 
@@ -92,17 +99,15 @@ export function NdviMapPanel({
     };
   }, [vineyardId]);
 
-  const moveLayer = (id: string, dir: -1 | 1) => {
-    setLayerOrder((order) => {
-      const i = order.indexOf(id as LayerId);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= order.length) return order;
-      const next = [...order];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
+  const moveLayer = (id: string, dir: -1 | 1) => setLayerOrder((order) => moveInOrder(order, id as LayerId, dir));
+  // One handler for both levels of the key: a stack id toggles the layer, anything else is a block id.
+  const toggleLayer = (id: string) => {
+    if (id === "ndvi" || id === "soil" || id === BLOCKS_LAYER_ID) {
+      setLayerVisible((v) => ({ ...v, [id]: !v[id as LayerId] }));
+      return;
+    }
+    setHiddenBlockIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   };
-  const toggleLayer = (id: string) => setLayerVisible((v) => ({ ...v, [id as LayerId]: !v[id as LayerId] }));
 
   // Load saved styles (SYSTEM presets + this vineyard's) for the dropdown.
   useEffect(() => {
@@ -183,17 +188,41 @@ export function NdviMapPanel({
       ? [{ kind: "raster", id: `ndvi-${datasetId}-${query}`, imageUrl, bounds: meta.wgs84Bbox, opacity, resampling }]
       : [];
   const soilOverlays: MapOverlay[] = soilData?.overlays ?? [];
-  const layerOverlays: Record<LayerId, MapOverlay[]> = { ndvi: ndviOverlays, soil: soilOverlays };
+  const layerOverlays: Record<LayerId, MapOverlay[]> = { ndvi: ndviOverlays, soil: soilOverlays, blocks: [] };
 
-  // Paint bottom→top: `layerOrder` is top→bottom, and SatelliteMap paints later-in-array on top, so reverse.
-  const overlays: MapOverlay[] = [...layerOrder].reverse().flatMap((id) => (layerVisible[id] ? layerOverlays[id] : []));
+  // `layerOrder` is top→bottom (image-editor convention); the map paints bottom→top. `blocksOrderIndex`
+  // tells SatelliteMap how many overlays sit UNDER the block polygons, which is what actually drives the
+  // Leaflet pane z-indices — so moving a row genuinely repaints the stack.
+  const { overlays, blocksOrderIndex } = resolveMapStack<LayerId, MapOverlay>(layerOrder, {
+    blocksId: BLOCKS_LAYER_ID,
+    isVisible: (id) => layerVisible[id],
+    overlaysFor: (id) => layerOverlays[id],
+  });
   const soilShown = layerVisible.soil && soilOverlays.length > 0;
 
-  const layerRows: LayerRow[] = layerOrder.map((id) =>
-    id === "ndvi"
-      ? { id, label: "NDVI (vigor)", visible: layerVisible.ndvi, available: ndviOverlays.length > 0, note: ndviOverlays.length ? undefined : "select a scene" }
-      : { id, label: "Soil (NRCS)", visible: layerVisible.soil, available: soilOverlays.length > 0, note: soilOverlays.length ? undefined : soilLoading ? "loading…" : "no soil pulled" },
-  );
+  const hidden = new Set(hiddenBlockIds);
+  const drawnBlocks = blocks.filter((b) => b.polygon != null);
+  const layerRows: LayerRow[] = layerOrder.map((id) => {
+    if (id === "ndvi") {
+      return { id, label: "NDVI (vigor)", visible: layerVisible.ndvi, available: ndviOverlays.length > 0, note: ndviOverlays.length ? undefined : "select a scene" };
+    }
+    if (id === "soil") {
+      return { id, label: "Soil (NRCS)", visible: layerVisible.soil, available: soilOverlays.length > 0, note: soilOverlays.length ? undefined : soilLoading ? "loading…" : "no soil pulled" };
+    }
+    return {
+      id,
+      label: "Blocks",
+      visible: layerVisible.blocks,
+      available: drawnBlocks.length > 0,
+      note: drawnBlocks.length ? undefined : "none drawn",
+      children: drawnBlocks.map((b) => ({
+        id: b.id,
+        label: b.blockLabel || "—",
+        visible: !hidden.has(b.id),
+        swatch: effectiveColor({ blockColor: b.color, varietyColor: b.variety?.color, varietyId: b.varietyId }),
+      })),
+    };
+  });
   const selectedSoil = selectedSoilMukey && soilData ? soilData.units.find((u) => u.mukey === selectedSoilMukey) : null;
 
   const pickMode = (m: ColorScaleMode) => setMode(m);
@@ -207,17 +236,18 @@ export function NdviMapPanel({
       {compare && datasets.length < 2 && (
         <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "0 0 10px" }}>Need two processed scenes to compare — only one is available.</p>
       )}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-        <MapLayerControl layers={layerRows} onToggle={toggleLayer} onMove={moveLayer} />
-      </div>
       <SatelliteMap
         lat={center?.lat ?? null}
         lng={center?.lng ?? null}
         blocks={blocks}
         unit={mapUnit}
         overlays={overlays}
+        blocksOrderIndex={blocksOrderIndex}
+        blocksVisible={layerVisible.blocks}
+        hiddenBlockIds={hiddenBlockIds}
+        layerControl={{ layers: layerRows, onToggle: toggleLayer, onMove: moveLayer }}
         onOverlayFeatureClick={soilShown ? (props) => setSelectedSoilMukey(props.mukey ? String(props.mukey) : null) : undefined}
-        height={420}
+        height={MAP_EXPLORER_MAP_HEIGHT}
         exportName={vineyardName}
       />
       {error && <p style={{ color: "var(--danger, #b00020)", fontSize: 13, margin: "10px 0 0" }}>{error}</p>}

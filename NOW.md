@@ -7,6 +7,30 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**MAP EXPLORER — TALLER MAPS + AN ON-MAP LAYER KEY THAT ACTUALLY REORDERS. BUILT + BROWSER-PROVEN
+2026-07-31, on `claude/map-explorer-layers-height-5cd415`. Not yet PR'd.** Owner request, no plan file.
+
+⛔ **The reported bug was real and structural, not cosmetic: reordering moved the WORDS and never the
+pixels.** The NDVI raster is an `L.ImageOverlay` (`<img>`) and soil is `L.GeoJSON` (SVG paths), and both
+landed in Leaflet's ONE shared `overlayPane`. That pane's SVG renderer container keeps its DOM position
+regardless of the order vector layers are added in — so no amount of array reordering could restack a
+raster against a vector. Fixed by giving **every stack slot its own Leaflet pane with an explicit
+z-index** (`src/lib/map/layer-stack.ts`, pure + unit-tested); each layer is created into its slot's pane.
+
+- **Blocks are now a LAYER**: reorderable against NDVI/soil, toggleable whole, and expandable into one
+  checkbox per block. Hiding a block deliberately does **not** re-fit the view (build and visibility are
+  two separate effects — fit-bounds stays a property of the vineyard, not of what's ticked).
+- The layer control moved OFF the page and ONTO the canvas (`SatelliteMap` `layerControl` prop), top-left
+  under the zoom control. Heights +30% (`map-height.ts`: 420→546, compare 340→442).
+- **Proven in the browser, not inferred**: panes read `bw-stack-0 z=401 … bw-blocks z=406`; moving NDVI up
+  moved its `<img>` from z=401 (under soil) to z=405 (over it); a block toggle drops 2 paths→1 with the
+  map transform unchanged.
+- ⚠️ **One defect found only by looking**: `overlays` is re-derived every render, so the stack effect keyed
+  on array identity **tore down and rebuilt the NDVI ImageOverlay on every unrelated re-render** (every
+  block toggle blinked the raster). Now keyed on a content signature. Re-proven: node identity survives.
+
+---
+
 **CELLARHAND v2 — PHASE 7 (BARREL GROUPS): MERGED AND LIVE IN PRODUCTION 2026-07-30.**
 [#569](https://github.com/russellmoss/wine-inventory/pull/569) squash-merged as `1a1e2d1a`. All 12
 units. Plan: `docs/plans/2026-07-30-106-feat-cellarhand-v2-phase7-barrel-groups-plan.md`.
@@ -2239,3 +2263,15 @@ four migrations applied to production 19:57, verified against the live DB). An a
 caught that GROUP-3 was enforced on a column nothing read — green CI, wrong path — fixed in
 `55d437fc` and the guard rebuilt to read the real one. Pruned the empty `phase7-m2` collision branch
 and two merged worktrees. Spray Wave 1 unchanged._
+
+_Last updated: 2026-07-31 — **Map Explorer: taller maps + an on-map layer key that genuinely restacks.**
+Built on `claude/map-explorer-layers-height-5cd415`, browser-proven against the live pane, not yet PR'd.
+The reorder bug was structural (a raster and a vector cannot restack inside Leaflet's single shared
+`overlayPane`); the fix is one pane per stack slot. Blocks joined the stack as a toggleable, per-block
+layer. Full suite 5,688 passing; 14 new tests for the pure slot arithmetic._
+
+_Last updated: 2026-07-31 (later) — **Map Explorer chrome collapsed to TWO buttons.** Owner asked for
+one "Menu" disclosure holding layers → export → history → hide pin (in that order), under Fullscreen,
+top-right; the separate top-left layer card is gone. Measure/Clear-lines went in too, so editable maps
+carry the same two buttons. Verified live: order correct, the menu survives a layer toggle (so you can
+restack several), closes on outside pointer-down and on Escape (fullscreen's Escape defers to it)._

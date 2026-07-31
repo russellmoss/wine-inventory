@@ -233,6 +233,16 @@
   background: var(--surface-sunken);
 }
 
+/* Layer-stack panes (`bw-stack-*`, `bw-blocks`) — one pane per slot is what makes the layer key's
+   reordering real (a raster and a vector can't stack inside the single shared overlayPane). Leaflet's
+   own "don't let a CSS reset shrink me" guards are written for .leaflet-overlay-pane only, so mirror
+   them for the panes we create. */
+.leaflet-container .leaflet-pane > svg,
+.leaflet-container .leaflet-pane > canvas {
+  max-width: none !important;
+  max-height: none !important;
+}
+
 /* VI-P4: soil map-unit symbol label centered in each soil polygon (a permanent center tooltip, no box). */
 .leaflet-tooltip.soil-unit-label {
   background: transparent;

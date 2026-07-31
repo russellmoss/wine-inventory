@@ -43,6 +43,8 @@ import { wireAttributionRefresh } from "@/lib/map/attribution-refresh";
 import { isVineyardPolygon, type PolygonGeometry as GisPolygonGeometry } from "@/lib/gis/geometry";
 import type { MapOverlay } from "@/lib/gis/overlay";
 import { leafletBounds } from "@/lib/gis/render";
+import { BLOCKS_PANE_NAME, stackPaneName, stackPaneZIndex, stackSlots } from "@/lib/map/layer-stack";
+import { MapLayerControl, type LayerRow } from "./MapLayerControl";
 
 const ESRI_IMAGERY_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -176,7 +178,37 @@ export interface SatelliteMapProps {
   /** Click handler for a vector-overlay feature (e.g. a soil map unit) — receives the feature's
    *  properties (which carry an identifying `mukey`). Enables click-to-inspect without forking the map. */
   onOverlayFeatureClick?: (properties: Record<string, unknown>) => void;
+  /**
+   * Where the BLOCK-polygon layer sits inside `overlays` (bottom→top): the number of overlays painted
+   * BELOW it. Default 0 — blocks under every overlay, which is what the stack did before panes existed.
+   * Each slot gets its own Leaflet pane, so raster and vector layers reorder against each other for real.
+   */
+  blocksOrderIndex?: number;
+  /** Turn the whole block layer off (polygons + the on-map key). Default on. */
+  blocksVisible?: boolean;
+  /** Individually hidden blocks (by id). The map keeps its fit-bounds — hiding never re-zooms. */
+  hiddenBlockIds?: readonly string[];
+  /** Render the layer key/control ON the map (top-left, under the zoom control). Parent owns the state. */
+  layerControl?: {
+    layers: LayerRow[];
+    onToggle: (id: string) => void;
+    onMove: (id: string, dir: -1 | 1) => void;
+    title?: string;
+  };
 }
+
+/** Get (creating once) a Leaflet pane by name. `createPane` always makes a NEW div, so never call it twice. */
+function ensurePane(map: L.Map, name: string): HTMLElement {
+  return map.getPane(name) ?? map.createPane(name);
+}
+
+/**
+ * Temporary measurement lines sit above the whole layer stack (but below markerPane's 600). Without
+ * their own pane they'd land in the default `overlayPane` at z 400 — i.e. UNDER the block polygons,
+ * which now live in a stack pane of their own.
+ */
+const MEASURE_PANE = "bw-measure";
+const MEASURE_PANE_Z = 599;
 
 /**
  * Polygon shape + guard now come from the canonical, unit-tested module in `@/lib/gis/geometry`
@@ -297,6 +329,10 @@ export function SatelliteMap({
   vineyardMeta,
   overlays,
   onOverlayFeatureClick,
+  blocksOrderIndex = 0,
+  blocksVisible = true,
+  hiddenBlockIds,
+  layerControl,
 }: SatelliteMapProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   // The relative wrapper around the map AND its HTML overlays (key, controls).
@@ -312,13 +348,28 @@ export function SatelliteMap({
     overlayClickRef.current = onOverlayFeatureClick;
   }, [onOverlayFeatureClick]);
   const layerStackRef = React.useRef<L.FeatureGroup | null>(null); // VI-P1 governed overlays (planting boundaries, …)
+  // Every built block polygon, by block id. The build effect owns creation + fit-bounds; a separate
+  // effect adds/removes them from the group for visibility, so toggling a block never re-zooms the map.
+  const blockLayersRef = React.useRef(new Map<string, L.Layer>());
+  const hiddenBlocksKey = (hiddenBlockIds ?? []).join(",");
+  const blockVisibilityRef = React.useRef<{ blocksVisible: boolean; hidden: Set<string> }>({
+    blocksVisible: true,
+    hidden: new Set<string>(),
+  });
+  // Declared BEFORE the block-build effect so the build sees the current visibility on the same commit.
+  React.useEffect(() => {
+    blockVisibilityRef.current = { blocksVisible, hidden: new Set(hiddenBlockIds ?? []) };
+  }, [blocksVisible, hiddenBlockIds]);
   const markerRef = React.useRef<L.Marker | null>(null);
   const baseLayerRef = React.useRef<L.TileLayer | null>(null);
   const waybackLayerRef = React.useRef<L.TileLayer | null>(null);
   const historyModeRef = React.useRef(false);
   const [markerVisible, setMarkerVisible] = React.useState(true);
 
-  // Export menu (PNG image / shapefile).
+  // The one "Menu" disclosure that holds layers / export / history / pin. `exportOpen` is the
+  // export sub-row inside it.
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuWrapRef = React.useRef<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exporting, setExporting] = React.useState<null | "png" | "shp">(null);
   const [exportError, setExportError] = React.useState<string | null>(null);
@@ -417,6 +468,7 @@ export function SatelliteMap({
     if (ro) ro.observe(el);
 
     // Temporary measurement lines live here (never persisted, wiped on unmount).
+    ensurePane(map, MEASURE_PANE).style.zIndex = String(MEASURE_PANE_Z);
     measureGroupRef.current = L.featureGroup().addTo(map);
 
     return () => {
@@ -510,8 +562,13 @@ export function SatelliteMap({
       overlayRef.current.remove();
       overlayRef.current = null;
     }
+    // The block layer lives in its OWN pane so it can be ordered against the overlay stack (see the
+    // pane-z effect below); without that, blocks and overlays share `overlayPane` and reordering the
+    // layer list moved the words but never the pixels.
+    ensurePane(map, BLOCKS_PANE_NAME);
     const group = L.featureGroup().addTo(map);
     overlayRef.current = group;
+    blockLayersRef.current = new Map<string, L.Layer>();
 
     let polyCount = 0;
     for (const b of blocks) {
@@ -523,6 +580,7 @@ export function SatelliteMap({
       });
       const layer = L.geoJSON(b.polygon, {
         style: { color, weight: 2, fillColor: color, fillOpacity: 0.35 },
+        pane: BLOCKS_PANE_NAME,
       });
       // No on-polygon text labels — they congest and overlap. Identity comes from
       // the color + the on-map key (below) + click-for-details. Clicking a polygon
@@ -543,16 +601,51 @@ export function SatelliteMap({
         });
       }
       layer.addTo(group);
+      blockLayersRef.current.set(b.id, layer);
       polyCount++;
     }
 
+    // Fit to ALL drawn blocks first — the view is a property of the vineyard, not of which blocks the
+    // user has ticked — then apply the current visibility.
     if (polyCount > 0) {
       map.fitBounds(group.getBounds(), { padding: [28, 28], maxZoom: 18 });
     } else if (lat != null && lng != null) {
       map.setView([lat, lng], 16);
     }
+    const { blocksVisible: showBlocks, hidden } = blockVisibilityRef.current;
+    for (const [id, l] of blockLayersRef.current) {
+      if (!(showBlocks && !hidden.has(id))) group.removeLayer(l);
+    }
     map.invalidateSize();
   }, [blocks, unit, lat, lng, editable]);
+
+  // Block visibility — add/remove already-built polygons. Deliberately does NOT re-fit the view, so
+  // switching a block off (or the whole layer) never yanks the map somewhere else.
+  React.useEffect(() => {
+    const group = overlayRef.current;
+    if (!group) return;
+    const hidden = new Set(hiddenBlockIds ?? []);
+    for (const [id, layer] of blockLayersRef.current) {
+      const show = blocksVisible && !hidden.has(id);
+      if (show && !group.hasLayer(layer)) group.addLayer(layer);
+      else if (!show && group.hasLayer(layer)) group.removeLayer(layer);
+    }
+    // hiddenBlocksKey (not the array identity) is what actually changes the answer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocksVisible, hiddenBlocksKey, blocks]);
+
+  // What the stack actually PAINTS, as a string. The parent re-derives `overlays` on every render, so
+  // keying the rebuild on array identity tore the NDVI ImageOverlay down (and blinked the raster) every
+  // time an unrelated bit of state moved — switching one block off, say. `id` is the overlay contract's
+  // content key; the rest are the display fields that can change without a new id.
+  const overlayCount = overlays?.length ?? 0;
+  const overlaySignature = (overlays ?? [])
+    .map((o) =>
+      o.kind === "raster"
+        ? `r|${o.id}|${o.imageUrl ?? o.tileUrl ?? ""}|${o.opacity}|${o.resampling}|${o.bounds.join(",")}`
+        : `v|${o.id}|${o.label ?? ""}|${o.data.features.length}|${JSON.stringify(o.style)}`,
+    )
+    .join("~");
 
   // VI-P1/P3: governed layer-stack overlays (planting-area boundaries + the P3 NDVI raster). Rendered ABOVE
   // the block layer, in array order, into a dedicated FeatureGroup. Additive — never touches the block or
@@ -568,9 +661,16 @@ export function SatelliteMap({
     if (!overlays || overlays.length === 0) return;
     const group = L.featureGroup();
     const rasters: { layer: L.ImageOverlay; resampling: string }[] = [];
-    for (const ov of overlays) {
+    // One pane per stack slot. A pane owns its own SVG renderer, so a vector layer and a raster layer
+    // stack by pane z-index instead of by whatever order Leaflet's single shared overlayPane happens
+    // to hold — which is why "move up" used to reorder the list and nothing on the map.
+    const { overlaySlots } = stackSlots(overlays.length, blocksOrderIndex);
+    overlays.forEach((_, i) => ensurePane(map, stackPaneName(overlaySlots[i])));
+    for (const [i, ov] of overlays.entries()) {
+      const pane = stackPaneName(overlaySlots[i]);
       if (ov.kind === "vector") {
         const gj = L.geoJSON(ov.data as unknown as GeoJSON.GeoJsonObject, {
+          pane,
           style: {
             color: ov.style.color,
             weight: ov.style.weight ?? 2,
@@ -592,12 +692,12 @@ export function SatelliteMap({
         const img = L.imageOverlay(ov.imageUrl, leafletBounds(ov.bounds), {
           opacity: ov.opacity,
           interactive: false,
+          pane,
         }).addTo(group);
         rasters.push({ layer: img, resampling: ov.resampling });
       }
     }
     group.addTo(map);
-    group.bringToFront();
     // Q1: bilinear (browser-smooth) is the default; the nearest toggle shows the honest source pixels. The
     // image element only exists AFTER the layer is added to the map (onAdd), so set the rendering hint here.
     for (const { layer, resampling } of rasters) {
@@ -605,7 +705,23 @@ export function SatelliteMap({
       if (el) el.style.imageRendering = resampling === "nearest" ? "pixelated" : "auto";
     }
     layerStackRef.current = group;
-  }, [overlays]);
+    // `overlaySignature` stands in for `overlays` — see above; identity alone would rebuild constantly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overlaySignature, blocksOrderIndex]);
+
+  // The stack's actual paint order. Declared AFTER the two effects that create the panes, so every
+  // pane exists by the time its z-index is set — and set on every stack change, so a reorder is a
+  // pure restyle: no layer is torn down, no tile refetched, no view disturbed.
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const { blocksSlot, overlaySlots } = stackSlots(overlayCount, blocksOrderIndex);
+    const blocksPane = ensurePane(map, BLOCKS_PANE_NAME);
+    blocksPane.style.zIndex = String(stackPaneZIndex(blocksSlot));
+    for (const slot of overlaySlots) {
+      ensurePane(map, stackPaneName(slot)).style.zIndex = String(stackPaneZIndex(slot));
+    }
+  }, [overlayCount, blocksOrderIndex, showMap]);
 
   // Geoman edit setup: snapping, a token-styled toolbar (edit + drag only —
   // drawing is per-block via the buttons below, removal is the block's Clear
@@ -755,6 +871,10 @@ export function SatelliteMap({
         className: "bw-measure-label",
         opacity: 1,
       });
+      // Geoman created the line in the default pane; drop it and re-add it through the measure pane so
+      // a Path re-resolves its renderer and the line draws OVER the block polygons, not under them.
+      line.remove();
+      line.options.pane = MEASURE_PANE;
       measureGroupRef.current?.addLayer(line);
       measureVerticesRef.current = [];
       workingLayerRef.current = null;
@@ -822,6 +942,24 @@ export function SatelliteMap({
     return () => cancelAnimationFrame(raf);
   }, [expanded]);
 
+  // The menu closes on Escape and on a pointer-down anywhere outside it (starting a pan, say).
+  // Gated on where the press STARTED, so a drag that ends outside doesn't count.
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    const onDown = (e: PointerEvent) => {
+      if (menuWrapRef.current && !menuWrapRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", onDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerdown", onDown, true);
+    };
+  }, [menuOpen]);
+
   // Esc exits fullscreen (when not drawing — drawing's own Esc-to-cancel is the
   // parent's). Capture + stopPropagation so it doesn't reach the outer Modal's
   // close-on-Escape. The Exit button is the primary affordance; this is parity.
@@ -830,12 +968,13 @@ export function SatelliteMap({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (editable && activeBlockId) return; // let the parent cancel the draw
+      if (menuOpen) return; // one Escape closes the menu, the next leaves fullscreen
       e.stopPropagation();
       setExpanded(false);
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [expanded, editable, activeBlockId]);
+  }, [expanded, editable, activeBlockId, menuOpen]);
 
   const exitFullscreen = React.useCallback(() => {
     setExpanded(false);
@@ -874,6 +1013,7 @@ export function SatelliteMap({
     const el = frameRef.current;
     if (!el) return;
     setExportOpen(false);
+    setMenuOpen(false); // the capture must not include the menu that started it
     setExporting("png");
     setExportError(null);
     try {
@@ -903,6 +1043,7 @@ export function SatelliteMap({
   // block, with all block metadata in the DBF attribute table.
   const exportShapefile = React.useCallback(async () => {
     setExportOpen(false);
+    setMenuOpen(false);
     const fc = blocksToFeatureCollection(blocks, vineyardMeta, exportName);
     if (fc.features.length === 0) {
       setExportError("No drawn block shapes to export yet.");
@@ -948,13 +1089,23 @@ export function SatelliteMap({
     border: "none",
     borderBottom: "1px solid var(--border-subtle)",
     cursor: "pointer",
+    flex: "0 0 auto",
   };
+  /** A menu row that is currently ON (history, measuring) — same wine treatment the buttons used to carry. */
+  const activeRow = (on: boolean): React.CSSProperties =>
+    on ? { background: "var(--wine-primary)", color: "var(--cream)" } : {};
+  // Surfaced on the Menu button itself so a long export still reads as busy with the menu closed.
+  const busyLabel = exporting === "png" ? "Exporting…" : exporting === "shp" ? "Zipping…" : null;
 
   const selectedRelease = releases[selectedIdx];
 
   // Blocks with a drawn shape — the on-map key. Carries the text identity that
   // used to live in the (removed) on-polygon labels: block #, variety, acreage.
-  const keyedBlocks = blocks.filter((b) => isPolygonGeometry(b.polygon));
+  // Tracks the block layer's visibility, so a block switched off in the layer key leaves the on-map key too.
+  const hiddenBlocks = new Set(hiddenBlockIds ?? []);
+  const keyedBlocks = blocksVisible
+    ? blocks.filter((b) => isPolygonGeometry(b.polygon) && !hiddenBlocks.has(b.id))
+    : [];
 
   const drawing = editable && activeBlockId != null;
   const activeBlock = activeBlockId ? blocks.find((b) => b.id === activeBlockId) ?? null : null;
@@ -1177,8 +1328,11 @@ export function SatelliteMap({
             </table>
           </div>
         ) : null}
-        {/* Top-right control cluster (bw-export-exclude → kept out of PNG export) */}
+        {/* Top-right controls: Fullscreen, then ONE "Menu" disclosure holding everything else — layers,
+            export, history, pin (and the measure tools when editable). Two buttons instead of six keeps
+            the canvas clear, which is the whole point of a map. (bw-export-exclude → out of PNG export) */}
         <div
+          ref={menuWrapRef}
           className="bw-export-exclude"
           style={{
             position: "absolute",
@@ -1189,6 +1343,7 @@ export function SatelliteMap({
             flexDirection: "column",
             alignItems: "flex-end",
             gap: 6,
+            maxHeight: "calc(100% - 20px)",
           }}
         >
           <button
@@ -1204,97 +1359,121 @@ export function SatelliteMap({
           >
             {expanded ? "Exit fullscreen ✕" : "⤢ Fullscreen"}
           </button>
-          {editable ? (
-            <button
-              type="button"
-              onClick={() => {
-                if (measuring) {
-                  setMeasuring(false);
-                  return;
-                }
-                onCancelDraw?.(); // measure and block-draw are exclusive
-                setMeasuring(true);
-              }}
-              aria-pressed={measuring}
-              title="Draw temporary measurement lines (not saved)"
-              style={
-                measuring
-                  ? { ...controlBtnStyle, background: "var(--wine-primary)", color: "var(--cream)", border: "1px solid var(--wine-primary)" }
-                  : controlBtnStyle
-              }
-            >
-              {measuring ? "Measuring ✕" : "📏 Measure"}
-            </button>
-          ) : null}
-          {editable && measureCount > 0 ? (
-            <button type="button" onClick={clearMeasurements} title="Remove all measurement lines" style={controlBtnStyle}>
-              Clear lines
-            </button>
-          ) : null}
-          <div style={{ position: "relative" }}>
-            <button
-              type="button"
-              onClick={() => setExportOpen((v) => !v)}
-              aria-haspopup="menu"
-              aria-expanded={exportOpen}
-              disabled={exporting != null}
-              title="Export the map"
-              style={{ ...controlBtnStyle, cursor: exporting != null ? "wait" : "pointer" }}
-            >
-              {exporting === "png" ? "Exporting…" : exporting === "shp" ? "Zipping…" : "Export ▾"}
-            </button>
-            {exportOpen ? (
-              <div
-                role="menu"
-                style={{
-                  position: "absolute",
-                  top: "calc(100% + 4px)",
-                  right: 0,
-                  minWidth: 168,
-                  display: "flex",
-                  flexDirection: "column",
-                  background: "var(--surface-raised)",
-                  border: "1px solid var(--border-subtle)",
-                  borderRadius: "var(--radius-sm)",
-                  boxShadow: "0 4px 14px rgba(43, 42, 38, 0.18)",
-                  overflow: "hidden",
-                }}
-              >
-                <button type="button" role="menuitem" onClick={exportPng} style={menuItemStyle}>
-                  PNG image
-                </button>
-                <button type="button" role="menuitem" onClick={exportShapefile} style={menuItemStyle}>
-                  Shapefile (.zip)
-                </button>
-              </div>
-            ) : null}
-          </div>
           <button
             type="button"
-            onClick={toggleHistory}
-            aria-pressed={historyMode}
-            disabled={historyLoading}
-            title="Browse past satellite imagery (Esri Wayback)"
-            style={{
-              ...controlBtnStyle,
-              ...(historyMode
-                ? { background: "var(--wine-primary)", color: "var(--cream)", border: "1px solid var(--wine-primary)" }
-                : null),
-              cursor: historyLoading ? "wait" : "pointer",
-            }}
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-expanded={menuOpen}
+            aria-controls="bw-map-menu"
+            title="Layers, export, imagery history and the pin"
+            style={
+              menuOpen
+                ? { ...controlBtnStyle, background: "var(--wine-primary)", color: "var(--cream)", border: "1px solid var(--wine-primary)" }
+                : controlBtnStyle
+            }
           >
-            {historyLoading ? "Loading…" : historyMode ? "Exit history" : "History"}
+            {busyLabel ?? (menuOpen ? "Menu ▴" : "Menu ▾")}
           </button>
-          {hasCoords ? (
-            <button
-              type="button"
-              onClick={() => setMarkerVisible((v) => !v)}
-              aria-pressed={markerVisible}
-              title={markerVisible ? "Hide the location pin" : "Show the location pin"}
-              style={controlBtnStyle}
+          {menuOpen ? (
+            <div
+              id="bw-map-menu"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                minWidth: 208,
+                maxWidth: 268,
+                // The layer list can run long on a vineyard with many blocks — scroll inside the menu
+                // rather than letting it run off the bottom of the map.
+                maxHeight: "calc(100% - 8px)",
+                overflowY: "auto",
+                background: "rgba(255, 248, 241, 0.97)",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: "var(--radius-md)",
+                boxShadow: "0 4px 14px rgba(43, 42, 38, 0.22)",
+                fontFamily: "var(--font-body)",
+              }}
             >
-              {markerVisible ? "Hide pin" : "Show pin"}
-            </button>
+              {layerControl ? (
+                <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-subtle)" }}>
+                  <MapLayerControl
+                    layers={layerControl.layers}
+                    onToggle={layerControl.onToggle}
+                    onMove={layerControl.onMove}
+                    title={layerControl.title}
+                    embedded
+                  />
+                </div>
+              ) : null}
+
+              {/* Export — expands in place, same disclosure idiom as the Blocks list above it. */}
+              <button
+                type="button"
+                onClick={() => setExportOpen((v) => !v)}
+                aria-expanded={exportOpen}
+                disabled={exporting != null}
+                style={{ ...menuItemStyle, cursor: exporting != null ? "wait" : "pointer" }}
+              >
+                <span aria-hidden style={{ fontSize: 9, marginRight: 6 }}>{exportOpen ? "▾" : "▸"}</span>
+                {exporting === "png" ? "Exporting…" : exporting === "shp" ? "Zipping…" : "Export"}
+              </button>
+              {exportOpen ? (
+                <>
+                  <button type="button" onClick={exportPng} style={{ ...menuItemStyle, paddingLeft: 30 }}>
+                    PNG image
+                  </button>
+                  <button type="button" onClick={exportShapefile} style={{ ...menuItemStyle, paddingLeft: 30 }}>
+                    Shapefile (.zip)
+                  </button>
+                </>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={toggleHistory}
+                aria-pressed={historyMode}
+                disabled={historyLoading}
+                title="Browse past satellite imagery (Esri Wayback)"
+                style={{ ...menuItemStyle, ...activeRow(historyMode), cursor: historyLoading ? "wait" : "pointer" }}
+              >
+                {historyLoading ? "Loading…" : historyMode ? "Exit history" : "History"}
+              </button>
+
+              {hasCoords ? (
+                <button
+                  type="button"
+                  onClick={() => setMarkerVisible((v) => !v)}
+                  aria-pressed={markerVisible}
+                  title={markerVisible ? "Hide the location pin" : "Show the location pin"}
+                  style={menuItemStyle}
+                >
+                  {markerVisible ? "Hide pin" : "Show pin"}
+                </button>
+              ) : null}
+
+              {editable ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (measuring) {
+                      setMeasuring(false);
+                      return;
+                    }
+                    onCancelDraw?.(); // measure and block-draw are exclusive
+                    setMeasuring(true);
+                    setMenuOpen(false); // measuring needs the canvas
+                  }}
+                  aria-pressed={measuring}
+                  title="Draw temporary measurement lines (not saved)"
+                  style={{ ...menuItemStyle, ...activeRow(measuring) }}
+                >
+                  {measuring ? "Measuring ✕" : "📏 Measure"}
+                </button>
+              ) : null}
+              {editable && measureCount > 0 ? (
+                <button type="button" onClick={clearMeasurements} title="Remove all measurement lines" style={menuItemStyle}>
+                  Clear lines
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
 

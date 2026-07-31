@@ -71,7 +71,7 @@ export type { ExportCsvButtonProps, CsvColumn } from "./ExportCsvButton";
 export { MapLegend } from "./MapLegend";
 export type { MapLegendProps } from "./MapLegend";
 export { MapLayerControl } from "./MapLayerControl";
-export type { LayerRow } from "./MapLayerControl";
+export type { LayerRow, LayerChildRow } from "./MapLayerControl";
 export { TimeSeriesChart } from "./TimeSeriesChart";
 export type { TimeSeriesChartProps, ChartSeries, ChartThreshold, ChartMarker, SeriesPoint } from "./TimeSeriesChart";
 export { BrixChart } from "./BrixChart";
