@@ -7,8 +7,10 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**MAP EXPLORER — TALLER MAPS + AN ON-MAP LAYER KEY THAT ACTUALLY REORDERS. BUILT + BROWSER-PROVEN
-2026-07-31, on `claude/map-explorer-layers-height-5cd415`. Not yet PR'd.** Owner request, no plan file.
+**MAP EXPLORER — TALLER MAPS + AN ON-MAP MENU THAT ACTUALLY REORDERS THE LAYERS: MERGED AND LIVE
+IN PRODUCTION 2026-07-31.** [#572](https://github.com/russellmoss/wine-inventory/pull/572) squash-merged
+as `030ca289`; Vercel production deploy succeeded and `/vineyards/maps` returns 307 (auth), not 500.
+Owner request, no plan file.
 
 ⛔ **The reported bug was real and structural, not cosmetic: reordering moved the WORDS and never the
 pixels.** The NDVI raster is an `L.ImageOverlay` (`<img>`) and soil is `L.GeoJSON` (SVG paths), and both
@@ -2275,3 +2277,8 @@ one "Menu" disclosure holding layers → export → history → hide pin (in tha
 top-right; the separate top-left layer card is gone. Measure/Clear-lines went in too, so editable maps
 carry the same two buttons. Verified live: order correct, the menu survives a layer toggle (so you can
 restack several), closes on outside pointer-down and on Escape (fullscreen's Escape defers to it)._
+
+_Last updated: 2026-07-31 (evening) — **Map Explorer MERGED + LIVE** ([#572](https://github.com/russellmoss/wine-inventory/pull/572)
+-> `030ca289`; check/review/tenant-isolation/GitGuardian all green, Vercel production deploy succeeded).
+Pruned the merged branch, its worktree, and the stale `cellarhand-v2-rfc-amendment` + `phase7-barrel-groups`
+worktrees (the latter had been holding `main`, which is why `gh pr merge --delete-branch` could not check it out)._
