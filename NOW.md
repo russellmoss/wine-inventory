@@ -7,6 +7,50 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**PROD OAUTH LOGIN REPORT — THE 500 WAS NOT REPRODUCIBLE; THE REAL DEFECT WAS THAT SENTRY COULD NOT
+SEE IT. MERGED AND LIVE 2026-08-02.** [#573](https://github.com/russellmoss/wine-inventory/pull/573)
+squash-merged as `b46d90f5`; Vercel production deploy succeeded. Owner report, no plan file.
+
+⛔ **The reported symptom and the shipped fix are two different bugs — say so plainly.** The reported
+`500` on `POST /api/auth/sign-in/social` did **not** reproduce: 15+ probes against prod (clean browser at
+the prod origin, stale session cookie, foreign `Origin`, no `Origin`, and the exact `callbackURL=/monitoring?o=…`
+from the report) all returned `200` with a valid Google authorization URL — `429` past 3/10s from Better
+Auth's rate limiter, never `500`. Following that URL reaches Google's sign-in page, so the prod redirect
+URI is registered on the OAuth client. **The database settled it:** the `google` account row on
+`russellmoss87@gmail.com` shows `updatedAt 2026-08-02T19:23:21.670Z` with a matching session row at
+`19:23:21.680Z` — a completed Google round-trip, minutes *after* the report. OAuth works.
+
+- **What WAS broken, reproduced byte-for-byte:** `POST /monitoring?o=…&p=…&r=us` → `307 /login?from=%2Fmonitoring%3Fo%3D…`
+  → `405`. That is exactly the pair of 405s in the reported console. `/monitoring` is Sentry's `tunnelRoute`
+  and was never on the auth proxy's public allow-list; `next.config.ts` still carried the stale note
+  *"No middleware today"* from before `src/proxy.ts` existed.
+- **Why it mattered more than it looked:** every client-side error envelope from a session-less page died
+  at the login page. That is *the* screen where a login failure happens — so the app reported **zero**
+  client errors from it, which is precisely why the reported 500 left no trace to root-cause.
+- The allow-list moved out of `proxy.ts` into pure, unit-tested `src/lib/auth/public-paths.ts` so
+  **segment-boundary** matching is locked (`/monitoring-dashboard` must not inherit public access).
+  `safeReturnPath` now also refuses `/monitoring` — the proxy was stuffing the tunnel path into `?from=`,
+  so a successful sign-in could return the user to a machine endpoint that renders nothing.
+- **Proven on production after deploy, not inferred:** the tunnel POST now returns `401 "bad envelope
+  authentication header"` — *from Sentry's own ingest servers*, i.e. the request is proxied end-to-end
+  instead of dying at `/login`. `/inventory` still `307`s to `/login` (proxy intact) and
+  `/monitoring-dashboard` still `307`s (no over-broad public access).
+- ⚠️ **Known and accepted, flagged not hidden:** the tunnel is a Next.js *rewrite*, and `o`/`p`/`r` come
+  from the query without being checked against our DSN — anyone can relay events through our domain into
+  their own Sentry project. Upstream Sentry's design; bounded because the regexes (`\d*`, `[a-z]{2}`) lock
+  the destination host to `*.ingest.*.sentry.io`. Not an open proxy.
+- ❗ **Left deliberately unverified:** did NOT fire a live test envelope into prod Sentry — a fabricated
+  error would trip the Sentry→GitHub-issue automation and open a spurious issue. The `401`-from-Sentry
+  already proves the routing, which is the only thing this change touched.
+- 🔎 **Open, not closed:** the original `500` has no root cause. `vercel` CLI here is authed into the
+  savvy-wealth account, not `russell-moss-projects`, so it cannot read this project's runtime log. Next
+  occurrence should now reach Sentry.
+- 📌 Unrelated but worth knowing: the owner is `role: developer`, so `session.create.before` deliberately
+  drops them into **Demo Winery**, not Bhutan Wine Co. Every recent session shows `org_demo_winery`. If
+  "login not working" ever means "logged in but my data is gone", that is the cause — and it is by design.
+
+---
+
 **MAP EXPLORER — TALLER MAPS + AN ON-MAP MENU THAT ACTUALLY REORDERS THE LAYERS: MERGED AND LIVE
 IN PRODUCTION 2026-07-31.** [#572](https://github.com/russellmoss/wine-inventory/pull/572) squash-merged
 as `030ca289`; Vercel production deploy succeeded and `/vineyards/maps` returns 307 (auth), not 500.
@@ -1440,6 +1484,13 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **✅ Prod OAuth login report — SHIPPED 2026-08-02**
+  ([#573](https://github.com/russellmoss/wine-inventory/pull/573) → `b46d90f5`). The 500 did not
+  reproduce and the DB proved the Google round-trip had already succeeded; the fix that landed is the
+  adjacent defect that made the 500 *invisible* — the auth proxy was swallowing Sentry's `/monitoring`
+  tunnel, so the login page reported no client errors at all. 14 tests, `tsc`/`eslint` clean, verified
+  against production after deploy.
+
 - **✅ Phase 3b (plan 104) SHIPPED AND FLAG FLIPPED 2026-07-29** — three PRs, main at `13cbc62c`.
   The v2 nav went from *un-shippable* (17 of 56 routes reachable) to live. `nav/sections.ts` feeds
   BOTH the sub-navs and Ctrl-K; `route-reachability.test.ts` fails CI on any route nothing links to;
@@ -2278,7 +2329,8 @@ top-right; the separate top-left layer card is gone. Measure/Clear-lines went in
 carry the same two buttons. Verified live: order correct, the menu survives a layer toggle (so you can
 restack several), closes on outside pointer-down and on Escape (fullscreen's Escape defers to it)._
 
-_Last updated: 2026-07-31 (evening) — **Map Explorer MERGED + LIVE** ([#572](https://github.com/russellmoss/wine-inventory/pull/572)
--> `030ca289`; check/review/tenant-isolation/GitGuardian all green, Vercel production deploy succeeded).
-Pruned the merged branch, its worktree, and the stale `cellarhand-v2-rfc-amendment` + `phase7-barrel-groups`
-worktrees (the latter had been holding `main`, which is why `gh pr merge --delete-branch` could not check it out)._
+_Last updated: 2026-08-02 — **prod OAuth login report closed out** ([#573](https://github.com/russellmoss/wine-inventory/pull/573)
+-> `b46d90f5`; check/tenant-isolation/GitGuardian green, Vercel production deploy succeeded, fix
+re-verified against prod). The reported 500 remains WITHOUT a root cause — it did not reproduce and the
+database showed the user's Google sign-in had already succeeded; what shipped is the reason it was
+invisible._
