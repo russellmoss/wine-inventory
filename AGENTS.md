@@ -155,6 +155,15 @@ surface.
   per DESIGN.md), `VoiceHeaderOrb` (the pointer-inert title-bar orb), `VoiceInlinePanel`
   (the de-modalized voice UI). Lazy-loaded, no new runtime deps (raw fetch + Web Audio +
   MediaRecorder). The old `VoiceOverlay` was retired in plan 089.
+- **Read-aloud (the 🔊 speaker on a text reply)** is the same voice WITHOUT the mic: every
+  finished assistant message carries a speaker button beside 👍/👎 that plays the reply
+  through `/api/assistant/speak`. Deliberately separate from `useVoiceSession` — one click
+  on one finished message, not a live turn loop — so it is just `planSpeech`
+  (`src/lib/voice/read-aloud.ts`, pure, unit-tested in `test/voice-read-aloud.test.ts`) plus
+  `useReadAloud` (`src/app/(app)/assistant/useReadAloud.ts`, Web Audio, one clip of
+  synthesis lookahead). It needs no mic permission, so it works where voice mode can't; it
+  hides under the SAME `voiceEnabled` server gate, and it stops itself when the dock
+  collapses or a hands-free session opens.
 - Requirements: HTTPS (or localhost) + mic permission; best in Chrome/Edge/Safari.
   Write actions still require explicit confirmation (signed-token / single-use nonce
   path is unchanged) — voice can confirm by tap or by saying "confirm".
