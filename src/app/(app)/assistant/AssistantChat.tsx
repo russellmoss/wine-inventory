@@ -27,6 +27,7 @@ import { drainConsoleBuffer } from "@/lib/observability/console-buffer";
 import { browserTimeZone } from "@/lib/work-orders/due-at";
 import type { Caption } from "./voice/useVoiceSession";
 import { useDictation } from "./voice/useDictation";
+import { useReadAloud, type ReadAloudState } from "./useReadAloud";
 import { FeedbackTicketModal } from "./FeedbackTicketModal";
 
 type VoiceMode = "converse" | "transcribe";
@@ -281,6 +282,10 @@ export function AssistantChat({
   }, []);
   const dictation = useDictation(appendDictation);
 
+  // "Read this aloud" on a finished reply. Same ElevenLabs voice as voice mode, but
+  // opt-in per message — the text chat stays silent unless the speaker is pressed.
+  const readAloud = useReadAloud();
+
   // Remember the last-picked mic mode across sessions. Hydrate AFTER mount (not via a lazy
   // useState initializer) because this is an SSR'd client component: reading localStorage during
   // render would either crash on the server or cause a hydration mismatch. Post-mount read is the
@@ -304,6 +309,14 @@ export function AssistantChat({
   React.useEffect(() => {
     if (!active) dictation.cancel();
   }, [active, dictation]);
+
+  // Same teardown for read-aloud, plus one more trigger: a hands-free session opening.
+  // A collapsed dock that keeps talking is a trust event, and read-aloud speaking over
+  // the voice loop's own reply would be two ElevenLabs streams in the same room.
+  const stopReadAloud = readAloud.stop;
+  React.useEffect(() => {
+    if (!active || voiceOpen) stopReadAloud();
+  }, [active, voiceOpen, stopReadAloud]);
 
   // Append a clickable in-app link as its own assistant line (used when we
   // choose NOT to auto-navigate: incidental mention, unsaved-work downgrade, or
@@ -1115,13 +1128,24 @@ export function AssistantChat({
                       vertical space is the binding constraint. Text turns keep theirs,
                       and everything is ratable again once the session ends. */}
                   {it.content && !streaming && !voiceLive ? (
-                    <FeedbackBar
-                      state={feedback[i] ?? { mode: "idle" }}
-                      onUp={() => void sendFeedback(i, "up")}
-                      onAskDown={() => setFb(i, { mode: "form" })}
-                      onSubmitDown={(comment) => void sendFeedback(i, "down", comment)}
-                      onCancel={() => setFb(i, { mode: "idle" })}
-                    />
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-3)", flexWrap: "wrap" }}>
+                      {/* Read aloud. Same server gate as voice mode — no key, no button,
+                          and the chat is exactly what it was before. */}
+                      {voiceEnabled ? (
+                        <SpeakButton
+                          state={readAloud.activeId === `msg-${i}` ? readAloud.state : "idle"}
+                          error={readAloud.error?.id === `msg-${i}` ? readAloud.error.message : null}
+                          onClick={() => readAloud.toggle(`msg-${i}`, it.content)}
+                        />
+                      ) : null}
+                      <FeedbackBar
+                        state={feedback[i] ?? { mode: "idle" }}
+                        onUp={() => void sendFeedback(i, "up")}
+                        onAskDown={() => setFb(i, { mode: "form" })}
+                        onSubmitDown={(comment) => void sendFeedback(i, "down", comment)}
+                        onCancel={() => setFb(i, { mode: "idle" })}
+                      />
+                    </div>
                   ) : null}
                 </div>
               );
@@ -1380,6 +1404,54 @@ function money(amount: number | null, currency: string | null | undefined): stri
   } catch {
     return `${currency || "USD"} ${amount.toFixed(2)}`;
   }
+}
+
+/**
+ * Read this reply aloud. Sits beside 👍/👎 on every finished assistant message when
+ * the server has an ElevenLabs key; hidden entirely when it doesn't, so the chat is
+ * unchanged rather than showing a button that can only fail.
+ *
+ * The label swaps in place (🔊 → … → ⏹) so keyboard focus survives every transition,
+ * matching how Talk/End works in the composer.
+ */
+function SpeakButton({
+  state,
+  error,
+  onClick,
+}: {
+  state: ReadAloudState;
+  error: string | null;
+  onClick: () => void;
+}) {
+  const speaking = state === "speaking";
+  const loading = state === "loading";
+  const label = speaking ? "Stop reading aloud" : loading ? "Preparing audio" : "Read this reply aloud";
+  return (
+    <div style={{ marginTop: 6, fontFamily: "var(--font-body)", display: "flex", alignItems: "center", gap: 6 }}>
+      <button
+        type="button"
+        onClick={onClick}
+        title={label}
+        aria-label={label}
+        // The button IS the live region: a blind user pressing it needs to hear that
+        // synthesis started, and nothing else on the row announces it.
+        aria-live="polite"
+        style={{
+          background: "none",
+          border: "none",
+          cursor: loading ? "progress" : "pointer",
+          padding: 4,
+          borderRadius: "var(--radius-md)",
+          fontSize: 15,
+          lineHeight: 1,
+          color: speaking ? "var(--accent)" : "var(--text-muted)",
+        }}
+      >
+        {speaking ? "⏹" : loading ? "…" : "🔊"}
+      </button>
+      {error ? <span style={{ fontSize: 11.5, color: "var(--danger)" }}>{error}</span> : null}
+    </div>
+  );
 }
 
 function FeedbackBar({
