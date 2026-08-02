@@ -1484,6 +1484,18 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **✅ Assistant read-aloud (🔊 on a text reply) — SHIPPED AND LIVE 2026-08-02**
+  ([#574](https://github.com/russellmoss/wine-inventory/pull/574) → `a3b3cded`, Vercel prod deploy
+  green). Every finished assistant message now carries a speaker beside 👍/👎 that speaks the reply in
+  the same ElevenLabs voice, **with no microphone involved** — so it works where voice mode can't.
+  Deliberately NOT routed through `useVoiceSession`: that runs a live turn loop over a token stream,
+  this is one click on a message that is already finished. Two small pieces instead — pure
+  `planSpeech` (`src/lib/voice/read-aloud.ts`, 10 unit tests) and `useReadAloud` (Web Audio, one clip
+  of synthesis lookahead). First sentence ships alone so audio starts ~1s in; chunks stay under the
+  speak route's 1500-char cap **because that cap slices rather than rejects**. Same server gate as
+  voice mode, stops on dock-collapse and on a hands-free session opening. Owner request, no plan file.
+  ⚠️ Not browser-QA'd locally — the owner is testing it live on prod.
+
 - **✅ Prod OAuth login report — SHIPPED 2026-08-02**
   ([#573](https://github.com/russellmoss/wine-inventory/pull/573) → `b46d90f5`). The 500 did not
   reproduce and the DB proved the Google round-trip had already succeeded; the fix that landed is the
@@ -2334,3 +2346,9 @@ _Last updated: 2026-08-02 — **prod OAuth login report closed out** ([#573](htt
 re-verified against prod). The reported 500 remains WITHOUT a root cause — it did not reproduce and the
 database showed the user's Google sign-in had already succeeded; what shipped is the reason it was
 invisible._
+
+_Last updated: 2026-08-02 — **assistant read-aloud shipped and live**
+([#574](https://github.com/russellmoss/wine-inventory/pull/574) -> `a3b3cded`; check / review /
+tenant-isolation / GitGuardian green, Vercel production deploy succeeded). A 🔊 speaker on every finished
+assistant reply, mic-free, reusing `/api/assistant/speak`. Live QA is the owner's — it was not
+browser-verified locally._
