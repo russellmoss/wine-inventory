@@ -17,8 +17,10 @@ export default withSentryConfig(nextConfig, {
   // Upload a wider set of client bundles for readable stack traces.
   widenClientFileUpload: true,
 
-  // Route Sentry ingest through the app to dodge ad-blockers. No middleware today,
-  // so no matcher change needed — if middleware is added later, exclude /monitoring.
+  // Route Sentry ingest through the app to dodge ad-blockers. The auth proxy DOES run on this
+  // path now, so /monitoring is on its public allow-list (src/lib/auth/public-paths.ts). Without
+  // that entry every envelope from a session-less page is 307'd to /login and dies as a 405 —
+  // i.e. the login page reports no client errors at all. Keep the two in sync if this moves.
   tunnelRoute: "/monitoring",
 
   // Only print Sentry build logs in CI.
