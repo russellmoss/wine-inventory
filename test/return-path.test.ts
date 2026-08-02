@@ -69,3 +69,16 @@ describe("safeReturnPath — refuses anything that could leave the origin (open-
     expect(safeReturnPath("/logins-report")).toBe("/logins-report");
   });
 });
+
+describe("safeReturnPath — refuses machine endpoints that are not pages", () => {
+  it("never bounces to Sentry's ingest tunnel (tunnelRoute: /monitoring)", () => {
+    expect(safeReturnPath("/monitoring")).toBe(DEFAULT_RETURN_PATH);
+    // the real shape: the browser's envelope POST carries the DSN's org/project in the query
+    expect(safeReturnPath("/monitoring?o=4511665742938112&p=4511665753817088&r=us")).toBe(
+      DEFAULT_RETURN_PATH,
+    );
+    expect(safeReturnPath("/monitoring/envelope")).toBe(DEFAULT_RETURN_PATH);
+    // but a real page that merely starts with those letters is fine
+    expect(safeReturnPath("/monitoring-dashboard")).toBe("/monitoring-dashboard");
+  });
+});

@@ -36,5 +36,12 @@ export function safeReturnPath(raw: string | null | undefined): string {
   if (hasControlChar(v)) return DEFAULT_RETURN_PATH;
   // Never bounce back to the auth screens — that traps the user in a login loop.
   if (v === "/login" || v.startsWith("/login?") || v.startsWith("/login/")) return DEFAULT_RETURN_PATH;
+  // Never bounce to Sentry's ingest tunnel (`tunnelRoute: "/monitoring"`). It is a machine endpoint,
+  // not a page: the browser POSTs error envelopes to it, so it lands in `from` whenever an envelope
+  // is fired by a session-less page. Returning a freshly-authenticated user there renders nothing
+  // (405 on the GET the login page issues) — a dead end at the end of a successful sign-in.
+  if (v === "/monitoring" || v.startsWith("/monitoring?") || v.startsWith("/monitoring/")) {
+    return DEFAULT_RETURN_PATH;
+  }
   return v;
 }

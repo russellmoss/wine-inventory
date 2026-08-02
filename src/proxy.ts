@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 import { REPLAY_FIDELITY_COOKIE } from "@/lib/observability/sentry-replay";
+import { isPublicPath } from "@/lib/auth/public-paths";
 
 // OPTIMISTIC redirect only. proxy.ts is NOT a security boundary in Next 16
 // (CVE-2025-29927). Authoritative checks live in the DAL + every server action.
-const PUBLIC_PREFIXES = ["/login", "/forgot-password", "/reset-password", "/api/auth", "/styleguide", "/manifest.webmanifest", "/vendor"];
 
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+  if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 
@@ -35,6 +35,6 @@ export default function proxy(request: NextRequest) {
 export const config = {
   // Run on everything except Next internals and static assets.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|assets/|sounds/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|otf|woff|woff2|mp3|wav|ogg)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|assets/|sounds/|.*\.(?:svg|png|jpg|jpeg|gif|webp|otf|woff|woff2|mp3|wav|ogg)$).*)",
   ],
 };
