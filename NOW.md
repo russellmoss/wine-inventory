@@ -84,8 +84,36 @@ the one direction that costs a crop. **Boundary rules may move; composition rule
 That rule is now written into `docs/api-strategy.md` as a **prerequisite of Phase 10/MCP**, because an
 external MCP client supplies its own system prompt and never receives ours.
 
-⚠️ **Codex did not run** (`CreateProcessWithLogonW failed: 1907` — needs `codex login` on this host), so
-the **types / Prisma / data-layer lens on plan 107 is un-cross-validated**. Re-run before building Unit 1.
+✅ **CODEX RAN 2026-08-04 — the council is now complete, and it changed what Unit 1 is FOR.**
+**`council-mcp` is the broken part, not Codex.** The wrapper asks for `gpt-5.4`/`gpt-5.4-mini` (absent on
+this install) and spawns Codex through a sandbox that dies on `CreateProcessWithLogonW: 1907`
+(`ERROR_PASSWORD_MUST_CHANGE`). `codex exec -s read-only` **from Bash works fine** — but Codex cannot
+spawn a local shell here, so it cannot read repo files itself. **The workaround that worked: inline every
+excerpt into the prompt and tell it to run no commands.** Use that for any future `/council` on this box.
+
+⛔ **Codex's headline: Unit 1's artifact CANNOT be used to delete a tool** — which was its original
+purpose. The trace is a survivorship-biased lower bound from THREE same-direction losses:
+1. **Whole-turn loss** — the row is written only after the whole run, best-effort, in nested try/catch.
+   A run killed at the serverless ceiling contributes **zero** rows despite executing N tools. (This is
+   what open PR #581 is about; a KB-heavy turn measured 79s against a 60s cap.)
+2. **`MAX_TOOL_CALLS = 40`** at `src/lib/assistant/trace.ts:80` — `pushToolTrace` silently returns past
+   40, so even a persisted turn can be truncated. *(Found by me, not Codex — it had no shell.)*
+3. **No denominator** — attempted turns are persisted nowhere, so the undercount can't be estimated.
+
+All three bias against long multi-tool turns, which is exactly where routing confusion lives. Unit 1
+survives as a **positive-usage signal only**; deletion-grade data needs forward instrumentation (an
+awaited append-only event before dispatch — the tenant-scoped table this plan was glad to avoid) and
+history cannot be repaired.
+
+Also from Codex, all folded in: `COUNT` returns `bigint` and `JSON.stringify` throws on it; the
+shape-safe `jsonb_typeof` expansion; PII must be guarded in the SQL projection because
+`sanitizeTraceValue` redacts by key NAME only; the `vi.mock` break is *"not a function"*, not a stale
+value; and `db_create`/`db_update` error text already advertises all 8 entities as creatable/editable —
+a pre-existing bug now in Unit 4's scope.
+✅ **`runAsSystem` verified CORRECT** (`src/lib/tenant/system.ts:23` — separate client on
+`DATABASE_URL_UNPOOLED`, Neon owner, `BYPASSRLS`, un-extended). Codex flagged it; it's fine.
+⚠️ **Still open (Codex C-2):** `assistant_confirmation`'s lifecycle is unverified — confirm its
+executed/succeeded status and dedup key before grouping it.
 
 **✅ UNIT 0 BUILT + COMMITTED `44af9425`** (docs in `0d164e2c`). Both LLM eval halves now call
 `buildSystemPrompt()` instead of a hardcoded stub, so the ten routing rules are under test for the first

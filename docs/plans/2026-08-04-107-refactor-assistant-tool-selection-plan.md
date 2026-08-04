@@ -9,10 +9,16 @@ units: 5
 council: docs/plans/council-feedback-107-assistant-tool-selection.md
 ---
 
-> **Revised 2026-08-04 after council review.** Gemini raised four criticals; three were accepted and
-> changed this plan (composition rules stay in the prompt, the measurement must bucket by month, and a
-> new Unit 0 fixes the eval harness first). One was rejected and recorded. Codex did not run — the
-> type-safety / Prisma lens on Units 1 and 4 is **un-cross-validated**. Details in the council doc.
+> **Revised 2026-08-04 after a FULL council review (Gemini + Codex).** Gemini raised four criticals;
+> three were accepted (composition rules stay in the prompt, the measurement must bucket by month, a new
+> Unit 0 fixes the eval harness first) and one was rejected on the record. Codex then reviewed the
+> types/Prisma/data lens and landed a finding that **changes what Unit 1 is for**: the trace is a
+> survivorship-biased lower bound, so a zero-count can never justify deleting a tool. Unit 1 survives as
+> a positive-usage signal only. Codex also caught a `bigint` crash, the real `vi.mock` failure mode, and
+> a pre-existing error-message bug now folded into Unit 4. Full detail + verification status in
+> `docs/plans/council-feedback-107-assistant-tool-selection.md`.
+>
+> **Unit 0 is BUILT** (commit `44af9425`); its live baseline is still uncaptured.
 
 ## Overview
 
@@ -176,6 +182,29 @@ with distinct-conversation and distinct-owner counts and first/last-seen timesta
 `assistant_confirmation` by tool. Join both against `ALL_TOOLS` from the registry so tools with **zero**
 invocations appear as explicit zero rows — the zeros are the finding. Keep the aggregation logic in a
 pure exported function so it can be unit-tested without a database.
+**⛔ WHAT THIS MEASUREMENT MAY AND MAY NOT BE USED FOR (Codex C-1 — read before writing the query).**
+The trace is a **survivorship-biased lower bound**, from three independent, same-direction losses:
+1. **Whole-turn loss.** The row is written only after the entire run, best-effort, inside nested
+   try/catch. A run killed at the serverless ceiling contributes **zero** rows even if it executed ten
+   tools (`route.ts:169-190`; PR #581 exists because turns exceed 60s, and a KB-heavy turn measured 79s).
+   Also lost: no `conversationId`, and any swallowed `appendMessage` failure.
+2. **Per-turn truncation.** `trace.ts:80` — `pushToolTrace` returns silently once `MAX_TOOL_CALLS = 40`
+   is reached. A persisted turn can still be missing calls.
+3. **No denominator.** Attempted turns are not persisted anywhere, so the undercount cannot even be
+   estimated.
+
+All three bias against long, KB-heavy, multi-tool turns — which is exactly where routing confusion
+lives. Therefore:
+- ✅ **VALID:** "these tools are definitely used" (positive signal), relative ordering among
+  frequently-used tools, and `db_find` fallback evidence.
+- ⛔ **INVALID: a zero is not evidence of disuse, and this artifact MUST NOT be cited to delete a
+  tool.** That was the original stated purpose; it does not survive. Deletion-grade data needs a
+  forward-looking, awaited, append-only tool-attempt event written **before** dispatch — a separate
+  decision with a real cost (it is the tenant-scoped table this plan was pleased to avoid), and
+  historical data cannot be repaired retroactively.
+
+The artifact must state all of this in its own header, not only here.
+
 **Seasonality (council C2 — this is what makes the artifact safe to cite later).** Wine work is violently
 seasonal: a window that does not span a full cycle shows zero calls for harvest, ferment and frost tooling
 for most of the year, and a future reader pruning on that would delete harvest tools in August. So the
@@ -194,6 +223,25 @@ emails, no user ids, no utterance text.
 `metadata` is null, one whose `trace.toolCalls` is `[]`, one whose shape is malformed, and one spanning a
 month boundary (to pin the bucketing).
 **Depends on:** none
+**SQL requirements (Codex S-1, C-4 — these are not optional).**
+- Expand shape-safely; the column is `jsonb` (Prisma `Json` → `jsonb`) so no cast is needed, but the
+  array is not guaranteed to exist or be an array:
+  `CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(am.metadata->'trace'->'toolCalls')='array' THEN am.metadata->'trace'->'toolCalls' ELSE '[]'::jsonb END) AS call`
+  then `WHERE jsonb_typeof(call)='object' AND jsonb_typeof(call->'name')='string'`.
+- Quote camel-case columns (`"createdAt"`, `"conversationId"`).
+- **`COUNT`/`COUNT(DISTINCT …)` return `bigint` and `JSON.stringify` throws on `BigInt`** — normalize
+  with a checked `Number(...)` at the boundary and validate the raw row shape.
+- **PII is guarded in the SQL projection, not in the writer.** `sanitizeTraceValue` redacts by key
+  *name* only, so free-text values survive into `input`/`resultPreview`. Project **only** canonical
+  name, month bucket, counts and extrema; never pass raw `metadata` into the pure function.
+- `runAsSystem` is correct and verified — `src/lib/tenant/system.ts:23` opens a separate client on
+  `DATABASE_URL_UNPOOLED` (Neon owner, `BYPASSRLS`), un-extended. No index is needed; an all-history
+  aggregate is a linear scan by definition and GIN would not help.
+- Report trace counts and `assistant_confirmation` counts as **two separate metrics** — never summed
+  (a write tool appears in both). Keep attempted / succeeded / failed separate via `ok`/`resultKind`.
+  Keep an "unknown/retired" bucket for trace names absent from today's registry.
+- ⚠️ Still open (Codex C-2): `assistant_confirmation` needs an explicit executed/succeeded status
+  filter and a dedup key. Confirm its lifecycle before grouping it.
 **Verification:** `npm run measure:assistant-tools` from the main checkout prints a table where the
 row count equals `ALL_TOOLS.length` (96) and every registry tool is represented.
 
@@ -256,10 +304,20 @@ editable, deletable — each derived from the *same* predicate its `db_*` tool a
 becomes `{ type: "string", enum: <its own list>, description: … }`. Keep the existing runtime check and
 its error message: the enum is a narrowing, not a replacement, and a model can still emit an
 out-of-enum value.
-**Hazard:** `test/assistant-db-create-dedup.test.ts:34` and `test/assistant-db-update-resolve.test.ts:52`
-mock `allowedEntityNames` at module level. Building an enum at module-init interacts with `vi.mock`
-hoisting — if the enum is captured eagerly at import, verify those mocks still take effect, and fall back
-to building the schema lazily if not.
+**Hazard (Codex S-4 corrected this — the failure mode is not what the plan first said).**
+`test/assistant-db-create-dedup.test.ts:34` and `test/assistant-db-update-resolve.test.ts:52` mock the
+entities module **partially**. Hoisting is not the problem: the mocks simply do not provide the new
+helpers, so a module-init enum fails with **"not a function"**, not with a stale value. Extend both mock
+factories with every helper the imported module evaluates.
+**Also in scope (Codex S-5 — a pre-existing bug the enum alone does not fix).** `db-create.ts:44` and
+`db-update.ts:45` interpolate `allowedEntityNames()` into their error text, so the message advertises
+all 8 entities as creatable/editable including ones the guard just rejected. Switch both to the
+capability-filtered helpers.
+**Behaviour change to test deliberately (Codex DQ-6):** `getEntity` is case-insensitive; a JSON Schema
+`enum` is not. Keep the canonical spellings in the enum AND keep the case-insensitive runtime fallback,
+and add a test pinning that combination.
+**Do NOT** substitute `fields.length > 0` for the property-truthiness predicates — it differs from the
+runtime check. Add a registry test asserting each capability list is non-empty and unique.
 **Tests:** for each of the four tools, assert its enum is exactly the set of entities its runtime check
 accepts — iterate every entity in `ENTITIES`, run the tool's capability predicate, and assert
 membership agreement in both directions. This is the assertion that makes the test meaningful rather
@@ -304,6 +362,11 @@ disease anywhere" → both `query_spray_decision` and `query_field_reports`.
 - [ ] `npm run measure:assistant-tools` produces a 96-row table, every registry tool represented, zeros explicit
 - [ ] The usage artifact buckets by month, declares its trace span, and stamps `seasonal: protected` if that span is under 12 months
 - [ ] The usage artifact reports `db_find`/`db_create` fallback counts so a zero can be read correctly
+- [ ] The artifact's own header states the three loss sources and says in terms that **a zero is not evidence of disuse and must not be cited to delete a tool**
+- [ ] Trace counts and `assistant_confirmation` counts are reported as two separate metrics, never summed
+- [ ] `bigint` counts are normalized before serialization (a `JSON.stringify` of a raw `COUNT` throws)
+- [ ] The SQL projects only name/bucket/counts/extrema — raw `metadata` never reaches the pure function
+- [ ] `db_create`/`db_update` error messages name the capability-filtered set, not all 8 entities
 - [ ] The committed usage artifact contains no emails, user ids, or utterance text
 - [ ] Every **boundary** rule removed from `prompt.ts` exists in a tool description and is pinned by a test
 - [ ] The disease/pest composition rule is still in `prompt.ts`, unchanged, and a test asserts it is there

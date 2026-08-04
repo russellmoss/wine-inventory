@@ -107,9 +107,99 @@ already the plan's own framing. Recorded, not acted on.
 
 ## Raw Response — Codex
 
-**FAILED TO RUN.** `windows sandbox: CreateProcessWithLogonW failed: 1907` on `gpt-5.4` and
-`gpt-5.4-mini`. Needs host re-auth (`codex login`). Correctness / type-safety / Prisma review is
-**outstanding** for this plan.
+**RAN 2026-08-04 on the second attempt (gpt-5.6-sol, reasoning=high).** The `council-mcp` wrapper is
+what fails, not Codex: it requests `gpt-5.4`/`gpt-5.4-mini` (which this install does not have) and
+spawns Codex through a sandbox path that dies on `CreateProcessWithLogonW: 1907`
+(`ERROR_PASSWORD_MUST_CHANGE` — the Windows account behind Codex's sandbox user has an expired
+password). `codex exec -s read-only` **from Bash works fine**, but Codex cannot spawn a local shell,
+so it cannot read repo files itself. **Workaround that worked: inline every excerpt into the prompt
+and instruct it to run no commands.** Use that for future `/council` runs on this box.
+
+### Codex findings, with verification status
+
+**C-1 (CRITICAL, CONFIRMED + made worse). Unit 1's dataset is a survivorship-biased lower bound, and
+an observed zero therefore cannot justify deleting a tool.** Loss is **whole-turn, not partial**: a
+79-second run killed at a 60-second ceiling contributes **zero** rows even though it executed N tools.
+Missing classes: timed-out/killed runs; `conversationId` absent; `appendMessage` throwing (swallowed
+by `catch { /* best-effort */ }`). And **no attempted-turn denominator is persisted**, so the
+undercount is not merely unknown but unbounded.
+
+I verified a **third loss source Codex could not see**: `src/lib/assistant/trace.ts:80`,
+`pushToolTrace` starts with `if (trace.toolCalls.length >= MAX_TOOL_CALLS) return;` with
+`MAX_TOOL_CALLS = 40`. So even a turn that persists is silently truncated at 40 calls.
+
+All three biases point the same way — against long, KB-heavy, multi-tool turns, which is exactly
+where routing confusion lives. **This does not kill Unit 1; it narrows what Unit 1 may be used to
+conclude.** See the plan's revised Unit 1.
+
+**C-2 (CRITICAL, partially UNVERIFIED). `assistant_confirmation` escapes the post-run append path but
+is not proven unbiased.** Unknown from the excerpts: when the row commits relative to execution;
+whether rejected/expired/replayed confirmations persist; whether execution and status update are
+atomic. **Do not group every confirmation row without an explicit executed/succeeded status and a
+dedup key.** Still open.
+
+**C-3 (CRITICAL, RESOLVED — not a defect).** Codex flagged that `runAsSystem` must use a real
+`BYPASSRLS` connection rather than just setting async-local context. Verified at
+`src/lib/tenant/system.ts:23`: it builds a **separate `PrismaClient` on `DATABASE_URL_UNPOOLED`** (the
+Neon owner role, which carries `BYPASSRLS`) on a **plain, un-extended** client. Correct as planned. Its
+doc comment says scripts-only and never the web app, which is what Unit 1 is.
+
+**C-4 (CRITICAL, ACCEPTED). Postgres `COUNT`/`COUNT(DISTINCT …)` return `bigint`, and `JSON.stringify`
+throws on `BigInt`.** A `$queryRaw` aggregate feeding the artifact writer will crash at runtime.
+Normalize with a checked `Number(...)` at the SQL/TS boundary and validate the raw row shape rather
+than trusting the generic.
+
+**S-1 (ACCEPTED). Shape-safe JSON expansion.** Prisma `Json` maps to `jsonb`, so no cast is needed on
+the column, but the expansion must tolerate SQL `NULL`, JSON `null`, a non-object `trace`, and a
+non-array `toolCalls`:
+```sql
+CROSS JOIN LATERAL jsonb_array_elements(
+  CASE WHEN jsonb_typeof(am.metadata -> 'trace' -> 'toolCalls') = 'array'
+       THEN am.metadata -> 'trace' -> 'toolCalls' ELSE '[]'::jsonb END
+) AS call
+WHERE jsonb_typeof(call) = 'object' AND jsonb_typeof(call -> 'name') = 'string'
+```
+Quote the camel-case columns (`"createdAt"`, `"conversationId"`).
+
+**S-2 (ACCEPTED). No `metadata` index needed.** An unfiltered all-history aggregate is a linear scan
+by definition; GIN would not help. If this becomes a repeated bounded report, add a standalone
+`"createdAt"` index — the existing `(conversationId, createdAt)` composite cannot drive a global date
+range.
+
+**S-4 (ACCEPTED — sharper than the plan's own hazard note). The module-init enum will break the two
+existing mocks with "not a function", not with a stale value.** `test/assistant-db-create-dedup.test.ts:34`
+and `test/assistant-db-update-resolve.test.ts:52` mock the entities module **partially**; hoisting is
+not the problem, the missing helper is. Extend both factories with every new helper the imported
+module evaluates.
+
+**S-5 (ACCEPTED — pre-existing bug, now in scope). `db_create` / `db_update` error messages advertise
+all 8 entities as creatable/editable.** Both interpolate `allowedEntityNames()`, so the text names
+entities the guard will reject. Unit 4 must switch them to the capability-filtered helpers; the enum
+alone does not fix it.
+
+**S-3 / S-6 (ACCEPTED). Predicates defined once, reused by both guard and enum**, exactly as written
+(`creatable && buildCreate && create`; `editable && update && current`; find/delete = existence only).
+Do **not** substitute `fields.length > 0` — it differs from the runtime predicate. Add a registry test
+asserting each capability list is non-empty and unique.
+
+### Codex design questions worth answering before Unit 1 is written
+
+1. **Trace counts vs confirmation counts must not be summed** — a write tool appears once in the trace
+   as the proposing call and again in `assistant_confirmation` on execution. Report them as two
+   metrics with an explicit grain.
+2. **"Invocation" is ambiguous** — the trace holds successful *and* failed calls. Keep
+   attempted/succeeded/failed separate using `ok` / `resultKind`.
+3. **Renamed/removed/new tools** — joining only to today's 96-entry registry drops historical names and
+   gives brand-new tools a misleading lifetime zero. Keep an "unknown/retired" bucket.
+4. **`createdAt` is completion time, not invocation time** — month-bucketing skews at boundaries and
+   timed-out calls have no month at all. Compounds the seasonality caveat (C2 above). Declare the
+   reporting timezone explicitly.
+5. **PII: the guard belongs in the SQL projection, not the artifact writer.** `sanitizeTraceValue`
+   redacts by key *name* only (`SENSITIVE_KEY` regex), so a free-text value carrying a person's name
+   survives into `input`/`resultPreview`. Project only canonical name, bucket, counts and extrema —
+   never pass raw `metadata` into the "pure" aggregation function.
+6. **The enum makes entity names case-sensitive** while `getEntity` is case-insensitive. That is a
+   deliberate behaviour change; keep the runtime fallback and test the intended compatibility.
 
 ## Raw Response — Gemini
 
