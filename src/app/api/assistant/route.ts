@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { getCurrentUser } from "@/lib/dal";
 import { runAssistant, type ChatMessage } from "@/lib/assistant/run";
 import { parseAndWindowMessages } from "@/lib/assistant/message-window";
@@ -22,8 +23,15 @@ import { resolveOperatingTimeZone } from "@/lib/work-orders/due-at";
 // Node runtime + the Vercel ceiling: the tool-use loop makes several model
 // round-trips, so give it room. Responses stream as NDJSON so the UI sees text
 // as it generates rather than waiting for the whole loop.
+//
+// 60 was not enough and failed SILENTLY. Measured 2026-08-04 against the live API: a knowledge
+// question that made three `search_knowledge_base` calls took 79.2s, and every request also carries
+// ~97 tool schemas, so even a no-tool reply costs 9-33s. Past the ceiling Vercel kills the function
+// mid-stream — the catch below never runs, no assistant row is written, and nothing reaches Sentry.
+// 300 matches what the cron routes already deploy on this plan. The soft deadline in
+// `lib/assistant/deadline.ts` is the real guarantee; this is the room it winds up inside.
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -184,7 +192,20 @@ export async function POST(req: Request) {
             /* best-effort: the reply already streamed to the user */
           }
         }
-      } catch {
+      } catch (e) {
+        // Backstop for everything OUTSIDE the run loop (object-context resolution, the assistant-row
+        // write). runAssistant handles its own failures and returns normally, so reaching here is
+        // rare — which is exactly why it must not stay silent. It logged nothing at all until now,
+        // and a turn that dies here persists no assistant row, so its only trace was an absence.
+        Sentry.captureException(e, {
+          tags: { area: "assistant", stage: "route" },
+          extra: { conversationId, userId: user.id, messages: messages.length },
+        });
+        console.error("[assistant] route failed outside the run loop", {
+          conversationId,
+          userId: user.id,
+          error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+        });
         send({ type: "error", message: "Assistant error." });
       } finally {
         sendNow({ type: "done" });

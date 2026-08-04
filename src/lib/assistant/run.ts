@@ -1,7 +1,9 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import * as Sentry from "@sentry/nextjs";
 import type { AppUser } from "@/lib/access";
 import { getToolsFor } from "./registry";
+import { DEADLINE_NOTICE, hasRoomForAnotherRoundTrip } from "./deadline";
 import { serializeObjectContext, type ResolvedObjectContext } from "./object-context";
 import { buildSystemPrompt, VOICE_STYLE_PROMPT } from "./prompt";
 import { listOpenClarificationsForUser } from "@/lib/feedback/clarification";
@@ -184,8 +186,20 @@ export async function runAssistant(opts: {
     return { text: assistantText, trace };
   }
 
+  const loopStartedAt = Date.now();
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
+      // Soft deadline (see deadline.ts). MAX_TURNS round-trips can outrun ANY fixed platform
+      // ceiling, and overrunning it is the worst failure we have: Vercel kills the function
+      // mid-stream, so this catch never runs, no row is persisted and nothing reaches Sentry.
+      // Stop ourselves first and say so. Never gates the FIRST round-trip — every turn gets one
+      // real attempt regardless of how little budget is left.
+      if (turn > 0 && !hasRoomForAnotherRoundTrip(Date.now() - loopStartedAt)) {
+        trace.stopReason = "deadline";
+        emit({ type: "text", text: DEADLINE_NOTICE });
+        assistantText += DEADLINE_NOTICE;
+        break;
+      }
       trace.turns = turn + 1;
       const stream = createStream({
         model: MODEL,
@@ -397,6 +411,30 @@ export async function runAssistant(opts: {
       break;
     }
   } catch (e) {
+    // Capture BEFORE deciding what the user sees. This is where assistant turns actually die, and
+    // until now it recorded nothing anywhere: no captureException, no console.error. A turn that
+    // fails before producing text or a tool call also persists no assistant row (the route's
+    // `run.text.trim() || hasToolEvidence` gate), so the only trace it left was an absence — a user
+    // row in `assistant_message` with no reply after it. That is not a diagnosis, and it cost a P0
+    // ticket ("everything i type gives an error") that no one could act on.
+    Sentry.captureException(e, {
+      tags: { area: "assistant", stage: "run-loop" },
+      extra: {
+        turns: trace.turns,
+        toolCalls: trace.toolCalls.length,
+        messages: convo.length,
+        textSoFar: assistantText.length,
+        userId: user.id,
+      },
+    });
+    console.error("[assistant] run loop failed", {
+      userId: user.id,
+      turns: trace.turns,
+      toolCalls: trace.toolCalls.length,
+      messages: convo.length,
+      error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+    });
+
     if (e instanceof Anthropic.RateLimitError) {
       emit({ type: "error", message: "The assistant is busy right now. Try again in a moment." });
       trace.stopReason = "rate_limit";
