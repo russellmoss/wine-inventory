@@ -7,6 +7,43 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**BUG-TRIAGE RUN COMPLETE 2026-08-04 — AND THE ANSWER IS: THERE IS NOTHING TO BUILD.** Live run
+(autoMerge + dispatch + reconcile + all three sweeps), 11 agents, 0 errors, `mode.argsWarning: null`.
+Runbook at `TRIAGE-RUNBOOK.md` (untracked — regenerated every run, local edits are ephemeral).
+
+Backlog 28 → 8 active → **7 primaries + 1 duplicate**, all Demo Winery, so no multi-tenant fire.
+By disposition: **5 product-gap, 1 defect, 1 unclear** — only ONE item in the entire active backlog
+is a real code defect. Actions: 2 reconciled, 1 already-shipped reconciled, 1 dispatched, 5 routed to
+`/plan`, 1 queued for a human, 0 auto-merged (no open PRs remained). ERP: **0 conflicts, 5 cautions**.
+
+⛔ **Zero build waves.** A fleet spun up right now would have nothing to pick up: nothing is
+plan-ready with a real plan, and the only defect is already being built. **The bottleneck is planning
+and investigation, not build capacity** — resist the urge to throw builders at this.
+
+**Next actions — 1–3 can run concurrently (read/plan work, no file overlap):**
+1. `/investigate` the P0 `cmsdy4uom0006jp04iav07edp` "use of assistant" — *"everything i type in gives
+   an error"*, but zero diagnostic detail, and `src/app/api/assistant` is OUTSIDE the auto-fix fence
+   (only `src/app/api/feedback` is in). Get the real error before spending a build slot.
+2. `/plan` the vessel+location family as **ONE** plan: `cmsdhvzg2…` (vessel location/purchaseCost/
+   label+notes) → `cmsdxp0vl…` (Location as a governed entity) → `cmsdxnlfq…` (cellar-floor filter).
+   NOT parallel-safe — one `prisma/schema.prisma` across three branches is a guaranteed conflict.
+3. `/plan` the depreciation engine `cmsdk30d8…`, scoped hard to straight-line + ONE book. It gates the
+   equipment leg of cost allocation `cmsdk30ts…`, and must reconcile with the EXISTING auto barrel
+   depreciation or the same expense gets booked twice.
+
+✅ **The merged sweep proved itself on its first real case.** It found `cms8a9nau0005i8045l65vomp` by
+scanning 50 merged PR bodies, matched `Closes feedback …` in #571, and wrote it RESOLVED — confirmed
+by reading the row back, not trusted from the report. That is precisely the blind spot it exists for:
+a ticket whose `prUrl` stayed null while its fix sat in production. It also *declined* to touch two
+other scraped ids (#548, #541) because intake reconcile already owned them.
+
+⚠️ **All 5 ERP cautions are one class:** each asks to MUTATE something the ERP treats as history — a
+vessel's site, a location's name, a posted COGS snapshot, a posted depreciation period. Each
+standard-to-uphold is written verbatim into its `/plan` action, so conformance is designed in at PLAN
+time rather than caught at review.
+
+---
+
 **RECORDED-VOLUME CORRECTION (feedback `cms8a9nau0005i8045l65vomp`) — MERGED AND LIVE IN PRODUCTION
 2026-08-04.** [#571](https://github.com/russellmoss/wine-inventory/pull/571) squash-merged as
 `3de798e8`; main CI green and the Vercel production deploy completed 03:06:57Z.
@@ -2422,3 +2459,15 @@ from a checkout with `.env`; the `/bug-triage` MERGED SWEEP should reconcile it,
 opens with ``Closes feedback `cms8a9nau0005i8045l65vomp` `` and the merge is well inside the 14-day
 window. (2) Barrel B3 is **still recorded at 100 L** — the capability shipped, the reporter's data was
 deliberately not edited._
+
+_Last updated: 2026-08-04 (later) — **bug-triage live run complete; the backlog's shape is the
+finding.** 28 items → 7 primaries, 5 product-gap / 1 defect / 1 unclear, and **zero build waves** —
+the constraint is planning and investigation, not builders. Merged sweep reconciled
+`cms8a9nau0005i8045l65vomp` (shipped in #571, `prUrl` was null) and correctly declined two ids intake
+already owned. 0 ERP conflicts, 5 cautions, all of the same mutate-history class. Runbook:
+`TRIAGE-RUNBOOK.md`. Getting the run to launch took clearing four blockers worth remembering: a main
+checkout 32 commits stale on a docs branch, broken IPv6 on an iPhone-hotspot network (Prisma's Rust
+engine takes the AAAA answer and gives up where every Happy-Eyeballs tool silently fell back), no
+`.env` in the worktree the session was rooted in, and 2,095 CRs in `.claude/workflows/bug-triage.js`
+(the `eol=lf` pin only applies at checkout, so an already-checked-out copy stays CRLF and the Workflow
+approval dialog refuses it)._
