@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getToolsFor, type AssistantTool } from "@/lib/assistant/registry";
+import { buildSystemPrompt } from "@/lib/assistant/prompt";
 import { ASSISTANT_WRITE_GOLDEN } from "./assistant-write-tools.golden";
 import { committerToolNames } from "@/lib/assistant/commit";
 import { ASSISTANT_READ_GOLDEN } from "./assistant-read-tools.golden";
@@ -143,6 +144,12 @@ describe.skipIf(!LLM_ENABLED)("H8 LLM eval — the model selects the expected to
   // Minimal, self-contained: we exercise TOOL SELECTION against the real schemas, not the full assistant
   // run loop. The schemas passed here are exactly what the assistant sends the model. Dependency-free
   // (raw fetch), so the eval needs no SDK.
+  //
+  // Plan 107 Unit 0: the `system` below is `buildSystemPrompt()` — the prompt we ACTUALLY SHIP. It used
+  // to be a hardcoded two-sentence stub, which meant the ten routing rules in prompt.ts had never once
+  // been under test, and a routing regression could only be found by a user hitting it. Matches the
+  // precedent already set by assistant-must-propose.eval.test.ts and assistant-currency-warning.eval.test.ts.
+  // The single-tool-call constraint comes from `tool_choice: { type: "any" }`, not from prompt wording.
   const anthropicTools = TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }));
 
   it.each(ASSISTANT_WRITE_GOLDEN)("$utterance → $tool", async (gc) => {
@@ -156,9 +163,7 @@ describe.skipIf(!LLM_ENABLED)("H8 LLM eval — the model selects the expected to
       body: JSON.stringify({
         model: EVAL_MODEL,
         max_tokens: 1024,
-        system:
-          "You are a winery production assistant. Use exactly one tool to fulfill the user's request. " +
-          "Refer to vessels/blocks by the plain labels the user gives.",
+        system: buildSystemPrompt(),
         tools: anthropicTools,
         tool_choice: { type: "any" },
         messages: [{ role: "user", content: gc.utterance }],
