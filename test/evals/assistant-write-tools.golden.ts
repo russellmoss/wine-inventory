@@ -408,6 +408,18 @@ export const ASSISTANT_WRITE_GOLDEN: GoldenCase[] = [
     args: { toVessel: "2023 Grenache barrel", fromVessel: "keg 4", volumeL: 3 },
   },
   {
+    utterance: "Barrel B3 says 100 litres but it actually holds 225 — the fill volume was typed wrong",
+    tool: "correct_recorded_volume",
+    args: { vessel: "B3", volumeL: 225, reason: "the fill volume was typed wrong" },
+    note: "the reported case (feedback cms8a9nau0005i8045l65vomp): a RECORD fix, not a top-up — nothing physically moved",
+  },
+  {
+    utterance: "Fix tank 4's volume to 1800 L, I entered it wrong at intake",
+    tool: "correct_recorded_volume",
+    args: { vessel: "tank 4", volumeL: 1800, reason: "entered wrong at intake" },
+    note: "must NOT route to rack_wine/top_up/dump — no wine moved, only the number was wrong",
+  },
+  {
     utterance: "Cross-flow filter tank 5 at 0.45 micron",
     tool: "filter_vessel",
     args: { vessel: "tank 5", medium: "cross-flow", micron: 0.45 },

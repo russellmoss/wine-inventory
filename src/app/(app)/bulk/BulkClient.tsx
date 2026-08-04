@@ -16,6 +16,7 @@ import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import type { VesselGroupDTO } from "@/lib/vessels/groups";
 import { CellarActions, type KegOption, type ResidentLot } from "./CellarActions";
 import { VesselComposition } from "@/components/vessel/VesselComposition";
+import { RecordedVolumeEditor } from "@/components/vessel/RecordedVolumeEditor";
 import { GroupActions, type GroupVessel } from "./GroupActions";
 import { formatVolume, volumeInputToLiters, volumeInputValue, volumeUnitLabel } from "@/lib/units/display";
 import { useUnitPrefs } from "@/components/units/UnitsProvider";
@@ -370,6 +371,17 @@ export function BulkClient({ vessels, varieties, vineyards, blocks, subblocks, m
         {selected ? (
           <div>
             <BarrelMeta v={selected} />
+            {/* The vessel's own number, with the way to fix it when it was typed wrong. Above the
+                wine on purpose: a winemaker who opens this panel because "B3 says 100 L and it's
+                really 225" should not have to read past the composition to find the correction. */}
+            {selected.fill.filledL > 0 ? (
+              <RecordedVolumeEditor
+                vesselId={selected.id}
+                vesselCode={vesselLabel(selected.type, selected.code)}
+                currentL={selected.fill.filledL}
+                capacityL={selected.capacityL}
+              />
+            ) : null}
             {/* The wine, named and linked, with what it is made of underneath. This replaces a separate
                 "Blends in this vessel" list that existed only because the component projection couldn't
                 represent an origin-less blend lot — it can now (composeLeaves), so there is one wine. */}

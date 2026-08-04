@@ -57,6 +57,7 @@
     "verify:group-not-a-vessel": "tsx --env-file=.env scripts/verify-group-not-a-vessel.ts",
     "verify:group-maintenance": "tsx --conditions=react-server --env-file=.env scripts/verify-group-maintenance.ts",
     "verify:long-tail-ops": "tsx --conditions=react-server --env-file=.env scripts/verify-long-tail-ops.ts",
+    "verify:volume-correction": "tsx --conditions=react-server --env-file=.env scripts/verify-volume-correction.ts",
     "verify:ttb": "tsx --conditions=react-server --env-file=.env scripts/verify-ttb.ts",
     "verify:planting-geometry": "tsx --conditions=react-server --env-file=.env scripts/verify-planting-geometry.ts",
     "verify:ndvi": "tsx --conditions=react-server --env-file=.env scripts/verify-ndvi.ts",

@@ -85,6 +85,7 @@ import { reviewTaskTool } from "./tools/review-task";
 import { manageWorkOrderTool } from "./tools/manage-work-order";
 import { groupRackBatchTool } from "./tools/group-rack-batch";
 import { topUpTool } from "./tools/top-up";
+import { correctRecordedVolumeTool } from "./tools/correct-recorded-volume";
 import { filterVesselTool } from "./tools/filter-vessel";
 import { logCapManagementTool } from "./tools/log-cap-management";
 import { blendLotsTool } from "./tools/blend-lots";
@@ -182,6 +183,7 @@ const ALL_TOOLS: AssistantTool[] = [
   manageWorkOrderTool,
   groupRackBatchTool,
   topUpTool,
+  correctRecordedVolumeTool,
   filterVesselTool,
   logCapManagementTool,
   blendLotsTool,
