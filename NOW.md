@@ -152,9 +152,10 @@ tenant A's row · **unset GUC fails closed (0 rows)** · UPDATE refused · DELET
 🦷 **Proven non-vacuous:** the same harness with a deliberately false premise RAISED
 (`saw 1 rows, demanded 999`). A `DO` block that silently passes proves nothing; this one bites.
 
-⚠️ **Two things about that branch:** I ran `GRANT app_rls TO CURRENT_USER` on it so the owner could
-assume the app role — **do not promote or reuse this branch** expecting a clean role posture. It also
-carries one test row (`zz_atc_a`). Both are confined to the disposable branch; prod is untouched.
+🧹 **Branch DELETED 2026-08-04 after verification** — nothing of it survives, and nothing needed to:
+the migration is committed in git and the results are recorded here. It had carried a
+`GRANT app_rls TO CURRENT_USER` (so the owner could assume the app role) and one test row
+(`zz_atc_a`), both of which died with it. Cleanup is why the grant was safe to make at all.
 
 ⛔ **PROD IS UNCHANGED. No rows will be logged until the migration is deployed there.**
 
