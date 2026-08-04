@@ -157,7 +157,31 @@ the migration is committed in git and the results are recorded here. It had carr
 `GRANT app_rls TO CURRENT_USER` (so the owner could assume the app role) and one test row
 (`zz_atc_a`), both of which died with it. Cleanup is why the grant was safe to make at all.
 
-⛔ **PROD IS UNCHANGED. No rows will be logged until the migration is deployed there.**
+✅ **MERGED AND LIVE IN PRODUCTION 2026-08-04.**
+[#582](https://github.com/russellmoss/wine-inventory/pull/582) squash-merged as `ef717b68`; CI fully
+green (`check` 4m13s · `review` · `tenant-isolation` · GitGuardian), Vercel Production deploy
+**success**. `claude/*` branches get no preview, so CI was the only pre-merge signal — as expected.
+
+**Verified against the PRODUCTION database, not inferred from the deploy:** `assistant_tool_call`
+exists · migration `20260804120000_assistant_tool_call` recorded finished · RLS **enabled AND forced**
+· `tenant_isolation` carries **both** USING and WITH CHECK · **`app_rls` holds `INSERT,SELECT` only**
+(the REVOKE beat `ALTER DEFAULT PRIVILEGES` in prod too) · 2 append-only triggers.
+
+✅ **CI re-proved the isolation independently.** The `tenant-isolation` job runs `migrate deploy` against
+a CI Postgres and exercises the suite **as `app_rls` through a transaction-mode PgBouncer** — and because
+that suite derives its table list from the datamodel minus `GLOBAL_MODELS`, it picked up the new table
+automatically. Machine confirmation of what was hand-checked on the Neon fork.
+
+⚠️ **`rows_logged_so_far = 0`.** Nobody has used the assistant since the deploy. The table is correct and
+the code is live, but **the write path has not yet been observed end-to-end in prod** — that is still
+unproven, and the next real Demo Winery turn is what proves it.
+
+**Immediate next, in order:**
+1. Run one Demo Winery assistant turn, then read rows back with `runAsTenant("org_demo_winery", …)`.
+   That closes the last gap between "deployed" and "working".
+2. **Measure turn latency** — the plan's own gate on whether the hot-path write earns its place. If it
+   regressed, backing Unit 1a out is the designed response, not a failure.
+3. Capture the `ASSISTANT_EVAL=1` baseline (`npm run eval:assistant`) — Unit 3 is blocked without it.
 
 **Unit 1a — `assistant_tool_call`, written BEFORE dispatch, batched ONE `createMany` per MODEL TURN**
 (at `run.ts` where `toolUses` is already the batch — per-call writes were the obvious version and the
