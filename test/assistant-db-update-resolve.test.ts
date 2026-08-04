@@ -50,6 +50,9 @@ const fakeEntity = {
 vi.mock("@/lib/assistant/entities", () => ({
   getEntity: (n: string) => (n?.toLowerCase() === "vineyardblock" ? fakeEntity : null),
   allowedEntityNames: () => ["VineyardBlock"],
+  // Plan 107 Unit 4: db-update evaluates these AT MODULE INIT for its inputSchema enum.
+  editableEntityNames: () => ["VineyardBlock"],
+  isEditable: () => true,
 }));
 
 import { dbUpdateTool } from "@/lib/assistant/tools/db-update";

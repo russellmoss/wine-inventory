@@ -768,3 +768,60 @@ export function getEntity(name: string): EntityConfig | null {
 export function allowedEntityNames(): string[] {
   return Object.keys(ENTITIES);
 }
+
+// ── Capability predicates (plan 107 Unit 4) ─────────────────────────────────
+// ONE definition per capability, used by BOTH the db_* tools' runtime guard AND the JSON-Schema
+// `enum` they advertise. Defined here rather than inline in each tool so the two can never drift:
+// an enum that advertises an entity the guard rejects is a tool that fails after the model commits
+// to it, which costs a round-trip and reads to the model as a broken capability.
+//
+// Deliberately property-truthiness, matching what the guards have always checked. Do NOT "simplify"
+// these to `fields.length > 0` — `fields` is the table `creatable`/`editable` are DERIVED from, not
+// the capability itself, and an entity can carry fields while lacking a `create`/`update` impl.
+
+// These are TYPE GUARDS, not plain booleans. The guards they replace were inline property checks
+// (`!entity.creatable || !entity.buildCreate || !entity.create`) which TypeScript used to NARROW the
+// optional members for the code after them. A `boolean`-returning helper silently drops that
+// narrowing and every downstream `entity.create(...)` becomes a possibly-undefined error. Returning
+// `e is CreatableEntity` keeps the call sites type-safe AND keeps one definition of the capability.
+
+/** An entity with the full create triad present. */
+export type CreatableEntity = EntityConfig & Required<Pick<EntityConfig, "creatable" | "buildCreate" | "create">>;
+/** An entity with the full update triad present. */
+export type EditableEntity = EntityConfig & Required<Pick<EntityConfig, "editable" | "update" | "current">>;
+
+/** Every registered entity can be searched (db_find) — the guard is existence alone. */
+export function isFindable(e: EntityConfig): boolean {
+  return Boolean(e);
+}
+/** db_create additionally needs the field spec, the pre-tx assembler, and the in-tx insert. */
+export function isCreatable(e: EntityConfig): e is CreatableEntity {
+  return Boolean(e.creatable && e.buildCreate && e.create);
+}
+/** db_update additionally needs the editable spec, the in-tx update, and a current-values reader. */
+export function isEditable(e: EntityConfig): e is EditableEntity {
+  return Boolean(e.editable && e.update && e.current);
+}
+/** db_delete's guard is existence alone (`del` is required on every EntityConfig). */
+export function isDeletable(e: EntityConfig): boolean {
+  return Boolean(e.del);
+}
+
+function namesWhere(pred: (e: EntityConfig) => boolean): string[] {
+  return Object.keys(ENTITIES).filter((k) => pred(ENTITIES[k]));
+}
+
+/** Entity names each db_* tool actually accepts. Sync + request-independent, so these are safe to
+ *  evaluate at module init to build an `inputSchema.enum`. */
+export function findableEntityNames(): string[] {
+  return namesWhere(isFindable);
+}
+export function creatableEntityNames(): string[] {
+  return namesWhere(isCreatable);
+}
+export function editableEntityNames(): string[] {
+  return namesWhere(isEditable);
+}
+export function deletableEntityNames(): string[] {
+  return namesWhere(isDeletable);
+}

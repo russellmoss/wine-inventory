@@ -1,6 +1,6 @@
 import "server-only";
 import type { AssistantTool } from "../registry";
-import { getEntity, allowedEntityNames } from "../entities";
+import { getEntity, findableEntityNames } from "../entities";
 
 type DbFindInput = { entity?: string; query?: string };
 
@@ -12,7 +12,10 @@ export const dbFindTool: AssistantTool = {
   inputSchema: {
     type: "object",
     properties: {
-      entity: { type: "string", description: "Entity type, e.g. 'VineyardBlock'." },
+      // Plan 107 Unit 4: enumerate rather than describe. A bare string made a wrong entity a
+      // recoverable-after-failure round-trip; the enum makes it unreachable. The runtime guard below
+      // STAYS — a model can still emit an out-of-enum value, and its error message is the backstop.
+      entity: { type: "string", enum: findableEntityNames(), description: "Entity type." },
       query: { type: "string", description: "Search text, e.g. 'Block 2 Bajo' or 'Grenache'." },
     },
     required: ["entity"],
@@ -22,7 +25,7 @@ export const dbFindTool: AssistantTool = {
     const entity = getEntity(input.entity ?? "");
     if (!entity) {
       return {
-        message: `Unknown or protected entity "${input.entity ?? ""}". Allowed: ${allowedEntityNames().join(", ")}.`,
+        message: `Unknown or protected entity "${input.entity ?? ""}". Allowed: ${findableEntityNames().join(", ")}.`,
       };
     }
     const rows = await entity.find(ctx.user, input.query ?? "");

@@ -5,7 +5,7 @@ import { isTenantAdminLike } from "@/lib/access";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal, signResume } from "../confirm";
-import { getEntity, allowedEntityNames } from "../entities";
+import { getEntity, editableEntityNames, isEditable } from "../entities";
 import { validateFields, type ValidatedValues } from "../fields";
 import { resolveOneOrChoice } from "./resolve";
 
@@ -31,7 +31,7 @@ export const dbUpdateTool: AssistantTool = {
   inputSchema: {
     type: "object",
     properties: {
-      entity: { type: "string", description: "Entity type, e.g. 'VineyardBlock'." },
+      entity: { type: "string", enum: editableEntityNames(), description: "Entity type." },
       query: { type: "string", description: "Search text to find the row." },
       id: { type: "string", description: "Exact row id, if known." },
       values: { type: "object", description: "Field names mapped to their new values.", additionalProperties: true },
@@ -41,8 +41,8 @@ export const dbUpdateTool: AssistantTool = {
   async run(ctx, rawInput) {
     const input = (rawInput ?? {}) as DbUpdateInput;
     const entity = getEntity(input.entity ?? "");
-    if (!entity || !entity.editable || !entity.update || !entity.current) {
-      throw new Error(`Cannot edit "${input.entity ?? ""}". Editable entities: ${allowedEntityNames().join(", ")}.`);
+    if (!entity || !isEditable(entity)) {
+      throw new Error(`Cannot edit "${input.entity ?? ""}". Editable entities: ${editableEntityNames().join(", ")}.`);
     }
 
     let row;
