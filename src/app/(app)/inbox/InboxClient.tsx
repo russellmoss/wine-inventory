@@ -59,6 +59,7 @@ export function InboxClient(props: {
   bucket: InboxBucket;
   filter: string | null;
   selectedThreadId: string | null;
+  selectedTicketId: string | null;
   notifications: InboxNotificationDTO[];
   workOrders: MyWorkOrderRow[];
   tickets: MyTicketRow[];
@@ -70,15 +71,20 @@ export function InboxClient(props: {
 }) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
-  const [selected, setSelected] = React.useState<InboxNotificationDTO | MyTicketRow | null>(null);
+  // Preselect the ticket named by the deep link (?ticket=<id>) so a ticket notification's "Open" lands
+  // on the ticket in the reader, not a blank pane. Falls back to null if it isn't in the loaded list.
+  const ticketFromUrl = () =>
+    props.selectedTicketId ? props.tickets.find((t) => t.id === props.selectedTicketId) ?? null : null;
+  const [selected, setSelected] = React.useState<InboxNotificationDTO | MyTicketRow | null>(ticketFromUrl);
 
-  // Reset the reader selection when the bucket/filter changes — React's sanctioned "adjust state during
-  // render" pattern (matches AppShell), not an effect.
-  const viewKey = `${props.bucket}:${props.filter ?? ""}`;
+  // Reset the reader selection when the bucket/filter/deep-linked ticket changes — React's sanctioned
+  // "adjust state during render" pattern (matches AppShell), not an effect. The ticket id is part of the
+  // key so navigating between two ticket deep links re-runs the preselect.
+  const viewKey = `${props.bucket}:${props.filter ?? ""}:${props.selectedTicketId ?? ""}`;
   const [prevViewKey, setPrevViewKey] = React.useState(viewKey);
   if (viewKey !== prevViewKey) {
     setPrevViewKey(viewKey);
-    setSelected(null);
+    setSelected(ticketFromUrl());
   }
 
   const unreadCount = props.notifications.filter((n) => !n.read).length;
