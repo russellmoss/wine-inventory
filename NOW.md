@@ -7,10 +7,13 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-**RECORDED-VOLUME CORRECTION (feedback `cms8a9nau0005i8045l65vomp`) — BUILT + DB-PROVEN, PR OPEN,
-REBASED ONTO `main` @ `5db70812` 2026-08-03.**
-[#571](https://github.com/russellmoss/wine-inventory/pull/571) — CI green (check / review /
-tenant-isolation / GitGuardian), awaiting merge.
+**RECORDED-VOLUME CORRECTION (feedback `cms8a9nau0005i8045l65vomp`) — MERGED AND LIVE IN PRODUCTION
+2026-08-04.** [#571](https://github.com/russellmoss/wine-inventory/pull/571) squash-merged as
+`3de798e8`; main CI green and the Vercel production deploy completed 03:06:57Z.
+
+**Verified on `main`, not inferred from the merge:** all six new files present, and
+`allocateProportionalIncrease` is imported at `src/lib/bulk/actions.ts:13` and called at `:211` — so
+the defect fix reaches the **existing** `/bulk` editor, not only the new `RecordedVolumeEditor`.
 
 Demo Winery barrel B3: a 225 L barrique SEEDed at 100 L. The reporter typed 225 into the `/bulk`
 composition row, nothing happened, and the only path left was a rack/top-up — which moves real wine
@@ -2408,3 +2411,14 @@ one path and nothing else; all 969 lines of feature code auto-merged clean. Reso
 histories and promoting the recorded-volume block to the current objective. Still unmerged, and still
 carrying the `computeProportionalDraw` defect fix — `/bulk`'s volume input has been silently inert for
 increases the whole time it waited._
+
+_Last updated: 2026-08-04 — **recorded-volume correction MERGED AND LIVE**
+([#571](https://github.com/russellmoss/wine-inventory/pull/571) -> `3de798e8`; check / review /
+tenant-isolation / GitGuardian green, Vercel production deploy completed 03:06:57Z). It had been open
+and abandoned since 07-31, unmergeable for 3 days on `NOW.md` alone — the only overlap between its 15
+files and the 21 that #572/#573/#574 touched. Rebased, resolved, merged. **Two loose ends:** (1) the
+feedback ticket `cms8a9nau0005i8045l65vomp` is still unresolved — the write-back needs `triage:resolve`
+from a checkout with `.env`; the `/bug-triage` MERGED SWEEP should reconcile it, since the PR body
+opens with ``Closes feedback `cms8a9nau0005i8045l65vomp` `` and the merge is well inside the 14-day
+window. (2) Barrel B3 is **still recorded at 100 L** — the capability shipped, the reporter's data was
+deliberately not edited._
