@@ -134,10 +134,29 @@ against** — the plan's before/after gate is unenforceable.
 **✅ UNITS 1a + 4 BUILT 2026-08-04** — rebased onto `origin/main` first (`69522112` #581 + `5bc68fcb`).
 `69bdfbc9` Unit 4 · `0a78514d` Unit 1a. Full suite **5768 pass / 0 fail**, tsc clean.
 
-⛔ **THE MIGRATION IS NOT APPLIED.** `prisma/migrations/20260804120000_assistant_tool_call/` is
-authored and committed but has touched NO database. Apply it on a disposable Neon branch first and
-let the self-verify `DO` block run — that block is exactly what caught the grant mistake on
-`latent_infection_event`. **No rows will be logged until it lands.**
+✅ **MIGRATION PROVEN ON A NEON BRANCH 2026-08-04 — still NOT applied to prod.**
+Branch `br-hidden-forest-atkzcez4` (`plan107-assistant-tool-call-test`), forked from prod's default
+branch, auto-expires **2026-08-06**. Pre-state confirmed a faithful fork: 186 migrations applied,
+table absent. `prisma migrate deploy` applied `20260804120000_assistant_tool_call` cleanly — so the
+self-verify `DO` block passed, since it RAISEs on any drift.
+
+**Structure verified:** 9 columns · RLS `relrowsecurity` AND `relforcerowsecurity` both true ·
+`tenant_isolation` with **both** `qual` (USING) and `with_check` non-null · FK `confdeltype = 'r'`
+(RESTRICT) · 3 indexes · 2 append-only triggers · and the load-bearing one —
+**`app_rls` holds `INSERT,SELECT` and nothing else**, so the REVOKE actually beat the
+`ALTER DEFAULT PRIVILEGES` grant.
+
+**BEHAVIOUR verified as `app_rls` (via `SET LOCAL ROLE`, so NOBYPASSRLS really applies), 6/6:**
+own-tenant insert+readback · WITH CHECK refuses writing another tenant's row · tenant B cannot see
+tenant A's row · **unset GUC fails closed (0 rows)** · UPDATE refused · DELETE refused.
+🦷 **Proven non-vacuous:** the same harness with a deliberately false premise RAISED
+(`saw 1 rows, demanded 999`). A `DO` block that silently passes proves nothing; this one bites.
+
+⚠️ **Two things about that branch:** I ran `GRANT app_rls TO CURRENT_USER` on it so the owner could
+assume the app role — **do not promote or reuse this branch** expecting a clean role posture. It also
+carries one test row (`zz_atc_a`). Both are confined to the disposable branch; prod is untouched.
+
+⛔ **PROD IS UNCHANGED. No rows will be logged until the migration is deployed there.**
 
 **Unit 1a — `assistant_tool_call`, written BEFORE dispatch, batched ONE `createMany` per MODEL TURN**
 (at `run.ts` where `toolUses` is already the batch — per-call writes were the obvious version and the
