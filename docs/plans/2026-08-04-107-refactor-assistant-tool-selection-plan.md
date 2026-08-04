@@ -5,7 +5,7 @@ status: draft
 date: 2026-08-04
 branch: refactor/assistant-tool-selection
 depth: standard
-units: 5
+units: 6
 council: docs/plans/council-feedback-107-assistant-tool-selection.md
 ---
 
@@ -19,6 +19,13 @@ council: docs/plans/council-feedback-107-assistant-tool-selection.md
 > `docs/plans/council-feedback-107-assistant-tool-selection.md`.
 >
 > **Unit 0 is BUILT** (commit `44af9425`); its live baseline is still uncaptured.
+>
+> **Owner decision 2026-08-04: forward instrumentation.** Old Unit 1 (mine the existing trace) is
+> replaced by **Unit 1a** (an append-only `assistant_tool_call` event written before dispatch) and
+> **Unit 1b** (the report over it). This re-introduces the tenant-scoped table + migration the plan had
+> been pleased to avoid — on evidence this time, not assumption. It also makes Unit 1b **time-gated**:
+> the report is worthless until the instrumented window is long enough to read, so it is the LAST unit,
+> not the next one.
 
 ## Overview
 
@@ -170,40 +177,123 @@ is measured against.
 **Verification:** `ASSISTANT_EVAL=1 npm run eval:assistant` before and after; both numbers recorded in
 the PR body. `npx vitest run` green.
 
-### Unit 1: Measure tool usage from data that already exists
+### Unit 1a: Instrument tool dispatch — an append-only attempt event
 
-**Goal:** A repeatable, read-only report of which of the 96 tools are actually invoked, by how many
-distinct people, over what window — covering reads and writes.
+> **Owner decision 2026-08-04: go with forward instrumentation.** The alternative (mine the existing
+> trace) was costed and rejected because its output cannot do the job it exists for — see the loss
+> analysis below. This unit re-introduces the tenant-scoped table the plan was originally pleased to
+> have avoided, but now on evidence rather than assumption.
+
+**Goal:** Every tool dispatch produces a durable row BEFORE the tool runs, so the count survives a
+timeout, an error, a swallowed write, and the 40-call trace cap.
+**Files:** `prisma/schema.prisma`, `prisma/migrations/<ts>_assistant_tool_call/migration.sql`,
+`src/lib/assistant/tool-log.ts` (new), `src/lib/assistant/run.ts`,
+`scripts/verify-tenant-isolation.ts`, `test/tenant-isolation.test.ts`
+
+**Model — `AssistantToolCall` / `assistant_tool_call`.** Mirror `CalculationLog`
+(`prisma/schema.prisma:5413`), which is the closest structural precedent: tenant-scoped, append-only,
+`userId` + `userEmail` snapshot FK-free by design so the row survives a user rename/delete.
+Fields: `tenantId`, `id`, `conversationId` (plain string, NOT an FK — an FK would make a logging miss
+break the chat, and a cascade delete would silently rewrite history), `userId`, `userEmail`,
+`toolName`, `toolKind` (`read`/`write`), `modelTurn` (int — which model turn inside the user turn),
+`createdAt`. Indexes `@@index([tenantId, createdAt])` and `@@index([tenantId, toolName, createdAt])`.
+
+⛔ **NO ARGUMENTS, NO RESULTS, NO UTTERANCE TEXT.** This is the PII boundary and it is structural: the
+table has no column that could hold free text from a user. `sanitizeTraceValue` redacts by key *name*
+only, so anything argument-shaped can carry a person's name — which is exactly why the existing trace
+is unsafe to aggregate directly. Add a schema test in the style of `test/commerce7-schema.test.ts`
+that FAILS if a PII-capable column is ever added here.
+
+**Where the write goes — batched per model turn, not per tool call.** `src/lib/assistant/run.ts:204`
+already collects `toolUses` as an array and then loops. Insert ONE awaited `createMany` immediately
+before `for (const tu of toolUses)`. That gives before-dispatch durability at **one write per model
+turn** (typically 1–3 per user turn) rather than one per tool call, which matters because this is a hot
+path that is already hitting a serverless ceiling. `MAX_TOOL_CALLS = 40` does not apply — this is not
+the trace.
+
+**Follow `logCalculation` (`src/lib/winemaking-calc/log.ts:39`) exactly**, including its two gotchas:
+- ⚠️ **TENANT-3:** `await` INSIDE the `runAsTenant` callback. A non-async callback returns a lazy
+  `PrismaPromise` that executes after the ALS context has already exited, and the write lands on the
+  wrong tenant. This is a closed bug (#531) that will re-open if the pattern is copied carelessly.
+- **Best-effort, wrapped in try/catch, and it must NEVER break a chat turn.** No tenant → skip silently.
+  A logging miss is acceptable; a failed answer is not. Note the honest consequence: this makes the new
+  table best-effort too — but it removes the whole-turn, timeout, and 40-cap losses, which are the ones
+  that made the old data unusable.
+
+**Migration — the full Phase-12 checklist, plus the append-only posture.** Copy
+`prisma/migrations/20260728100100_latent_infection_event/migration.sql`: `tenantId` + index + FK to
+`organization(id)` ON DELETE RESTRICT, `ENABLE` + `FORCE ROW LEVEL SECURITY`, a `tenant_isolation`
+policy with USING **and** WITH CHECK on `current_setting('app.tenant_id', true)`, and — load-bearing —
+`GRANT SELECT, INSERT` followed by **`REVOKE UPDATE, DELETE, TRUNCATE … FROM app_rls`**. The
+`..._app_rls_role` migration's `ALTER DEFAULT PRIVILEGES` means a new table arrives with full DML
+already granted, so a bare GRANT changes nothing. Close with the same `DO $$ … $$` self-verify block
+that raises if RLS, the policy, or the grant posture drifts.
+✅ **Step 3 of the checklist (backfill-then-enforce) is vacuous here** — a brand-new table has no rows,
+so `NOT NULL` can be set at creation. This is the one easy case of the live-tenant rule.
+
+**Tests:** a case in `scripts/verify-tenant-isolation.ts` + `test/tenant-isolation.test.ts`; the
+no-PII-column schema test; a unit test that the batch write happens BEFORE dispatch (assert ordering,
+not just occurrence); and a test that a thrown logging error does not fail the turn.
+**Depends on:** none
+**Verification:** `npm run verify:tenant-isolation` includes the new table; a live Demo Winery chat turn
+produces rows readable via `runAsTenant("org_demo_winery", …)`; and a deliberately-thrown logging error
+still returns a normal answer.
+
+### Unit 1b: Report over the instrumented data
+
+**Goal:** The artifact that later prune decisions actually cite.
 **Files:** `scripts/measure-assistant-tool-usage.ts`, `package.json` (add `measure:assistant-tools`),
 `docs/architecture/assistant-tool-usage.md` (generated artifact)
-**Approach:** Two aggregations behind one `runAsSystem` entry point, since this is deliberately
-cross-tenant. (a) Unnest `assistant_message.metadata->'trace'->'toolCalls'` and count by `->>'name'`,
-with distinct-conversation and distinct-owner counts and first/last-seen timestamps. (b) Group
-`assistant_confirmation` by tool. Join both against `ALL_TOOLS` from the registry so tools with **zero**
-invocations appear as explicit zero rows — the zeros are the finding. Keep the aggregation logic in a
-pure exported function so it can be unit-tested without a database.
-**⛔ WHAT THIS MEASUREMENT MAY AND MAY NOT BE USED FOR (Codex C-1 — read before writing the query).**
-The trace is a **survivorship-biased lower bound**, from three independent, same-direction losses:
-1. **Whole-turn loss.** The row is written only after the entire run, best-effort, inside nested
-   try/catch. A run killed at the serverless ceiling contributes **zero** rows even if it executed ten
-   tools (`route.ts:169-190`; PR #581 exists because turns exceed 60s, and a KB-heavy turn measured 79s).
-   Also lost: no `conversationId`, and any swallowed `appendMessage` failure.
+**Approach:** Group `assistant_tool_call` by `toolName` behind one `runAsSystem` entry point
+(deliberately cross-tenant; verified correct at `src/lib/tenant/system.ts:23` — a separate client on
+`DATABASE_URL_UNPOOLED`, Neon owner, `BYPASSRLS`, un-extended). Bucket by month. Join against
+`ALL_TOOLS` from the registry so zero-invocation tools appear as explicit zero rows — **now the zeros
+mean something.** Keep `assistant_confirmation` as a SECOND, separately-reported metric (never summed —
+a write tool appears in both). Keep an "unknown/retired" bucket for names absent from today's registry.
+Aggregation logic in a pure exported function, unit-testable without a database.
+**The legacy trace is a caveated historical annex, not the primary source.** If it is reported at all,
+it goes in its own clearly-labelled section carrying the loss analysis below verbatim.
+**Depends on:** Unit 1a — **and on elapsed time.** This report is worthless until the instrumented
+window is long enough to be read (see the seasonality note); it is the last thing to run, not the next.
+**⛔ WHY WE INSTRUMENT INSTEAD OF MINING (Codex C-1) — and the caveat the legacy annex must carry.**
+The existing trace is a **survivorship-biased lower bound**, from three independent, same-direction
+losses. Unit 1a removes all three at the source; this analysis stays here as the justification for
+building it, and must be reproduced verbatim on any report that touches historical trace data:
+1. **Whole-turn loss — ⚠️ NOW ONLY PARTIAL. PR #581 MERGED and shrank this.** Re-checked against
+   `origin/main` 2026-08-04 after #581 landed. It added a **soft deadline**
+   (`run.ts:197`, `hasRoomForAnotherRoundTrip`): the loop breaks with `stopReason = "deadline"`, so
+   `runAssistant` returns *normally* and the append still happens. Its own comment names the exact
+   failure — *"Vercel kills the function mid-stream, so this catch never runs, no row is persisted and
+   nothing reaches Sentry."*
+   **What survives:** the deadline is a heuristic, and by design it **never gates the first
+   round-trip**, so one very long first round-trip can still be killed outright. Plus `appendMessage`
+   throwing (swallowed at `route.ts:191`) and a missing `conversationId`. The write is still
+   after-the-run rather than before-dispatch, which is a categorically weaker guarantee.
+   **Be honest about the consequence: this was the headline argument for instrumenting, and it is now
+   the weakest of the three.**
 2. **Per-turn truncation.** `trace.ts:80` — `pushToolTrace` returns silently once `MAX_TOOL_CALLS = 40`
    is reached. A persisted turn can still be missing calls.
 3. **No denominator.** Attempted turns are not persisted anywhere, so the undercount cannot even be
    estimated.
 
 All three bias against long, KB-heavy, multi-tool turns — which is exactly where routing confusion
-lives. Therefore:
+lives. For **historical** trace data that remains permanently true:
 - ✅ **VALID:** "these tools are definitely used" (positive signal), relative ordering among
   frequently-used tools, and `db_find` fallback evidence.
-- ⛔ **INVALID: a zero is not evidence of disuse, and this artifact MUST NOT be cited to delete a
-  tool.** That was the original stated purpose; it does not survive. Deletion-grade data needs a
-  forward-looking, awaited, append-only tool-attempt event written **before** dispatch — a separate
-  decision with a real cost (it is the tenant-scoped table this plan was pleased to avoid), and
-  historical data cannot be repaired retroactively.
+- ⛔ **INVALID:** a zero is not evidence of disuse. History cannot be repaired retroactively, so the
+  pre-instrumentation window is never deletion-grade no matter how long we wait.
 
-The artifact must state all of this in its own header, not only here.
+Unit 1a fixes all three going forward: written **before** dispatch, not subject to the 40-call cap, and
+rows-per-turn give a usable denominator. It remains best-effort at the try/catch level — a deliberate,
+stated trade, because a logging miss must never break a chat answer.
+
+**⚖️ The case for Unit 1a AFTER #581 landed, stated fairly.** Loss #1 shrank from "total" to "partial",
+so the strongest remaining arguments are #2 (the 40-call cap, untouched by #581), #3 (no denominator,
+untouched), and the categorical point that before-dispatch beats after-the-run. That is still a real
+case — a capped, denominator-less signal cannot retire a tool — but it is a **narrower** case than the
+one the owner said yes to, and the honest read is that #581 already bought a meaningful share of the
+benefit for free. If the batching measurement in Unit 1a shows any turn-latency regression, revisit
+whether the remaining delta is worth a hot-path write at all. Recorded so this is a decision, not drift.
 
 **Seasonality (council C2 — this is what makes the artifact safe to cite later).** Wine work is violently
 seasonal: a window that does not span a full cycle shows zero calls for harvest, ferment and frost tooling
@@ -223,7 +313,9 @@ emails, no user ids, no utterance text.
 `metadata` is null, one whose `trace.toolCalls` is `[]`, one whose shape is malformed, and one spanning a
 month boundary (to pin the bucketing).
 **Depends on:** none
-**SQL requirements (Codex S-1, C-4 — these are not optional).**
+**SQL requirements (Codex S-1, C-4 — these are not optional).** The `jsonb` expansion rules apply ONLY
+to the legacy-trace historical annex; the primary report reads flat columns off `assistant_tool_call`
+and needs none of it. The `bigint`, PII-projection and `runAsSystem` rules apply to **both**.
 - Expand shape-safely; the column is `jsonb` (Prisma `Json` → `jsonb`) so no cast is needed, but the
   array is not guaranteed to exist or be an array:
   `CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(am.metadata->'trace'->'toolCalls')='array' THEN am.metadata->'trace'->'toolCalls' ELSE '[]'::jsonb END) AS call`
@@ -352,6 +444,11 @@ disease anywhere" → both `query_spray_decision` and `query_field_reports`.
 | PII leaks into the committed usage artifact | LOW | HIGH | Artifact carries counts only, no emails/ids/utterances; stated in Unit 1 |
 | Prompt-cache bust from editing `prompt.ts` | HIGH | LOW | One-time re-cache. The file's own comment flags cache-friendliness as the reason wording is stable; accepted cost |
 | Measurement window is too short to be meaningful (single-winery volume) | MED | MED | Report first/last-seen and total turn count alongside; if the sample is thin, say so in the artifact rather than pruning on it |
+| **Unit 1a adds an awaited DB write to the assistant hot path, which is already hitting a serverless ceiling** | MED | HIGH | Batched to ONE `createMany` per MODEL TURN (not per tool call) at `run.ts:204`, so typically 1–3 writes per user turn. `logCalculation` already does an awaited per-call write on the same path, so the precedent exists. Measure turn latency before/after on Demo Winery; if it regresses, move to fire-and-forget and accept a weaker guarantee |
+| **Unit 1a edits `run.ts`, which PR #581 also edited — #581 is MERGED and this branch is 2 commits behind** | HIGH | MED | ✅ Collision resolved by the merge, but `claude/upbeat-vaughan-4c914c` does **not** yet contain #581's `run.ts` (+38) / `route.ts` (+25). **Rebase onto `origin/main` BEFORE writing Unit 1a**, or the insertion point at `run.ts:204` is wrong and the deadline logic gets clobbered. This is the #571 lesson: rebase early, do not let a stale branch age |
+| A logging failure breaks a chat turn | LOW | HIGH | try/catch swallow + no-tenant skip, copied verbatim from `logCalculation`; an explicit test throws from the logger and asserts the turn still answers |
+| TENANT-3 lazy-`PrismaPromise`: the write lands on the wrong tenant | MED | HIGH | `await` INSIDE the `runAsTenant` callback (closed bug #531). The tenant-isolation test case is the guard |
+| A future edit adds an argument/result column and quietly makes the table a PII store | MED | HIGH | Schema test in the style of `test/commerce7-schema.test.ts` fails on any PII-capable column |
 | A future reader cites the usage artifact to prune a **seasonal** tool that is simply out of season | MED | HIGH | Unit 1 buckets by month, declares its trace span, and stamps `seasonal: protected` under a 12-month window. This is the single most dangerous downstream misuse of this plan's output |
 | Unit 0 moves the eval pass rate on its own, so the "before" number is not comparable to history | HIGH | LOW | Expected and intended — the model is newly seeing ten rules it never had. Record it as a new baseline, do not compare across the Unit 0 boundary |
 | A rule is misclassified as boundary when it is really composition, and gets moved | LOW | HIGH | The boundary-vs-composition test is written into the unit; the only known composition rule is named explicitly and excluded. Any future rule move must state its classification in the PR |
@@ -362,7 +459,13 @@ disease anywhere" → both `query_spray_decision` and `query_field_reports`.
 - [ ] `npm run measure:assistant-tools` produces a 96-row table, every registry tool represented, zeros explicit
 - [ ] The usage artifact buckets by month, declares its trace span, and stamps `seasonal: protected` if that span is under 12 months
 - [ ] The usage artifact reports `db_find`/`db_create` fallback counts so a zero can be read correctly
-- [ ] The artifact's own header states the three loss sources and says in terms that **a zero is not evidence of disuse and must not be cited to delete a tool**
+- [ ] `assistant_tool_call` exists with RLS ENABLE+FORCE, a `tenant_isolation` policy with USING **and** WITH CHECK, an FK to `organization(id)` ON DELETE RESTRICT, and **`REVOKE UPDATE, DELETE, TRUNCATE` FROM app_rls** (a bare GRANT is not enough)
+- [ ] The table has **no column capable of holding user free text**, enforced by a schema test
+- [ ] The attempt row is written **before** dispatch, batched per model turn, and proven by an ordering assertion — not merely "a row exists"
+- [ ] A thrown logging error still returns a normal chat answer (explicit test)
+- [ ] `npm run verify:tenant-isolation` covers the new table
+- [ ] Demo Winery turn latency measured before/after Unit 1a, and recorded
+- [ ] Any report over the LEGACY trace carries the three-loss caveat verbatim and is labelled a historical annex
 - [ ] Trace counts and `assistant_confirmation` counts are reported as two separate metrics, never summed
 - [ ] `bigint` counts are normalized before serialization (a `JSON.stringify` of a raw `COUNT` throws)
 - [ ] The SQL projects only name/bucket/counts/extrema — raw `metadata` never reaches the pure function
