@@ -230,12 +230,11 @@ export async function runAssistant(opts: {
         // Batched as ONE createMany per MODEL TURN rather than per tool call, because this is a hot
         // path — `toolUses` is already the batch, so the durability costs one round-trip, not N.
         // Awaited on purpose: fire-and-forget would reintroduce the loss this unit exists to remove.
-        // It can never throw (see tool-log.ts), so it cannot break the turn.
         //
-        // Wrapped AGAIN here even though tool-log.ts already swallows everything. This call sits
-        // inside the loop's outer try, so anything that escapes the logger would be caught as a RUN
-        // failure and kill the user's answer — the loop must not depend on another module keeping
-        // its promise. A test asserts the turn still answers when the logger throws.
+        // tool-log.ts already swallows its own failures, and this is wrapped ANYWAY. The call sits
+        // inside the loop's outer try, so anything that did escape the logger would be caught as a
+        // RUN failure and cost the user their answer. The loop must not depend on another module
+        // keeping that promise. A test throws from the logger and asserts the answer still arrives.
         try {
           await logToolDispatch({
             user,
