@@ -7,6 +7,50 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+**P0 "USE OF ASSISTANT" — TWO DEFECTS FIXED AND LIVE. THE REPORTED ROOT CAUSE IS STILL UNKNOWN, AND
+IS NOW INSTRUMENTED.** [#581](https://github.com/russellmoss/wine-inventory/pull/581) squash-merged
+as `69522112`; main CI green, Vercel production deploy completed 17:34:37Z.
+
+⛔ **Say it plainly: the reported bug is NOT fixed and ticket `cmsdy4uom0006jp04iav07edp` stays OPEN.**
+What shipped is the reason it could not be diagnosed, plus a second real defect found on the way. The
+ticket id was deliberately kept OUT of the PR body so `/bug-triage`'s merged sweep cannot auto-resolve
+it — closing it would be a lie.
+
+**Defect 1 — assistant failures recorded NOTHING server-side.** `run.ts:399` catches its own errors,
+emits the message to the user and returns normally; the route's catch was bare. Neither captured to
+Sentry or logged. A turn that dies before producing text or a tool call also persists no assistant
+row (the route's `run.text.trim() || hasToolEvidence` gate), so its only trace was an **absence** — a
+`user` row in `assistant_message` with no reply after it. That is how a P0 reached triage with no
+error text for anyone to act on. Both catches now `captureException` + `console.error` with the
+conversation, user, turn count and message count.
+
+**Defect 2 — `maxDuration` was 60s and overran SILENTLY.** Measured against the live API: a knowledge
+question making 3 `search_knowledge_base` calls took **79.2s**; every request carries ~97 tool schemas
+so even a no-tool reply costs 9–33s. Past the ceiling Vercel kills the function mid-stream — the catch
+never runs, no row is written, nothing reaches Sentry. Raised to 300 (what the cron routes already
+deploy on this plan) plus a **soft deadline** (`src/lib/assistant/deadline.ts`): the loop stops itself
+before the platform does and tells the user the answer was cut short. The regression guard asserts
+`maxDuration` still exceeds the budget — it FAILS at 60 and passes at 300.
+
+**Three hypotheses were tested and falsified, by evidence not argument:** orphaned `tool_use` (0
+orphans across the real 242 rows), consecutive user messages 400ing (the live API accepts
+`[user,user,user,user]` — the comment at `replay.ts:135` is STALE), and the timeout as *Mike's* cause
+(his `debugContext.interactionTrail` shows Send → **+13.1s** → "Report bug", far too fast, and his
+exact turns replay fine today).
+
+**➡️ NEXT ACTION: watch Sentry for `area: assistant`.** Mike's next message should now land a real
+tagged exception with turn count and conversation id. That is the diagnosis today could not get.
+
+⚠️ **The DB signature is the detector until then** — `user_msgs > asst_msgs` per user/day over
+`assistant_message` finds every silent failure with no logging at all. It is how this was found.
+
+**Triage backlog (from the 2026-08-04 run) — item 1 of 3 now actioned.** Remaining: `/plan` the
+vessel+location family as ONE plan (`cmsdhvzg2…` → `cmsdxp0vl…` → `cmsdxnlfq…`, NOT parallel-safe —
+one `prisma/schema.prisma`), then `/plan` the depreciation engine (`cmsdk30d8…`, straight-line + ONE
+book; must reconcile with the EXISTING auto barrel depreciation or double-book the expense).
+
+---
+
 **BUG-TRIAGE RUN COMPLETE 2026-08-04 — AND THE ANSWER IS: THERE IS NOTHING TO BUILD.** Live run
 (autoMerge + dispatch + reconcile + all three sweeps), 11 agents, 0 errors, `mode.argsWarning: null`.
 Runbook at `TRIAGE-RUNBOOK.md` (untracked — regenerated every run, local edits are ephemeral).
@@ -2471,3 +2515,13 @@ engine takes the AAAA answer and gives up where every Happy-Eyeballs tool silent
 `.env` in the worktree the session was rooted in, and 2,095 CRs in `.claude/workflows/bug-triage.js`
 (the `eol=lf` pin only applies at checkout, so an already-checked-out copy stays CRLF and the Workflow
 approval dialog refuses it)._
+
+_Last updated: 2026-08-04 (later still) — **P0 assistant investigation: two defects fixed and live,
+reported root cause still open** ([#581](https://github.com/russellmoss/wine-inventory/pull/581) ->
+`69522112`; check / review / tenant-isolation / GitGuardian green, Vercel production deploy completed
+17:34:37Z). Shipped: Sentry capture on BOTH assistant catch sites, `maxDuration` 60 -> 300, and a soft
+deadline that winds the tool loop up before the platform kills it. Ticket `cmsdy4uom0006jp04iav07edp`
+stays OPEN on purpose. Two lessons worth keeping: (1) **an error path that logs nothing is itself the
+P0** — same shape as the OAuth/Sentry finding on 08-02, twice in one week; (2) **an `assistant-fix/*`
+or `claude/*` branch gets NO Vercel preview** — `vercel.json`'s `ignoreCommand` exits 0 for exactly
+those patterns and exit 0 means SKIP, so those branches are verifiable only after landing on main._
