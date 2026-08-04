@@ -7,6 +7,9 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+> **Two threads are open.** The P0 assistant ticket below is WAITING ON EVIDENCE (Sentry), not on
+> work. The thing actively being BUILT is **plan 107** (assistant tool surface) — scroll to it.
+
 **P0 "USE OF ASSISTANT" — TWO DEFECTS FIXED AND LIVE. THE REPORTED ROOT CAUSE IS STILL UNKNOWN, AND
 IS NOW INSTRUMENTED.** [#581](https://github.com/russellmoss/wine-inventory/pull/581) squash-merged
 as `69522112`; main CI green, Vercel production deploy completed 17:34:37Z.
@@ -50,6 +53,141 @@ one `prisma/schema.prisma`), then `/plan` the depreciation engine (`cmsdk30d8…
 book; must reconcile with the EXISTING auto barrel depreciation or double-book the expense).
 
 ---
+
+**PLAN 107 DRAFTED + COUNCIL-REVIEWED 2026-08-04 — the assistant tool surface. Not yet built, not yet
+PR'd.** Plan: `docs/plans/2026-08-04-107-refactor-assistant-tool-selection-plan.md` · council:
+`docs/plans/council-feedback-107-assistant-tool-selection.md`. Also amended `docs/api-strategy.md`.
+
+**The finding that started it:** the registry is at **96 tools in one flat list**, against the ~40-tool
+selection cliff `scripts/ai-native-allowlist.mjs` names itself. Ten hand-written routing rules in
+`src/lib/assistant/prompt.ts` are compensating for it. `verify:ai-native` (41/53 cores reachable,
+ratcheting allow-list) is genuinely strong; what is missing is a surface an LLM can navigate without
+being told in prose. There is also **no MCP server, no OpenAPI, no llms.txt** — every `src/app/api/**`
+route is plumbing (cron, webhooks, OAuth, uploads), so no external agent can reach the app at all.
+
+**Two research findings corrected the plan's own premises — do NOT re-derive:**
+1. **Read-side tool calls are ALREADY persisted.** `src/app/api/assistant/route.ts:179` writes
+   `metadata: { trace: run.trace }` on every assistant row, and `trace.toolCalls` already carries
+   `{ id, name, input, resultPreview, resultKind }`. The usage question is a query, not a build. This
+   deleted a whole unit (new table + Phase 12 nine-step checklist + migration).
+2. **The tool-selection evals do NOT use the real system prompt.** `assistant-tools.eval.test.ts:159-161`
+   builds a hardcoded 2-sentence string, so **the ten routing rules have zero eval coverage today**. And
+   only the *structural* half of the evals is PR-gated — the live-model half is nightly,
+   `continue-on-error`, opens an issue. "Golden evals are a hard CI gate" is half true: coverage is
+   gated, behaviour is not.
+
+**Council (Gemini) landed one finding that changes the design, not just the plan:** a **composition**
+rule ("consult BOTH the latent-infection tracker AND the scouted field reports") **cannot** live in a
+tool description — a description is read to answer "should I call this one?", never "what else do I
+owe?". Split across two tools, a model answers "no disease recorded" from one source, which is wrong in
+the one direction that costs a crop. **Boundary rules may move; composition rules stay in the prompt.**
+That rule is now written into `docs/api-strategy.md` as a **prerequisite of Phase 10/MCP**, because an
+external MCP client supplies its own system prompt and never receives ours.
+
+✅ **CODEX RAN 2026-08-04 — the council is now complete, and it changed what Unit 1 is FOR.**
+**`council-mcp` is the broken part, not Codex.** The wrapper asks for `gpt-5.4`/`gpt-5.4-mini` (absent on
+this install) and spawns Codex through a sandbox that dies on `CreateProcessWithLogonW: 1907`
+(`ERROR_PASSWORD_MUST_CHANGE`). `codex exec -s read-only` **from Bash works fine** — but Codex cannot
+spawn a local shell here, so it cannot read repo files itself. **The workaround that worked: inline every
+excerpt into the prompt and tell it to run no commands.** Use that for any future `/council` on this box.
+
+⛔ **Codex's headline: Unit 1's artifact CANNOT be used to delete a tool** — which was its original
+purpose. The trace is a survivorship-biased lower bound from THREE same-direction losses:
+1. **Whole-turn loss** — the row is written only after the whole run, best-effort, in nested try/catch.
+   A run killed at the serverless ceiling contributes **zero** rows despite executing N tools. (This is
+   what open PR #581 is about; a KB-heavy turn measured 79s against a 60s cap.)
+2. **`MAX_TOOL_CALLS = 40`** at `src/lib/assistant/trace.ts:80` — `pushToolTrace` silently returns past
+   40, so even a persisted turn can be truncated. *(Found by me, not Codex — it had no shell.)*
+3. **No denominator** — attempted turns are persisted nowhere, so the undercount can't be estimated.
+
+All three bias against long multi-tool turns, which is exactly where routing confusion lives. Unit 1
+survives as a **positive-usage signal only**; deletion-grade data needs forward instrumentation (an
+awaited append-only event before dispatch — the tenant-scoped table this plan was glad to avoid) and
+history cannot be repaired.
+
+Also from Codex, all folded in: `COUNT` returns `bigint` and `JSON.stringify` throws on it; the
+shape-safe `jsonb_typeof` expansion; PII must be guarded in the SQL projection because
+`sanitizeTraceValue` redacts by key NAME only; the `vi.mock` break is *"not a function"*, not a stale
+value; and `db_create`/`db_update` error text already advertises all 8 entities as creatable/editable —
+a pre-existing bug now in Unit 4's scope.
+✅ **`runAsSystem` verified CORRECT** (`src/lib/tenant/system.ts:23` — separate client on
+`DATABASE_URL_UNPOOLED`, Neon owner, `BYPASSRLS`, un-extended). Codex flagged it; it's fine.
+⚠️ **Still open (Codex C-2):** `assistant_confirmation`'s lifecycle is unverified — confirm its
+executed/succeeded status and dedup key before grouping it.
+
+**✅ UNIT 0 BUILT + COMMITTED `44af9425`** (docs in `0d164e2c`). Both LLM eval halves now call
+`buildSystemPrompt()` instead of a hardcoded stub, so the ten routing rules are under test for the first
+time. Structural half — the PR-gated half — green: **231 passed, 178 skipped**. tsc clean on the changed
+files (the only errors repo-wide are pre-existing `@axe-core/playwright` module-resolution failures in
+`test/e2e/`, untouched by this change).
+
+⚠️ **The fleet eval deliberately LOST a hint production never had** — *"a request to RECORD/ADD a concrete
+dose is a write action; a request to CALCULATE how much to add is a read calculation."* A green fleet eval
+was therefore partly measuring the harness. If calculate-vs-dose now fails, fix `prompt.ts` or the
+`calc_*`/`add_addition` descriptions — **do NOT re-add the hint to the test.**
+
+⛔ **Unit 0 is NOT fully verified: the live baseline was never captured.** It costs real tokens on the
+owner's key and this worktree has no `.env` (it lives in the MAIN checkout). Run from the main checkout:
+`ASSISTANT_EVAL=1 npm run eval:assistant`. **Until that number exists, Unit 3 has nothing to be measured
+against** — the plan's before/after gate is unenforceable.
+
+**✅ UNITS 1a + 4 BUILT 2026-08-04** — rebased onto `origin/main` first (`69522112` #581 + `5bc68fcb`).
+`69bdfbc9` Unit 4 · `0a78514d` Unit 1a. Full suite **5768 pass / 0 fail**, tsc clean.
+
+✅ **MIGRATION PROVEN ON A NEON BRANCH 2026-08-04 — still NOT applied to prod.**
+Branch `br-hidden-forest-atkzcez4` (`plan107-assistant-tool-call-test`), forked from prod's default
+branch, auto-expires **2026-08-06**. Pre-state confirmed a faithful fork: 186 migrations applied,
+table absent. `prisma migrate deploy` applied `20260804120000_assistant_tool_call` cleanly — so the
+self-verify `DO` block passed, since it RAISEs on any drift.
+
+**Structure verified:** 9 columns · RLS `relrowsecurity` AND `relforcerowsecurity` both true ·
+`tenant_isolation` with **both** `qual` (USING) and `with_check` non-null · FK `confdeltype = 'r'`
+(RESTRICT) · 3 indexes · 2 append-only triggers · and the load-bearing one —
+**`app_rls` holds `INSERT,SELECT` and nothing else**, so the REVOKE actually beat the
+`ALTER DEFAULT PRIVILEGES` grant.
+
+**BEHAVIOUR verified as `app_rls` (via `SET LOCAL ROLE`, so NOBYPASSRLS really applies), 6/6:**
+own-tenant insert+readback · WITH CHECK refuses writing another tenant's row · tenant B cannot see
+tenant A's row · **unset GUC fails closed (0 rows)** · UPDATE refused · DELETE refused.
+🦷 **Proven non-vacuous:** the same harness with a deliberately false premise RAISED
+(`saw 1 rows, demanded 999`). A `DO` block that silently passes proves nothing; this one bites.
+
+🧹 **Branch DELETED 2026-08-04 after verification** — nothing of it survives, and nothing needed to:
+the migration is committed in git and the results are recorded here. It had carried a
+`GRANT app_rls TO CURRENT_USER` (so the owner could assume the app role) and one test row
+(`zz_atc_a`), both of which died with it. Cleanup is why the grant was safe to make at all.
+
+⛔ **PROD IS UNCHANGED. No rows will be logged until the migration is deployed there.**
+
+**Unit 1a — `assistant_tool_call`, written BEFORE dispatch, batched ONE `createMany` per MODEL TURN**
+(at `run.ts` where `toolUses` is already the batch — per-call writes were the obvious version and the
+wrong one on a path with a serverless ceiling). PII boundary is structural: name/kind/turn/ids only,
+never args or results, with a schema test that pins the column set.
+🐛 **A defect the tests caught, not review:** the logger call sits inside the loop's outer try, so a
+throw from it KILLED the user's turn. `tool-log.ts` already swallows everything, but the loop must not
+depend on another module keeping that promise — now wrapped at the call site, with a test that throws
+from the logger and asserts the answer still arrives.
+
+**Unit 4 — `db_*` `entity` is now a JSON-Schema enum**, per tool, derived from the same predicate each
+guard applies. Predicates are TYPE GUARDS: plain booleans silently dropped TypeScript's narrowing of
+the optional members and produced 6 tsc errors — Codex had recommended type guards in advance.
+⚠️ **Two things I overstated when planning this, corrected:** all 8 entities currently satisfy every
+capability, so the four enums are IDENTICAL today (the live win is only blocking a hallucinated entity
+name), and the `db_create`/`db_update` error-message bug is therefore **LATENT, not live** —
+`allowedEntityNames()` was accurate precisely because the registry is uniform. A TRIPWIRE test fails
+the day that stops being true, which is the day the agreement tests start doing real work.
+
+⚠️ `verify-ai-native.test.ts` failed once in the full suite on its TIMEOUT, passed 16/16 alone in 4.8s,
+and a clean re-run went 464 files green. Contention flake, same class as `assistant-commit-tenant-context`.
+
+**Next:** apply the migration on a Neon branch → QA a real Demo Winery turn and read rows back with
+`runAsTenant("org_demo_winery", …)` → measure turn latency before/after (the plan's own gate). Then
+Unit 2, then Unit 3 (needs the still-uncaptured `ASSISTANT_EVAL=1` baseline). Unit 1b is time-gated —
+it needs weeks of instrumented data, so it is LAST.
+
+---
+
+**PRIOR OBJECTIVE — BUG-TRIAGE RUN COMPLETE 2026-08-04, still-open next-actions below.**
 
 **BUG-TRIAGE RUN COMPLETE 2026-08-04 — AND THE ANSWER IS: THERE IS NOTHING TO BUILD.** Live run
 (autoMerge + dispatch + reconcile + all three sweeps), 11 agents, 0 errors, `mode.argsWarning: null`.
@@ -1610,6 +1748,17 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   parallel). Next: register CDO token + run the ~45-min point-API spike (de-risks the providers), then `/work`.
 
 ## ✅ Done recently
+
+- **📋 Plan 107 (assistant tool surface) drafted + council-reviewed 2026-08-04 — PLANNING ONLY, no code.**
+  Audit found 96 tools flat against a self-named ~40 cliff, ten compensating prompt rules, and no
+  external API surface at all (no MCP / OpenAPI / llms.txt). Research killed one whole unit — read-side
+  tool calls are already persisted in `assistant_message.metadata.trace.toolCalls`, so measurement is a
+  query, not a migration. Gemini's review then established the rule now recorded in `docs/api-strategy.md`:
+  **boundary rules may move into a tool description, composition rules may not** — and since an MCP client
+  supplies its own system prompt, anything prompt-resident is absent over MCP, which makes this a
+  prerequisite of Phase 10 rather than a detail of it. ⚠️ Codex failed to run; the Prisma/type lens is
+  still unreviewed. Files: plan `docs/plans/2026-08-04-107-…-plan.md`, council
+  `docs/plans/council-feedback-107-assistant-tool-selection.md`, amended `docs/api-strategy.md`.
 
 - **✅ Assistant read-aloud (🔊 on a text reply) — SHIPPED AND LIVE 2026-08-02**
   ([#574](https://github.com/russellmoss/wine-inventory/pull/574) → `a3b3cded`, Vercel prod deploy

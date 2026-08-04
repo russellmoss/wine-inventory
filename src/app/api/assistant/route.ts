@@ -173,7 +173,7 @@ export async function POST(req: Request) {
           objectContextHint,
         );
 
-        const run = await runAssistant({ user, messages: replayed, send, voice: isVoice, timeZone, units, objectContext });
+        const run = await runAssistant({ user, messages: replayed, send, voice: isVoice, timeZone, units, objectContext, conversationId });
         // Persist when there is text OR any tool call. A turn that emitted only a card has no text;
         // dropping it (the old `run.text.trim()` gate) threw away exactly the tool evidence replay
         // needs, so the next turn would look like the assistant answered a write request with nothing.

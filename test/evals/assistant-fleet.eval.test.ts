@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getToolsFor, type AssistantTool } from "@/lib/assistant/registry";
+import { buildSystemPrompt } from "@/lib/assistant/prompt";
 import { ASSISTANT_FLEET } from "./assistant-fleet.golden";
 
 /**
@@ -37,6 +38,15 @@ const LLM_ENABLED = process.env.ASSISTANT_EVAL === "1" && !!process.env.ANTHROPI
 const EVAL_MODEL = process.env.ASSISTANT_EVAL_MODEL || "claude-haiku-4-5-20251001";
 
 describe.skipIf(!LLM_ENABLED)("fleet LLM eval — right tool + operation with the full tool set", () => {
+  // Plan 107 Unit 0: `system` is now `buildSystemPrompt()` — the prompt we ACTUALLY SHIP.
+  //
+  // ⚠️ This deliberately DROPPED a hint the old hardcoded string carried and production does not:
+  // "A request to RECORD/ADD a concrete dose is a write action; a request to CALCULATE how much to add
+  // is a read calculation." That sentence was teaching the model a read-vs-write boundary that no real
+  // user ever gets — so a green fleet eval was partly measuring the harness, not the product. If the
+  // calculate-vs-dose cases now fail, that is a REAL finding about the shipped prompt, not a regression
+  // in this file: fix it in prompt.ts or in the calc_*/add_addition tool descriptions, do NOT re-add the
+  // hint here.
   const anthropicTools = TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }));
 
   it.each(ASSISTANT_FLEET)("$utterance → $tool", async (fc) => {
@@ -50,10 +60,7 @@ describe.skipIf(!LLM_ENABLED)("fleet LLM eval — right tool + operation with th
       body: JSON.stringify({
         model: EVAL_MODEL,
         max_tokens: 1024,
-        system:
-          "You are a winery production assistant. Use exactly one tool to fulfill the user's request. " +
-          "A request to RECORD/ADD a concrete dose is a write action; a request to CALCULATE how much to " +
-          "add is a read calculation. Refer to vessels/blocks by the plain labels the user gives.",
+        system: buildSystemPrompt(),
         tools: anthropicTools,
         tool_choice: { type: "any" },
         messages: [{ role: "user", content: fc.utterance }],

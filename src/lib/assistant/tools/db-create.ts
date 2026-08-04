@@ -6,7 +6,7 @@ import { isTenantAdminLike } from "@/lib/access";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
-import { getEntity, allowedEntityNames } from "../entities";
+import { getEntity, creatableEntityNames, isCreatable } from "../entities";
 import { validateFields } from "../fields";
 
 type DbCreateInput = { entity?: string; values?: Record<string, unknown> };
@@ -32,7 +32,7 @@ export const dbCreateTool: AssistantTool = {
   inputSchema: {
     type: "object",
     properties: {
-      entity: { type: "string", description: "Entity type, e.g. 'VineyardBlock'." },
+      entity: { type: "string", enum: creatableEntityNames(), description: "Entity type." },
       values: { type: "object", description: "Field names mapped to values.", additionalProperties: true },
     },
     required: ["entity", "values"],
@@ -40,8 +40,8 @@ export const dbCreateTool: AssistantTool = {
   async run(ctx, rawInput) {
     const input = (rawInput ?? {}) as DbCreateInput;
     const entity = getEntity(input.entity ?? "");
-    if (!entity || !entity.creatable || !entity.buildCreate || !entity.create) {
-      throw new Error(`Cannot create "${input.entity ?? ""}". Creatable entities: ${allowedEntityNames().join(", ")}.`);
+    if (!entity || !isCreatable(entity)) {
+      throw new Error(`Cannot create "${input.entity ?? ""}". Creatable entities: ${creatableEntityNames().join(", ")}.`);
     }
     const values = validateFields(entity.creatable, input.values ?? {}, "create");
     const { data, label } = await entity.buildCreate(ctx.user, values);

@@ -5,7 +5,7 @@ import { isTenantAdminLike } from "@/lib/access";
 import type { AssistantTool } from "../registry";
 import type { Committer } from "../commit";
 import { signProposal, signResume } from "../confirm";
-import { getEntity, allowedEntityNames } from "../entities";
+import { getEntity, deletableEntityNames } from "../entities";
 import { describeDelete, isBlocked, needsCascade, formatEffectGroups } from "../relations";
 import { resolveOneOrChoice } from "./resolve";
 
@@ -21,7 +21,7 @@ export const dbDeleteTool: AssistantTool = {
   inputSchema: {
     type: "object",
     properties: {
-      entity: { type: "string", description: "Entity type, e.g. 'VineyardBlock'." },
+      entity: { type: "string", enum: deletableEntityNames(), description: "Entity type." },
       query: { type: "string", description: "Search text to find the row, e.g. 'Block 7 Bajo'." },
       id: { type: "string", description: "Exact row id, if known (skips the search)." },
     },
@@ -32,7 +32,7 @@ export const dbDeleteTool: AssistantTool = {
     const entity = getEntity(input.entity ?? "");
     if (!entity) {
       throw new Error(
-        `Unknown or protected entity "${input.entity ?? ""}". Deletable entities: ${allowedEntityNames().join(", ")}.`,
+        `Unknown or protected entity "${input.entity ?? ""}". Deletable entities: ${deletableEntityNames().join(", ")}.`,
       );
     }
 

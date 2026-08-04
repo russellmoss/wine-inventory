@@ -32,6 +32,10 @@ const fakeEntity = {
 vi.mock("@/lib/assistant/entities", () => ({
   getEntity: (n: string) => (n?.toLowerCase() === "variety" ? fakeEntity : null),
   allowedEntityNames: () => ["Variety"],
+  // Plan 107 Unit 4: db-create now evaluates these AT MODULE INIT to build its inputSchema enum.
+  // A partial mock that omits them fails with "not a function" before any test body runs.
+  creatableEntityNames: () => ["Variety"],
+  isCreatable: () => true,
 }));
 
 import { dbCreateTool, commitDbCreate } from "@/lib/assistant/tools/db-create";

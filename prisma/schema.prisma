@@ -2028,6 +2028,37 @@ model AssistantMessage {
   @@map("assistant_message")
 }
 
+// Plan 107 Unit 1a — one APPEND-ONLY row per tool dispatch, written BEFORE the tool runs.
+//
+// Why this exists rather than mining `AssistantMessage.metadata.trace`: that trace is written only
+// after the whole run completes, is capped at MAX_TOOL_CALLS=40 (trace.ts), and has no
+// attempted-turn denominator — so a zero there can never mean "unused", and it cannot support
+// retiring a tool. This table can, because the row lands before dispatch.
+//
+// ⛔ PII BOUNDARY, ENFORCED STRUCTURALLY: no column here may hold user free text. No arguments, no
+// results, no utterance. `sanitizeTraceValue` redacts by key NAME only, so anything argument-shaped
+// can carry a person's name — which is exactly why the trace is unsafe to aggregate directly.
+// `test/assistant-tool-call-schema.test.ts` fails if a PII-capable column is ever added.
+//
+// `conversationId` is deliberately a PLAIN STRING, not an FK: an FK would let a logging write break
+// a chat turn, and its cascade delete would silently rewrite usage history when a conversation is
+// removed. Mirrors CalculationLog's FK-free userId/userEmail snapshot for the same reason.
+model AssistantToolCall {
+  tenantId       String   @default("") // Phase 12 tenant scope; FK + RLS at the DB level
+  id             String   @id @default(cuid())
+  conversationId String? // plain string by design — see above; null when a turn has no conversation
+  userId         String
+  userEmail      String // snapshot at call time; survives a rename/delete without a join
+  toolName       String // registry name, e.g. "query_cellar_contents"
+  toolKind       String // "read" | "write" — snapshot, so a later kind change doesn't rewrite history
+  modelTurn      Int // which model round-trip inside the user's turn (0-based)
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, toolName, createdAt])
+  @@map("assistant_tool_call")
+}
+
 model VoiceProfile {
   tenantId          String               @default("")
   id                String               @id @default(cuid())

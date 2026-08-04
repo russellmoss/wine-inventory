@@ -18,6 +18,7 @@ import { logCalculation } from "@/lib/winemaking-calc/log";
 import { normalizeTimeZone } from "@/lib/work-orders/due-at";
 import type { UnitPrefs } from "@/lib/units/display";
 import { isCalcToolResult, buildAssistantLogPayload } from "./tools/calc-shared";
+import { logToolDispatch } from "./tool-log";
 import {
   newAssistantTrace,
   previewTraceValue,
@@ -75,6 +76,9 @@ export async function runAssistant(opts: {
    *  Appended to the prompt as an escaped block so "change the schedule" lands on the right record.
    *  Omitted = byte-identical to before the feature existed. */
   objectContext?: ResolvedObjectContext | null;
+  /** Plan 107 Unit 1a: the conversation this turn belongs to, for the tool-dispatch log. Plain id,
+   *  never an FK — see prisma `AssistantToolCall`. Omitted (evals, tests) = the log records null. */
+  conversationId?: string | null;
   /** Test seam. Omitted in production, where it defaults to the real Anthropic SDK stream. */
   createStream?: AssistantStreamFactory;
 }): Promise<AssistantRunResult> {
@@ -219,6 +223,34 @@ export async function runAssistant(opts: {
           (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
         );
         const results: Anthropic.ToolResultBlockParam[] = [];
+
+        // Plan 107 Unit 1a — record the dispatch BEFORE running anything. This is the whole point:
+        // the assistant-message trace is written only after the run finishes and is capped at 40
+        // calls, so it under-counts exactly the long multi-tool turns where routing goes wrong.
+        // Batched as ONE createMany per MODEL TURN rather than per tool call, because this is a hot
+        // path — `toolUses` is already the batch, so the durability costs one round-trip, not N.
+        // Awaited on purpose: fire-and-forget would reintroduce the loss this unit exists to remove.
+        //
+        // tool-log.ts already swallows its own failures, and this is wrapped ANYWAY. The call sits
+        // inside the loop's outer try, so anything that did escape the logger would be caught as a
+        // RUN failure and cost the user their answer. The loop must not depend on another module
+        // keeping that promise. A test throws from the logger and asserts the answer still arrives.
+        try {
+          await logToolDispatch({
+            user,
+            conversationId: opts.conversationId ?? null,
+            modelTurn: turn,
+            tools: toolUses.map((tu) => ({
+              name: tu.name,
+              // Kind is snapshotted from the registry at dispatch time. An unknown name still gets a
+              // row — the model asking for a tool that does not exist is a finding, not noise.
+              kind: tools.find((t) => t.name === tu.name)?.kind ?? "unknown",
+            })),
+          });
+        } catch {
+          /* telemetry must never cost the user their answer */
+        }
+
         for (const tu of toolUses) {
           emit({ type: "tool", name: tu.name, phase: "start" });
           const toolTrace = { id: tu.id, name: tu.name, input: tu.input };
