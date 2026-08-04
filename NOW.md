@@ -131,8 +131,39 @@ owner's key and this worktree has no `.env` (it lives in the MAIN checkout). Run
 `ASSISTANT_EVAL=1 npm run eval:assistant`. **Until that number exists, Unit 3 has nothing to be measured
 against** — the plan's before/after gate is unenforceable.
 
-**Next:** re-auth Codex (`codex login`) → re-run council for the types/Prisma lens on Unit 1 → then
-Units 1/2/4 (independent, parallel-safe), Unit 3 last and only against a captured baseline.
+**✅ UNITS 1a + 4 BUILT 2026-08-04** — rebased onto `origin/main` first (`69522112` #581 + `5bc68fcb`).
+`69bdfbc9` Unit 4 · `0a78514d` Unit 1a. Full suite **5768 pass / 0 fail**, tsc clean.
+
+⛔ **THE MIGRATION IS NOT APPLIED.** `prisma/migrations/20260804120000_assistant_tool_call/` is
+authored and committed but has touched NO database. Apply it on a disposable Neon branch first and
+let the self-verify `DO` block run — that block is exactly what caught the grant mistake on
+`latent_infection_event`. **No rows will be logged until it lands.**
+
+**Unit 1a — `assistant_tool_call`, written BEFORE dispatch, batched ONE `createMany` per MODEL TURN**
+(at `run.ts` where `toolUses` is already the batch — per-call writes were the obvious version and the
+wrong one on a path with a serverless ceiling). PII boundary is structural: name/kind/turn/ids only,
+never args or results, with a schema test that pins the column set.
+🐛 **A defect the tests caught, not review:** the logger call sits inside the loop's outer try, so a
+throw from it KILLED the user's turn. `tool-log.ts` already swallows everything, but the loop must not
+depend on another module keeping that promise — now wrapped at the call site, with a test that throws
+from the logger and asserts the answer still arrives.
+
+**Unit 4 — `db_*` `entity` is now a JSON-Schema enum**, per tool, derived from the same predicate each
+guard applies. Predicates are TYPE GUARDS: plain booleans silently dropped TypeScript's narrowing of
+the optional members and produced 6 tsc errors — Codex had recommended type guards in advance.
+⚠️ **Two things I overstated when planning this, corrected:** all 8 entities currently satisfy every
+capability, so the four enums are IDENTICAL today (the live win is only blocking a hallucinated entity
+name), and the `db_create`/`db_update` error-message bug is therefore **LATENT, not live** —
+`allowedEntityNames()` was accurate precisely because the registry is uniform. A TRIPWIRE test fails
+the day that stops being true, which is the day the agreement tests start doing real work.
+
+⚠️ `verify-ai-native.test.ts` failed once in the full suite on its TIMEOUT, passed 16/16 alone in 4.8s,
+and a clean re-run went 464 files green. Contention flake, same class as `assistant-commit-tenant-context`.
+
+**Next:** apply the migration on a Neon branch → QA a real Demo Winery turn and read rows back with
+`runAsTenant("org_demo_winery", …)` → measure turn latency before/after (the plan's own gate). Then
+Unit 2, then Unit 3 (needs the still-uncaptured `ASSISTANT_EVAL=1` baseline). Unit 1b is time-gated —
+it needs weeks of instrumented data, so it is LAST.
 
 ---
 
