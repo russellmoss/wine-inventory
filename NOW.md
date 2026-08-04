@@ -7,6 +7,9 @@
 
 ## 🎯 Current objective  (ONE thing)
 
+> **Two threads are open.** The P0 assistant ticket below is WAITING ON EVIDENCE (Sentry), not on
+> work. The thing actively being BUILT is **plan 107** (assistant tool surface) — scroll to it.
+
 **P0 "USE OF ASSISTANT" — TWO DEFECTS FIXED AND LIVE. THE REPORTED ROOT CAUSE IS STILL UNKNOWN, AND
 IS NOW INSTRUMENTED.** [#581](https://github.com/russellmoss/wine-inventory/pull/581) squash-merged
 as `69522112`; main CI green, Vercel production deploy completed 17:34:37Z.
@@ -50,6 +53,45 @@ one `prisma/schema.prisma`), then `/plan` the depreciation engine (`cmsdk30d8…
 book; must reconcile with the EXISTING auto barrel depreciation or double-book the expense).
 
 ---
+
+**PLAN 107 DRAFTED + COUNCIL-REVIEWED 2026-08-04 — the assistant tool surface. Not yet built, not yet
+PR'd.** Plan: `docs/plans/2026-08-04-107-refactor-assistant-tool-selection-plan.md` · council:
+`docs/plans/council-feedback-107-assistant-tool-selection.md`. Also amended `docs/api-strategy.md`.
+
+**The finding that started it:** the registry is at **96 tools in one flat list**, against the ~40-tool
+selection cliff `scripts/ai-native-allowlist.mjs` names itself. Ten hand-written routing rules in
+`src/lib/assistant/prompt.ts` are compensating for it. `verify:ai-native` (41/53 cores reachable,
+ratcheting allow-list) is genuinely strong; what is missing is a surface an LLM can navigate without
+being told in prose. There is also **no MCP server, no OpenAPI, no llms.txt** — every `src/app/api/**`
+route is plumbing (cron, webhooks, OAuth, uploads), so no external agent can reach the app at all.
+
+**Two research findings corrected the plan's own premises — do NOT re-derive:**
+1. **Read-side tool calls are ALREADY persisted.** `src/app/api/assistant/route.ts:179` writes
+   `metadata: { trace: run.trace }` on every assistant row, and `trace.toolCalls` already carries
+   `{ id, name, input, resultPreview, resultKind }`. The usage question is a query, not a build. This
+   deleted a whole unit (new table + Phase 12 nine-step checklist + migration).
+2. **The tool-selection evals do NOT use the real system prompt.** `assistant-tools.eval.test.ts:159-161`
+   builds a hardcoded 2-sentence string, so **the ten routing rules have zero eval coverage today**. And
+   only the *structural* half of the evals is PR-gated — the live-model half is nightly,
+   `continue-on-error`, opens an issue. "Golden evals are a hard CI gate" is half true: coverage is
+   gated, behaviour is not.
+
+**Council (Gemini) landed one finding that changes the design, not just the plan:** a **composition**
+rule ("consult BOTH the latent-infection tracker AND the scouted field reports") **cannot** live in a
+tool description — a description is read to answer "should I call this one?", never "what else do I
+owe?". Split across two tools, a model answers "no disease recorded" from one source, which is wrong in
+the one direction that costs a crop. **Boundary rules may move; composition rules stay in the prompt.**
+That rule is now written into `docs/api-strategy.md` as a **prerequisite of Phase 10/MCP**, because an
+external MCP client supplies its own system prompt and never receives ours.
+
+⚠️ **Codex did not run** (`CreateProcessWithLogonW failed: 1907` — needs `codex login` on this host), so
+the **types / Prisma / data-layer lens on plan 107 is un-cross-validated**. Re-run before building Unit 1.
+
+**Next:** `/work` plan 107 — Unit 0 (point evals at the real prompt, get a true baseline) runs first.
+
+---
+
+**PRIOR OBJECTIVE — BUG-TRIAGE RUN COMPLETE 2026-08-04, still-open next-actions below.**
 
 **BUG-TRIAGE RUN COMPLETE 2026-08-04 — AND THE ANSWER IS: THERE IS NOTHING TO BUILD.** Live run
 (autoMerge + dispatch + reconcile + all three sweeps), 11 agents, 0 errors, `mode.argsWarning: null`.
@@ -1610,6 +1652,17 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   parallel). Next: register CDO token + run the ~45-min point-API spike (de-risks the providers), then `/work`.
 
 ## ✅ Done recently
+
+- **📋 Plan 107 (assistant tool surface) drafted + council-reviewed 2026-08-04 — PLANNING ONLY, no code.**
+  Audit found 96 tools flat against a self-named ~40 cliff, ten compensating prompt rules, and no
+  external API surface at all (no MCP / OpenAPI / llms.txt). Research killed one whole unit — read-side
+  tool calls are already persisted in `assistant_message.metadata.trace.toolCalls`, so measurement is a
+  query, not a migration. Gemini's review then established the rule now recorded in `docs/api-strategy.md`:
+  **boundary rules may move into a tool description, composition rules may not** — and since an MCP client
+  supplies its own system prompt, anything prompt-resident is absent over MCP, which makes this a
+  prerequisite of Phase 10 rather than a detail of it. ⚠️ Codex failed to run; the Prisma/type lens is
+  still unreviewed. Files: plan `docs/plans/2026-08-04-107-…-plan.md`, council
+  `docs/plans/council-feedback-107-assistant-tool-selection.md`, amended `docs/api-strategy.md`.
 
 - **✅ Assistant read-aloud (🔊 on a text reply) — SHIPPED AND LIVE 2026-08-02**
   ([#574](https://github.com/russellmoss/wine-inventory/pull/574) → `a3b3cded`, Vercel prod deploy

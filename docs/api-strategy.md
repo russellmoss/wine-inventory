@@ -106,6 +106,25 @@ Because MCP re-exposes the Tier-0 registry, it inherits the read/draft/gated-wri
 nonce-confirm path **for free**. The rule: **never** hand-maintain a separate MCP tool list — generate
 it from the registry, or the risk classification will drift between surfaces.
 
+> **Correction (2026-08-04, council review of plan 107).** "Inherits for free" is true of the *risk
+> class* and the confirm path. It is **not** true of behaviour that currently lives in our **system
+> prompt**. An external MCP client (Claude Desktop, a partner's agent) supplies its **own** system
+> prompt — ours never reaches it. So every routing, disambiguation, and multi-tool composition rule
+> in `src/lib/assistant/prompt.ts` is simply **absent over MCP**.
+>
+> That is not cosmetic. The disease/pest rule ("consult BOTH the latent-infection tracker AND the
+> scouted field reports before answering") is prompt-resident, and an MCP client that calls only
+> `query_field_reports` gets a confident "nothing recorded" that is wrong in the one direction that
+> costs a crop. Same class of gap for the Brix vineyard-vs-tank boundary.
+>
+> **Rule this establishes:** a registry entry is MCP-ready only when everything needed to call it
+> *correctly* lives in the entry itself — description, schema, and error text — not in a prompt.
+> Boundary rules can move into the tool description. **Composition rules (call A and B, then combine)
+> cannot** — a description is read to answer "should I call this one?", never "what else do I owe?".
+> Those need either a composite tool that performs both reads server-side, or an explicit
+> capability/instructions payload on the MCP transport. Deciding which is a prerequisite of Phase 10,
+> not a detail of it. Tracked in plan 107 and `docs/plans/council-feedback-107-assistant-tool-selection.md`.
+
 ---
 
 ## Build order (authoritative)
@@ -114,10 +133,34 @@ This mirrors ROADMAP's H-items and interleaves with the feature phases:
 
 1. **Now:** formalize the **Tier-0 registry** incrementally (H6) — every new assistant tool / server
    action declares its risk class in one place. Enforce D17 (`SET LOCAL`) + D18 (retry) on all writes.
+   **1a. Sharpen the registry before any second transport consumes it (added 2026-08-04 — see the
+   ship-order split below): measure real per-tool usage → move boundary rules out of the prompt into
+   tool descriptions → shrink the selection surface. Plan 107.**
 2. **Phase 15:** first Tier-1 two-way adapter — **QuickBooks Online** (the open gap), event-driven off
    `BOTTLE` / cost events.
 3. **Phase 10 / MCP:** MCP transport over the registry **+** the Tier-2 public API + webhooks (they
-   share the same contract, so ship together).
+   share the same contract, so ship together). **Gated on 1a.**
+
+### Amendment 2026-08-04 — the registry/transport ship-order split
+
+Recorded after the plan-107 audit found the assistant registry at **96 tools in one flat list**, against
+the ~40-tool selection cliff the repo's own `scripts/ai-native-allowlist.mjs` names, with ten
+hand-written routing rules in the system prompt compensating for it.
+
+**The split: sharpen Tier 0 first, ship the second transport second.** These are now explicitly
+sequenced rather than parallel:
+
+| | Ships | Why this order |
+|---|---|---|
+| **First** | Registry sharpening (plan 107): measure usage, move boundary rules into descriptions, constrain `db_*` params, then prune/tier the surface | The registry is the thing every transport projects. Exposing 96 flat tools over MCP exports the selection cliff to every external agent at once — and to clients whose prompt we do not control, where our compensating rules do not exist (see the MCP correction above) |
+| **Second** | MCP transport (Phase 10) | Cheap once the registry is sharp: `AssistantTool` is already `{ name, description, kind, inputSchema, run }`, which is an MCP tool definition. The work left is auth/tenancy and the composition-rule gap, not tool modelling |
+| **Separately** | Tier-2 public REST/GraphQL API + webhooks | **Decoupled from MCP.** The original line "they share the same contract, so ship together" holds for the *contract* but not for the *commitment*: a public API adds versioning, deprecation policy, rate limiting, and partner support obligations that MCP-for-our-own-staff does not. Shipping them together makes the cheap thing wait on the expensive one |
+
+**What this does not change:** the one-registry-many-transports thesis, the anti-lock-in position, or the
+rule that no transport may bypass a risk class. The split is about sequencing, not architecture.
+
+**Tripwire.** If the registry passes ~110 tools, or a second transport is proposed before 1a lands,
+re-open this decision — those are both signals the split is being ignored rather than followed.
 4. **Phase 14 (state/DTC), 16 (DTC/POS), 11 (payroll):** remaining Tier-1 adapters per their phases.
 5. **Phase 19:** the dashboard metric catalog binds to the read-side registry (no arbitrary NL→SQL).
 
