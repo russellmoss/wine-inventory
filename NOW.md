@@ -87,7 +87,24 @@ external MCP client supplies its own system prompt and never receives ours.
 ⚠️ **Codex did not run** (`CreateProcessWithLogonW failed: 1907` — needs `codex login` on this host), so
 the **types / Prisma / data-layer lens on plan 107 is un-cross-validated**. Re-run before building Unit 1.
 
-**Next:** `/work` plan 107 — Unit 0 (point evals at the real prompt, get a true baseline) runs first.
+**✅ UNIT 0 BUILT + COMMITTED `44af9425`** (docs in `0d164e2c`). Both LLM eval halves now call
+`buildSystemPrompt()` instead of a hardcoded stub, so the ten routing rules are under test for the first
+time. Structural half — the PR-gated half — green: **231 passed, 178 skipped**. tsc clean on the changed
+files (the only errors repo-wide are pre-existing `@axe-core/playwright` module-resolution failures in
+`test/e2e/`, untouched by this change).
+
+⚠️ **The fleet eval deliberately LOST a hint production never had** — *"a request to RECORD/ADD a concrete
+dose is a write action; a request to CALCULATE how much to add is a read calculation."* A green fleet eval
+was therefore partly measuring the harness. If calculate-vs-dose now fails, fix `prompt.ts` or the
+`calc_*`/`add_addition` descriptions — **do NOT re-add the hint to the test.**
+
+⛔ **Unit 0 is NOT fully verified: the live baseline was never captured.** It costs real tokens on the
+owner's key and this worktree has no `.env` (it lives in the MAIN checkout). Run from the main checkout:
+`ASSISTANT_EVAL=1 npm run eval:assistant`. **Until that number exists, Unit 3 has nothing to be measured
+against** — the plan's before/after gate is unenforceable.
+
+**Next:** re-auth Codex (`codex login`) → re-run council for the types/Prisma lens on Unit 1 → then
+Units 1/2/4 (independent, parallel-safe), Unit 3 last and only against a captured baseline.
 
 ---
 
