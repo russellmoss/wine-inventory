@@ -112,9 +112,21 @@ describe("buildWorkOrderNotificationPayload", () => {
 });
 
 describe("deriveNotificationHref", () => {
-  it("maps known source types to bucket deep links", () => {
-    expect(deriveNotificationHref("work_order", "w1")).toBe("/inbox?bucket=wo&wo=w1");
+  // A notification's deep link must reach the ITEM'S DETAILS, not merely a bucket list. The `wo=` /
+  // `ticket=` sub-keys used to be dead (nothing consumed them), so "Open" on a work-order notification
+  // stranded the user on the WO bucket list — and for a COMPLETED order, not even in it (default filter
+  // is "open"), seeing just the row name. Work orders have a real standalone detail page; link there.
+  it("links a work order straight to its standalone detail page (NOT a bucket list)", () => {
+    const href = deriveNotificationHref("work_order", "w1");
+    expect(href).toBe("/work-orders/w1");
+    // Regression guard: must not dead-end on the wo bucket with an unconsumed sub-key.
+    expect(href).not.toContain("bucket=wo");
+    expect(href).not.toContain("wo=");
+  });
+  it("links a ticket to the tickets bucket carrying the ticket sub-key (InboxClient preselects it)", () => {
     expect(deriveNotificationHref("feedback_ticket", "t1")).toBe("/inbox?bucket=tickets&ticket=t1");
+  });
+  it("links a dm thread to the dm bucket carrying the thread sub-key", () => {
     expect(deriveNotificationHref("dm_thread", "th1")).toBe("/inbox?bucket=dm&thread=th1");
   });
   it("returns null for an unknown source (reader tombstones it)", () => {
@@ -122,7 +134,7 @@ describe("deriveNotificationHref", () => {
   });
   it("URL-encodes ids with special characters", () => {
     expect(deriveNotificationHref("dm_thread", "a b&c")).toBe("/inbox?bucket=dm&thread=a%20b%26c");
-    expect(deriveNotificationHref("work_order", "id/with?chars")).toBe("/inbox?bucket=wo&wo=id%2Fwith%3Fchars");
+    expect(deriveNotificationHref("work_order", "id/with?chars")).toBe("/work-orders/id%2Fwith%3Fchars");
   });
 });
 
@@ -151,9 +163,9 @@ describe("toNotificationDTO", () => {
     readAt: null,
     createdAt: new Date("2026-07-15T12:00:00.000Z"),
   };
-  it("derives href, read flag, ISO date", () => {
+  it("derives the work-order DETAIL href (not a bucket list), read flag, ISO date", () => {
     const dto = toNotificationDTO(base);
-    expect(dto.href).toBe("/inbox?bucket=wo&wo=w3");
+    expect(dto.href).toBe("/work-orders/w3");
     expect(dto.read).toBe(false);
     expect(dto.createdAt).toBe("2026-07-15T12:00:00.000Z");
   });

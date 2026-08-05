@@ -183,5 +183,18 @@ export function buildReplayMessages(rows: ReplayRow[]): ReplayMessage[] {
     else out[0] = { role: "user", content: kept };
   }
 
+  // FINAL INVARIANT: a replay must END on a user turn. A trailing assistant turn is read as a
+  // prefill, and the production model rejects the request outright — "This model does not support
+  // assistant message prefill. The conversation must end with a user message." That is not a
+  // degraded answer, it is a dead conversation: every later turn fails the same way (the shape is
+  // rebuilt from the same rows each time), which is exactly how one thread stayed broken from
+  // 2026-07-20 to 2026-08-05 across four tickets.
+  //
+  // Callers pass rows ending on the just-persisted user turn, so this is unreachable on the happy
+  // path. Bailing out with [] rather than trimming is deliberate: the route falls back to the
+  // client-sent history, which parseAndWindowMessages already guarantees ends on a user turn. A
+  // replay without tool blocks answers the user; a replay the API refuses does not.
+  if (out.length > 0 && out[out.length - 1].role !== "user") return [];
+
   return out;
 }

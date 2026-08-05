@@ -376,12 +376,31 @@ const rowStyle = (isActive: boolean): React.CSSProperties => ({
   background: isActive ? undefined : "var(--surface-sunken)",
 });
 
-function VarietyList({ rows }: { rows: VarietyRow[] }) {
+/** The abbreviation as a value, not a field — same glyphs, no editable affordance. */
+function ReadOnlyAbbr({ value }: { value: string | null }) {
+  if (!value) return null;
+  return (
+    <span
+      style={{
+        fontVariantNumeric: "tabular-nums",
+        fontSize: 12.5,
+        letterSpacing: "0.04em",
+        color: "var(--text-muted)",
+      }}
+    >
+      {value}
+    </span>
+  );
+}
+
+// A Variety is `vineyardScoped: false` — a tenant-GLOBAL record — so EVERY write here (create, rename,
+// abbreviation, colour, details, deactivate) is admin-only under GLOBAL-1. Non-admins get the list.
+function VarietyList({ rows, isAdmin }: { rows: VarietyRow[]; isAdmin: boolean }) {
   const { error, pending, run } = useRunner();
   const [editingId, setEditingId] = React.useState<string | null>(null);
   return (
     <ListShell title="Varieties">
-      <AddForm kind="variety" pending={pending} run={run} />
+      {isAdmin ? <AddForm kind="variety" pending={pending} run={run} /> : null}
       {error ? <p style={{ color: "var(--danger)", fontSize: 13, marginBottom: 10 }}>{error}</p> : null}
       <div style={{ display: "flex", flexDirection: "column" }}>
         {rows.length === 0 ? (
@@ -391,22 +410,35 @@ function VarietyList({ rows }: { rows: VarietyRow[] }) {
             <div key={r.id} className={r.isActive ? undefined : "bw-inactive"} style={{ borderTop: "1px solid var(--border-strong)" }}>
               <div style={{ ...rowStyle(r.isActive), borderTop: "none" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <label
-                    title="Map color"
-                    style={{ display: "inline-flex", width: 22, height: 22, borderRadius: "var(--radius-xs)", overflow: "hidden", border: "1px solid var(--border-strong)", cursor: "pointer", flex: "0 0 auto" }}
-                  >
-                    <input
-                      type="color"
-                      value={effectiveColor({ varietyColor: r.color, varietyId: r.id })}
-                      disabled={pending}
-                      onChange={(e) => run(() => setVarietyColor(r.id, e.target.value))}
-                      aria-label={`Map color for ${r.name}`}
-                      style={{ width: "150%", height: "150%", margin: "-25%", border: "none", padding: 0, background: "none", cursor: "pointer" }}
+                  {isAdmin ? (
+                    <label
+                      title="Map color"
+                      style={{ display: "inline-flex", width: 22, height: 22, borderRadius: "var(--radius-xs)", overflow: "hidden", border: "1px solid var(--border-strong)", cursor: "pointer", flex: "0 0 auto" }}
+                    >
+                      <input
+                        type="color"
+                        value={effectiveColor({ varietyColor: r.color, varietyId: r.id })}
+                        disabled={pending}
+                        onChange={(e) => run(() => setVarietyColor(r.id, e.target.value))}
+                        aria-label={`Map color for ${r.name}`}
+                        style={{ width: "150%", height: "150%", margin: "-25%", border: "none", padding: 0, background: "none", cursor: "pointer" }}
+                      />
+                    </label>
+                  ) : (
+                    // Same swatch, no picker — the colour is information either way.
+                    <span
+                      aria-hidden
+                      title="Map color"
+                      style={{ display: "inline-flex", width: 22, height: 22, borderRadius: "var(--radius-xs)", border: "1px solid var(--border-strong)", background: effectiveColor({ varietyColor: r.color, varietyId: r.id }), flex: "0 0 auto" }}
                     />
-                  </label>
+                  )}
                   {r.name}
-                  <AbbrInput kind="variety" id={r.id} name={r.name} value={r.abbreviation} pending={pending} run={run} />
-                  {r.color ? (
+                  {isAdmin ? (
+                    <AbbrInput kind="variety" id={r.id} name={r.name} value={r.abbreviation} pending={pending} run={run} />
+                  ) : (
+                    <ReadOnlyAbbr value={r.abbreviation} />
+                  )}
+                  {isAdmin && r.color ? (
                     <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => setVarietyColor(r.id, null))}>
                       reset color
                     </Button>
@@ -414,22 +446,24 @@ function VarietyList({ rows }: { rows: VarietyRow[] }) {
                   {!r.isActive ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
                   <DetailSummary row={r} />
                 </span>
-                <span style={{ display: "inline-flex", gap: 4, flex: "0 0 auto" }}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={pending}
-                    aria-expanded={editingId === r.id}
-                    onClick={() => setEditingId((id) => (id === r.id ? null : r.id))}
-                  >
-                    Details
-                  </Button>
-                  <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => setRefActive("variety", r.id, !r.isActive))}>
-                    {r.isActive ? "Deactivate" : "Reactivate"}
-                  </Button>
-                </span>
+                {isAdmin ? (
+                  <span style={{ display: "inline-flex", gap: 4, flex: "0 0 auto" }}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={pending}
+                      aria-expanded={editingId === r.id}
+                      onClick={() => setEditingId((id) => (id === r.id ? null : r.id))}
+                    >
+                      Details
+                    </Button>
+                    <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => setRefActive("variety", r.id, !r.isActive))}>
+                      {r.isActive ? "Deactivate" : "Reactivate"}
+                    </Button>
+                  </span>
+                ) : null}
               </div>
-              {editingId === r.id ? (
+              {isAdmin && editingId === r.id ? (
                 <VarietyDetailEditor
                   key={`${r.id}-${r.clone}-${r.rootstock}-${r.nursery}-${r.berryColor}-${r.species}`}
                   row={r}
@@ -446,14 +480,31 @@ function VarietyList({ rows }: { rows: VarietyRow[] }) {
   );
 }
 
-function VineyardList({ rows, varietyOptions }: { rows: Row[]; varietyOptions: VarietyOption[] }) {
+// A Vineyard is `vineyardScoped: true`, so this list has TWO different gates and they are not the same
+// question. CREATING one is admin-only (there is no membership that could authorize a row that does not
+// exist yet — `requireRefWriteAccess(kind, null)`). EDITING one needs membership in THAT vineyard, which
+// is why the per-row controls test `editableVineyardIds` rather than `isAdmin`: a manager legitimately
+// edits their own sites and no others. `editableVineyardIds` is computed server-side with the real
+// `canAccessVineyard`, so admin arrives here as "every id" rather than as a special case.
+function VineyardList({
+  rows,
+  varietyOptions,
+  isAdmin,
+  editableVineyardIds,
+}: {
+  rows: Row[];
+  varietyOptions: VarietyOption[];
+  isAdmin: boolean;
+  editableVineyardIds: string[];
+}) {
   const { error, pending, run } = useRunner();
   const [openId, setOpenId] = React.useState<string | null>(null);
   const openRow = rows.find((r) => r.id === openId) ?? null;
+  const editable = React.useMemo(() => new Set(editableVineyardIds), [editableVineyardIds]);
 
   return (
     <ListShell title="Vineyards">
-      <AddForm kind="vineyard" pending={pending} run={run} />
+      {isAdmin ? <AddForm kind="vineyard" pending={pending} run={run} /> : null}
       {error ? <p style={{ color: "var(--danger)", fontSize: 13, marginBottom: 10 }}>{error}</p> : null}
       <div style={{ display: "flex", flexDirection: "column" }}>
         {rows.length === 0 ? (
@@ -465,12 +516,18 @@ function VineyardList({ rows, varietyOptions }: { rows: Row[]; varietyOptions: V
                 <Button variant="link" size="sm" onClick={() => setOpenId(r.id)} style={{ fontSize: 15 }}>
                   {r.name}
                 </Button>
-                <AbbrInput kind="vineyard" id={r.id} name={r.name} value={r.abbreviation} pending={pending} run={run} />
+                {editable.has(r.id) ? (
+                  <AbbrInput kind="vineyard" id={r.id} name={r.name} value={r.abbreviation} pending={pending} run={run} />
+                ) : (
+                  <ReadOnlyAbbr value={r.abbreviation} />
+                )}
                 {!r.isActive ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
               </span>
-              <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => setRefActive("vineyard", r.id, !r.isActive))}>
-                {r.isActive ? "Deactivate" : "Reactivate"}
-              </Button>
+              {editable.has(r.id) ? (
+                <Button variant="ghost" size="sm" disabled={pending} onClick={() => run(() => setRefActive("vineyard", r.id, !r.isActive))}>
+                  {r.isActive ? "Deactivate" : "Reactivate"}
+                </Button>
+              ) : null}
             </div>
           ))
         )}
@@ -492,24 +549,43 @@ export function ReferenceClient({
   varieties,
   vineyards,
   varietyOptions,
+  isAdmin,
+  editableVineyardIds,
 }: {
   varieties: VarietyRow[];
   vineyards: Row[];
   varietyOptions: VarietyOption[];
+  isAdmin: boolean;
+  editableVineyardIds: string[];
 }) {
+  // A non-admin who is a member of at least one vineyard still edits THOSE, so the note has to
+  // distinguish "you may edit nothing here" from "you may edit your own sites".
+  const canEditSomeVineyard = editableVineyardIds.length > 0;
   return (
     <div>
       <Eyebrow rule>Reference data</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>
         Varieties &amp; vineyards
       </h1>
-      <p style={{ color: "var(--text-secondary)", marginBottom: 24, maxWidth: "60ch" }}>
+      <p style={{ color: "var(--text-secondary)", marginBottom: isAdmin ? 24 : 6, maxWidth: "60ch" }}>
         Managed lists used when filling vessels and bottling. Items in use can&rsquo;t be deleted,
         only deactivated, so history stays intact. Click a vineyard to see its blocks and set it up.
       </p>
+      {isAdmin ? null : (
+        <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 24, maxWidth: "60ch" }}>
+          {canEditSomeVineyard
+            ? "An admin manages varieties and adds vineyards. You can edit the vineyards you're assigned to."
+            : "An admin manages varieties and vineyards. Ask to be assigned to a vineyard to edit it."}
+        </p>
+      )}
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-        <VarietyList rows={varieties} />
-        <VineyardList rows={vineyards} varietyOptions={varietyOptions} />
+        <VarietyList rows={varieties} isAdmin={isAdmin} />
+        <VineyardList
+          rows={vineyards}
+          varietyOptions={varietyOptions}
+          isAdmin={isAdmin}
+          editableVineyardIds={editableVineyardIds}
+        />
       </div>
     </div>
   );

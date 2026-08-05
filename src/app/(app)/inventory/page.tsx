@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { requireActiveTenant, requireReadyUser } from "@/lib/dal";
+import { requireActiveTenant, requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { casesAndLoose } from "@/lib/bottling/draw";
 import { FinishedGoodsSection as FinishedGoodsPanel, type ItemOpt, type OnHandRow } from "./sections/FinishedGoodsSection";
 import { InventoryTabs } from "./InventoryTabs";
@@ -53,7 +53,11 @@ async function FinishedGoodsSection() {
     ...fg.map((f) => ({ kind: "FINISHED_GOOD" as const, itemId: f.finishedGoodId, item: f.finishedGood.name, name: f.finishedGood.name, vintage: null, categoryId: f.finishedGood.categoryId, category: f.finishedGood.category.name, locationId: f.locationId, location: f.location.name, qty: f.quantity, cases: 0, loose: f.quantity, detail: "" })),
   ].sort((a, b) => a.category.localeCompare(b.category) || a.item.localeCompare(b.item));
 
-  return <FinishedGoodsPanel categories={categories} items={items} locations={locations} onHand={onHand} />;
+  // `addFinishedGoodAction` (safeAdminAction) and `importInventory` (adminAction) create tenant-GLOBAL
+  // catalog rows — `FinishedGood`/`WineSku` are `vineyardScoped: false`. Stock MOVEMENT on this same
+  // screen (Receive/Adjust/Transfer, the on-hand edits) is operational and stays open to everyone.
+  const isAdmin = isTenantAdminLike(await requireReadyUser());
+  return <FinishedGoodsPanel categories={categories} items={items} locations={locations} onHand={onHand} isAdmin={isAdmin} />;
 }
 
 async function ConsumablesSection() {
@@ -95,11 +99,14 @@ async function EquipmentSection() {
   const partsOnHand: Record<string, LocationOnHand[]> = {};
   for (const [materialId, rows] of byLoc) partsOnHand[materialId] = rows;
 
+  // `isAdmin` was a hand-rolled `role === "admin" || role === "owner"`. "owner" is not an assignable
+  // role (ASSIGNABLE_ROLES is user/admin/developer), so that arm was dead — and it locked DEVELOPERS
+  // out of a UI the server lets them use. `isTenantAdminLike` is the predicate every server gate uses.
   return (
     <EquipmentPanel
       equipment={equipment}
       locations={locations}
-      isAdmin={user.role === "admin" || user.role === "owner"}
+      isAdmin={isTenantAdminLike(user)}
       parts={parts}
       partsOnHand={partsOnHand}
     />

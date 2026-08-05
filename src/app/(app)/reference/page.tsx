@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { requireActiveTenant } from "@/lib/dal";
+import { requireActiveTenant, requireReadyUser, isTenantAdminLike, canAccessVineyard } from "@/lib/dal";
 import { ReferenceClient } from "./ReferenceClient";
 
 export default async function ReferencePage() {
   await requireActiveTenant();
+  const user = await requireReadyUser();
+  const isAdmin = isTenantAdminLike(user);
   const [varieties, vineyards] = await Promise.all([
     prisma.variety.findMany({
       orderBy: { name: "asc" },
@@ -26,5 +28,16 @@ export default async function ReferencePage() {
   const varietyOptions = varieties
     .filter((v) => v.isActive)
     .map((v) => ({ id: v.id, name: v.name, color: v.color }));
-  return <ReferenceClient varieties={varieties} vineyards={vineyards} varietyOptions={varietyOptions} />;
+  // Computed with the SAME predicate the server actions use, so the buttons and the gate can't drift.
+  // An admin lands here as "every id", not as a client-side special case.
+  const editableVineyardIds = vineyards.filter((v) => canAccessVineyard(user, v.id)).map((v) => v.id);
+  return (
+    <ReferenceClient
+      varieties={varieties}
+      vineyards={vineyards}
+      varietyOptions={varietyOptions}
+      isAdmin={isAdmin}
+      editableVineyardIds={editableVineyardIds}
+    />
+  );
 }

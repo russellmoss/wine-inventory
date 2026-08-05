@@ -7,7 +7,7 @@ import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { PressFormData } from "@/lib/ferment/press-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
-import { buildPressGuidance, initialPressFractionDestination, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
+import { buildPressGuidance, initialPressFractionDestination, oversizedFractionMessage, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
 
 // Plan 035 Unit 5: the native run-time press / saignée sub-form on the work-order execute screen. Mirrors
 // the standalone PressClient's must-lot path (pick the pressable position, PRESS vs SAIGNEE, the fraction
@@ -65,15 +65,25 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const lees = Math.round((available - fractionTotal) * 100) / 100;
 
   const setFraction = (i: number, patch: Partial<Fraction>) => setFractions((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
-  const addFraction = () => setFractions((fs) => [...fs, { id: newFid(), destVesselId: vessels[0]?.id ?? "", volumeL: "", label: "press", estimated: false }]);
+  // Empty destination, never `vessels[0]`. See initialPressFractionDestination — the first ACTIVE
+  // vessel by code is a barrel in a real cellar, and a silently pre-picked 225 L barrel is what
+  // turned a routine press into a bug report.
+  const addFraction = () => setFractions((fs) => [...fs, { id: newFid(), destVesselId: "", volumeL: "", label: "press", estimated: false }]);
   const removeFraction = (i: number) => setFractions((fs) => fs.filter((_, j) => j !== i));
 
   function complete() {
     setError(null);
     if (!pos) return setError("Pick a must lot to press.");
+    // A volume with no destination is a half-finished row, not a row to drop. Silently skipping it
+    // is how a press "succeeded" while quietly discarding a cut the operator had typed.
+    const missingDest = fractions.find((f) => parseVol(f.volumeL) > 0 && !f.destVesselId);
+    if (missingDest) return setError(`Pick a destination vessel for the "${missingDest.label || "unlabelled"}" fraction.`);
     const fr = fractions.filter((f) => parseVol(f.volumeL) > 0 && f.destVesselId);
     if (fr.length === 0) return setError("Add at least one fraction (a cut with a vessel + volume).");
     if (fractionTotal > available + 1e-6) return setError(`Fractions (${fractionTotal} L) exceed what the lot holds (${available} L).`);
+    // Say it here, next to the picker, instead of letting the ledger say it after a round-trip.
+    const oversized = oversizedFractionMessage(fr.map((f) => ({ label: f.label, destVesselId: f.destVesselId, volumeL: parseVol(f.volumeL) })), vessels);
+    if (oversized) return setError(oversized);
     const actualPayload: Record<string, unknown> = {
       parentLotId: pos.lotId,
       sourceVesselId: pos.vesselId,
@@ -151,8 +161,11 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
         {fractions.map((f, i) => (
           <div key={f.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
             <input value={f.label} onChange={(e) => setFraction(i, { label: e.target.value })} placeholder="label" aria-label="Fraction label" style={{ ...big, width: 120 }} />
-            <select value={f.destVesselId} onChange={(e) => setFraction(i, { destVesselId: e.target.value })} aria-label="Destination vessel" style={{ ...big, width: 150 }}>
-              {vessels.map((v) => <option key={v.id} value={v.id}>{v.code}</option>)}
+            <select value={f.destVesselId} onChange={(e) => setFraction(i, { destVesselId: e.target.value })} aria-label="Destination vessel" style={{ ...big, width: 190 }}>
+              <option value="">— pick —</option>
+              {/* Capacity in the label: the picker is where the decision is made, so it is where the
+                  number that constrains it belongs. Without it, "B1" says nothing about 225 L. */}
+              {vessels.map((v) => <option key={v.id} value={v.id}>{v.code} ({v.capacityL} L)</option>)}
             </select>
             <input type="number" value={f.volumeL} onChange={(e) => setFraction(i, { volumeL: e.target.value })} inputMode="decimal" step="any" min="0" placeholder="L" aria-label="Fraction volume" style={{ ...big, width: 100, textAlign: "right" }} />
             <label style={{ fontSize: 12.5, display: "flex", gap: 4, alignItems: "center", color: "var(--text-muted)" }}>

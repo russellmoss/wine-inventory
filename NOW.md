@@ -7,17 +7,160 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-> **Two threads are open.** The P0 assistant ticket below is WAITING ON EVIDENCE (Sentry), not on
-> work. The thing actively being BUILT is **plan 107** (assistant tool surface) — scroll to it.
+> **The P0 assistant ticket below is CLOSED — fixed, live, tickets resolved, reporter told.** The one
+> thing still in flight is **plan 107** (assistant tool surface) — scroll to it.
 
-**P0 "USE OF ASSISTANT" — TWO DEFECTS FIXED AND LIVE. THE REPORTED ROOT CAUSE IS STILL UNKNOWN, AND
-IS NOW INSTRUMENTED.** [#581](https://github.com/russellmoss/wine-inventory/pull/581) squash-merged
-as `69522112`; main CI green, Vercel production deploy completed 17:34:37Z.
+## ✅ P0 "USE OF ASSISTANT" — FIXED, LIVE, AND CLOSED OUT (2026-08-05)
 
-⛔ **Say it plainly: the reported bug is NOT fixed and ticket `cmsdy4uom0006jp04iav07edp` stays OPEN.**
-What shipped is the reason it could not be diagnosed, plus a second real defect found on the way. The
-ticket id was deliberately kept OUT of the PR body so `/bug-triage`'s merged sweep cannot auto-resolve
-it — closing it would be a lie.
+[#583](https://github.com/russellmoss/wine-inventory/pull/583) squash-merged as `89cb62dc`;
+production deploy succeeded **17:01:17Z**. All four tickets written back **RESOLVED / DEFECT** by
+Russell, and Mike has been DMed in plain language (thread `cmrmlwpkm0000l604gictimj9`, message
+`cmsgc4is40000d1iokvcmckmw`) — **he read it 14 seconds after it landed.**
+
+**Four of Mike's tickets are ONE defect** — `cmsdem5xo…` (Aug 3 "error message"), `cmsdy4uom…`
+(Aug 4 "use of assistant"), `cmsevmt6v…` (Aug 4 "assistant doesn't work"), `cmsg2dir6…`
+(Aug 5 "wineyard ops"). Three carry a screenshot; all show the same response:
+
+> `400 invalid_request_error — "This model does not support assistant message prefill. The
+> conversation must end with a user message."`
+
+**Root cause:** `listMessagesForReplay` (and `getConversation`) bounded with `orderBy createdAt: "asc"`
++ `take: 200` — that returns the **OLDEST** 200 rows. Past 200 messages the user turn the route had just
+appended fell outside the window, so `buildReplayMessages` rebuilt an array **ending on an assistant
+turn**, which the model refuses as a prefill. **Permanent per conversation**, not intermittent: the same
+rows rebuild the same rejected shape every send. That is literally "everything I type gives an error".
+
+**Proven against production**, not argued: conversation `cmrqqt4fa0001ju04nhftgzpb` ("Big Mike Big Red
+Inventory Check", created Jul 18, **246 messages**) replayed rows #1–200, ending on an assistant line
+from `2026-07-20T00:52:04Z`. His eight user turns since Jul 30 — including "whats in tank T5" and "are
+you working" at 14:09/14:10 today — have **no assistant reply row at all**. After the fix the same call
+ends on `are you working`. No migration, no backfill: the next turn self-heals.
+**Blast radius:** `awerth@gmail.com` is at 160 messages in one thread and was heading for the same wall.
+
+⚠️ **The Aug-4 investigation falsified the right hypotheses and missed this one** because the repro
+replayed a SHORT slice of the conversation. The 200-row cliff is invisible unless you run the real
+`listMessagesForReplay` against a conversation that actually crosses it. `getConversation` had the same
+bug on the UI read — a long thread reopened frozen weeks back, missing the user's own recent messages.
+
+**➡️ NEXT ACTION: none on this ticket.**
+
+## ✅ "CAPACITY" (`cmsf3y809…`) — FIXED, LIVE, CLOSED OUT (2026-08-05)
+
+[#587](https://github.com/russellmoss/wine-inventory/pull/587) squash-merged as `2a4c5d16`;
+production deploy succeeded **18:21:54Z**. Ticket RESOLVED/DEFECT, Mike DMed
+(`cmsgezw1w0000d1qkki1eyfm7`).
+
+🎯 **AND THE ASSISTANT P0 IS CONFIRMED FIXED IN THE WILD.** Mike asked *"where can i look at the
+equipment reisgtry"* at **17:06:26Z** — five minutes after the #583 deploy — and **got a real answer
+at 17:06:30Z**. First assistant reply in his conversation since 2026-07-20. He has been using the app
+since and has filed three new reports (below), which is its own kind of proof.
+
+Mike: *"I select tank five, I get an error that says that exceeds the capacity of the vessel, which
+is only 225 liters. So somehow the system thinks that tank five is a barrel."* **It doesn't — it
+silently picked a barrel FOR him.** `initialPressFractionDestination` fell back to `vessels[0]`, and
+`loadPressFormData` orders by `code asc`, so the first ACTIVE vessel in a real cellar is **barrel B1
+(225 L)**. His task pinned no destination (`{op:"PRESS",taskKey:"t5_4f5m47"}`), so the free-run cut
+aimed at a 225 L barrel before he touched anything, the picker showed only `B1` (no capacity, no
+placeholder), and the ONLY component that objected was the ledger guard at `ledger/write.ts:213`, a
+round-trip later, naming a vessel he never chose.
+
+**FIVE pickers had the same silent default** — press-execute, standalone press fractions, whole-cluster
+juice split, crush, crush-execute. All five fixed: empty unless pinned, `— pick —` placeholder,
+capacity rendered in every option, and a volume-with-no-destination is now refused instead of silently
+dropped. New `oversizedFractionMessage` names the vessel before the round-trip; it checks TOTAL
+capacity (not headroom) on purpose, making it a strict subset of the ledger check — it can never
+produce a false rejection.
+
+⚠️ **An existing assertion encoded the bug** — `press-guidance.test.ts` asserted the `vessels[0]`
+fallback *existed* rather than asking whether guessing a destination was safe. A test can lock in a
+defect just as firmly as it can catch one. The new cases fail against the old code (`expected 'b1' to
+be ''`). Suite 5,802 green; browser QA NOT run (authed pane needs a human login) — **after deploy,
+confirm a press/crush form opens on `— pick —` and not `B1`.** One behaviour change to expect: these
+forms now open with NO vessel selected, so it is one extra click. Deliberate; flag if the crew objects.
+
+**🆕 MIKE FILED THREE MORE TODAY (all NEW, untriaged):** `cmsgbjgov000fl704f36c47p7` "Confirmation card
+not rendering in assistant panel" (assistant — possibly related to the #203 card-below-fold lineage,
+worth checking first), `cmsgc9bw80000la04b42ftqvy` "blends", `cmsgbp71b0000l2049stzp37z` "eqipment"
+(feature request).
+
+## ✅ "TRANSFER ERROR" (`cmsg2aphb…`) — FIXED, LIVE, CLOSED OUT (2026-08-05)
+
+[#589](https://github.com/russellmoss/wine-inventory/pull/589) squash-merged as `7c36ea27`; production
+deploy succeeded **18:43:10Z**. Ticket RESOLVED/DEFECT, Mike DMed (`cmsgfr3s30000d1zotwz4zbcm`).
+**That closes every bug he reported in this batch** (4 assistant + capacity + transfer).
+
+**The gate was refusing the write for a GOOD reason, in plain English, and throwing the sentence away.**
+`gateWorkOrderReadinessForWrite` threw a raw `Error`; `settleAction` converts **only** `ActionError`
+into `{ok:false,error}` and rethrows the rest → Next.js replaces the message with an opaque digest →
+HTTP 500. That digest is "the weird error at the bottom". What it wanted to say: *"Task #1: a
+transfer's source and destination must be different vessels (both are Tank T5)"* — he had picked the
+same tank at both ends.
+
+⛔ **Never rack-specific.** The gate guards **five** write paths, all `safeAction` — both creates, the
+edit, the composer, and the assistant's confirm (`assertFreshReadiness`). ANY blocker or stale
+fingerprint on ANY of them was an unexplained 500. All three refusals are now `ActionError`.
+
+**RULE (now in memory):** inside a `safeAction`, the error CLASS is the delivery mechanism. If a human
+is meant to read it, it must be an `ActionError`; a raw `Error` is for real bugs you WANT redacted.
+
+## 🪝 Off-path — two findings from that investigation, NOT fixed
+
+1. ⚠️ **The Sentry → GitHub issue automation looks DEAD.** This production 500 (Aug 5) opened no
+   issue; the newest `[sentry]`-labelled issue is **#450, Jul 21**. That absence is why nobody knew.
+   Same shape as the assistant P0: *the error path that says nothing IS the defect.* Worth its own look.
+2. ⚠️ **`draftWorkOrderFromTextAction` has the identical bug** — wrapped in `action(...)` not
+   `safeAction(...)`, and `nl-resolve.ts` throws ~30 raw `Error`s with user-facing text ("That vessel
+   no longer exists."). Every one is an opaque 500 in the "describe the job" NL box today. Deferred:
+   converting it changes the action's return type and all its call sites.
+
+**Mike's three NEW reports (Aug 5, untriaged):** `cmsgbjgov000fl704f36c47p7` "Confirmation card not
+rendering in assistant panel", `cmsgc9bw80000la04b42ftqvy` "blends", `cmsgbp71b0000l2049stzp37z`
+"eqipment" (feature request).
+
+✅ **Red on main from `#584 fix/authorization-fences` — [#585](https://github.com/russellmoss/wine-inventory/pull/585) in flight.**
+The new `vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)` job has failed on every run since
+the merge (`3ca47e67` → `89cb62dc` → `e4a5893c`). **TWO independent bugs, and the first hid the second:**
+
+1. **Teardown.** The spray chain is append-only, so `spray_reject_delete()` refuses the fixture purge
+   unless `app.allow_spray_purge='on'` **and** the role isn't `app_rls` (KD-1 / council C15). The
+   teardown had the owner half (`runAsSystem`) and never set the GUC. Fixed the way
+   `verify-spray-record.ts` already does it: one transaction, `set_config(..., true)` first
+   (transaction-LOCAL, so every delete must share it), delete `spray_application` alone — lines cascade.
+2. **An assertion that could never pass**, revealed only once the script survived to print its own
+   summary (`1 of 29 checks FAILED`). `resolveSpatialStyleVineyard` returns null for "no such row" AND
+   `{vineyardId: null}` for a SYSTEM-scope style; the check collapsed both through
+   `styleS?.vineyardId ?? "missing"` and compared to `null` — `null ?? "missing"` is `"missing"`, so it
+   failed no matter what the resolver did. Split into row-FOUND + value. Resolver unchanged; it's correct.
+
+⚠️ **Lesson: a crashing teardown is not a cosmetic failure — it swallows the verdict.** The first run
+printed 28 ✓ and one ✗, then died in cleanup before the summary line, so the ✗ read as noise inside a
+stack trace. "All assertions passed" was wrong for three commits.
+
+**#585 is GREEN** — `vineyard-scope-db` passed for the first time ever:
+_"✓ VINEYARD-1 holds against a real database (31 checks)."_ **Main stays red until it merges.**
+
+## ✅ [#586](https://github.com/russellmoss/wine-inventory/pull/586) — the admin-only edit UI (#584's last known issue)
+
+`/vessels`, `/locations`, `/reference`, `/inventory` no longer show Add/Edit controls the server
+refuses. Hidden, not disabled, each with a line naming who can. `/reference` is **per-kind, not
+blanket**: variety = admin, vineyard CREATE = admin, vineyard EDIT = membership in THAT vineyard
+(`editableVineyardIds`, computed server-side with the real `canAccessVineyard`, so buttons and gate
+can't drift). On `/inventory` only the two CATALOG writes are gated — stock movement stays open.
+
+⚠️ **New guard `verify:admin-predicate`, because this was a CLASS not a slip.** A hand-rolled
+`isAdmin={user.role === "admin" || user.role === "owner"}` sat in THREE pages (inventory,
+work-orders/task-types, work-orders/templates), with a fourth instance documented in
+`src/lib/search/actions.ts`. Every copy drops `developer` — so a **developer saw a read-only UI the
+server would have allowed** — and `"owner"` is not an assignable role at all (`ASSIGNABLE_ROLES` is
+user/admin/developer), so that arm never matched. The guard bans both shapes; proven by reverting.
+⚠️ **Aaron opened AND merged #584, and the code in it is ours** (both commits authored by
+russellmoss + Claude on `fix/authorization-fences`; his only authored commit in the repo is the merge
+commit). It landed as a **merge commit, not a squash** — off the normal flow for code. Worth a word.
+
+_Last updated: 2026-08-05 — P0 closed; #585 (CI green) + #586 (admin-only edit UI) open. The detector that found it: run the REAL
+`listMessagesForReplay` against a conversation that crosses `REPLAY_LIMIT`, then assert the rebuilt
+array's tail role. Everything short of that passes — a `take`-bound bug cannot reproduce on a
+fixture smaller than the bound._
 
 **Defect 1 — assistant failures recorded NOTHING server-side.** `run.ts:399` catches its own errors,
 emits the message to the user and returns normally; the route's catch was bare. Neither captured to
@@ -1773,6 +1916,13 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **🔴 2026-08-05 — P0 assistant 400 ROOT-CAUSED and fixed ([#583](https://github.com/russellmoss/wine-inventory/pull/583), open).**
+  Four of Mike's tickets consolidated into one defect: both message reads bounded with `asc` + `take`,
+  which serves the OLDEST N rows, so any conversation past 200 messages replayed an array ending on an
+  assistant turn and 400'd on **every** subsequent send. Fixed newest-first + reverse, plus a pure
+  invariant in `buildReplayMessages` (never end on an assistant turn — bail to `[]` and let the route
+  fall back to the client history) and a Sentry warning on that fallback. Reproduced and re-verified
+  against the live 246-message conversation. 491 assistant tests green.
 - **📋 Plan 107 (assistant tool surface) drafted + council-reviewed 2026-08-04 — PLANNING ONLY, no code.**
   Audit found 96 tools flat against a self-named ~40 cliff, ten compensating prompt rules, and no
   external API surface at all (no MCP / OpenAPI / llms.txt). Research killed one whole unit — read-side

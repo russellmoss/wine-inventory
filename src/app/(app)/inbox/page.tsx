@@ -25,14 +25,29 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const bucket: InboxBucket = parseBucket(one(sp.bucket));
   const filter = one(sp.filter);
   const threadId = one(sp.thread);
+  // A ticket notification deep-links to `?bucket=tickets&ticket=<id>`; InboxClient preselects it in the
+  // reader. Load BOTH filters' tickets when a ticket is targeted so a RESOLVED ticket (which isn't in
+  // the default "open" list) is still present to select — otherwise "Open" would land on a blank pane.
+  const ticketId = one(sp.ticket);
+
+  const ticketFilters: TicketFilter[] =
+    bucket === "tickets"
+      ? ticketId
+        ? ["open", "closed"]
+        : [((filter as TicketFilter) || "open")]
+      : [];
 
   const [notifications, workOrders, tickets, threads, threadDetail, recipients] = await Promise.all([
     bucket === "all" ? listNotifications(tenantId, user.id, { limit: 100 }) : Promise.resolve([]),
     bucket === "wo"
       ? listMyWorkOrders(tenantId, user.id, (filter as WorkOrderFilter) || "open")
       : Promise.resolve([]),
-    bucket === "tickets"
-      ? listMyTickets(tenantId, user.id, (filter as TicketFilter) || "open")
+    ticketFilters.length
+      ? Promise.all(ticketFilters.map((f) => listMyTickets(tenantId, user.id, f))).then((lists) => {
+          // De-dupe when both filters are loaded (they never overlap in practice, but be safe).
+          const seen = new Set<string>();
+          return lists.flat().filter((t) => (seen.has(t.id) ? false : (seen.add(t.id), true)));
+        })
       : Promise.resolve([]),
     bucket === "dm" ? listThreads(tenantId, user.id) : Promise.resolve([]),
     bucket === "dm" && threadId ? getThread(tenantId, user.id, threadId) : Promise.resolve(null),
@@ -45,6 +60,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       bucket={bucket}
       filter={filter ?? null}
       selectedThreadId={threadId ?? null}
+      selectedTicketId={ticketId ?? null}
       notifications={notifications}
       workOrders={workOrders}
       tickets={tickets}

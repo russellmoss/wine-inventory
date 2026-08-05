@@ -22,7 +22,10 @@ const sel: React.CSSProperties = {
   background: "var(--surface-raised)", fontFamily: "var(--font-body)", fontSize: 15, color: "var(--text-primary)", width: "100%",
 };
 
-export function FinishedGoodsSection({ categories, items, locations, onHand }: { categories: Cat[]; items: ItemOpt[]; locations: LocOpt[]; onHand: OnHandRow[] }) {
+// `isAdmin` gates only the two CATALOG writes on this screen — "+ Add wine/merchandise"
+// (`addFinishedGoodAction`) and CSV import (`importInventory`), both admin-only since GLOBAL-1.
+// Receive/Adjust/Transfer and the on-hand row edits are operational stock movement: everyone keeps them.
+export function FinishedGoodsSection({ categories, items, locations, onHand, isAdmin }: { categories: Cat[]; items: ItemOpt[]; locations: LocOpt[]; onHand: OnHandRow[]; isAdmin: boolean }) {
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [mode, setMode] = React.useState<Mode>("RECEIVE");
@@ -167,15 +170,17 @@ export function FinishedGoodsSection({ categories, items, locations, onHand }: {
             </button>
           ))}
         </div>
-        <Button type="button" variant="primary" onClick={() => setAddOpen(true)}>
-          {subTab === "FINISHED_GOOD" ? "+ Add merchandise" : "+ Add wine"}
-        </Button>
+        {isAdmin ? (
+          <Button type="button" variant="primary" onClick={() => setAddOpen(true)}>
+            {subTab === "FINISHED_GOOD" ? "+ Add merchandise" : "+ Add wine"}
+          </Button>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <Eyebrow rule>On hand</Eyebrow>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <ImportCsvModal categories={categories} locations={locations} />
+          {isAdmin ? <ImportCsvModal categories={categories} locations={locations} /> : null}
           <ExportCsvButton
             filename="inventory-on-hand.csv"
             columns={[{ key: "name", label: "Item" }, { key: "vintage", label: "Vintage" }, { key: "category", label: "Category" }, { key: "location", label: "Location" }, { key: "fullCases", label: "Full cases" }, { key: "remainingBottles", label: "Remaining bottles" }, { key: "totalBottles", label: "Total bottles" }, { key: "kind", label: "Kind" }]}
@@ -279,7 +284,7 @@ export function FinishedGoodsSection({ categories, items, locations, onHand }: {
       </Card>
 
       <AddFinishedGoodModal
-        open={addOpen}
+        open={addOpen && isAdmin}
         kind={subTab === "FINISHED_GOOD" ? "FINISHED_GOOD" : "BOTTLED_WINE"}
         categories={categories}
         locations={locations}

@@ -212,10 +212,17 @@ async function main(): Promise<void> {
     eq("planting area → vineyard", await resolvePlantingAreaVineyard(fx.areaB.id), fx.vineyardB.id);
     eq("spray block line → block → vineyard", await resolveSprayBlockLineVineyard(fx.lineA.id), fx.vineyardA.id);
 
+    // `resolveSpatialStyleVineyard` answers TWO things at once — "does the row exist" (null when it
+    // does not) and "which vineyard" (`vineyardId`, null for a SYSTEM style). A single `?? "missing"`
+    // collapses those: for the SYSTEM row the real answer IS null, so `styleS?.vineyardId ?? "missing"`
+    // yields "missing" whether the row was found or not, and could never equal the expected null. Assert
+    // the existence and the value separately, so a genuine miss reads differently from a null vineyard.
     const styleV = await resolveSpatialStyleVineyard(fx.styleB.id);
-    eq("vineyard-scope style → its vineyard", styleV?.vineyardId ?? "missing", fx.vineyardB.id);
+    ok("vineyard-scope style row is FOUND", styleV !== null);
+    eq("vineyard-scope style → its vineyard", styleV ? styleV.vineyardId : "not-found", fx.vineyardB.id);
     const styleS = await resolveSpatialStyleVineyard(fx.styleSystem.id);
-    eq("SYSTEM style → null vineyard (the admin-only branch)", styleS?.vineyardId ?? "missing", null);
+    ok("SYSTEM style row is FOUND", styleS !== null);
+    eq("SYSTEM style → null vineyard (the admin-only branch)", styleS ? styleS.vineyardId : "not-found", null);
 
     eq("multi-block resolve is de-duplicated", set((await resolveBlocksVineyards([fx.blockA.id, fx.blockA.id])) ?? []), [fx.vineyardA.id]);
     eq("multi-block resolve fails closed on an unknown id", await resolveBlocksVineyards([fx.blockA.id, "nope"]), null);
@@ -262,18 +269,29 @@ async function main(): Promise<void> {
 
 async function cleanup(): Promise<void> {
   // Tenant rows first (FKs point at the org), then the global rows. Cascades handle the children.
+  //
+  // THE SPRAY CHAIN IS APPEND-ONLY (KD-1). Its BEFORE DELETE trigger refuses every delete unless the
+  // named purge GUC is on AND the connected role is not `app_rls` (council C15 — the flag alone is
+  // settable by the app role, so the owner connection is half the credential). `runAsSystem` supplies
+  // the owner half; `set_config(..., true)` supplies the other, and being transaction-LOCAL it only
+  // holds for statements in the SAME transaction — which is why the whole teardown is wrapped in one.
+  // Deleting the application is sufficient: block/material/mix lines are ON DELETE CASCADE off it and
+  // their own triggers see the same GUC. `spray_block_line → vineyard_block` is ON DELETE RESTRICT, so
+  // the application must go before the blocks regardless.
   await runAsSystem(async (db) => {
-    await db.$executeRawUnsafe(`DELETE FROM "spray_block_line" WHERE "tenantId" = $1`, ORG_ID);
-    await db.$executeRawUnsafe(`DELETE FROM "spray_application" WHERE "tenantId" = $1`, ORG_ID);
-    await db.$executeRawUnsafe(`DELETE FROM "spatial_style" WHERE "tenantId" = $1`, ORG_ID);
-    await db.$executeRawUnsafe(`DELETE FROM "user_vineyard" WHERE "tenantId" = $1`, ORG_ID);
-    await db.$executeRawUnsafe(`DELETE FROM "vineyard_planting_area" WHERE "tenantId" = $1`, ORG_ID);
-    await db.$executeRawUnsafe(`DELETE FROM "vineyard_subblock" WHERE "tenantId" = $1`, ORG_ID);
-    await db.$executeRawUnsafe(`DELETE FROM "vineyard_block" WHERE "tenantId" = $1`, ORG_ID);
-    await db.$executeRawUnsafe(`DELETE FROM "vineyard" WHERE "tenantId" = $1`, ORG_ID);
-    await db.member.deleteMany({ where: { organizationId: ORG_ID } });
-    await db.user.deleteMany({ where: { id: { in: [`qa-admin-${RUN}`, `qa-mgrA-${RUN}`, `qa-mgrNone-${RUN}`] } } });
-    await db.organization.deleteMany({ where: { id: ORG_ID } });
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.allow_spray_purge', 'on', true)`;
+      await tx.$executeRawUnsafe(`DELETE FROM "spray_application" WHERE "tenantId" = $1`, ORG_ID);
+      await tx.$executeRawUnsafe(`DELETE FROM "spatial_style" WHERE "tenantId" = $1`, ORG_ID);
+      await tx.$executeRawUnsafe(`DELETE FROM "user_vineyard" WHERE "tenantId" = $1`, ORG_ID);
+      await tx.$executeRawUnsafe(`DELETE FROM "vineyard_planting_area" WHERE "tenantId" = $1`, ORG_ID);
+      await tx.$executeRawUnsafe(`DELETE FROM "vineyard_subblock" WHERE "tenantId" = $1`, ORG_ID);
+      await tx.$executeRawUnsafe(`DELETE FROM "vineyard_block" WHERE "tenantId" = $1`, ORG_ID);
+      await tx.$executeRawUnsafe(`DELETE FROM "vineyard" WHERE "tenantId" = $1`, ORG_ID);
+      await tx.member.deleteMany({ where: { organizationId: ORG_ID } });
+      await tx.user.deleteMany({ where: { id: { in: [`qa-admin-${RUN}`, `qa-mgrA-${RUN}`, `qa-mgrNone-${RUN}`] } } });
+      await tx.organization.deleteMany({ where: { id: ORG_ID } });
+    }, { timeout: 60_000, maxWait: 60_000 }); // ~11 round trips; Prisma's 5s default is tight on a cold Neon compute.
   });
 }
 

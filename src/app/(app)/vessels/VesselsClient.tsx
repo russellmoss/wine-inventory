@@ -29,7 +29,11 @@ export type VesselRow = {
   components: CompositionComponent[];
 };
 
-export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
+// The vessel CATALOG is a tenant-global record (`entities.ts` marks `Vessel` `vineyardScoped: false`),
+// so `createVessel` / `updateVessel` / `setVesselActive` are all `adminAction` as of the GLOBAL-1 fence.
+// This gates the UI on the SAME predicate, so a non-admin no longer sees Add/edit affordances that the
+// server will refuse. Operational vessel work (racking, transfers, topping) is elsewhere and stays open.
+export function VesselsClient({ vessels, isAdmin }: { vessels: VesselRow[]; isAdmin: boolean }) {
   const vol = useUnitPrefs().volume;
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
@@ -53,6 +57,7 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
         <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 300, fontSize: 22, marginBottom: 12 }}>
           {title} <span style={{ color: "var(--text-muted)", fontSize: 15 }}>({items.length})</span>
         </h2>
+        {isAdmin ? (
         <form
           onSubmit={(e) => { e.preventDefault(); const f = e.currentTarget; const fd = new FormData(f); const cap = volumeInputToLiters(String(fd.get("capacityL") ?? ""), vol); if (cap != null) fd.set("capacityL", String(cap)); run(() => createVessel(fd), () => f.reset()); }}
           style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 8 }}
@@ -70,6 +75,7 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
           ) : null}
           <Button type="submit" variant="primary" disabled={pending}>Add</Button>
         </form>
+        ) : null}
 
         {items.length === 0 ? (
           <p style={{ color: "var(--text-muted)", fontSize: 14 }}>No {title.toLowerCase()} yet.</p>
@@ -82,24 +88,36 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
                 className={v.isActive ? undefined : "bw-inactive"}
                 style={{ borderTop: "1px solid var(--border-strong)", scrollMarginTop: 80 }}
               >
-                <button
-                  onClick={() => setSelectedId(v.id)}
-                  style={{
+                {/* Identical content either way; only the AFFORDANCE differs. A non-admin gets a plain
+                    row — no pointer, no focus stop, no "edit ›" — because the modal it opens is an
+                    edit form the server would refuse. */}
+                {(() => {
+                  const rowStyle: React.CSSProperties = {
                     width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 8px",
                     background: "transparent", border: "none",
-                    cursor: "pointer", textAlign: "left", fontFamily: "var(--font-body)", fontSize: 14,
-                  }}
-                >
-                  <span style={{ fontWeight: 500, minWidth: 90 }}>{v.code}</span>
-                  <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, minWidth: 140 }}>
-                    <span style={{ flex: 1, height: 8, background: "var(--paper-200)", borderRadius: 999, overflow: "hidden" }}>
-                      <span style={{ display: "block", width: `${Math.min(100, v.pct)}%`, height: "100%", background: v.over ? "var(--danger)" : "var(--accent)" }} />
-                    </span>
-                    <span style={{ fontSize: 12.5, color: v.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>{formatVolume(v.filledL, vol)} / {formatVolume(v.capacityL, vol)}</span>
-                  </span>
-                  {!v.isActive ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
-                  <span style={{ color: "var(--text-accent)", fontSize: 13 }}>edit ›</span>
-                </button>
+                    textAlign: "left", fontFamily: "var(--font-body)", fontSize: 14,
+                  };
+                  const rowContent = (
+                    <>
+                      <span style={{ fontWeight: 500, minWidth: 90 }}>{v.code}</span>
+                      <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, minWidth: 140 }}>
+                        <span style={{ flex: 1, height: 8, background: "var(--paper-200)", borderRadius: 999, overflow: "hidden" }}>
+                          <span style={{ display: "block", width: `${Math.min(100, v.pct)}%`, height: "100%", background: v.over ? "var(--danger)" : "var(--accent)" }} />
+                        </span>
+                        <span style={{ fontSize: 12.5, color: v.over ? "var(--danger)" : "var(--text-muted)", whiteSpace: "nowrap" }}>{formatVolume(v.filledL, vol)} / {formatVolume(v.capacityL, vol)}</span>
+                      </span>
+                      {!v.isActive ? <Badge tone="neutral" variant="soft">inactive</Badge> : null}
+                      {isAdmin ? <span style={{ color: "var(--text-accent)", fontSize: 13 }}>edit ›</span> : null}
+                    </>
+                  );
+                  return isAdmin ? (
+                    <button onClick={() => setSelectedId(v.id)} style={{ ...rowStyle, cursor: "pointer" }}>
+                      {rowContent}
+                    </button>
+                  ) : (
+                    <div style={rowStyle}>{rowContent}</div>
+                  );
+                })()}
                 {/* The wine, then what it is made of. This was a wrap-around row of one badge per
                     resident lot — a vessel holds one wine now, so it names it and shows its makeup. */}
                 {v.wine ? (
@@ -122,9 +140,17 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
     <div>
       <Eyebrow rule>Cellar</Eyebrow>
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 36, margin: "10px 0 6px" }}>Vessels</h1>
-      <p style={{ color: "var(--text-secondary)", marginBottom: 24, maxWidth: "60ch" }}>
-        Barrels and tanks at the winery, managed separately. Click a vessel to edit its code or capacity, or deactivate it.
+      <p style={{ color: "var(--text-secondary)", marginBottom: isAdmin ? 24 : 6, maxWidth: "60ch" }}>
+        {isAdmin
+          ? "Barrels and tanks at the winery, managed separately. Click a vessel to edit its code or capacity, or deactivate it."
+          : "Barrels and tanks at the winery, and what each one currently holds."}
       </p>
+      {isAdmin ? null : (
+        <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 24, maxWidth: "60ch" }}>
+          An admin adds vessels and edits their codes and capacities. You can record cellar work against
+          them from the cellar floor.
+        </p>
+      )}
 
       {error ? <p style={{ color: "var(--danger)", fontSize: 13.5, marginBottom: 16 }}>{error}</p> : null}
 
@@ -133,8 +159,10 @@ export function VesselsClient({ vessels }: { vessels: VesselRow[] }) {
         {renderTypeCard("Tanks", "TANK", tanks)}
       </div>
 
+      {/* Belt-and-braces: only an admin can set `selectedId`, but the modal is an edit form, so it
+          stays closed for a non-admin regardless of how the state got there. */}
       <Modal
-        open={!!selected}
+        open={!!selected && isAdmin}
         onClose={() => setSelectedId(null)}
         title={selected ? `Edit ${selected.code}` : ""}
         subtitle={selected ? `${selected.type === "BARREL" ? "Barrel" : "Tank"} · currently holds ${formatVolume(selected.filledL, vol)}` : null}
