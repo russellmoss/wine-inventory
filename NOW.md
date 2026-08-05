@@ -47,16 +47,24 @@ open and are NOT this bug: `cmsg2aphb0000kz04ivugdcn1` "transfer error" (its tra
 `POST /work-orders/new`**) and `cmsf3y8090000l1049jg251nx` "capacity" (a work order on Tank 5, ~8,000 L,
 rejects volume as exceeding **225 L** — the system is reading a tank as a barrel).
 
-✅ **Red on main from `#584 fix/authorization-fences` — fix in flight.** The new
-`vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)` job has failed on every run since the
-merge (`3ca47e67` → `89cb62dc` → `e4a5893c`). **All 28 assertions PASS** — the fence really is proven
-at runtime, and this was the job's first-ever execution (the commit message flagged it had never run;
-no DB locally). It dies in its own teardown at `scripts/verify-vineyard-scope-runtime.ts:265`: the
-spray chain is append-only, so `spray_reject_delete()` refuses the fixture purge unless
-`app.allow_spray_purge='on'` **and** the role isn't `app_rls` (KD-1 / council C15). The teardown had
-the owner half (`runAsSystem`) but never set the GUC. Fixed the way `verify-spray-record.ts` already
-does it: one transaction, `set_config(..., true)` first (transaction-LOCAL, so every delete must share
-it), and delete `spray_application` alone — lines cascade off it.
+✅ **Red on main from `#584 fix/authorization-fences` — [#585](https://github.com/russellmoss/wine-inventory/pull/585) in flight.**
+The new `vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)` job has failed on every run since
+the merge (`3ca47e67` → `89cb62dc` → `e4a5893c`). **TWO independent bugs, and the first hid the second:**
+
+1. **Teardown.** The spray chain is append-only, so `spray_reject_delete()` refuses the fixture purge
+   unless `app.allow_spray_purge='on'` **and** the role isn't `app_rls` (KD-1 / council C15). The
+   teardown had the owner half (`runAsSystem`) and never set the GUC. Fixed the way
+   `verify-spray-record.ts` already does it: one transaction, `set_config(..., true)` first
+   (transaction-LOCAL, so every delete must share it), delete `spray_application` alone — lines cascade.
+2. **An assertion that could never pass**, revealed only once the script survived to print its own
+   summary (`1 of 29 checks FAILED`). `resolveSpatialStyleVineyard` returns null for "no such row" AND
+   `{vineyardId: null}` for a SYSTEM-scope style; the check collapsed both through
+   `styleS?.vineyardId ?? "missing"` and compared to `null` — `null ?? "missing"` is `"missing"`, so it
+   failed no matter what the resolver did. Split into row-FOUND + value. Resolver unchanged; it's correct.
+
+⚠️ **Lesson: a crashing teardown is not a cosmetic failure — it swallows the verdict.** The first run
+printed 28 ✓ and one ✗, then died in cleanup before the summary line, so the ✗ read as noise inside a
+stack trace. "All assertions passed" was wrong for three commits.
 ⚠️ **Aaron opened AND merged #584, and the code in it is ours** (both commits authored by
 russellmoss + Claude on `fix/authorization-fences`; his only authored commit in the repo is the merge
 commit). It landed as a **merge commit, not a squash** — off the normal flow for code. Worth a word.
