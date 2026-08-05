@@ -31,7 +31,9 @@ way to check — the same family as the write-overclaim guard, inverted (it clai
 the harmful part: it invites duplicate work. Mike has been DMed the full list so he doesn't recreate
 them (`cmsgh1xn90000d17c3i514f56`).
 
-✅ **That half is now FIXED — PR [#596](https://github.com/russellmoss/wine-inventory/pull/596).**
+✅ **That half is FIXED, MERGED AND LIVE** — [#596](https://github.com/russellmoss/wine-inventory/pull/596)
+squash-merged as `28cbbd9b` (2026-08-05 20:12:14Z); main green (`check` · `db-proofs` ·
+`tenant-isolation`) and the production deploy succeeded.
 `src/lib/assistant/unverified-failure-guard.ts`, the mirror of `overclaim-guard.ts`, wired into `run.ts`
 with the same repair-turn + `finally`-backstop shape as the other two guards plus a
 `trace.unverifiedFailureRepair` field. **Two evidence tiers:** client-state claims ("display problem",
@@ -187,8 +189,8 @@ convention; the whole of it is preserved verbatim in `docs/NOW-archive-2026-08.m
 rebuilt spine holding only what is genuinely open. Nothing was summarised away — the archive is a
 copy of the previous file, not a digest of it._
 
-_Last updated: 2026-08-05 (later still) — `cmsgbjgov`'s **confirmed** half is guarded and PR'd
-([#596](https://github.com/russellmoss/wine-inventory/pull/596)): the assistant can no longer assert
+_Last updated: 2026-08-05 (later still) — `cmsgbjgov`'s **confirmed** half is guarded, MERGED and LIVE
+([#596](https://github.com/russellmoss/wine-inventory/pull/596) -> `28cbbd9b`): the assistant can no longer assert
 that a write did NOT persist, or diagnose a rendering bug, with nothing in the run to ground it. The
 reusable shape: **three guards now share one skeleton** (over-claim / KB-denial / unverified-failure) —
 pure per-sentence predicate + one-shot repair turn injected as a user message + `finally` backstop +
