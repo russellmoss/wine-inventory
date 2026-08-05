@@ -1,4 +1,4 @@
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { listUserTaskTypes } from "@/lib/work-orders/custom-log";
 import { listOverlays } from "@/lib/work-orders/overlay-store";
 import { TaskTypesClient } from "./TaskTypesClient";
@@ -14,7 +14,7 @@ async function TaskTypesPageBody() {
   const tenantId = user.activeOrganizationId;
   if (!tenantId) return <div style={{ padding: 24 }}>Your account isn&apos;t attached to a winery.</div>;
   const [customLogs, overlays] = await Promise.all([listUserTaskTypes(tenantId), listOverlays(tenantId)]);
-  return <TaskTypesClient customLogs={customLogs} overlays={overlays} isAdmin={user.role === "admin" || user.role === "owner"} />;
+  return <TaskTypesClient customLogs={customLogs} overlays={overlays} isAdmin={isTenantAdminLike(user)} />;
 }
 
 /** Plan 104 — this is a SECTION of /work-orders, so it carries the same strip as its hub.

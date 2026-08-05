@@ -99,6 +99,7 @@
     "verify:redirect-passthrough": "tsx scripts/check-redirect-passthrough.ts",
     "verify:vineyard-scope": "tsx scripts/check-vineyard-scope.ts",
     "verify:global-catalog-admin": "tsx scripts/check-global-catalog-admin.ts",
+    "verify:admin-predicate": "tsx scripts/check-admin-predicate.ts",
     "verify:vineyard-scope-db": "tsx --conditions=react-server --env-file=.env scripts/verify-vineyard-scope-runtime.ts",
     "verify:invariants": "node scripts/verify-invariant-guards.mjs",
     "verify:invariant-frontmatter": "node scripts/verify-invariant-frontmatter.mjs",

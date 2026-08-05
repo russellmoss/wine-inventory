@@ -1,4 +1,4 @@
-import { requireReadyUser } from "@/lib/dal";
+import { requireReadyUser, isTenantAdminLike } from "@/lib/dal";
 import { listTemplatesForBuilder } from "@/lib/work-orders/data";
 import { TemplatesClient } from "./TemplatesClient";
 import { HubSectionNav } from "@/components/nav/HubSectionNav";
@@ -30,5 +30,5 @@ async function TemplatesPageBody({
   const archived = sp.view === "archived";
   if (!tenantId) return <div style={{ padding: 24 }}>Your account isn&apos;t attached to a winery.</div>;
   const templates = await listTemplatesForBuilder(tenantId, { archived });
-  return <TemplatesClient templates={templates} view={archived ? "archived" : "active"} isAdmin={user.role === "admin"} />;
+  return <TemplatesClient templates={templates} view={archived ? "archived" : "active"} isAdmin={isTenantAdminLike(user)} />;
 }
