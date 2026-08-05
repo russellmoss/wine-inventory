@@ -3069,3 +3069,34 @@ posture. NOT yet done — it is a live-data migration and wants the same repair-
 Local gate green: prisma validate + generate OK, tsc clean, lint 0 errors, 466 files / 5,789 tests,
 11 static guards, generator deterministic. `verify:fk-registry-db` still unrun (no DB) — and it is now
 MORE valuable, since it is precisely what would have caught the ordering bug on its own._
+
+_Last updated: 2026-08-05 (very late) — **workstream B foundation landed (money value types); the sweep
+follows.** Owner chose two distinct types and a FULL sweep of every money column; the concern that the
+sweep touches the cost engine (COST-1..4) and its DB-backed proofs was raised once and the choice stands
+— those verifies must be green in CI before the cost stages land.
+**The float money math is measurably WRONG today, not merely imprecise.** Measured against the helpers in
+use: `round2(1.005)` → **1** (correct 1.01 — the float sits below the half); `Math.round(n*1e8)` goes
+silently inexact above ~90,071,992 because the product passes MAX_SAFE_INTEGER; `0.07` summed 1000 times
+→ **69.99999999999966**. The last is the dangerous shape — a reconciliation that should tie out to the
+cent misses by 3.4e-13, failing an equality check while looking right to a human.
+Shipped: `src/lib/money/amount.ts` — `Amount` (postable, 2dp, currency-tagged), `Rate` (per-unit, 8dp),
+`Unrounded` (the forced settle step: `Rate.times()` CANNOT produce an Amount), plus `allocate` /
+`allocateByWeights` that sum EXACTLY back to the total. 25 tests. Pure — no prisma client, no React.
+⚠️ **Two behaviour changes:** negatives now round AWAY from zero (`Math.round(-0.5)` is `-0`, this gives
+`-1`) — that is the reversal/credit path, not a corner case; and HALF_UP is the default only for
+compatibility with the `Math.round` being replaced (banker's is available and is the better default, but
+switching silently would change existing numbers).
+🔑 **Scope correction that changed the plan:** `round2` has 287 call sites but is **VOLUME** math
+(volume 51, L 20, deltaL 12, capacity 3) — only ~11 are money. `round8` is the money one (cost 27,
+unit 5, amount 3). So the sweep is round8 + convertToBase + the money round2 sites + 52 columns across
+31 models, NOT 287 sites. **Volume rounding has the IDENTICAL float bug** and `round2(1.005) → 1` inside
+a ledger with conservation invariants is its own correctness problem — deliberately NOT folded into a
+money workstream, but it must not get lost.
+Remaining B stages, each separately verifiable: FX/`convertToBase` → `SupplyLot`/AP ingest → cost roll-up
+(`CostLine`, `LotCostState`) → accounting posting (`journal.ts`, `bill.ts`) → bottling snapshots.
+Also this session: `gh` CLI installed + authenticated (as **awerth**), and a scoped read-only allowlist
+added to project settings so CI checks stop prompting. ⚠️ **Attribution correction: I wrongly amended the
+#584 and #588 commits to author `russellmoss`.** Aaron is `awerth`, a different contributor from Russell —
+I inferred a misconfiguration that wasn't one. Those four merged commits credit the wrong person; left
+alone rather than rewriting published history on a protected branch. Commits from here author as awerth.
+Local gate green: tsc clean, lint 0 errors, 469 files / 5,833 tests._
