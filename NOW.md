@@ -7,8 +7,69 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-> **The P0 assistant ticket below is CLOSED — fixed, live, tickets resolved, reporter told.** The one
-> thing still in flight is **plan 107** (assistant tool surface) — scroll to it.
+> **Every ticket in Mike's batch is closed and main is green.** Nothing is in flight. The next
+> unstarted thing is **plan 107** (assistant tool surface) — scroll to it.
+
+## ✅ #584 FALLOUT + BRANCH HYGIENE — ALL MERGED, MAIN GREEN (2026-08-05)
+
+Started as "what did Aaron push?" and turned into unblocking main. **Aaron has exactly ONE thing in
+this repo: the merge commit for [#584](https://github.com/russellmoss/wine-inventory/pull/584).** Both
+of its commits are authored by Russell + Claude on `fix/authorization-fences`; he opened and merged
+someone else's branch, **as a merge commit rather than a squash** — off the normal flow for code.
+
+**[#585](https://github.com/russellmoss/wine-inventory/pull/585) (`a695bad6`) — main had been RED for
+three commits** (`3ca47e67` → `89cb62dc` → `e4a5893c`) on the `vineyard-scope-db` job #584 introduced
+and never ran. **Two bugs, and the first hid the second:**
+1. The teardown couldn't purge its own spray fixtures — append-only KD-1/C15 wants
+   `app.allow_spray_purge='on'` **and** a non-`app_rls` role. It had the owner half via `runAsSystem`
+   and never set the GUC. Fixed as `verify-spray-record.ts` already does it: one transaction (the
+   `set_config(...,true)` is transaction-LOCAL), delete `spray_application` alone, lines cascade.
+2. That crash killed the script before its verdict, hiding **an assertion that could never pass**:
+   `styleS?.vineyardId ?? "missing"` compared to `null` — for a SYSTEM style the right answer IS
+   `null`, and `null ?? "missing"` is `"missing"`. Split into row-FOUND + value. Resolver was correct.
+
+⚠️ **Lesson: a crashing teardown is not cosmetic — it swallows the verdict.** Run 1 printed 28 ✓ and
+one ✗ then died in cleanup, so the ✗ read as noise in a stack trace. The job now passes **31/31**.
+
+**[#586](https://github.com/russellmoss/wine-inventory/pull/586) (`06dd6a52`) — #584's last known
+issue.** `/vessels`, `/locations`, `/reference`, `/inventory` stopped showing Add/Edit controls the
+server refuses. Hidden not disabled, each with a line naming who can. `/reference` is **per-kind**:
+variety = admin, vineyard CREATE = admin, vineyard EDIT = membership in THAT vineyard
+(`editableVineyardIds`, computed with the real `canAccessVineyard` so buttons and gate can't drift).
+
+⚠️ **New guard `verify:admin-predicate` — this was a CLASS, not a slip.** A hand-rolled
+`isAdmin={user.role === "admin" || user.role === "owner"}` sat in THREE pages (inventory,
+work-orders/task-types, work-orders/templates), a fourth documented in `search/actions.ts`. Every copy
+drops `developer`, and `"owner"` is not an assignable role at all. **Aaron is `role=developer`** — he
+was living the bug. Guard bans both shapes; proven by reverting.
+
+**[#590](https://github.com/russellmoss/wine-inventory/pull/590) (`91a86769`) — was #580, which was
+HALF A FIX.** It shipped tests asserting a work-order notification links to `/work-orders/<id>` (with
+a guard that it "must not dead-end on the wo bucket") but **never changed `deriveNotificationHref`** —
+hence the title "view work order details" on a diff that was entirely about tickets. Rebased onto
+main, three of its own tests failed. Implemented the missing case after verifying `/work-orders/[id]`
+exists and that **nothing consumes the `wo=` sub-key** — the real bug: "Open" dropped you on the WO
+list, and for a COMPLETED order not even in it (bucket defaults to `open`).
+
+⛔ **It could not merge on `feedback-bug/*` and the fence was NOT widened.** `verify-feedback-fence`
+failed on `src/lib/inbox/routes.ts`. `scripts/feedback-fence-rules.ts` is the **same module the
+autonomous bug-fix agent uses to restrict itself**; adding `src/lib/inbox/` would also hand the
+unattended loop `notifications.ts`, `direct-messages.ts`, `channels.ts`, `actions.ts` — the per-user
+RLS surfaces. Moved to an ordinary branch instead. **If we ever DO want the loop reaching inbox code,
+that is a deliberate decision to make on its own.**
+
+**[#591](https://github.com/russellmoss/wine-inventory/pull/591) (`3998ba3b`) — rescued
+`docs/audits/product-design-audit-2026-07-28.md`**, 717 lines that had never been committed on any
+branch and were one `rm` from gone. Same class as `d8f14732` ("rescue five documents that existed only
+as untracked files"). Deleted `TRIAGE-RUNBOOK.md` (self-declares regenerable; also stale — it still
+listed the P0 as open). Design-system zip deleted after byte-verifying all 49 entries are in git.
+
+**Pruned:** 14 local branches; remote is now **just `main`**. Aaron DMed
+(thread `cmsgglrh40000d14stnytm0hr`).
+
+🪝 **Off-path, not started:** non-admins with no `user_vineyard` row lose weather/spray/soil/NDVI/block
+surfaces entirely (#584's other known issue) — a data task, assign memberships. And **this file is
+3,000+ lines**; the convention says one screen. Closed-out sections belong in an archive.
 
 ## ✅ P0 "USE OF ASSISTANT" — FIXED, LIVE, AND CLOSED OUT (2026-08-05)
 
@@ -184,7 +245,7 @@ user/admin/developer), so that arm never matched. The guard bans both shapes; pr
 russellmoss + Claude on `fix/authorization-fences`; his only authored commit in the repo is the merge
 commit). It landed as a **merge commit, not a squash** — off the normal flow for code. Worth a word.
 
-_Last updated: 2026-08-05 — P0 closed; #585 (CI green) + #586 (admin-only edit UI) open. The detector that found it: run the REAL
+_Last updated: 2026-08-05 — Mike's whole batch closed (#583/#587/#589); #584 fallout closed (#585 CI, #586 admin UI); #590 inbox deep links; #591 audit rescued. Main green, remote pruned to `main`. The detector that found it: run the REAL
 `listMessagesForReplay` against a conversation that crosses `REPLAY_LIMIT`, then assert the rebuilt
 array's tail role. Everything short of that passes — a `take`-bound bug cannot reproduce on a
 fixture smaller than the bound._
