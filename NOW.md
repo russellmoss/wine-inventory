@@ -202,8 +202,28 @@ landed **1.77s BEFORE** the assistant message asking him to confirm it. If a voi
 ordinary winery-floor speech ("yes", "apply", "do it") would silently commit every pending card.
 **BLOCKED ON one fact: was the Talk button on?** Asked him directly; do not guess a fix before he answers.
 
-**Mike's other two NEW reports (Aug 5, untriaged):** `cmsgc9bw80000la04b42ftqvy` "blends",
-`cmsgbp71b0000l2049stzp37z` "eqipment" (feature request).
+## 🟢 "BLENDS" (`cmsgc9bw8…`) — PR [#593](https://github.com/russellmoss/wine-inventory/pull/593) OPEN, CI GREEN
+
+Three claims in one ticket, and they land differently:
+
+1. **The error he hit was the #587 bug, from the other door.** His screenshot shows free-run 200 L → **B1**
+   AND press 12 L → **B1**, refused with *"Two fractions are going into B1."* He never picked B1 twice —
+   the form defaulted BOTH fractions to `vessels[0]`. Already fixed; **#587 deployed 18:21:54Z, 75 minutes
+   after he filed at 17:06:05Z.** Same defect, second symptom.
+2. **"Two presses into one vessel"** — working as designed (LEDGER-12 / plan 088 U8: each fraction mints
+   its own child lot). The message already names both legal options. Not changed.
+3. **"Transfer into a vessel that already has wine in it"** — **REAL GAP, and this PR.**
+
+⛔ **The capability existed at every layer except the one a user can touch.** `press-core.ts:187` has
+always allowed a fraction to MERGE into the lot already in a vessel (`mergeIntoLotId`), and
+`execute.ts:222` always passed it through — but **no screen ever set the field**. It sat in
+`PressClient`'s state and payload with NO control behind it (always `""` → null), and `PressTaskForm`
+didn't have it at all. **CRUSH has had this control for ages ("Add into &lt;lot&gt;"); press was the odd
+one out.** Now on BOTH press surfaces, shown only when the vessel holds exactly one lot, never assumed.
+Proven against production: 16 occupied vessels now report residents; B1 → `merge`; merged into 2024-CS →
+allowed. Suite 5,818 green.
+
+**Mike's last NEW report (Aug 5, untriaged):** `cmsgbp71b0000l2049stzp37z` "eqipment" (feature request).
 
 ✅ **Red on main from `#584 fix/authorization-fences` — [#585](https://github.com/russellmoss/wine-inventory/pull/585) in flight.**
 The new `vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)` job has failed on every run since
