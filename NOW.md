@@ -31,6 +31,18 @@ way to check — the same family as the write-overclaim guard, inverted (it clai
 the harmful part: it invites duplicate work. Mike has been DMed the full list so he doesn't recreate
 them (`cmsgh1xn90000d17c3i514f56`).
 
+✅ **That half is now FIXED — PR [#596](https://github.com/russellmoss/wine-inventory/pull/596).**
+`src/lib/assistant/unverified-failure-guard.ts`, the mirror of `overclaim-guard.ts`, wired into `run.ts`
+with the same repair-turn + `finally`-backstop shape as the other two guards plus a
+`trace.unverifiedFailureRepair` field. **Two evidence tiers:** client-state claims ("display problem",
+"the card isn't rendering") are unfounded by construction — the model runs server-side and is never in
+the browser; non-persistence claims ("nothing got saved") fire ONLY when a card WAS emitted, so the
+guard can never contradict `OVERCLAIM_CORRECTION`. Stands down entirely when a tool actually errored.
+Prompt rule added, and `file_feedback` now stamps an UNVERIFIED caveat on an assistant-authored body
+that asserts client state — this ticket's "no confirmation card rendered" is what sent triage after a
+phantom. 25 tests; ablating the predicate fails 8. **This fixes the LIE, not the cause — the card
+symptom below is still unproven and still blocked on Mike.**
+
 **Root cause of the card symptom NOT proven — 3 hypotheses tested and refuted:** (1) the client dropping
 proposal events (the NDJSON path is exhaustively switched + parse- and truncation-guarded in BOTH
 consumers); (2) an auto-confirm effect in `AssistantChat` (`confirmProposal` is called only from the
@@ -174,3 +186,11 @@ _Last updated: 2026-08-05 (later) — NOW.md archived, then reconciled with the 
 convention; the whole of it is preserved verbatim in `docs/NOW-archive-2026-08.md` and this is a
 rebuilt spine holding only what is genuinely open. Nothing was summarised away — the archive is a
 copy of the previous file, not a digest of it._
+
+_Last updated: 2026-08-05 (later still) — `cmsgbjgov`'s **confirmed** half is guarded and PR'd
+([#596](https://github.com/russellmoss/wine-inventory/pull/596)): the assistant can no longer assert
+that a write did NOT persist, or diagnose a rendering bug, with nothing in the run to ground it. The
+reusable shape: **three guards now share one skeleton** (over-claim / KB-denial / unverified-failure) —
+pure per-sentence predicate + one-shot repair turn injected as a user message + `finally` backstop +
+`trace.*Repair`. A fourth belongs in that same family, not in a new one. The card SYMPTOM is untouched
+and still blocked on Mike._
