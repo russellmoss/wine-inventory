@@ -218,3 +218,16 @@ reusable shape: **three guards now share one skeleton** (over-claim / KB-denial 
 pure per-sentence predicate + one-shot repair turn injected as a user message + `finally` backstop +
 `trace.*Repair`. A fourth belongs in that same family, not in a new one. The card SYMPTOM is untouched
 and still blocked on Mike._
+
+_Last updated: 2026-08-05 (night) — **data layer, workstreams A + B.** A landed (#588): the FK graph is
+machine-readable (`prisma/fk-registry.json`, 439 constraints), guarded statically and against
+`pg_constraint` in CI, with a shrink-only baseline of 79 undeclared columns. Widening three keys so a
+denormalised `vineyardId` cannot drift exposed a real bug in my own generator (ADDs applied before DROPs
+by pattern type, not file position) that had been hiding 4 constraints. B foundation is PR
+[#600](https://github.com/russellmoss/wine-inventory/pull/600): `Amount`/`Rate` value types, because the
+float money math is **measurably wrong** — `round2(1.005)` → `1`, `Math.round(n*1e8)` goes inexact above
+~90M, `0.07`×1000 → `69.99999999999966`. Scope correction: `round2`'s 287 call sites are **volume** math;
+`round8` is the money one. Volume rounding has the same bug — its own concern, not folded in.
+⚠️ **`Lot.origin*Id` needs a decision** (dangling reference, not a snapshot — vineyards ARE deletable and
+bulk intake writes no `lot_vineyard` row). ⚠️ **Attribution: #584/#588 were wrongly amended to author
+`russellmoss`; awerth is a different contributor.** Left as-is rather than rewriting published history._
