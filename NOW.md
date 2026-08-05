@@ -47,12 +47,47 @@ open and are NOT this bug: `cmsg2aphb0000kz04ivugdcn1` "transfer error" (its tra
 `POST /work-orders/new`**) and `cmsf3y8090000l1049jg251nx` "capacity" (a work order on Tank 5, ~8,000 L,
 rejects volume as exceeding **225 L** — the system is reading a tank as a barrel).
 
-⚠️ **Unrelated red on main, not from this PR:** the CI run for `#584 fix/authorization-fences`
-(merged 16:47Z) FAILED — `vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)`, where the test
-fixture's cleanup cannot DELETE `spray_block_line` (the append-only KD-1/C15 guard refuses it and the
-teardown never sets `app.allow_spray_purge`). Needs its own look.
+✅ **Red on main from `#584 fix/authorization-fences` — [#585](https://github.com/russellmoss/wine-inventory/pull/585) in flight.**
+The new `vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)` job has failed on every run since
+the merge (`3ca47e67` → `89cb62dc` → `e4a5893c`). **TWO independent bugs, and the first hid the second:**
 
-_Last updated: 2026-08-05 — P0 closed. The detector that found it: run the REAL
+1. **Teardown.** The spray chain is append-only, so `spray_reject_delete()` refuses the fixture purge
+   unless `app.allow_spray_purge='on'` **and** the role isn't `app_rls` (KD-1 / council C15). The
+   teardown had the owner half (`runAsSystem`) and never set the GUC. Fixed the way
+   `verify-spray-record.ts` already does it: one transaction, `set_config(..., true)` first
+   (transaction-LOCAL, so every delete must share it), delete `spray_application` alone — lines cascade.
+2. **An assertion that could never pass**, revealed only once the script survived to print its own
+   summary (`1 of 29 checks FAILED`). `resolveSpatialStyleVineyard` returns null for "no such row" AND
+   `{vineyardId: null}` for a SYSTEM-scope style; the check collapsed both through
+   `styleS?.vineyardId ?? "missing"` and compared to `null` — `null ?? "missing"` is `"missing"`, so it
+   failed no matter what the resolver did. Split into row-FOUND + value. Resolver unchanged; it's correct.
+
+⚠️ **Lesson: a crashing teardown is not a cosmetic failure — it swallows the verdict.** The first run
+printed 28 ✓ and one ✗, then died in cleanup before the summary line, so the ✗ read as noise inside a
+stack trace. "All assertions passed" was wrong for three commits.
+
+**#585 is GREEN** — `vineyard-scope-db` passed for the first time ever:
+_"✓ VINEYARD-1 holds against a real database (31 checks)."_ **Main stays red until it merges.**
+
+## ✅ [#586](https://github.com/russellmoss/wine-inventory/pull/586) — the admin-only edit UI (#584's last known issue)
+
+`/vessels`, `/locations`, `/reference`, `/inventory` no longer show Add/Edit controls the server
+refuses. Hidden, not disabled, each with a line naming who can. `/reference` is **per-kind, not
+blanket**: variety = admin, vineyard CREATE = admin, vineyard EDIT = membership in THAT vineyard
+(`editableVineyardIds`, computed server-side with the real `canAccessVineyard`, so buttons and gate
+can't drift). On `/inventory` only the two CATALOG writes are gated — stock movement stays open.
+
+⚠️ **New guard `verify:admin-predicate`, because this was a CLASS not a slip.** A hand-rolled
+`isAdmin={user.role === "admin" || user.role === "owner"}` sat in THREE pages (inventory,
+work-orders/task-types, work-orders/templates), with a fourth instance documented in
+`src/lib/search/actions.ts`. Every copy drops `developer` — so a **developer saw a read-only UI the
+server would have allowed** — and `"owner"` is not an assignable role at all (`ASSIGNABLE_ROLES` is
+user/admin/developer), so that arm never matched. The guard bans both shapes; proven by reverting.
+⚠️ **Aaron opened AND merged #584, and the code in it is ours** (both commits authored by
+russellmoss + Claude on `fix/authorization-fences`; his only authored commit in the repo is the merge
+commit). It landed as a **merge commit, not a squash** — off the normal flow for code. Worth a word.
+
+_Last updated: 2026-08-05 — P0 closed; #585 (CI green) + #586 (admin-only edit UI) open. The detector that found it: run the REAL
 `listMessagesForReplay` against a conversation that crosses `REPLAY_LIMIT`, then assert the rebuilt
 array's tail role. Everything short of that passes — a `take`-bound bug cannot reproduce on a
 fixture smaller than the bound._
