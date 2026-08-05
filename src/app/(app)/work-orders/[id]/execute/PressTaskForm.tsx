@@ -7,7 +7,7 @@ import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { PressFormData } from "@/lib/ferment/press-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
-import { buildPressGuidance, initialPressFractionDestination, occupiedDestinationMessage, oversizedFractionMessage, pressDestinationMode, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
+import { buildPressGuidance, initialPressFractionDestination, occupiedDestinationMessage, oversizedFractionMessage, pinnedPressPosition, pressDestinationMode, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
 
 // Plan 035 Unit 5: the native run-time press / saignée sub-form on the work-order execute screen. Mirrors
 // the standalone PressClient's must-lot path (pick the pressable position, PRESS vs SAIGNEE, the fraction
@@ -54,7 +54,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
 
   // Prefill the position from the task's canonical lot/source vessel when the manager pinned them at issue.
   const initialKey = (() => {
-    const pinned = positions.find((p) => p.lotId === task.lotId && (!task.sourceVesselId || p.vesselId === task.sourceVesselId));
+    const pinned = pinnedPressPosition(task, positions);
     return pinned ? `${pinned.vesselId}:${pinned.lotId}` : positions[0] ? `${positions[0].vesselId}:${positions[0].lotId}` : "";
   })();
   const [posKey, setPosKey] = React.useState(initialKey);

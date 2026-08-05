@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPressGuidance, initialPressFractionDestination, occupiedDestinationMessage, oversizedFractionMessage, pressDestinationMode, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
+import { buildPressGuidance, initialPressFractionDestination, occupiedDestinationMessage, oversizedFractionMessage, pinnedPressPosition, pressDestinationMode, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
 
 const positions = [
   { vesselId: "v1", vesselCode: "T6", lotId: "l1", lotCode: "24-RS-M", form: "MUST", status: "ACTIVE", volumeL: 1200 },
@@ -215,5 +215,51 @@ describe("press destinations — landing a fraction in an occupied vessel (feedb
 
   it("treats a vessel with no residents field as free (older callers)", () => {
     expect(pressDestinationMode({ id: "x", code: "X", capacityL: 100 }, SOURCE)).toBe("free");
+  });
+});
+
+/**
+ * Second half of feedback cmsf3vmlw0000l704pnaiep22 — the builder can now pin a press source, and it
+ * may pin the VESSEL alone ("press whatever is in T5"). The old prefill required BOTH the lot and the
+ * vessel, which was fine while only the assistant could pin a press (it always resolves both) and
+ * silently useless the moment a human pinned one of them.
+ */
+describe("pinned press source — a partial pin still selects the position", () => {
+  const positions = [
+    { vesselId: "t5", vesselCode: "T5", lotId: "lot-a", lotCode: "2026-SY-2", form: "MUST", volumeL: 900 },
+    { vesselId: "t6", vesselCode: "T6", lotId: "lot-b", lotCode: "2026-PN-1", form: "MUST", volumeL: 400 },
+  ];
+
+  it("selects on the vessel alone — the case the manual builder now creates", () => {
+    expect(pinnedPressPosition({ sourceVesselId: "t6" }, positions)?.lotId).toBe("lot-b");
+  });
+
+  it("selects on the lot alone", () => {
+    expect(pinnedPressPosition({ lotId: "lot-a" }, positions)?.vesselId).toBe("t5");
+  });
+
+  it("still selects on both, and rejects a mismatched pair", () => {
+    expect(pinnedPressPosition({ lotId: "lot-a", sourceVesselId: "t5" }, positions)?.vesselId).toBe("t5");
+    expect(pinnedPressPosition({ lotId: "lot-a", sourceVesselId: "t6" }, positions)).toBeNull();
+  });
+
+  it("returns null when nothing was pinned, so the form keeps its own fallback", () => {
+    expect(pinnedPressPosition({}, positions)).toBeNull();
+  });
+
+  it("calls a vessel-only pin STALE once that vessel holds nothing pressable", () => {
+    // Previously not stale — the guard required both halves, so a manager who pinned only a tank got
+    // no warning and the form quietly pressed whatever happened to be first in the cellar.
+    const stale = stalePinnedPressSource({ sourceVesselId: "t9" }, positions);
+    expect(stale.stale).toBe(true);
+    expect(stale.current).toContain("T5 / 2026-SY-2 (900 L)");
+  });
+
+  it("is not stale when the pinned vessel still holds a pressable must", () => {
+    expect(stalePinnedPressSource({ sourceVesselId: "t5" }, positions).stale).toBe(false);
+  });
+
+  it("is not stale when nothing was pinned at all", () => {
+    expect(stalePinnedPressSource({}, positions).stale).toBe(false);
   });
 });

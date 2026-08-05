@@ -52,14 +52,37 @@ export function buildPressGuidance(
   return { items, plannedDestVesselId };
 }
 
+/**
+ * The pressable position a task pinned, or null when it pinned nothing (or nothing matches).
+ *
+ * Honours a PARTIAL pin. It used to require BOTH the lot and the vessel, which was fine while only the
+ * assistant could pin a press — it always resolves both. The manual builder now offers either one on
+ * its own (feedback cmsf3vmlw0000l704pnaiep22), and "press whatever is in T5" is a perfectly good
+ * instruction, so a vessel-only pin has to select the position rather than silently fall through to
+ * "the first pressable thing in the cellar".
+ */
+export function pinnedPressPosition(
+  task: PressGuidanceTask,
+  positions: PressGuidancePosition[],
+): PressGuidancePosition | null {
+  if (!task.lotId && !task.sourceVesselId) return null;
+  return (
+    positions.find(
+      (p) => (!task.lotId || p.lotId === task.lotId) && (!task.sourceVesselId || p.vesselId === task.sourceVesselId),
+    ) ?? null
+  );
+}
+
 export function stalePinnedPressSource(task: PressGuidanceTask, positions: PressGuidancePosition[]): {
   stale: boolean;
   expected: string;
   current: string[];
 } {
-  if (!task.lotId || !task.sourceVesselId) return { stale: false, expected: "", current: [] };
-  const found = positions.some((p) => p.lotId === task.lotId && p.vesselId === task.sourceVesselId);
-  if (found) return { stale: false, expected: "", current: [] };
+  // Either half counts as a pin — see pinnedPressPosition. A vessel pinned at authoring time that no
+  // longer holds a pressable must is exactly as stale as a pinned lot that has moved, and staying
+  // silent about it would send the crew to the wrong tank.
+  if (!task.lotId && !task.sourceVesselId) return { stale: false, expected: "", current: [] };
+  if (pinnedPressPosition(task, positions)) return { stale: false, expected: "", current: [] };
   const planned = asRecord(task.plannedPayload);
   const expected = [
     asString(planned.plannedSourceVesselLabel) ?? task.sourceVesselId,
