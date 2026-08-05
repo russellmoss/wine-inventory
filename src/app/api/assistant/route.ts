@@ -136,7 +136,18 @@ export async function POST(req: Request) {
           // Bound BEFORE rebuilding — windowing the rebuilt array could split a tool_use from its
           // tool_result, which is a hard 400. Cutting at row boundaries makes that unrepresentable.
           const rebuilt = buildReplayMessages(windowReplayRows(rows));
-          if (rebuilt.length > 0) replayed = rebuilt;
+          if (rebuilt.length > 0) {
+            replayed = rebuilt;
+          } else if (rows.length > 0) {
+            // The rebuild refused the rows (see the final invariant in replay.ts). The turn still
+            // runs on the client history, but a silent downgrade is how the last one hid: say so.
+            Sentry.captureMessage("assistant replay rebuild bailed out; using client history", {
+              level: "warning",
+              tags: { area: "assistant", stage: "replay" },
+              extra: { conversationId, rows: rows.length, userId: user.id },
+            });
+            console.warn("[assistant] replay rebuild bailed out", { conversationId, rows: rows.length });
+          }
         } catch {
           /* fall back to the client-supplied history */
         }

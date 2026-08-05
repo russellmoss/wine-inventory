@@ -7,17 +7,41 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-> **Two threads are open.** The P0 assistant ticket below is WAITING ON EVIDENCE (Sentry), not on
-> work. The thing actively being BUILT is **plan 107** (assistant tool surface) — scroll to it.
+> **Two threads are open.** The P0 assistant ticket below is **ROOT-CAUSED AND FIXED**, awaiting
+> merge. The other thing in flight is **plan 107** (assistant tool surface) — scroll to it.
 
-**P0 "USE OF ASSISTANT" — TWO DEFECTS FIXED AND LIVE. THE REPORTED ROOT CAUSE IS STILL UNKNOWN, AND
-IS NOW INSTRUMENTED.** [#581](https://github.com/russellmoss/wine-inventory/pull/581) squash-merged
-as `69522112`; main CI green, Vercel production deploy completed 17:34:37Z.
+## 🔴 P0 "USE OF ASSISTANT" — ROOT CAUSE FOUND. FIX IN [#583](https://github.com/russellmoss/wine-inventory/pull/583), NOT YET MERGED.
 
-⛔ **Say it plainly: the reported bug is NOT fixed and ticket `cmsdy4uom0006jp04iav07edp` stays OPEN.**
-What shipped is the reason it could not be diagnosed, plus a second real defect found on the way. The
-ticket id was deliberately kept OUT of the PR body so `/bug-triage`'s merged sweep cannot auto-resolve
-it — closing it would be a lie.
+**Four of Mike's tickets are ONE defect** — `cmsdem5xo…` (Aug 3 "error message"), `cmsdy4uom…`
+(Aug 4 "use of assistant"), `cmsevmt6v…` (Aug 4 "assistant doesn't work"), `cmsg2dir6…`
+(Aug 5 "wineyard ops"). Three carry a screenshot; all show the same response:
+
+> `400 invalid_request_error — "This model does not support assistant message prefill. The
+> conversation must end with a user message."`
+
+**Root cause:** `listMessagesForReplay` (and `getConversation`) bounded with `orderBy createdAt: "asc"`
++ `take: 200` — that returns the **OLDEST** 200 rows. Past 200 messages the user turn the route had just
+appended fell outside the window, so `buildReplayMessages` rebuilt an array **ending on an assistant
+turn**, which the model refuses as a prefill. **Permanent per conversation**, not intermittent: the same
+rows rebuild the same rejected shape every send. That is literally "everything I type gives an error".
+
+**Proven against production**, not argued: conversation `cmrqqt4fa0001ju04nhftgzpb` ("Big Mike Big Red
+Inventory Check", created Jul 18, **246 messages**) replayed rows #1–200, ending on an assistant line
+from `2026-07-20T00:52:04Z`. His eight user turns since Jul 30 — including "whats in tank T5" and "are
+you working" at 14:09/14:10 today — have **no assistant reply row at all**. After the fix the same call
+ends on `are you working`. No migration, no backfill: the next turn self-heals.
+**Blast radius:** `awerth@gmail.com` is at 160 messages in one thread and was heading for the same wall.
+
+⚠️ **The Aug-4 investigation falsified the right hypotheses and missed this one** because the repro
+replayed a SHORT slice of the conversation. The 200-row cliff is invisible unless you run the real
+`listMessagesForReplay` against a conversation that actually crosses it. `getConversation` had the same
+bug on the UI read — a long thread reopened frozen weeks back, missing the user's own recent messages.
+
+**➡️ NEXT ACTION: land #583**, then write the four tickets back as one cluster (RESOLVED on merge).
+
+_Last updated: 2026-08-05 — P0 root-caused. The detector that found it: run the REAL
+`listMessagesForReplay` against a conversation that crosses `REPLAY_LIMIT`, then assert the rebuilt
+array's tail role. Everything short of that passes._
 
 **Defect 1 — assistant failures recorded NOTHING server-side.** `run.ts:399` catches its own errors,
 emits the message to the user and returns normally; the route's catch was bare. Neither captured to
@@ -1773,6 +1797,13 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
 
 ## ✅ Done recently
 
+- **🔴 2026-08-05 — P0 assistant 400 ROOT-CAUSED and fixed ([#583](https://github.com/russellmoss/wine-inventory/pull/583), open).**
+  Four of Mike's tickets consolidated into one defect: both message reads bounded with `asc` + `take`,
+  which serves the OLDEST N rows, so any conversation past 200 messages replayed an array ending on an
+  assistant turn and 400'd on **every** subsequent send. Fixed newest-first + reverse, plus a pure
+  invariant in `buildReplayMessages` (never end on an assistant turn — bail to `[]` and let the route
+  fall back to the client history) and a Sentry warning on that fallback. Reproduced and re-verified
+  against the live 246-message conversation. 491 assistant tests green.
 - **📋 Plan 107 (assistant tool surface) drafted + council-reviewed 2026-08-04 — PLANNING ONLY, no code.**
   Audit found 96 tools flat against a self-named ~40 cliff, ten compensating prompt rules, and no
   external API surface at all (no MCP / OpenAPI / llms.txt). Research killed one whole unit — read-side
