@@ -6,6 +6,7 @@ import { listMaterials, materialDisplayName } from "@/lib/cellar/materials";
 import { categoryOf, isDoseableCategory, materialScopeForTask, type MaterialCategory } from "@/lib/cellar/material-taxonomy";
 import { computeDoseTotal, resolveDoseUnit, convertDoseToStock } from "@/lib/cellar/additions-math";
 import { evaluateAtp, advisoryWarning } from "@/lib/work-orders/atp";
+import { ActionError } from "@/lib/action-error";
 import { TASK_VOCABULARY, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
 import { validateDependencyGraph, type TaskDependency } from "@/lib/work-orders/nl-dependencies";
 import type {
@@ -991,10 +992,16 @@ export async function buildWorkOrderReadiness(input: WorkOrderReadinessInput, op
   return opts?.tenantId ? runAsTenant(opts.tenantId, run) : run();
 }
 
-/** Revalidate a proposal's freshness fingerprint before writing. Throws the friendly stale message. */
+/**
+ * Revalidate a proposal's freshness fingerprint before writing. Throws the friendly stale message.
+ *
+ * `ActionError`, NOT a raw `Error` — see the note on `gateWorkOrderReadinessForWrite` below. These
+ * messages exist to be READ by the person who just clicked the button, and only an `ActionError`
+ * survives the trip.
+ */
 export async function assertFreshReadiness(taskBuilds: TaskBuild[], fingerprint: string): Promise<void> {
   const current = await buildReadinessFingerprint(taskBuilds);
-  if (current !== fingerprint) throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
+  if (current !== fingerprint) throw new ActionError("This work-order proposal is stale. Regenerate it before confirming.", "CONFLICT");
 }
 
 /**
@@ -1002,6 +1009,16 @@ export async function assertFreshReadiness(taskBuilds: TaskBuild[], fingerprint:
  * true blocker (returns the refreshed reasons) or, when an expected fingerprint is supplied, on stale state.
  * `needs_input` does NOT block a manual create — those fields are resolved on the execute screen. Returns
  * the fresh proposal so the caller can surface reservation-style warnings.
+ *
+ * ⚠️ BOTH REFUSALS MUST BE `ActionError`, never a raw `Error`. Every caller is a `safeAction`, and
+ * `settleAction` converts ONLY `ActionError` into `{ok:false, error}`; anything else it rethrows, which
+ * Next.js turns into an HTTP 500 with the message replaced by an opaque digest. These two throws are
+ * the app explaining, in plain English, exactly why it won't write — the one thing the user needs. As
+ * raw Errors they were computed, formatted, and then thrown away: a reporter trying to transfer wine
+ * between tanks got "this weird error at the bottom. I don't know what it means" instead of "a
+ * transfer's source and destination must be different vessels" (feedback cmsg2aphb0000kz04ivugdcn1).
+ * The gate guards five write paths — both creates, the edit, the composer, and the assistant's confirm —
+ * so every one of them was failing this way.
  */
 export async function gateWorkOrderReadinessForWrite(
   taskBuilds: TaskBuild[],
@@ -1010,11 +1027,11 @@ export async function gateWorkOrderReadinessForWrite(
 ): Promise<WorkOrderReadinessProposal> {
   const proposal = await buildWorkOrderReadiness({ ...meta, taskBuilds });
   if (expectedFingerprint && proposal.fingerprint !== expectedFingerprint) {
-    throw new Error("This work-order proposal is stale. Regenerate it before confirming.");
+    throw new ActionError("This work-order proposal is stale. Regenerate it before confirming.", "CONFLICT");
   }
   const blockers = proposal.warnings.filter((w) => w.severity === "blocking");
   if (blockers.length > 0) {
-    throw new Error(`This work order can't be created yet: ${blockers.map((b) => b.message).join(" ")}`);
+    throw new ActionError(`This work order can't be created yet: ${blockers.map((b) => b.message).join(" ")}`);
   }
   return proposal;
 }
