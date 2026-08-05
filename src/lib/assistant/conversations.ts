@@ -77,14 +77,23 @@ export async function appendMessage(args: {
  * be reshaped for rendering: replay.ts needs the raw role/content/metadata triple. Bounded by
  * REPLAY_LIMIT so a very long conversation cannot blow the request; message-window.ts narrows it
  * further, pair-aware.
+ *
+ * The bound is taken NEWEST-first and then reversed — never `asc` + `take`. `asc` + `take` returns
+ * the OLDEST rows, so once a conversation passed REPLAY_LIMIT the just-appended user turn fell
+ * outside the window and the rebuilt array ended on an ASSISTANT turn. Anthropic rejects that
+ * outright ("This model does not support assistant message prefill. The conversation must end with
+ * a user message"), so EVERY subsequent turn in that conversation 400'd — permanently, not
+ * intermittently. One 246-message thread died on 2026-07-20 and produced four P0 tickets before
+ * anyone could name it. `id` breaks createdAt ties so the reversal is a total order.
  */
 export async function listMessagesForReplay(conversationId: string) {
-  return prisma.assistantMessage.findMany({
+  const rows = await prisma.assistantMessage.findMany({
     where: { conversationId },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: REPLAY_LIMIT,
     select: { role: true, content: true, metadata: true },
   });
+  return rows.reverse();
 }
 
 /** Bump updatedAt so the conversation floats to the top of the list. */
@@ -118,7 +127,13 @@ export async function listConversations(
   }));
 }
 
-/** Load a conversation's messages, ownership-checked. Null if not found/owned. */
+/**
+ * Load a conversation's messages, ownership-checked. Null if not found/owned.
+ *
+ * Same newest-first-then-reverse bound as listMessagesForReplay, for the same reason: `asc` +
+ * `take` served the OLDEST MESSAGES_LIMIT turns, so reopening a long conversation showed a
+ * transcript frozen months back and the user's own recent messages were simply missing from it.
+ */
 export async function getConversation(args: {
   id: string;
   ownerUserId: string;
@@ -129,13 +144,14 @@ export async function getConversation(args: {
       id: true,
       title: true,
       messages: {
-        orderBy: { createdAt: "asc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: MESSAGES_LIMIT,
         select: { id: true, role: true, content: true, metadata: true, createdAt: true },
       },
     },
   });
-  return convo;
+  if (!convo) return null;
+  return { ...convo, messages: convo.messages.reverse() };
 }
 
 export async function renameConversation(args: {

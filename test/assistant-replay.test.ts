@@ -268,3 +268,60 @@ describe("windowReplayRows — bounding cannot orphan a tool block", () => {
     expect(windowReplayRows(rows)).toEqual(rows);
   });
 });
+
+/**
+ * The 400 that killed a conversation for 16 days (Mike Juergens, 4 tickets, 2026-07-20 → 08-05).
+ *
+ * `listMessagesForReplay` bounded with `orderBy asc` + `take: 200`, which returns the OLDEST 200
+ * rows. Past 200 messages the just-appended user turn was outside the window, so the rebuilt array
+ * ended on an assistant turn and every request came back:
+ *
+ *   400 invalid_request_error — "This model does not support assistant message prefill.
+ *                                The conversation must end with a user message."
+ *
+ * The query is fixed at the source (newest-first + reverse). These lock the PURE half: whatever
+ * rows arrive, this function must never hand back an array that the API cannot accept.
+ */
+describe("buildReplayMessages — never ends on an assistant turn", () => {
+  it("bails out when the rows end on an assistant turn (the truncation bug's shape)", () => {
+    const rows: ReplayRow[] = [
+      { role: "user", content: "no card" },
+      { role: "assistant", content: "You're right — I said done but hadn't called the tool." },
+    ];
+    // [] makes the route fall back to the client history, which is guaranteed to end on a user turn.
+    expect(buildReplayMessages(rows)).toEqual([]);
+  });
+
+  it("bails out when a tool turn is the last thing in the window", () => {
+    const rows: ReplayRow[] = [
+      { role: "user", content: "log 24.2 brix on block 3" },
+      { role: "assistant", content: "Card is up — confirm it.", metadata: traced([CALL]) },
+    ];
+    expect(buildReplayMessages(rows)).toEqual([]);
+  });
+
+  it("still rebuilds normally when the rows end on the current user turn", () => {
+    const rows: ReplayRow[] = [
+      { role: "user", content: "log 24.2 brix on block 3" },
+      { role: "assistant", content: "Card is up — confirm it.", metadata: traced([CALL]) },
+      { role: "user", content: "confirmed" },
+    ];
+    const out = buildReplayMessages(rows);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out[out.length - 1].role).toBe("user");
+  });
+
+  it("holds for every window budget over a long tool conversation", () => {
+    const rows: ReplayRow[] = [];
+    for (let i = 0; i < 20; i++) {
+      rows.push({ role: "user", content: `ask ${i}` });
+      rows.push({ role: "assistant", content: `reply ${i}`, metadata: traced([{ ...CALL, id: `toolu_${i}` }]) });
+    }
+    rows.push({ role: "user", content: "the current utterance" });
+    for (let budget = 1; budget <= 40; budget++) {
+      const out = buildReplayMessages(windowReplayRows(rows, budget));
+      if (out.length === 0) continue;
+      expect(out[out.length - 1].role, `budget ${budget}: ended on an assistant turn`).toBe("user");
+    }
+  });
+});
