@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPressGuidance, initialPressFractionDestination, oversizedFractionMessage, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
+import { buildPressGuidance, initialPressFractionDestination, occupiedDestinationMessage, oversizedFractionMessage, pressDestinationMode, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
 
 const positions = [
   { vesselId: "v1", vesselCode: "T6", lotId: "l1", lotCode: "24-RS-M", form: "MUST", status: "ACTIVE", volumeL: 1200 },
@@ -122,5 +122,98 @@ describe("press destination — never silently pick a vessel (feedback cmsf3y809
     );
     expect(msg).toContain('"press 1"');
     expect(msg).toContain("B1");
+  });
+});
+
+/**
+ * Feedback cmsgc9bw80000la04b42ftqvy — "blends": *"I should be able to transfer wine into a vessel
+ * that already has wine in it."*
+ *
+ * He was right, and the engine agreed with him: `press-core.ts` has always let a fraction land in an
+ * occupied vessel by MERGING into the lot already there (`mergeIntoLotId`, legal exactly when the
+ * vessel holds ONE lot and that is the one named), and the work-order contract has always passed the
+ * field through. But NO screen ever set it — it lived in one form's state and payload with no control
+ * behind it — so from every UI the operation was impossible and the only thing the user ever saw was
+ * the core's refusal.
+ *
+ * These lock the client half of that rule. It mirrors press-core exactly; the core stays the authority.
+ */
+describe("press destinations — landing a fraction in an occupied vessel (feedback cmsgc9bw8)", () => {
+  const SOURCE = "src-tank";
+  const empty = { id: "t9", code: "T9", capacityL: 5000, residents: [] };
+  const oneLot = { id: "b1", code: "B1", capacityL: 225, residents: [{ lotId: "lot-a", code: "2024-RRR-1-PN", volumeL: 180 }] };
+  const twoLots = {
+    id: "t3", code: "T3", capacityL: 12000,
+    residents: [{ lotId: "lot-a", code: "2026-SY-5", volumeL: 300 }, { lotId: "lot-b", code: "2026-CS-1", volumeL: 200 }],
+  };
+  const source = { id: SOURCE, code: "T5", capacityL: 12000, residents: [{ lotId: "parent", code: "2026-SY-2", volumeL: 900 }] };
+  const CELLAR = [empty, oneLot, twoLots, source];
+
+  it("classifies the destination the same way press-core does", () => {
+    expect(pressDestinationMode(empty, SOURCE)).toBe("free");
+    expect(pressDestinationMode(oneLot, SOURCE)).toBe("merge");
+    expect(pressDestinationMode(twoLots, SOURCE)).toBe("blocked");
+    // Pressing back into the source is the normal in-place case — the parent is drawn down by the
+    // same operation, so its own resident is not a foreign one (press-core.ts:182).
+    expect(pressDestinationMode(source, SOURCE)).toBe("free");
+    expect(pressDestinationMode(undefined, SOURCE)).toBe("free");
+  });
+
+  it("asks — rather than assumes — when the vessel holds exactly one lot", () => {
+    const msg = occupiedDestinationMessage({ label: "free-run", destVesselId: "b1", volumeL: 200 }, CELLAR, SOURCE);
+    expect(msg).toContain("B1 already holds 2024-RRR-1-PN (180 L)");
+    expect(msg).toContain("joins 2024-RRR-1-PN");
+  });
+
+  it("passes once the fraction is explicitly merged into that lot — the case that was impossible", () => {
+    expect(
+      // 40 L on top of B1's 180 L resident fits inside its 225 L.
+      occupiedDestinationMessage({ label: "free-run", destVesselId: "b1", volumeL: 40, mergeIntoLotId: "lot-a" }, CELLAR, SOURCE),
+    ).toBeNull();
+  });
+
+  it("catches a merge that would overfill the vessel — headroom IS known once there is one resident", () => {
+    // B1 in the live cellar: a 225 L barrel already holding 225 L. Merging 200 L more cannot fit.
+    const full = { id: "bf", code: "BF", capacityL: 225, residents: [{ lotId: "lot-f", code: "2024-CS", volumeL: 225 }] };
+    const msg = occupiedDestinationMessage(
+      { label: "free-run", destVesselId: "bf", volumeL: 200, mergeIntoLotId: "lot-f" },
+      [full],
+      SOURCE,
+    );
+    expect(msg).toContain("only 0 L will fit");
+  });
+
+  it("allows a merge that fits", () => {
+    const room = { id: "br", code: "BR", capacityL: 225, residents: [{ lotId: "lot-r", code: "2025-PN", volumeL: 100 }] };
+    expect(
+      occupiedDestinationMessage({ label: "press", destVesselId: "br", volumeL: 100, mergeIntoLotId: "lot-r" }, [room], SOURCE),
+    ).toBeNull();
+  });
+
+  it("refuses a vessel holding more than one lot — merging is defined against a single lot", () => {
+    const msg = occupiedDestinationMessage({ label: "press", destVesselId: "t3", volumeL: 100 }, CELLAR, SOURCE);
+    expect(msg).toContain("T3 holds 2026-SY-5 and 2026-CS-1");
+    expect(msg).toContain("empty vessel");
+  });
+
+  it("says nothing about an empty vessel, or about pressing back into the source", () => {
+    expect(occupiedDestinationMessage({ label: "free-run", destVesselId: "t9", volumeL: 200 }, CELLAR, SOURCE)).toBeNull();
+    expect(occupiedDestinationMessage({ label: "free-run", destVesselId: SOURCE, volumeL: 200 }, CELLAR, SOURCE)).toBeNull();
+  });
+
+  it("catches a merge target left over from a vessel the user moved away from", () => {
+    // The forms clear this on destination change; if one ever regresses, the core would reject it.
+    const msg = occupiedDestinationMessage({ label: "free-run", destVesselId: "t9", volumeL: 200, mergeIntoLotId: "lot-a" }, CELLAR, SOURCE);
+    expect(msg).toContain("T9 is empty");
+  });
+
+  it("ignores rows that are not yet a real cut", () => {
+    expect(occupiedDestinationMessage({ destVesselId: "", volumeL: 200 }, CELLAR, SOURCE)).toBeNull();
+    expect(occupiedDestinationMessage({ destVesselId: "b1", volumeL: 0 }, CELLAR, SOURCE)).toBeNull();
+    expect(occupiedDestinationMessage({ destVesselId: "ghost", volumeL: 200 }, CELLAR, SOURCE)).toBeNull();
+  });
+
+  it("treats a vessel with no residents field as free (older callers)", () => {
+    expect(pressDestinationMode({ id: "x", code: "X", capacityL: 100 }, SOURCE)).toBe("free");
   });
 });

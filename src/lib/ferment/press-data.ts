@@ -17,7 +17,10 @@ export type PressablePosition = {
   revision: string; // VesselLot.updatedAt ISO — the optimistic-concurrency token
 };
 
-export type PressDestVessel = { id: string; code: string; capacityL: number };
+/** A lot already sitting in a destination vessel — the only thing a fraction may legally be merged into. */
+export type PressVesselResident = { lotId: string; code: string; volumeL: number };
+
+export type PressDestVessel = { id: string; code: string; capacityL: number; residents: PressVesselResident[] };
 
 export type PressFormData = { positions: PressablePosition[]; vessels: PressDestVessel[]; pressCycles: string[] };
 
@@ -44,6 +47,24 @@ export async function loadPressFormData(): Promise<PressFormData> {
     select: { id: true, code: true, capacityL: true },
   });
 
+  // What each destination vessel ALREADY holds. `press-core.ts` will only let a fraction land in an
+  // occupied vessel by MERGING into the lot that is already there (`mergeIntoLotId`, legal exactly when
+  // the vessel holds one lot and that is the one named). The engine has always supported it and the
+  // work-order contract has always passed it through — but no screen ever set the field, so the whole
+  // capability was unreachable and "press into a vessel that already has wine in it" read as impossible
+  // (feedback cmsgc9bw80000la04b42ftqvy). The forms need the residents to offer that choice.
+  const occupants = await prisma.vesselLot.findMany({
+    where: { vesselId: { in: vessels.map((v) => v.id) } },
+    select: { vesselId: true, volumeL: true, lot: { select: { id: true, code: true } } },
+    orderBy: { lot: { code: "asc" } },
+  });
+  const residentsByVessel = new Map<string, PressVesselResident[]>();
+  for (const o of occupants) {
+    const list = residentsByVessel.get(o.vesselId) ?? [];
+    list.push({ lotId: o.lot.id, code: o.lot.code, volumeL: Number(o.volumeL) });
+    residentsByVessel.set(o.vesselId, list);
+  }
+
   const cycles = await prisma.pressCycle.findMany({ orderBy: { name: "asc" }, select: { name: true } });
 
   return {
@@ -60,6 +81,11 @@ export async function loadPressFormData(): Promise<PressFormData> {
         volumeL: Number(p.volumeL),
         revision: p.updatedAt.toISOString(),
       })),
-    vessels: vessels.map((v) => ({ id: v.id, code: v.code, capacityL: Number(v.capacityL) })),
+    vessels: vessels.map((v) => ({
+      id: v.id,
+      code: v.code,
+      capacityL: Number(v.capacityL),
+      residents: residentsByVessel.get(v.id) ?? [],
+    })),
   };
 }
