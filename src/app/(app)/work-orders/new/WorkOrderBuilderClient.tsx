@@ -4,7 +4,8 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, Button, Input, Eyebrow, Badge } from "@/components/ui";
-import { fieldLabel, type ResolvedTaskVocabulary, type TaskTypeDef, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
+import { fieldLabel, type ResolvedTaskVocabulary, type TaskBuild } from "@/lib/work-orders/template-vocabulary";
+import { buildTaskPalette } from "@/lib/work-orders/task-palette";
 import { createWorkOrderFromBuildsAction, updateWorkOrderFromBuildsAction, draftWorkOrderFromTextAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
 import { previewWorkOrderReadinessAction } from "@/lib/work-orders/proposal-readiness-actions";
@@ -83,16 +84,7 @@ function newKey(): string {
   return `t${keyCounter}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** Group a vocabulary entry into a palette category (display-only; the safety line is in the resolver). */
-function categoryFor(def: TaskTypeDef): string {
-  if (def.isUserDefined || def.kind === "NOTE") return "Checklist & logs";
-  if (def.observationType === "HARVEST_WEIGH_IN" || def.opType === "CRUSH" || def.opType === "PRESS") return "Fruit & press";
-  if (def.kind === "OBSERVATION") return "Sampling";
-  if (def.kind === "MAINTENANCE") return "Maintenance";
-  if (def.opType === "ADDITION" || def.opType === "FINING") return "Additions";
-  return "Cellar ops";
-}
-const CATEGORY_ORDER = ["Cellar ops", "Additions", "Sampling", "Maintenance", "Fruit & press", "Checklist & logs"];
+// Palette grouping + the press/saignée split live in `task-palette.ts` — pure, so they are testable.
 
 function cleanValues(raw: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== "" && v !== undefined && v !== null));
@@ -163,19 +155,14 @@ export function WorkOrderBuilderClient({
   const [draftNote, setDraftNote] = React.useState<string | null>(null);
 
   // Palette entries grouped by category, in a stable display order.
-  const palette = React.useMemo(() => {
-    const byCat: Record<string, { key: string; label: string }[]> = {};
-    for (const [key, def] of Object.entries(vocab)) {
-      const cat = categoryFor(def);
-      (byCat[cat] ??= []).push({ key, label: def.label });
-    }
-    return CATEGORY_ORDER.filter((c) => byCat[c]?.length).map((c) => ({ category: c, items: byCat[c] }));
-  }, [vocab]);
+  const palette = React.useMemo(() => buildTaskPalette(vocab), [vocab]);
 
-  function addTask(taskType: string) {
+  // A palette entry may seed values — two buttons can share one task type and differ only by mode
+  // (Press vs Saignée). The user can still change whatever it seeded.
+  function addTask(entry: { taskType: string; presetValues?: Record<string, string> }) {
     setGroups((prev) => {
       const next = prev.length ? prev.map((g) => [...g]) : [[]];
-      next[next.length - 1].push({ key: newKey(), taskType, title: "", values: {}, assigneeId: "", equipmentIds: [] });
+      next[next.length - 1].push({ key: newKey(), taskType: entry.taskType, title: "", values: { ...(entry.presetValues ?? {}) }, assigneeId: "", equipmentIds: [] });
       return next;
     });
   }
@@ -607,7 +594,7 @@ export function WorkOrderBuilderClient({
                 <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>{cat.category}</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                   {cat.items.map((it) => (
-                    <button key={it.key} type="button" onClick={() => addTask(it.key)}
+                    <button key={it.id} type="button" onClick={() => addTask(it)}
                       style={{ fontSize: 12, padding: "4px 8px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-primary)", cursor: "pointer" }}>
                       {it.label}
                     </button>
