@@ -11,10 +11,11 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-> **Nothing is in flight.** Every bug in Mike's batch is fixed, live, written back and reported to
-> him (#583 assistant · #587 capacity · #589 transfer), #584's fallout is closed (#585 CI · #586
-> admin UI), and main is green. One ticket is **waiting on Mike**, not on us — see below.
-> The next unstarted thing is **plan 107** (assistant tool surface).
+> **Land [#593](https://github.com/russellmoss/wine-inventory/pull/593) ("blends") — it is open and
+> CI-green.** Everything else from Mike's batch is fixed, live, written back and reported to him
+> (#583 assistant · #587 capacity · #589 transfer), #584's fallout is closed (#585 CI · #586 admin
+> UI), and main is green. One ticket is **waiting on Mike**, not on us — see below.
+> After #593, the next unstarted thing is **plan 107** (assistant tool surface).
 
 ## 🟠 "CONFIRMATION CARD NOT RENDERING" (`cmsgbjgov…`) — TRIAGED/UNCLEAR, **BLOCKED ON MIKE**
 
@@ -90,8 +91,8 @@ stack trace. "All assertions passed" was wrong for three commits.
 _"✓ VINEYARD-1 holds against a real database (31 checks)."_ **Main stays red until it merges.**
 
 
-**🆕 Mike's two other new reports, still untriaged:** `cmsgc9bw80000la04b42ftqvy` "blends",
-`cmsgbp71b0000l2049stzp37z` "eqipment" (feature request).
+**🆕 Mike's other new report, still untriaged:** `cmsgbp71b0000l2049stzp37z` "eqipment" (feature
+request). "blends" (`cmsgc9bw8…`) is triaged — see the section below.
 
 ## 🪝 Off-path — found, NOT fixed
 
@@ -169,7 +170,7 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
 
-_Last updated: 2026-08-05 — NOW.md archived. It had reached 3,132 lines against a one-screen
+_Last updated: 2026-08-05 (later) — NOW.md archived, then reconciled with the concurrent "blends" triage (#593). It had reached 3,132 lines against a one-screen
 convention; the whole of it is preserved verbatim in `docs/NOW-archive-2026-08.md` and this is a
 rebuilt spine holding only what is genuinely open. Nothing was summarised away — the archive is a
 copy of the previous file, not a digest of it._
