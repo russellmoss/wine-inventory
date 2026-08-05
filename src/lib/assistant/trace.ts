@@ -33,6 +33,10 @@ export type AssistantTrace = {
   /** Gironde repro 2026-07-28: whether the retrieval-denial repair turn ran, and whether it worked —
    *  same shape as overclaimRepair, for the model denying KB coverage it was actually handed. */
   kbDenialRepair?: "attempted" | "recovered" | "failed";
+  /** Feedback cmsgbjgov 2026-08-05: whether the unverified-failure repair turn ran, and whether it
+   *  worked — the inverse of overclaimRepair, for the model asserting a write did NOT persist (or
+   *  blaming a rendering bug) with no failure in the run to ground it. */
+  unverifiedFailureRepair?: "attempted" | "recovered" | "failed";
 };
 
 export function newAssistantTrace(args: {
