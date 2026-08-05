@@ -40,6 +40,10 @@ jobs:
       # `vineyardScoped: false` in entities.ts are admin-only to create or edit in the assistant,
       # so the GUI catalog writes must be too. Operational stock/vessel work stays open.
       - run: npm run verify:global-catalog-admin
+      # ADMIN-PREDICATE: the UI must decide admin-ness the same way the server does. `isTenantAdminLike`
+      # is the one answer (admin OR developer); hand-rolled copies kept dropping `developer` and
+      # comparing against "owner", a role this app never assigns. Pure static AST scan, no DB.
+      - run: npm run verify:admin-predicate
       - run: npm run verify:feedback
       - run: npm run verify:feedback-idempotency
       - run: npm run verify:feedback-security
