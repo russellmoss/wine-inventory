@@ -47,12 +47,21 @@ open and are NOT this bug: `cmsg2aphb0000kz04ivugdcn1` "transfer error" (its tra
 `POST /work-orders/new`**) and `cmsf3y8090000l1049jg251nx` "capacity" (a work order on Tank 5, ~8,000 L,
 rejects volume as exceeding **225 L** — the system is reading a tank as a barrel).
 
-⚠️ **Unrelated red on main, not from this PR:** the CI run for `#584 fix/authorization-fences`
-(merged 16:47Z) FAILED — `vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)`, where the test
-fixture's cleanup cannot DELETE `spray_block_line` (the append-only KD-1/C15 guard refuses it and the
-teardown never sets `app.allow_spray_purge`). Needs its own look.
+✅ **Red on main from `#584 fix/authorization-fences` — fix in flight.** The new
+`vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)` job has failed on every run since the
+merge (`3ca47e67` → `89cb62dc` → `e4a5893c`). **All 28 assertions PASS** — the fence really is proven
+at runtime, and this was the job's first-ever execution (the commit message flagged it had never run;
+no DB locally). It dies in its own teardown at `scripts/verify-vineyard-scope-runtime.ts:265`: the
+spray chain is append-only, so `spray_reject_delete()` refuses the fixture purge unless
+`app.allow_spray_purge='on'` **and** the role isn't `app_rls` (KD-1 / council C15). The teardown had
+the owner half (`runAsSystem`) but never set the GUC. Fixed the way `verify-spray-record.ts` already
+does it: one transaction, `set_config(..., true)` first (transaction-LOCAL, so every delete must share
+it), and delete `spray_application` alone — lines cascade off it.
+⚠️ **Aaron opened AND merged #584, and the code in it is ours** (both commits authored by
+russellmoss + Claude on `fix/authorization-fences`; his only authored commit in the repo is the merge
+commit). It landed as a **merge commit, not a squash** — off the normal flow for code. Worth a word.
 
-_Last updated: 2026-08-05 — P0 closed. The detector that found it: run the REAL
+_Last updated: 2026-08-05 — P0 closed; #584 teardown fix in flight. The detector that found it: run the REAL
 `listMessagesForReplay` against a conversation that crosses `REPLAY_LIMIT`, then assert the rebuilt
 array's tail role. Everything short of that passes — a `take`-bound bug cannot reproduce on a
 fixture smaller than the bound._
