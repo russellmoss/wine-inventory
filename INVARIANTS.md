@@ -523,3 +523,32 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   clearance, but an unprivileged user could reach the same outcome by typing a number. Enforced against
   bad data, not against bad authorization. `TenantProductFacts` has no vineyard column, so the fence is
   the admin role, not D9.
+
+## Tenancy — every foreign key is declared somewhere machine-readable (FK-1)
+
+> Machine-readable note: [[FK-1-every-foreign-key-is-declared]]. Guarded by `npm run verify:fk-registry` + `verify:fk-registry-db`.
+
+- **A reference column is a Prisma relation, a declared composite constraint, or an explicit soft
+  reference — never none of the three (FK-1, high, app-code + db-constraint).** Cross-tenant-risk FKs are
+  composite `(tenantId, refId) → (tenantId, id)`, which makes a cross-tenant reference **structurally
+  impossible** — a property worth keeping. But **Prisma cannot express it**, so those FKs live in
+  hand-written migration SQL and 42% of models (79 of 188) carry reference columns with no `@relation`.
+  Before this invariant, **291 composite constraints existed only as lines inside 186 migration files**:
+  nothing checked that a new `*Id` column ever got its constraint, or that a dropped one was noticed, and
+  `prisma migrate diff` is documented broken on this schema. A new table could ship with a dangling
+  reference column and the whole suite would pass.
+  **The proof is three parts.** `gen:fk-registry` replays the migration history tracking ADD/DROP and
+  emits the final graph to `prisma/fk-registry.json` (435 constraints; the first run applied **20 drops**,
+  so replay was necessary rather than defensive). `verify:fk-registry` asserts every schema reference
+  column is declared. `verify:fk-registry-db` proves the registry matches `pg_constraint` **including
+  column order** — `(tenantId, lotId)` ≠ `(lotId, tenantId)` — because the parse is the weak link and only
+  the database can falsify it. The runtime proof deliberately does NOT auto-rewrite the registry: adopting
+  whatever the DB says would turn a detected drift into a laundered one.
+  **A foreign key is sometimes impossible, not merely absent.** Actor snapshots (`createdById`,
+  `actorUserId`, …) point at the GLOBAL `user` table, where a composite FK cannot exist (no `tenantId`)
+  and a simple one would make an account undeletable while history mentions it. External identifiers and
+  correlation keys point at nothing. ⚠️ `locationId` is exempted **per column, not by name** — it is a
+  genuine composite FK on `cellar_material`/`supply_lot` and a documented plain ref on four other tables,
+  so a name-based rule would have excused the real ones.
+  **85 columns sit on a shrink-only baseline** (`prisma/fk-baseline.json`) — each a pending decision, not
+  an accepted state. The guard fails on a stale entry too, so the ratchet can only tighten.

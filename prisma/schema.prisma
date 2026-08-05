@@ -628,6 +628,9 @@ model VineyardBlock {
   subblocks           VineyardSubblock[]
 
   @@unique([tenantId, id]) // plan 039: composite-FK target for work_order_task.blockId (Phase-12 rule)
+  @@unique([tenantId, id, vineyardId]) // anchor for the WIDENED child keys that carry a denormalised
+  // vineyardId (block_spatial_metric, block_soil_snapshot). Including the vineyard IN the reference is
+  // what makes a drifted copy unstorable rather than merely discouraged.
   @@index([vineyardId])
   @@index([varietyId])
   @@index([tenantId])
@@ -783,6 +786,7 @@ model SpatialDataset {
 
   @@unique([tenantId, datasetIdentity]) // C1: up-front idempotency — the INFLIGHT placeholder claims this
   @@unique([tenantId, id]) // composite cross-tenant FK target (K11) — block_spatial_metric.datasetId references this
+  @@unique([tenantId, id, vineyardId]) // anchor for spatial_dataset_derivative's widened key (same reason)
   @@index([tenantId])
   @@index([tenantId, vineyardId])
   @@index([tenantId, sceneId])
@@ -830,7 +834,9 @@ model BlockSpatialMetric {
   id                     String        @id @default(cuid())
   blockId                String // composite FK → vineyard_block(tenantId, id)
   datasetId              String // composite FK → spatial_dataset(tenantId, id)
-  vineyardId             String // denormalized for per-vineyard reads (plain indexed column, no FK — avoids a redundant cascade path)
+  vineyardId             String // denormalised for per-vineyard reads. NOT unconstrained: it is part of the
+  // WIDENED block key (tenantId, blockId, vineyardId) -> vineyard_block(tenantId, id, vineyardId), so it
+  // cannot disagree with the block's vineyard. No extra cascade path — the block FK just got wider.
   metric                 SpatialMetric @default(NDVI)
   acquiredAt             DateTime // copied from the dataset's scene (the analysis axis)
   // ZonalStats (P0) — Decimal, NULLABLE (null below the valid floor).
@@ -897,7 +903,8 @@ model BlockSoilSnapshot {
   tenantId           String    @default("") // Phase 12 tenant scope; FK+RLS at DB level
   id                 String    @id @default(cuid())
   blockId            String // composite FK → vineyard_block(tenantId, id) (raw-SQL K11)
-  vineyardId         String // denormalized for per-vineyard reads (plain indexed column, no FK — mirrors block_spatial_metric)
+  vineyardId         String // denormalised for per-vineyard reads; part of the WIDENED block key
+  // (tenantId, blockId, vineyardId) -> vineyard_block(tenantId, id, vineyardId) — cannot drift.
   pulledAt           DateTime  @default(now())
   supersededAt       DateTime? // null = the one CURRENT snapshot; set = retained history
   surveyAreaSymbol   String? // NRCS sacatalog areasymbol(s) covering the block (may be null pre-resolve)
@@ -1128,7 +1135,8 @@ model SpatialDatasetDerivative {
   tenantId       String                @default("") // Phase 12 tenant scope; FK+RLS at DB level
   id             String                @id @default(cuid())
   datasetId      String // composite FK → spatial_dataset(tenantId, id)
-  vineyardId     String // denormalized for per-vineyard reads (plain indexed column, no FK)
+  vineyardId     String // denormalised for per-vineyard reads; part of the WIDENED dataset key
+  // (tenantId, datasetId, vineyardId) -> spatial_dataset(tenantId, id, vineyardId) — cannot drift.
   kind           SpatialDerivativeKind @default(DISPLAY_NDVI)
   recipeVersion  Int // bump when the warp/quantize recipe changes (IN the unique key + the serve ETag)
   status         SpatialDatasetStatus  @default(INFLIGHT) // INFLIGHT placeholder → READY on store → FAILED terminal

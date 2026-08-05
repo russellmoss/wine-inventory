@@ -2,7 +2,8 @@
 
 > Plain-English mental model of how the app actually fits together, grounded in the real code.
 > No need to read code to use this. When it drifts, ask Claude: *"Read the codebase and refresh
-> docs/architecture/system-map.md."* Related: [[scale-register]], [[glossary]], [[ROADMAP]], [[VISION]].
+> docs/architecture/system-map.md."* Related: [[data-model]] (the tables, and how they relate),
+> [[scale-register]], [[glossary]], [[ROADMAP]], [[VISION]].
 
 ## The stack (one line each)
 

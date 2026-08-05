@@ -40,6 +40,12 @@ jobs:
       # `vineyardScoped: false` in entities.ts are admin-only to create or edit in the assistant,
       # so the GUI catalog writes must be too. Operational stock/vessel work stays open.
       - run: npm run verify:global-catalog-admin
+      # FK-1: composite (tenantId, refId) FKs are invisible to Prisma, so 291 of them lived only in
+      # hand-written migration SQL. prisma/fk-registry.json is that graph, replayed from the migration
+      # history; this asserts every reference column in schema.prisma is declared as a Prisma relation,
+      # a composite constraint, or an explicit soft reference. Shrink-only baseline for the 89 that
+      # predate it. Pure static scan, no DB.
+      - run: npm run verify:fk-registry
       - run: npm run verify:feedback
       - run: npm run verify:feedback-idempotency
       - run: npm run verify:feedback-security
@@ -147,6 +153,9 @@ jobs:
           git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/changed.txt
           CHANGED_PATHS="$(cat /tmp/changed.txt)" npx tsx scripts/verify-feedback-domain.ts
 
+  # Proofs that need a REAL database. Hosts every such proof so they share one Postgres + one migrate
+  # deploy rather than spawning a job each.
+  #
   # VINEYARD-1 runtime proof: the D9 fence against a REAL Postgres, run AS the NOBYPASSRLS app_rls role.
   # The `check` job's verify:vineyard-scope is a STATIC scan — it proves every action reaches a gate, not
   # that the gate resolves the right vineyard or that a manager's membership set loads at all. The latter
@@ -154,7 +163,7 @@ jobs:
   # under app_rls because it was selected off the GLOBAL user model), and an empty set makes every deny
   # check vacuously pass — so it has to be observed against a database, as the app role.
   # The script creates and deletes its OWN throwaway tenant, so it needs no seed.
-  vineyard-scope-db:
+  db-proofs:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -194,6 +203,13 @@ jobs:
             echo 'DATABASE_URL=postgresql://app_rls:app_rls_ci_pw@localhost:5432/wine_ci'
             echo 'DATABASE_URL_UNPOOLED=postgresql://postgres:postgres@localhost:5432/wine_ci'
           } > .env
+      # FK-1: pg_constraint is the only authority that cannot be wrong. This is the SECOND, independent
+      # derivation of the referential graph — the committed registry came from parsing migrations, and a
+      # parse can be wrong in ways the static guard would never notice. Runs as the OWNER via
+      # DATABASE_URL_UNPOOLED (pg_constraint is visibility-filtered by privilege). First, because if the
+      # schema's own integrity is in doubt every later proof is meaningless.
+      - name: FK-1 registry matches the database
+        run: npm run verify:fk-registry-db
       - name: VINEYARD-1 runtime proof (as app_rls)
         run: npm run verify:vineyard-scope-db
 
