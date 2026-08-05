@@ -154,6 +154,7 @@
     "eval:assistant": "vitest run test/evals/assistant-tools.eval.test.ts",
     "eval:assistant-must-propose": "vitest run test/evals/assistant-must-propose.eval.test.ts",
     "eval:assistant-currency": "vitest run test/evals/assistant-currency-warning.eval.test.ts",
+    "eval:assistant-unverified-failure": "vitest run test/evals/assistant-unverified-failure.eval.test.ts",
     "calibrate:ttb": "tsx scripts/calibrate-ttb-fields.ts",
     "postinstall": "prisma generate",
     "verify:kb-register": "tsx --env-file=.env scripts/verify-kb-register.ts",

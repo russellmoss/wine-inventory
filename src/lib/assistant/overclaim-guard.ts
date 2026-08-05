@@ -10,7 +10,12 @@
 /** A sentence that correctly relays a blocker/no-card/failure. Never "correct" such a sentence — that
  * would produce a false correction on the CORRECT prompt behavior ("there is no card ..."). */
 const DISCLAIMER =
-  /\b(?:no card|there is no card|nothing (?:was|has been)|not (?:been )?(?:filed|created|saved|drafted)|couldn't|could not|can't|cannot|wasn't|was not|isn't|didn't|did not|unable)\b/;
+  // "no <thing>" generalised beyond "no card": the golden eval caught this guard firing on the
+  // honest sentence "…so no report has been submitted", because only "no card" was disclaimed while
+  // the CLAIMS pattern below matches "report … has been submitted". The correction it appends there
+  // ("I have not actually created or filed anything yet") restates what the model just said.
+  // Contractions accept a typographic apostrophe too — the model emits both.
+  /\b(?:no (?:card|report|bug|feedback|request|change|work order|ticket)|there is no card|nothing (?:was|has been)|not (?:been )?(?:filed|created|saved|drafted)|haven['’]?t|hasn['’]?t|couldn['’]?t|could not|can['’]?t|cannot|wasn['’]?t|was not|isn['’]?t|didn['’]?t|did not|unable)\b/;
 
 /** Sentences that POSITIVELY claim a card exists, or that a write already happened. */
 const CLAIMS: RegExp[] = [

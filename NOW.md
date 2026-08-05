@@ -42,8 +42,26 @@ the browser; non-persistence claims ("nothing got saved") fire ONLY when a card 
 guard can never contradict `OVERCLAIM_CORRECTION`. Stands down entirely when a tool actually errored.
 Prompt rule added, and `file_feedback` now stamps an UNVERIFIED caveat on an assistant-authored body
 that asserts client state — this ticket's "no confirmation card rendered" is what sent triage after a
-phantom. 25 tests; ablating the predicate fails 8. **This fixes the LIE, not the cause — the card
+phantom. 25 tests; ablating the predicate fails 8. The **golden eval** followed in
+[#598](https://github.com/russellmoss/wine-inventory/pull/598) and immediately earned its keep — run
+live it found TWO false positives in shipped guards (see below). **This fixes the LIE, not the cause — the card
 symptom below is still unproven and still blocked on Mike.**
+
+🔬 **What the golden eval found once pointed at the live model** (`npm run eval:assistant-unverified-failure`,
+gated on `ASSISTANT_EVAL=1` + a key; 4 cases × 5 runs, 20/20 across two runs). Every one of these was a
+guard flagging an HONEST reply — the model's behaviour was right and the code was wrong:
+1. **`unverified-failure-guard`**: `cardShown` does NOT mean anything persisted. A card is a proposal;
+   the commit is an out-of-band `POST /api/assistant/confirm` the run loop never sees. So *"nothing was
+   saved"* is TRUE of every pending card. Fixed with a whole-text `CONFIRM_CONTRACT` suppressor.
+2. **`overclaim-guard`** (pre-existing, since #217): only *"no card"* was disclaimed, so an honest
+   *"…so no report has been submitted"* tripped the claim pattern and earned a correction restating
+   what the model had just said. Generalised the negation to `no <thing>`.
+
+🪝 **Coverage gap the eval surfaced, NOT fixed:** the assistant can CREATE work orders but cannot READ
+them back — `ENTITIES` (`src/lib/assistant/entities.ts`) carries no `WorkOrder`, and there is no
+`query_work_orders`. Asked "did those work orders save?" the model correctly answers *"I don't have a
+read tool that lists work orders"* and points at the page. That is honest but it is a dead end, and it
+is exactly the question this ticket's user was asking. Task chip filed.
 
 **Root cause of the card symptom NOT proven — 3 hypotheses tested and refuted:** (1) the client dropping
 proposal events (the NDJSON path is exhaustively switched + parse- and truncation-guarded in BOTH
