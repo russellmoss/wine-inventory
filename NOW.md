@@ -44,7 +44,16 @@ bug on the UI read — a long thread reopened frozen weeks back, missing the use
 
 **➡️ NEXT ACTION: none on this ticket.**
 
-## 🟡 "CAPACITY" (`cmsf3y809…`) — ROOT-CAUSED AND FIXED, PR [#587](https://github.com/russellmoss/wine-inventory/pull/587) OPEN
+## ✅ "CAPACITY" (`cmsf3y809…`) — FIXED, LIVE, CLOSED OUT (2026-08-05)
+
+[#587](https://github.com/russellmoss/wine-inventory/pull/587) squash-merged as `2a4c5d16`;
+production deploy succeeded **18:21:54Z**. Ticket RESOLVED/DEFECT, Mike DMed
+(`cmsgezw1w0000d1qkki1eyfm7`).
+
+🎯 **AND THE ASSISTANT P0 IS CONFIRMED FIXED IN THE WILD.** Mike asked *"where can i look at the
+equipment reisgtry"* at **17:06:26Z** — five minutes after the #583 deploy — and **got a real answer
+at 17:06:30Z**. First assistant reply in his conversation since 2026-07-20. He has been using the app
+since and has filed three new reports (below), which is its own kind of proof.
 
 Mike: *"I select tank five, I get an error that says that exceeds the capacity of the vessel, which
 is only 225 liters. So somehow the system thinks that tank five is a barrel."* **It doesn't — it
@@ -65,7 +74,14 @@ produce a false rejection.
 ⚠️ **An existing assertion encoded the bug** — `press-guidance.test.ts` asserted the `vessels[0]`
 fallback *existed* rather than asking whether guessing a destination was safe. A test can lock in a
 defect just as firmly as it can catch one. The new cases fail against the old code (`expected 'b1' to
-be ''`). Suite 5,802 green; browser QA NOT run (authed pane needs a human login).
+be ''`). Suite 5,802 green; browser QA NOT run (authed pane needs a human login) — **after deploy,
+confirm a press/crush form opens on `— pick —` and not `B1`.** One behaviour change to expect: these
+forms now open with NO vessel selected, so it is one extra click. Deliberate; flag if the crew objects.
+
+**🆕 MIKE FILED THREE MORE TODAY (all NEW, untriaged):** `cmsgbjgov000fl704f36c47p7` "Confirmation card
+not rendering in assistant panel" (assistant — possibly related to the #203 card-below-fold lineage,
+worth checking first), `cmsgc9bw80000la04b42ftqvy` "blends", `cmsgbp71b0000l2049stzp37z` "eqipment"
+(feature request).
 
 **Still open, NOT this bug:** `cmsg2aphb0000kz04ivugdcn1` "transfer error" — its trail shows a **500 on
 `POST /work-orders/new`**.
