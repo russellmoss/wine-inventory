@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
-import { action, ActionError } from "@/lib/actions";
+import { action, ActionError, getActionUser } from "@/lib/actions";
+import { isTenantAdminLike } from "@/lib/access";
+import { requireVineyardAccess } from "@/lib/vineyard/scope";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
 import { normalizeAbbr } from "@/lib/lot/code";
@@ -79,7 +81,41 @@ async function referenceCount(kind: RefKind, id: string): Promise<number> {
   return c + s;
 }
 
+/**
+ * The write gate for this module, applied PER KIND — because `RefKind` spans one tenant-GLOBAL entity
+ * and one vineyard-scoped one, and the assistant treats them differently:
+ *
+ *   `Variety`  → `vineyardScoped: false` → `assertScoped` falls into its else branch:
+ *                "Only an admin or developer can change global records."
+ *   `Vineyard` → `vineyardScoped: true`  → membership in THAT vineyard (or admin).
+ *
+ * (See `src/lib/assistant/tools/db-update.ts` / `db-create.ts`.) The GUI path used a bare `action(…)`
+ * for both, so any authenticated user could rename or deactivate the tenant's varieties AND edit a
+ * vineyard they are not a member of — the assistant refused both.
+ *
+ * `id === null` means "creating". A create has no existing row to derive scope from: for a global
+ * record that is admin-only by the rule above, and for a Vineyard there is no membership that could
+ * grant it yet (db_create reaches the same conclusion — a non-admin create carries no `vineyardId`
+ * in scope, so it throws), hence admin-only as well.
+ */
+async function requireRefWriteAccess(kind: RefKind, id: string | null): Promise<void> {
+  if (kind === "vineyard" && id !== null) {
+    await requireVineyardAccess(id);
+    return;
+  }
+  const user = await getActionUser();
+  if (!isTenantAdminLike(user)) {
+    throw new ActionError(
+      kind === "vineyard"
+        ? "Only an admin or developer can create a vineyard."
+        : "Only an admin or developer can change global records.",
+      "FORBIDDEN",
+    );
+  }
+}
+
 export const createRef = action(async ({ actor }, kind: RefKind, formData: FormData) => {
+  await requireRefWriteAccess(kind, null);
   const name = cleanName(formData.get("name"));
   if (await findByName(kind, name)) {
     throw new ActionError(`That ${kind} already exists.`, "CONFLICT");
@@ -135,6 +171,7 @@ function readDetailsFromForm(formData: FormData): VarietyDetails {
  */
 export const setVarietyDetails = action(
   async ({ actor }, id: string, input: Partial<VarietyDetails>) => {
+    await requireRefWriteAccess("variety", id);
     const row = await prisma.variety.findUnique({ where: { id } });
     if (!row) throw new ActionError("Variety not found.");
     const parsed = parseVarietyDetails(input);
@@ -165,6 +202,7 @@ export const setVarietyDetails = action(
 
 /** Set or clear (null / empty) a variety's or vineyard's lot-code abbreviation. */
 export const setAbbreviation = action(async ({ actor }, kind: RefKind, id: string, value: string | null) => {
+  await requireRefWriteAccess(kind, id);
   const row = await findById(kind, id);
   if (!row) throw new ActionError(`${entityType(kind)} not found.`);
   const next = value == null || String(value).trim() === "" ? null : cleanAbbreviation(value);
@@ -191,6 +229,7 @@ export const setAbbreviation = action(async ({ actor }, kind: RefKind, id: strin
 
 /** Set a variety's canonical map color. Pass null to clear (revert to default). */
 export const setVarietyColor = action(async ({ actor }, id: string, color: string | null) => {
+  await requireRefWriteAccess("variety", id);
   const next = color == null || color === "" ? null : color.trim();
   if (next !== null && !isValidHex(next)) {
     throw new ActionError("That isn't a valid color.");
@@ -215,6 +254,7 @@ export const setVarietyColor = action(async ({ actor }, id: string, color: strin
 });
 
 export const setRefActive = action(async ({ actor }, kind: RefKind, id: string, isActive: boolean) => {
+  await requireRefWriteAccess(kind, id);
   const row = await findById(kind, id);
   if (!row) throw new ActionError(`${entityType(kind)} not found.`);
   if (!isActive && (await referenceCount(kind, id)) > 0) {

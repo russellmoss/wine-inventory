@@ -4,6 +4,9 @@
 // scope deferred). One-off styles ride URL params and are never persisted. READY-USER gated via `action`;
 // writes go through the tenant-scoped extended client (RLS + the scope↔vineyardId CHECK enforce correctness).
 import { action } from "@/lib/actions";
+// D9 vineyard-membership scoping — a VINEYARD-scope style belongs to one vineyard; SYSTEM presets are
+// tenant-wide and stay admin-only (see requireSpatialStyleAccess).
+import { requireVineyardAccess, requireSpatialStyleAccess } from "@/lib/vineyard/scope";
 import { prisma } from "@/lib/prisma";
 
 export type SpatialStylePayload = {
@@ -34,6 +37,7 @@ function serialize(r: {
 
 /** SYSTEM presets + this vineyard's saved styles (SYSTEM first, then vineyard, each alphabetical). */
 export const listSpatialStylesAction = action(async (_ctx, vineyardId: string) => {
+  await requireVineyardAccess(vineyardId);
   const rows = await prisma.spatialStyle.findMany({
     where: { metric: "NDVI", OR: [{ scope: "SYSTEM" }, { scope: "VINEYARD", vineyardId }] },
     orderBy: [{ scope: "asc" }, { name: "asc" }],
@@ -55,6 +59,7 @@ export type SaveVineyardStyleInput = {
 
 /** Save (or overwrite) a per-vineyard NDVI style. Upsert on the partial unique (tenant, vineyard, metric, name). */
 export const saveVineyardStyleAction = action(async ({ actor }, input: SaveVineyardStyleInput) => {
+  await requireVineyardAccess(input.vineyardId);
   const name = input.name.trim();
   if (!name) throw new Error("A style needs a name.");
   const data = {
@@ -83,6 +88,9 @@ export const saveVineyardStyleAction = action(async ({ actor }, input: SaveViney
 export const deleteSpatialStyleAction = action(async (_ctx, id: string) => {
   const row = await prisma.spatialStyle.findUnique({ where: { id } });
   if (!row) return { deleted: false };
+  // Scope-check only once we know the row exists, so a probe cannot distinguish "not yours" from
+  // "no such id" (both already return/throw indistinguishably for a missing row).
+  await requireSpatialStyleAccess(id);
   if (row.scope === "SYSTEM") throw new Error("System presets can't be deleted.");
   await prisma.spatialStyle.delete({ where: { id } });
   return { deleted: true };

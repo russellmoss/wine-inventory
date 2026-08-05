@@ -7,7 +7,11 @@ import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { runAsTenant } from "@/lib/tenant/context";
 import { pullBlockSoil } from "@/lib/soil/pull-core";
-import { action, ActionError, getActionUser } from "@/lib/actions";
+import { action, ActionError } from "@/lib/actions";
+// D9 vineyard-membership scoping. `Vineyard` and `VineyardBlock` are the two entities the assistant
+// already marks `vineyardScoped: true` (src/lib/assistant/entities.ts), and db_update already refuses
+// out-of-scope edits to them — this module mutates exactly those rows and used to check only the tenant.
+import { requireVineyardAccess, requireBlockAccess, requireSubblockAccess } from "@/lib/vineyard/scope";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { isValidHex } from "@/lib/vineyard/colors";
 import { type Unit } from "@/lib/vineyard/units";
@@ -37,7 +41,7 @@ const PATH = "/reference";
  * without dragging server-only deps into the client bundle.
  */
 export async function loadVineyardDetail(vineyardId: string): Promise<VineyardDetailPayload> {
-  await getActionUser();
+  await requireVineyardAccess(vineyardId);
   const [detail, blocks] = await Promise.all([
     prisma.vineyardDetail.findUnique({ where: { vineyardId } }),
     prisma.vineyardBlock.findMany({
@@ -128,6 +132,7 @@ function validatePolygon(geojson: unknown): void {
 
 export const upsertVineyardDetail = action(
   async ({ actor }, vineyardId: string, formData: FormData) => {
+    await requireVineyardAccess(vineyardId);
     const vineyard = await prisma.vineyard.findUnique({ where: { id: vineyardId } });
     if (!vineyard) throw new ActionError("Vineyard not found.");
 
@@ -209,6 +214,7 @@ export const upsertVineyardDetail = action(
 // ── Block CRUD ────────────────────────────────────────────────────────────
 
 export const createBlock = action(async ({ actor }, vineyardId: string, formData: FormData) => {
+  await requireVineyardAccess(vineyardId);
   const vineyard = await prisma.vineyard.findUnique({ where: { id: vineyardId } });
   if (!vineyard) throw new ActionError("Vineyard not found.");
   const data = parseBlockForm(formData, readUnit(formData));
@@ -236,6 +242,7 @@ export const createBlock = action(async ({ actor }, vineyardId: string, formData
 });
 
 export const updateBlock = action(async ({ actor }, blockId: string, formData: FormData) => {
+  await requireBlockAccess(blockId);
   const before = await prisma.vineyardBlock.findUnique({ where: { id: blockId } });
   if (!before) throw new ActionError("Block not found.");
   const data = parseBlockForm(formData, readUnit(formData));
@@ -278,6 +285,7 @@ export const updateBlock = action(async ({ actor }, blockId: string, formData: F
 });
 
 export const deleteBlock = action(async ({ actor }, blockId: string) => {
+  await requireBlockAccess(blockId);
   const before = await prisma.vineyardBlock.findUnique({ where: { id: blockId } });
   if (!before) throw new ActionError("Block not found.");
   await runInTenantTx(async (tx) => {
@@ -297,6 +305,7 @@ export const deleteBlock = action(async ({ actor }, blockId: string) => {
 // ── Subblock CRUD (geographic sub-divisions; feed the SUBBLOCK slot of a lot code) ──
 
 export const createSubblock = action(async ({ actor }, blockId: string, formData: FormData) => {
+  await requireBlockAccess(blockId);
   const block = await prisma.vineyardBlock.findUnique({ where: { id: blockId }, select: { id: true } });
   if (!block) throw new ActionError("Block not found.");
   const code = normalizeToken(formData.get("code"));
@@ -329,6 +338,7 @@ export const createSubblock = action(async ({ actor }, blockId: string, formData
 });
 
 export const deleteSubblock = action(async ({ actor }, id: string) => {
+  await requireSubblockAccess(id);
   const before = await prisma.vineyardSubblock.findUnique({ where: { id } });
   if (!before) throw new ActionError("Subblock not found.");
   await runInTenantTx(async (tx) => {
@@ -348,6 +358,7 @@ export const deleteSubblock = action(async ({ actor }, id: string) => {
 /** Store, replace, or (with null) clear a block's polygon. One audit row per shape. */
 export const saveBlockPolygon = action(
   async ({ actor }, blockId: string, geojson: unknown | null) => {
+    await requireBlockAccess(blockId);
     const before = await prisma.vineyardBlock.findUnique({ where: { id: blockId } });
     if (!before) throw new ActionError("Block not found.");
     if (geojson != null) validatePolygon(geojson);
@@ -392,6 +403,7 @@ export const saveBlockPolygon = action(
 
 /** Set or clear a block's polygon color override. */
 export const setBlockColor = action(async ({ actor }, blockId: string, color: string | null) => {
+  await requireBlockAccess(blockId);
   const next = color == null || color === "" ? null : color.trim();
   if (next !== null && !isValidHex(next)) throw new ActionError("That isn't a valid color.");
   const before = await prisma.vineyardBlock.findUnique({ where: { id: blockId } });

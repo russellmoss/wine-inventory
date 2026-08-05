@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
-import { action, safeAction, ActionError } from "@/lib/actions";
+import { action, safeAction, ActionError, adminAction, safeAdminAction } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import { receiveStock, adjustStock, transferStock, type ItemKind } from "@/lib/stock/movements";
 import { MAX_IMPORT_ROWS, type ParsedInventoryRow } from "@/lib/inventory/csv";
@@ -260,7 +260,14 @@ async function ensureGood(actor: Actor, name: string, categoryId: string, create
  * the stock ledger after find-or-creating its category, location, and item. Rows are
  * processed independently: a failing row is recorded and skipped, the rest still land.
  */
-export const importInventory = action(async ({ actor }, rows: ParsedInventoryRow[]): Promise<ImportSummary> => {
+// Tenant-GLOBAL catalog creation: `FinishedGood` and `FinishedGoodCategory` are `vineyardScoped: false`
+// in `entities.ts`, so the assistant's db_create refuses them for a non-admin ("Only an admin or developer
+// can create global records."). Only the two CATALOG-creating actions in this module are admin-gated —
+// `importInventory` (it calls ensureCategory, so leaving it open would bypass the gate below) and
+// `addFinishedGoodAction`. Everything else here is OPERATIONAL stock movement (moveStock, setOnHand,
+// updateOnHand, deleteOnHand, receivePurchasedFinishedGoodAction) and deliberately stays non-admin,
+// matching the assistant's own adjust-inventory / adjust-consumable tools, which are not adminOnly.
+export const importInventory = adminAction(async ({ actor }, rows: ParsedInventoryRow[]): Promise<ImportSummary> => {
   if (!Array.isArray(rows) || rows.length === 0) throw new ActionError("No rows to import.");
   if (rows.length > MAX_IMPORT_ROWS) throw new ActionError(`Too many rows. Limit is ${MAX_IMPORT_ROWS} per upload.`);
 
@@ -367,7 +374,7 @@ export const receivePurchasedFinishedGoodAction = action(
  *
  * `safeAction`: a duplicate wine+vintage or a taken category name is a block the user must SEE.
  */
-export const addFinishedGoodAction = safeAction(
+export const addFinishedGoodAction = safeAdminAction(
   async (
     { actor },
     input: {

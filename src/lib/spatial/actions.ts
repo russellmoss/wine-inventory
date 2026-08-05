@@ -6,6 +6,9 @@
 // Importing job-sweep here also anchors the P2 cores (scene-selection / process-scene / block-metrics /
 // usage) in the assistant import graph so verify:ai-native sees them reachable.
 import { action, ActionError } from "@/lib/actions";
+// D9 vineyard-membership scoping — an NDVI job and its block metrics are per-vineyard.
+import { requireVineyardAccess } from "@/lib/vineyard/scope";
+import { isTenantAdminLike } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { runNdviJobSweep, estateAoiBbox } from "@/lib/spatial/job-sweep";
 
@@ -14,6 +17,7 @@ export type EnqueueNdviInput = { vineyardId: string; aroundIso: string };
 /** Enqueue a PENDING NDVI job for a vineyard "around a date". The sweep selects + processes it. Idempotent
  *  per (vineyard, day): a same-day re-request adopts the existing pending/complete job via the unique key. */
 export const enqueueNdviJobAction = action(async (_ctx, input: EnqueueNdviInput) => {
+  await requireVineyardAccess(input.vineyardId);
   const aoiBbox = await estateAoiBbox(input.vineyardId);
   if (!aoiBbox) throw new ActionError("This vineyard isn't set up for analysis yet — finish setup (Reference → Varieties & vineyards → Finish setup) to create its planting area first.", "VALIDATION");
   const day = input.aroundIso.slice(0, 10);
@@ -27,13 +31,19 @@ export const enqueueNdviJobAction = action(async (_ctx, input: EnqueueNdviInput)
 });
 
 /** Drive the NDVI sweep for the CURRENT tenant now (the console's "run now"; the cron does this on schedule). */
-export const runNdviSweepNowAction = action(async ({ actor }) => {
+export const runNdviSweepNowAction = action(async ({ user, actor }) => {
+  // ADMIN-ONLY: the sweep runs across the WHOLE tenant, so there is no vineyard to scope it by. A
+  // manager triggering it would process vineyards outside their membership set, which is exactly what
+  // D9 forbids. Scoping the sweep per-vineyard is a feature change, not an authorization fix — the
+  // fail-closed answer is that a scoped user cannot run a tenant-wide job.
+  if (!isTenantAdminLike(user)) throw new ActionError("Only an admin can run the tenant-wide NDVI sweep.", "FORBIDDEN");
   const summary = await runNdviJobSweep({ orgIds: [actor.tenantId] });
   return { summary };
 });
 
 /** The jobs for a vineyard (console status list), newest first. */
 export const listNdviJobsAction = action(async (_ctx, vineyardId: string) => {
+  await requireVineyardAccess(vineyardId);
   const jobs = await prisma.spatialAnalysisJob.findMany({
     where: { vineyardId },
     orderBy: { createdAt: "desc" },
@@ -45,6 +55,7 @@ export const listNdviJobsAction = action(async (_ctx, vineyardId: string) => {
 
 /** The latest NDVI metric per block for a vineyard (console proof the data landed). */
 export const listVineyardNdviMetricsAction = action(async (_ctx, vineyardId: string) => {
+  await requireVineyardAccess(vineyardId);
   const rows = await prisma.blockSpatialMetric.findMany({
     where: { vineyardId, metric: "NDVI" },
     orderBy: [{ blockId: "asc" }, { acquiredAt: "desc" }],

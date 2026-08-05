@@ -443,3 +443,83 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   (fail closed) while being **admitted and counted for a report-only one**, where nothing is gated.
   Enforcement is the DEFAULT; the 25 pre-SKB sources are a frozen report-only census whose deletion is
   how the grandfather clause closes.
+
+## Auth — a redirect is control flow, not an error (REDIRECT-1)
+
+> Machine-readable note: [[REDIRECT-1-redirect-is-not-an-error]]. Guarded by `npm run verify:redirect-passthrough`.
+
+- **A `catch` that wraps a `require*` gate must rethrow the framework's errors (REDIRECT-1, high,
+  app-code).** The gates in `src/lib/dal.ts` — `requireReadyUser`, `requireAdmin`, `requireSession`,
+  `requireDeveloper`, `requireActiveTenant` — do **not** return an `AccessDecision`. They call Next's
+  `redirect()`, which signals by **throwing** an internal `NEXT_REDIRECT` error that the framework is
+  meant to catch. So a catch-all around a gate silently converts an auth redirect into a return value:
+  the user with an expired session stays on the page and reads the literal digest string
+  `NEXT_REDIRECT;replace;/login;307;` as their error message. `getCurrentUser()` also reads `headers()`,
+  whose request-time bailout throws the same way, so the same catch can swallow a dynamic-rendering
+  signal too. Every such `catch` leads with `unstable_rethrow(e)` (hoisting the gate above the `try` is
+  equally accepted); the guard is a static AST scan over `"use server"` files.
+  **This is the opposite polarity from `src/lib/action-result.ts`**, where an *expected* `ActionError`
+  must be caught and returned as data because production redacts thrown errors. Both hold at once —
+  catch YOUR errors, rethrow the FRAMEWORK's — and `unstable_rethrow` is exactly that partition, which
+  is why it belongs at the top of the catch rather than as a hand-rolled digest sniff. It shipped broken
+  on 21 actions (weather, spray, planned-harvest) before the guard existed.
+
+## Tenancy — the vineyard-membership fence is complete, not partial (VINEYARD-1)
+
+> Machine-readable note: [[VINEYARD-1-vineyard-membership-fence]]. Guarded by `npm run verify:vineyard-scope`.
+
+- **Every vineyard-scoped action applies D9, and an empty membership set reaches nothing (VINEYARD-1,
+  high, app-code).** `canAccessVineyard` is an **intra-tenant** control and **Postgres does not enforce
+  it** — RLS scopes by TENANT — so it holds only where the action layer applies it. It used to live in 8
+  files and be absent from the rest, leaving **53 exported actions** across weather, spray, soil,
+  planting areas, NDVI and block CRUD authorized to tenant only: a manager assigned to vineyard A could
+  read and mutate vineyard B. The proof this was a bug rather than a choice is internal — `entities.ts`
+  marks `Vineyard` and `VineyardBlock` as `vineyardScoped: true` and `db_update` already refused
+  out-of-scope edits to them, so the **assistant path was stricter than the GUI path for the same rows**;
+  and `harvest/actions.ts` gated all five of its mutations while its sibling `planned-harvest-actions.ts`
+  gated none.
+  **Two shapes, deliberately different.** A **keyed** action (one vineyard/block/planting area/spray
+  record) THROWS `FORBIDDEN` — returning an empty result would disguise a denial as "no data". A **list**
+  read (season board, planned-harvest board, block picker) FILTERS to the reachable set, because a
+  manager legitimately sees a subset and throwing would blank a working screen. `narrowVineyardFilter` is
+  that seam: an explicit id must be in scope (it throws, so a crafted id cannot widen a read); an absent
+  id means "everything I reach"; a manager with no memberships gets `[]`, **never `null`**, which callers
+  read as "no predicate needed".
+  **Spray gates on the footprint, not the header.** A pass may legitimately span sites (`record-core.ts`
+  computes `isCrossSite`) and the header `vineyardId` is only "defaulted from the FIRST block line", so
+  reads require every vineyard the record's block lines touch and writes gate on the blocks named in the
+  payload. Trusting the header would let a manager name their own vineyard while spraying another site.
+  **This is not plan 092** — it is app-layer with zero DB enforcement. Phase 23 moves the fence into a
+  capability matrix + RESTRICTIVE RLS quad; until then this keeps the existing fence from being partial.
+
+## Tenancy — a tenant-global catalog write is admin-only (GLOBAL-1)
+
+> Machine-readable note: [[GLOBAL-1-global-catalog-is-admin-only]]. Guarded by `npm run verify:global-catalog-admin`.
+
+- **The six `vineyardScoped: false` entities are admin-only to create or edit (GLOBAL-1, high,
+  app-code).** This is the **second branch of the same rule** as VINEYARD-1. `assertScoped` (in BOTH
+  `db-update.ts` and `db-create.ts`) reads `if (entity.vineyardScoped) { …membership… } else if
+  (!isTenantAdminLike(user)) throw "Only an admin or developer can change global records."` — so
+  Variety, Location, FinishedGoodCategory, Vessel, WineSku and FinishedGood are admin-only in EVERY write
+  path. VINEYARD-1 closed the `if`; this closes the `else`. Before it, **13 GUI writes** let any
+  authenticated user rename the tenant's varieties, add or deactivate locations, add or retire a tank, and
+  create finished goods — all of which the assistant refused them.
+  **The line is CATALOG vs OPERATIONAL**, and the assistant is the reference for that too: editing the
+  vessel catalog is admin, racking wine between vessels is not; creating a finished good is admin, moving
+  stock is not (`adjust-inventory` / `adjust-consumable` are not `adminOnly`). `findOrCreateWineSku` is
+  deliberately untouched — it runs inside a bottling flow, and gating it would block bottling for cellar
+  staff. The dedicated creators for entities OUTSIDE the six (`create-grower`, `create-custom-unit`,
+  `create-vendor`, `create-material`) are not `adminOnly` either, so those modules are deliberately not
+  covered: there, non-admin creation is a product decision, not an oversight.
+  **`reference/actions.ts` must stay POLYMORPHIC.** Its `RefKind` is `"variety" | "vineyard"` — one global
+  entity, one vineyard-scoped — so a blanket `adminAction` would be wrong in the OTHER direction, locking
+  managers out of their own vineyard. Its gate resolves per kind (variety → admin, vineyard → D9
+  membership, any create → admin), and the module is listed in VINEYARD-1's guard as well because it
+  mutates Vineyard rows — a gap the first VINEYARD-1 sweep missed, since the module name gives no hint.
+  **Folded in: the regulatory case.** `upsertTenantProductFacts` writes `worstCaseReiHours` /
+  `worstCasePhiDays` / repeat-interval / max-applications — worker re-entry and pre-harvest intervals,
+  snapshotted onto every later spray record — and was gated by `requireReadyUser()` alone. That is the
+  **authorization side of PEST-1** (critical): PEST-1 stops the DATA path from rendering an unknown as a
+  clearance, but an unprivileged user could reach the same outcome by typing a number. Enforced against
+  bad data, not against bad authorization. `TenantProductFacts` has no vineyard column, so the fence is
+  the admin role, not D9.
