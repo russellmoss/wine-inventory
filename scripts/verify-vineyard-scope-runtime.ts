@@ -212,10 +212,17 @@ async function main(): Promise<void> {
     eq("planting area → vineyard", await resolvePlantingAreaVineyard(fx.areaB.id), fx.vineyardB.id);
     eq("spray block line → block → vineyard", await resolveSprayBlockLineVineyard(fx.lineA.id), fx.vineyardA.id);
 
+    // `resolveSpatialStyleVineyard` answers TWO things at once — "does the row exist" (null when it
+    // does not) and "which vineyard" (`vineyardId`, null for a SYSTEM style). A single `?? "missing"`
+    // collapses those: for the SYSTEM row the real answer IS null, so `styleS?.vineyardId ?? "missing"`
+    // yields "missing" whether the row was found or not, and could never equal the expected null. Assert
+    // the existence and the value separately, so a genuine miss reads differently from a null vineyard.
     const styleV = await resolveSpatialStyleVineyard(fx.styleB.id);
-    eq("vineyard-scope style → its vineyard", styleV?.vineyardId ?? "missing", fx.vineyardB.id);
+    ok("vineyard-scope style row is FOUND", styleV !== null);
+    eq("vineyard-scope style → its vineyard", styleV ? styleV.vineyardId : "not-found", fx.vineyardB.id);
     const styleS = await resolveSpatialStyleVineyard(fx.styleSystem.id);
-    eq("SYSTEM style → null vineyard (the admin-only branch)", styleS?.vineyardId ?? "missing", null);
+    ok("SYSTEM style row is FOUND", styleS !== null);
+    eq("SYSTEM style → null vineyard (the admin-only branch)", styleS ? styleS.vineyardId : "not-found", null);
 
     eq("multi-block resolve is de-duplicated", set((await resolveBlocksVineyards([fx.blockA.id, fx.blockA.id])) ?? []), [fx.vineyardA.id]);
     eq("multi-block resolve fails closed on an unknown id", await resolveBlocksVineyards([fx.blockA.id, "nope"]), null);
