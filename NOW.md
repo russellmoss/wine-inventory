@@ -113,9 +113,36 @@ is meant to read it, it must be an `ActionError`; a raw `Error` is for real bugs
    no longer exists."). Every one is an opaque 500 in the "describe the job" NL box today. Deferred:
    converting it changes the action's return type and all its call sites.
 
-**Mike's three NEW reports (Aug 5, untriaged):** `cmsgbjgov000fl704f36c47p7` "Confirmation card not
-rendering in assistant panel", `cmsgc9bw80000la04b42ftqvy` "blends", `cmsgbp71b0000l2049stzp37z`
-"eqipment" (feature request).
+## 🟠 "CONFIRMATION CARD NOT RENDERING" (`cmsgbjgov…`) — TRIAGED/UNCLEAR, **BLOCKED ON MIKE**
+
+⛔ **The ticket's premise is WRONG, and that matters more than the reported bug. All seven writes were
+APPLIED.** `assistant_confirmation` nonce burns exist for all 7 (that row is written ONLY by
+`commitProposal`, i.e. a real `POST /api/assistant/confirm`), and the artifacts exist: **WO #80** Filter
+T5, **#81** Press T5, **#82** Filter T3, **#83** Bottling, **WineSku "Ojai 2026 Syrah"** (created
+`16:44:48.417`), **EquipmentAsset "Main Bottling Line"**, and the ticket itself.
+
+🔴 **CONFIRMED DEFECT, separate from the reported one:** the assistant told him *"That's a display
+problem on our end … so nothing got saved."* A confident false assertion about system state it had no
+way to check — the same family as the write-overclaim guard, inverted (it claimed a NON-write). This is
+the harmful part: it invites duplicate work. Mike has been DMed the full list so he doesn't recreate
+them (`cmsgh1xn90000d17c3i514f56`).
+
+**Root cause of the card symptom NOT proven — 3 hypotheses tested and refuted:** (1) the client dropping
+proposal events (the NDJSON path is exhaustively switched + parse- and truncation-guarded in BOTH
+consumers); (2) an auto-confirm effect in `AssistantChat` (`confirmProposal` is called only from the
+card's `onConfirm`); (3) detecting voice from the trace (`trace.systemPrompt` is not persisted —
+`promptLen=0`).
+
+**➡️ STRONGEST LEAD — `useVoiceSession.ts:577`.** A pending card is auto-confirmed when a SPOKEN
+transcript matches `CONFIRM_RE = /\b(confirm|yes|yep|do it|go ahead|approve|apply)\b/i`, and that branch
+deliberately does **not** persist a user message. That matches the DB signature exactly: 7 commits with
+no user turns explaining them, each landing 1–2s after its tool call — and the `file_feedback` commit
+landed **1.77s BEFORE** the assistant message asking him to confirm it. If a voice session was live,
+ordinary winery-floor speech ("yes", "apply", "do it") would silently commit every pending card.
+**BLOCKED ON one fact: was the Talk button on?** Asked him directly; do not guess a fix before he answers.
+
+**Mike's other two NEW reports (Aug 5, untriaged):** `cmsgc9bw80000la04b42ftqvy` "blends",
+`cmsgbp71b0000l2049stzp37z` "eqipment" (feature request).
 
 ✅ **Red on main from `#584 fix/authorization-fences` — [#585](https://github.com/russellmoss/wine-inventory/pull/585) in flight.**
 The new `vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)` job has failed on every run since
