@@ -43,7 +43,7 @@ guard can never contradict `OVERCLAIM_CORRECTION`. Stands down entirely when a t
 Prompt rule added, and `file_feedback` now stamps an UNVERIFIED caveat on an assistant-authored body
 that asserts client state — this ticket's "no confirmation card rendered" is what sent triage after a
 phantom. 25 tests; ablating the predicate fails 8. The **golden eval** followed in
-[#598](https://github.com/russellmoss/wine-inventory/pull/598) and immediately earned its keep — run
+[#599](https://github.com/russellmoss/wine-inventory/pull/599) and immediately earned its keep — run
 live it found TWO false positives in shipped guards (see below). **This fixes the LIE, not the cause — the card
 symptom below is still unproven and still blocked on Mike.**
 
