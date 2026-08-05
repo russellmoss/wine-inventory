@@ -65,11 +65,29 @@ the merge (`3ca47e67` → `89cb62dc` → `e4a5893c`). **TWO independent bugs, an
 ⚠️ **Lesson: a crashing teardown is not a cosmetic failure — it swallows the verdict.** The first run
 printed 28 ✓ and one ✗, then died in cleanup before the summary line, so the ✗ read as noise inside a
 stack trace. "All assertions passed" was wrong for three commits.
+
+**#585 is GREEN** — `vineyard-scope-db` passed for the first time ever:
+_"✓ VINEYARD-1 holds against a real database (31 checks)."_ **Main stays red until it merges.**
+
+## ✅ [#586](https://github.com/russellmoss/wine-inventory/pull/586) — the admin-only edit UI (#584's last known issue)
+
+`/vessels`, `/locations`, `/reference`, `/inventory` no longer show Add/Edit controls the server
+refuses. Hidden, not disabled, each with a line naming who can. `/reference` is **per-kind, not
+blanket**: variety = admin, vineyard CREATE = admin, vineyard EDIT = membership in THAT vineyard
+(`editableVineyardIds`, computed server-side with the real `canAccessVineyard`, so buttons and gate
+can't drift). On `/inventory` only the two CATALOG writes are gated — stock movement stays open.
+
+⚠️ **New guard `verify:admin-predicate`, because this was a CLASS not a slip.** A hand-rolled
+`isAdmin={user.role === "admin" || user.role === "owner"}` sat in THREE pages (inventory,
+work-orders/task-types, work-orders/templates), with a fourth instance documented in
+`src/lib/search/actions.ts`. Every copy drops `developer` — so a **developer saw a read-only UI the
+server would have allowed** — and `"owner"` is not an assignable role at all (`ASSIGNABLE_ROLES` is
+user/admin/developer), so that arm never matched. The guard bans both shapes; proven by reverting.
 ⚠️ **Aaron opened AND merged #584, and the code in it is ours** (both commits authored by
 russellmoss + Claude on `fix/authorization-fences`; his only authored commit in the repo is the merge
 commit). It landed as a **merge commit, not a squash** — off the normal flow for code. Worth a word.
 
-_Last updated: 2026-08-05 — P0 closed; #584 teardown fix in flight. The detector that found it: run the REAL
+_Last updated: 2026-08-05 — P0 closed; #585 (CI green) + #586 (admin-only edit UI) open. The detector that found it: run the REAL
 `listMessagesForReplay` against a conversation that crosses `REPLAY_LIMIT`, then assert the rebuilt
 array's tail role. Everything short of that passes — a `take`-bound bug cannot reproduce on a
 fixture smaller than the bound._
