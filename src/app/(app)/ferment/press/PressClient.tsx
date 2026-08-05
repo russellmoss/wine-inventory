@@ -7,7 +7,7 @@ import type { CrushBlockOption } from "@/lib/ferment/crush-data";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import { pressAction, wholeClusterPressAction, createPressCycleAction } from "@/lib/transform/actions";
 import { StagedAdditions, applyStagedAdditions, type StagedAddition } from "@/components/ferment/StagedAdditions";
-import { oversizedFractionMessage } from "@/lib/work-orders/press-guidance";
+import { occupiedDestinationMessage, oversizedFractionMessage, pressDestinationMode } from "@/lib/work-orders/press-guidance";
 
 // Phase 6 press. TWO sources:
 //  • A MUST lot already in a vessel → split into free-run + press fraction lots (reds press off
@@ -94,7 +94,9 @@ function PressLotForm({ positions, vessels, router, cycles, createCycle }: { pos
   const available = pos?.volumeL ?? 0;
   const lees = Math.round((available - fractionTotal) * 100) / 100;
 
-  const setFraction = (i: number, patch: Partial<Fraction>) => setFractions((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
+  // A merge target belongs to the vessel it was chosen for; changing the destination clears it.
+  const setFraction = (i: number, patch: Partial<Fraction>) =>
+    setFractions((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch, ...(patch.destVesselId !== undefined && patch.destVesselId !== f.destVesselId ? { mergeIntoLotId: "" } : {}) } : f)));
   const addFraction = () => setFractions((fs) => [...fs, { destVesselId: "", volumeL: "", label: "press", estimated: false, mergeIntoLotId: "" }]);
   const removeFraction = (i: number) => setFractions((fs) => fs.filter((_, j) => j !== i));
 
@@ -108,6 +110,15 @@ function PressLotForm({ positions, vessels, router, cycles, createCycle }: { pos
     if (fractionTotal > available + 1e-6) return setError(`Fractions (${fractionTotal} L) exceed what the lot holds (${available} L).`);
     const oversized = oversizedFractionMessage(fr.map((f) => ({ label: f.label, destVesselId: f.destVesselId, volumeL: Number(f.volumeL) })), vessels);
     if (oversized) return setError(oversized);
+    // An occupied destination is legal ONLY by joining the lot already there (press-core).
+    for (const f of fr) {
+      const occupied = occupiedDestinationMessage(
+        { label: f.label, destVesselId: f.destVesselId, volumeL: Number(f.volumeL), mergeIntoLotId: f.mergeIntoLotId || null },
+        vessels,
+        pos.vesselId,
+      );
+      if (occupied) return setError(occupied);
+    }
     setBusy(true);
     try {
       await pressAction({
@@ -160,6 +171,24 @@ function PressLotForm({ positions, vessels, router, cycles, createCycle }: { pos
               ))}
             </select>
             <input value={f.volumeL} onChange={(e) => setFraction(i, { volumeL: e.target.value })} inputMode="decimal" placeholder="L" aria-label="Fraction volume" style={{ ...field, width: 90, textAlign: "right" }} />
+            {/* Shown only when the chosen vessel already holds exactly one lot: joining that lot is
+                then the ONLY legal way in, so the choice is explicit rather than assumed. */}
+            {(() => {
+              const dest = vessels.find((v) => v.id === f.destVesselId);
+              if (pressDestinationMode(dest, pos?.vesselId) !== "merge") return null;
+              const resident = dest!.residents[0];
+              return (
+                <select
+                  value={f.mergeIntoLotId}
+                  onChange={(e) => setFraction(i, { mergeIntoLotId: e.target.value })}
+                  aria-label={`How the ${f.label || "unlabelled"} fraction joins ${dest!.code}`}
+                  style={{ ...field, width: 250 }}
+                >
+                  <option value="">— {dest!.code} holds {resident.code}: choose —</option>
+                  <option value={resident.lotId}>Add into {resident.code} ({resident.volumeL} L)</option>
+                </select>
+              );
+            })()}
             <label style={{ fontSize: 12.5, display: "flex", gap: 4, alignItems: "center", color: "var(--text-muted)" }}>
               <input type="checkbox" checked={f.estimated} onChange={(e) => setFraction(i, { estimated: e.target.checked })} /> est.
             </label>

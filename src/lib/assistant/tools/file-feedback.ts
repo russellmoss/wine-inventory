@@ -4,6 +4,10 @@ import type { Committer } from "../commit";
 import { signProposal } from "../confirm";
 import { FeedbackTicketKind } from "@prisma/client";
 import { createFeedbackTicket } from "@/lib/feedback/tickets";
+import {
+  claimsUnverifiedWriteFailure,
+  UNVERIFIED_CLIENT_STATE_CAVEAT,
+} from "../unverified-failure-guard";
 
 // Assistant feedback tool (plan 055) — file a BUG_REPORT or FEATURE_REQUEST from chat/voice, so the
 // assistant is no longer a dead end for "report this as a bug". Wraps createFeedbackTicket (the same
@@ -38,7 +42,7 @@ function labelOf(kind: "bug" | "feature"): string {
 export const fileFeedbackTool: AssistantTool = {
   name: "file_feedback",
   description:
-    "File a bug report or feature request to the product team from the conversation. Use this when the user asks to 'report this as a bug', 'file feedback', 'submit a feature request', or otherwise wants something they hit or want sent to the dev/product team — you CAN do this now, do not tell the user you can't. Compose a concise `title` and a `body` that captures the problem (or the requested capability) plus the relevant context from this conversation: what they were doing, what happened vs. what they expected, and any vessel/lot/work-order/block names involved. Set `kind` to 'bug' for something broken or wrong, 'feature' for a new capability or enhancement. Does NOT submit immediately — returns a preview to confirm.",
+    "File a bug report or feature request to the product team from the conversation. Use this when the user asks to 'report this as a bug', 'file feedback', 'submit a feature request', or otherwise wants something they hit or want sent to the dev/product team — you CAN do this now, do not tell the user you can't. Compose a concise `title` and a `body` that captures the problem (or the requested capability) plus the relevant context from this conversation: what they were doing, what happened vs. what they expected, and any vessel/lot/work-order/block names involved. Set `kind` to 'bug' for something broken or wrong, 'feature' for a new capability or enhancement. Report only what you can actually establish: attribute what the user told you to the user ('the user reports the card did not appear'), and never state as fact that a card failed to render or that data was not saved — you cannot see their screen, and engineering acts on this report. Does NOT submit immediately — returns a preview to confirm.",
   kind: "write",
   inputSchema: {
     type: "object",
@@ -74,7 +78,20 @@ export const fileFeedbackTool: AssistantTool = {
     const bodySnippet = clippedBody.length > PREVIEW_BODY ? `${clippedBody.slice(0, PREVIEW_BODY)}…` : clippedBody;
     const preview = `File a ${labelOf(kind)}: "${clippedTitle}" — ${bodySnippet}`;
 
-    const token = signProposal("file_feedback", { kind, title: clippedTitle, body: clippedBody });
+    // Feedback cmsgbjgov (2026-08-05): the assistant filed a ticket asserting "no confirmation card
+    // rendered" as fact, and triage chased a rendering bug that did not exist while seven committed
+    // writes sat in the database. The model cannot see the user's screen, so any client-state claim in
+    // a ticket IT authored is a guess — mark it, deterministically, so triage knows to verify first.
+    // Checked with no run evidence, which enables only the client-state tier of the guard (a ticket
+    // body carries no proposal/tool-error context, and the persistence tier needs one).
+    const flagged = claimsUnverifiedWriteFailure(clippedBody, { cardShown: false, observedFailure: false });
+    const finalBody = flagged
+      ? `${clippedBody.slice(0, MAX_BODY - UNVERIFIED_CLIENT_STATE_CAVEAT.length)}${UNVERIFIED_CLIENT_STATE_CAVEAT}`
+      : clippedBody;
+
+    // The caveat is triage-facing, so it rides the signed payload but NOT the preview — the user
+    // confirms the report they described, not a note addressed to engineering.
+    const token = signProposal("file_feedback", { kind, title: clippedTitle, body: finalBody });
     return { needsConfirmation: true, preview, token };
   },
 };

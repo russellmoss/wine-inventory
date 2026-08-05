@@ -264,11 +264,21 @@ export const TASK_VOCABULARY: Record<string, TaskTypeDef> = {
     kind: "OPERATION",
     opType: "PRESS",
     label: "Press / saignée",
-    // op = PRESS | SAIGNEE. The parent lot, source vessel and the fraction cuts are entered at run time
-    // (press sub-form on the execute screen).
-    fields: { op: "select", pressCycle: "text", note: "text" },
+    // op = PRESS | SAIGNEE (the palette offers these as two separate buttons — see task-palette.ts).
+    //
+    // The source lot/vessel and the destination are OPTIONAL at authoring time and still entered on the
+    // floor when left blank. They are offered here because a manager planning a press usually knows
+    // which vessel it comes off, and the whole contract already supported pinning them — the ASSISTANT
+    // has always set them (`nl-resolve`), `canonicalColumns` mirrors `sourceVesselId` + `parentLotId`
+    // onto the task, the readiness engine drops its "entered on the execute screen" note once they are
+    // present, and the execute sub-form prefills from them. Only the manual builder had no way to say
+    // so, which is what the reporter ran into (feedback cmsf3vmlw0000l704pnaiep22).
+    //
+    // `plannedDestVesselId` stays a HINT, deliberately: `canonicalColumns` does not mirror it for PRESS,
+    // because a press has many fractions and therefore many destinations. It prefills the first cut.
+    fields: { op: "select", sourceVesselId: "vessel", parentLotId: "lot", plannedDestVesselId: "vessel", pressCycle: "text", note: "text" },
     fieldOptions: { op: ["PRESS", "SAIGNEE"] },
-    hint: "The must lot, source vessel and the press fractions (cuts) are entered when the work order is run.",
+    hint: "Source vessel, must lot and destination are optional here — leave them blank and the floor picks them. The press fractions (cuts) are always entered when the work order is run.",
   },
   // Plan 053 E15: bottling as a first-class governed task. Routes through the SAME bottling core
   // (runBottlingTx) as the standalone /bottling flow, so it writes a real BOTTLE ledger op + COGS snapshot

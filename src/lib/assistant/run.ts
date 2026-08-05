@@ -13,6 +13,11 @@ import {
   KB_DENIAL_CORRECTION,
   KB_DENIAL_REPAIR_PROMPT,
 } from "./retrieval-overclaim-guard";
+import {
+  claimsUnverifiedWriteFailure,
+  UNVERIFIED_FAILURE_CORRECTION,
+  UNVERIFIED_FAILURE_REPAIR_PROMPT,
+} from "./unverified-failure-guard";
 import { type AssistantEvent, asProposal, asChoice, asNavigation, isDraftProposal } from "./assistant-events";
 import { logCalculation } from "@/lib/winemaking-calc/log";
 import { normalizeTimeZone } from "@/lib/work-orders/due-at";
@@ -104,6 +109,17 @@ export async function runAssistant(opts: {
   // whole cumulative string — otherwise a fixed final answer would still show the ORIGINAL denying
   // sentence sitting earlier in `assistantText` and the backstop would fire on a good answer.
   let kbDenialCheckpoint = 0;
+  // The inverse failure (feedback cmsgbjgov 2026-08-05): the model asserting a write did NOT persist,
+  // or diagnosing a display bug, with nothing to ground it — while seven writes had in fact committed.
+  // `observedFailure` is the evidence that legitimizes such a claim: a tool that returned is_error, or
+  // a run that threw. Set once and never cleared, same run-scoped lifetime as the two flags above.
+  let observedFailure = false;
+  let unverifiedFailureRepairAttempted = false;
+  // Same suffix-scoping reason as kbDenialCheckpoint: neither `cardShown` nor `observedFailure` flips
+  // after a successful repair, so the backstop must judge the text emitted AFTER the repair prompt —
+  // otherwise the original false sentence, still sitting earlier in `assistantText`, re-fires on a
+  // reply that has already been corrected.
+  let unverifiedFailureCheckpoint = 0;
   const emit = (e: AssistantEvent) => {
     if (e.type === "text") assistantText += e.text;
     if (e.type === "proposal") emittedProposal = true;
@@ -368,6 +384,9 @@ export async function runAssistant(opts: {
             });
           } catch (e) {
             const message = e instanceof Error ? e.message : "Tool failed.";
+            // Ground truth for the unverified-failure guard: the model now HAS a failure to report,
+            // so its saying so is correct behaviour, not a fabrication. Stands the guard down.
+            observedFailure = true;
             results.push({
               type: "tool_result",
               tool_use_id: tu.id,
@@ -438,11 +457,35 @@ export async function runAssistant(opts: {
         continue;
       }
 
+      // Unverified-failure REPAIR (feedback cmsgbjgov 2026-08-05). The inverse of the over-claim
+      // above: the model just told the user a change didn't save, or blamed a rendering bug, with no
+      // failure anywhere in this run to support it. That reply cost a user seven re-done writes.
+      // Unlike the other two repairs there is a real recovery here — the model holds read tools and
+      // can simply go look — so this turn asks it to replace a guess with a fact.
+      if (
+        !unverifiedFailureRepairAttempted &&
+        msg.stop_reason === "end_turn" &&
+        claimsUnverifiedWriteFailure(assistantText, {
+          cardShown: emittedProposal,
+          observedFailure,
+        })
+      ) {
+        unverifiedFailureRepairAttempted = true;
+        unverifiedFailureCheckpoint = assistantText.length;
+        trace.unverifiedFailureRepair = "attempted";
+        convo.push({ role: "assistant", content: msg.content });
+        convo.push({ role: "user", content: UNVERIFIED_FAILURE_REPAIR_PROMPT });
+        continue;
+      }
+
       // end_turn or max_tokens — text already streamed via on("text").
       trace.stopReason = msg.stop_reason ?? "end_turn";
       break;
     }
   } catch (e) {
+    // A run that died IS an observed failure, and the user is already getting an error event below.
+    // Stand the unverified-failure guard down rather than stacking a correction on top of an error.
+    observedFailure = true;
     // Capture BEFORE deciding what the user sees. This is where assistant turns actually die, and
     // until now it recorded nothing anywhere: no captureException, no console.error. A turn that
     // fails before producing text or a tool call also persists no assistant row (the route's
@@ -475,10 +518,16 @@ export async function runAssistant(opts: {
       trace.stopReason = "error";
     }
   } finally {
+    // Snapshot the model's OWN text before any correction below appends to `assistantText`. The
+    // over-claim correction literally contains "nothing was saved", so an unverified-failure check
+    // reading the post-correction string could flag our own apology as a false claim.
+    const modelText = assistantText;
+
     // Deterministic backstop: if the model told the user a card exists / a write was done, but NO write tool
     // emitted a proposal this run, the claim is false — correct it so the user isn't silently misled into
     // thinking something was filed/changed (feedback cmri7ympe). The prompt rule alone is stochastic.
-    if (!emittedProposal && claimsWriteWithoutCard(assistantText)) {
+    const overclaimed = !emittedProposal && claimsWriteWithoutCard(assistantText);
+    if (overclaimed) {
       // Reached only when the repair turn also failed to produce a card (or never ran, e.g. the run
       // errored out). The user is told plainly that nothing was saved — never worse off than before.
       if (repairAttempted) trace.overclaimRepair = "failed";
@@ -498,6 +547,26 @@ export async function runAssistant(opts: {
       emit({ type: "text", text: KB_DENIAL_CORRECTION });
     } else if (kbRepairAttempted) {
       trace.kbDenialRepair = "recovered";
+    }
+
+    // Unverified-failure backstop (feedback cmsgbjgov 2026-08-05) — the mirror image of the
+    // over-claim backstop, and the more expensive error of the two: an over-claim leaves work undone,
+    // this one gets it done TWICE. Suffix-scoped after a repair for the same reason as the KB check.
+    //
+    // Mutually exclusive with the over-claim correction: when that one fires we have PROVEN nothing
+    // was written this run, so a "nothing was saved" claim is true and correcting it would be the
+    // false statement. Never let the two contradict each other in front of the user.
+    const failureTextToCheck = unverifiedFailureRepairAttempted
+      ? modelText.slice(unverifiedFailureCheckpoint)
+      : modelText;
+    if (
+      !overclaimed &&
+      claimsUnverifiedWriteFailure(failureTextToCheck, { cardShown: emittedProposal, observedFailure })
+    ) {
+      if (unverifiedFailureRepairAttempted) trace.unverifiedFailureRepair = "failed";
+      emit({ type: "text", text: UNVERIFIED_FAILURE_CORRECTION });
+    } else if (unverifiedFailureRepairAttempted) {
+      trace.unverifiedFailureRepair = "recovered";
     }
 
     emit({ type: "done" });
