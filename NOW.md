@@ -2970,3 +2970,75 @@ are all CHECKED again. Lesson worth keeping: **both defects were in the parts I 
 and then only verified with green guards** — the guards passed the whole time, because neither of these is
 a thing they measure. Re-verified after the fixes: tsc clean, lint 0 errors / no new warnings, 466 files /
 5,789 tests, 10 static guards green, and a re-run of the gate-placement analysis reports 0 defects._
+
+_Last updated: 2026-08-05 (night) — **data-layer workstream A COMPLETE (uncommitted): the referential
+graph is no longer invisible.** Measured first, and two premises turned out false: enum discipline is
+GOOD (116 real enums vs 15 validated strings) and tenant isolation is genuinely strong — so neither is a
+data-layer problem. What IS structural: **42% of models (79/188) carry reference columns with no Prisma
+`@relation`**, because cross-tenant-risk FKs are composite `(tenantId, refId) → (tenantId, id)` and Prisma
+cannot express them. **291 composite constraints existed only as SQL inside 186 migration files** — nothing
+checked that a new `*Id` column got its constraint, or that a drop was noticed, and `migrate diff` is
+documented broken here. Owner chose: **keep composite FKs, tool around them** (the safety property is
+worth the tax), and for money: **design so either GL future stays open** (no lock-in).
+Shipped: `gen:fk-registry` (replays the migration history → `prisma/fk-registry.json`, 435 constraints /
+337 composite / 98 simple), `verify:fk-registry` (FK-1 static guard, in CI's `check`),
+`verify:fk-registry-db` (proves the registry matches `pg_constraint` **including column order**, in the
+renamed `db-proofs` CI job), register note FK-1 + INVARIANTS narrative + the triage table in
+`docs/architecture/data-model.md`.
+Four things worth carrying forward: (1) **replay was necessary, not defensive** — my grep found 2 FK
+drops, the replay applied **20**, so collecting additions alone would have let stale definitions win;
+(2) the guard converted an invisible graph into **157 → 89 → 85** undeclared columns, where ~45 of the
+first cut were never FKs and *could not be* (actor snapshots point at the GLOBAL `user` table, which has
+no `tenantId`, so a composite FK is impossible and a simple one would make accounts undeletable);
+(3) **`locationId` had to be exempted per column, not by name** — it is a genuine composite FK on
+`cellar_material`/`supply_lot` and a documented plain ref on four other tables, so a name-based rule would
+have punched a hole in the real ones; (4) the runtime proof deliberately does NOT auto-rewrite the registry
+on mismatch — that would launder a detected drift.
+⚠️ **Open decision, needs a human:** `Lot.origin{Vineyard,Block,Subblock,Variety}Id` — forgotten
+constraints, or deliberate snapshots that must outlive a deleted vineyard? Also flagged: denormalised
+`vineyardId` on `BlockSpatialMetric`/`BlockSoilSnapshot`/`SpatialDatasetDerivative` can **silently drift**
+from the block's real vineyard — an integrity risk, not just a missing constraint. Ratchet is shrink-only
+(a stale baseline entry also fails), so the 85 can only go down.
+Local gate green: tsc clean, lint 0 errors, 466 files / 5,789 tests, 11 static guards, generator
+deterministic (re-run byte-identical), and the ratchet negative-tested BOTH ways (a new undeclared column
+fails; a stale baseline entry fails). `verify:fk-registry-db` has NOT run — no DB locally; it loads,
+reaches its query, and fails loudly. **Next: workstream B (money value type)** — the other structural
+items are B (money, 5 precisions on money columns, no value type, no GL), C (the accounting outbox is a
+3-way polymorphic union that costs a schema change per new posting source), D (three parallel inventory
+movement ledgers), E (plan 092 DB-enforced authz)._
+
+_Last updated: 2026-08-05 (late night) — **#2 fixed (denormalised vineyard cannot drift) and a REAL BUG
+found in my own FK generator.** Owner was right that #2 was never a decision — I had called it "worth
+fixing on its own merits" and then filed it under decisions; inconsistent, corrected.
+**The fix, and why it adds no cascade path.** The three `vineyardId` copies
+(`block_spatial_metric`, `block_soil_snapshot`, `spatial_dataset_derivative`) were unconstrained
+DELIBERATELY, to avoid "a redundant cascade path" — a fair concern. So instead of ADDING an FK on
+`vineyardId`, the existing parent key was **WIDENED**: `(tenantId, blockId) -> vineyard_block(tenantId,
+id)` became `(tenantId, blockId, vineyardId) -> vineyard_block(tenantId, id, vineyardId)`. Same
+constraint count, same cascade topology, but a copy that disagrees with its parent is now **unstorable**
+rather than merely discouraged. Migration `20260805150000_denormalized_vineyard_cannot_drift` is
+repair-then-enforce per AGENTS.md, and the repair is DETERMINISTIC (the parent is the authority for its
+own vineyard, so a drifted child is corrected to it — not a guess).
+⚠️ **THE BUG, worth remembering.** `gen-fk-registry` applied every `ADD` in a migration and then every
+`DROP` — by pattern type, not by POSITION in the file. So a migration that drops and re-creates a
+constraint under the same name (exactly the shape of "widen a key") **lost it entirely**. Found because
+the registry count FELL when I widened the three keys. Fixing the replay to be position-ordered recovered
+**4 pre-existing constraints that had been wrongly missing**: `reservation_tenantId_taskId_fkey`,
+`vessel_activity_event_tenantId_taskId_fkey`, and `spray_application_supersedes_fkey` /
+`supersededBy_fkey`. **That means my triage last message was wrong** — I called the "reversal/supersede
+self-references" likely omissions; two of them were always constrained and my parser was hiding them.
+The shrink-only ratchet is what surfaced it: it reported 6 stale baseline entries rather than letting the
+loosening pass silently. Baseline 89 → 85 (4 documented `locationId` plain refs) → **79**.
+**Also answered: `Lot.origin*Id` is NOT a deliberate snapshot — it is an unconstrained reference, and the
+dangling case is reachable.** Evidence: (a) vineyards ARE deletable in production —
+`assistant/entities.ts:440` is the `db_delete` path; (b) of 20 inbound FKs to `vineyard` only 6 are
+RESTRICT, and the one that protects lots is `lot_vineyard`, which is written by crush/press/blend/split
+but **NOT** by `bulk/actions.ts:122`, which creates a lot with `originVineyardId` and no `lot_vineyard`
+row; (c) `describeDelete` enumerates DECLARED relations, so it cannot see `Lot.originVineyardId` at all
+and would not block the delete; (d) every real snapshot in this schema pairs an id with a LABEL
+(`lotCode`, `vesselCode`, actor `email`) — `origin*Id` has no paired name column, so it is not
+functioning as a snapshot. Recommendation: constrain with ON DELETE RESTRICT to match `lot_vineyard`'s
+posture. NOT yet done — it is a live-data migration and wants the same repair-then-enforce treatment.
+Local gate green: prisma validate + generate OK, tsc clean, lint 0 errors, 466 files / 5,789 tests,
+11 static guards, generator deterministic. `verify:fk-registry-db` still unrun (no DB) — and it is now
+MORE valuable, since it is precisely what would have caught the ordering bug on its own._
