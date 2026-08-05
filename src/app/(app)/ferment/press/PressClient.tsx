@@ -7,6 +7,7 @@ import type { CrushBlockOption } from "@/lib/ferment/crush-data";
 import type { CellarMaterialDTO } from "@/lib/cellar/materials";
 import { pressAction, wholeClusterPressAction, createPressCycleAction } from "@/lib/transform/actions";
 import { StagedAdditions, applyStagedAdditions, type StagedAddition } from "@/components/ferment/StagedAdditions";
+import { oversizedFractionMessage } from "@/lib/work-orders/press-guidance";
 
 // Phase 6 press. TWO sources:
 //  • A MUST lot already in a vessel → split into free-run + press fraction lots (reds press off
@@ -81,7 +82,10 @@ function PressLotForm({ positions, vessels, router, cycles, createCycle }: { pos
   const [posKey, setPosKey] = React.useState(positions[0] ? `${positions[0].vesselId}:${positions[0].lotId}` : "");
   const pos = positions.find((p) => `${p.vesselId}:${p.lotId}` === posKey);
   const [op, setOp] = React.useState<"PRESS" | "SAIGNEE">("PRESS");
-  const [fractions, setFractions] = React.useState<Fraction[]>([{ destVesselId: vessels[0]?.id ?? "", volumeL: "", label: "free-run", estimated: false, mergeIntoLotId: "" }]);
+  // Destination starts EMPTY. `vessels[0]` is the alphabetically first active vessel — a barrel in a
+  // real cellar — so defaulting silently aimed a free-run cut at 225 L and only the ledger ever said
+  // so (feedback cmsf3y8090000l1049jg251nx). Same rule in the work-order press sub-form.
+  const [fractions, setFractions] = React.useState<Fraction[]>([{ destVesselId: "", volumeL: "", label: "free-run", estimated: false, mergeIntoLotId: "" }]);
   const [pressCycle, setPressCycle] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -91,15 +95,19 @@ function PressLotForm({ positions, vessels, router, cycles, createCycle }: { pos
   const lees = Math.round((available - fractionTotal) * 100) / 100;
 
   const setFraction = (i: number, patch: Partial<Fraction>) => setFractions((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
-  const addFraction = () => setFractions((fs) => [...fs, { destVesselId: vessels[0]?.id ?? "", volumeL: "", label: "press", estimated: false, mergeIntoLotId: "" }]);
+  const addFraction = () => setFractions((fs) => [...fs, { destVesselId: "", volumeL: "", label: "press", estimated: false, mergeIntoLotId: "" }]);
   const removeFraction = (i: number) => setFractions((fs) => fs.filter((_, j) => j !== i));
 
   async function submit() {
     setError("");
     if (!pos) return setError("Pick a lot to press.");
+    const missingDest = fractions.find((f) => Number(f.volumeL) > 0 && !f.destVesselId);
+    if (missingDest) return setError(`Pick a destination vessel for the "${missingDest.label || "unlabelled"}" fraction.`);
     const fr = fractions.filter((f) => Number(f.volumeL) > 0 && f.destVesselId);
     if (fr.length === 0) return setError("Add at least one fraction with a volume.");
     if (fractionTotal > available + 1e-6) return setError(`Fractions (${fractionTotal} L) exceed what the lot holds (${available} L).`);
+    const oversized = oversizedFractionMessage(fr.map((f) => ({ label: f.label, destVesselId: f.destVesselId, volumeL: Number(f.volumeL) })), vessels);
+    if (oversized) return setError(oversized);
     setBusy(true);
     try {
       await pressAction({
@@ -145,9 +153,10 @@ function PressLotForm({ positions, vessels, router, cycles, createCycle }: { pos
         {fractions.map((f, i) => (
           <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
             <input value={f.label} onChange={(e) => setFraction(i, { label: e.target.value })} placeholder="label" aria-label="Fraction label" style={{ ...field, width: 110 }} />
-            <select value={f.destVesselId} onChange={(e) => setFraction(i, { destVesselId: e.target.value })} aria-label="Destination vessel" style={{ ...field, width: 140 }}>
+            <select value={f.destVesselId} onChange={(e) => setFraction(i, { destVesselId: e.target.value })} aria-label="Destination vessel" style={{ ...field, width: 180 }}>
+              <option value="">— pick —</option>
               {vessels.map((v) => (
-                <option key={v.id} value={v.id}>{v.code}</option>
+                <option key={v.id} value={v.id}>{v.code} ({v.capacityL} L)</option>
               ))}
             </select>
             <input value={f.volumeL} onChange={(e) => setFraction(i, { volumeL: e.target.value })} inputMode="decimal" placeholder="L" aria-label="Fraction volume" style={{ ...field, width: 90, textAlign: "right" }} />
@@ -184,7 +193,8 @@ function FruitPressForm({ blocks, vessels, materials, router, cycles, createCycl
   const [blockId, setBlockId] = React.useState(blocks[0]?.blockId ?? "");
   const block = blocks.find((b) => b.blockId === blockId);
   const [consumed, setConsumed] = React.useState<Record<string, string>>({});
-  const [dests, setDests] = React.useState<{ key: number; vesselId: string; volumeL: string }[]>([{ key: 1, vesselId: vessels[0]?.id ?? "", volumeL: "" }]);
+  // Empty, not `vessels[0]` — see the fraction destinations above. Same silent-barrel trap.
+  const [dests, setDests] = React.useState<{ key: number; vesselId: string; volumeL: string }[]>([{ key: 1, vesselId: "", volumeL: "" }]);
   const [additions, setAdditions] = React.useState<StagedAddition[]>([]);
   const [composition, setComposition] = React.useState<Composition>("WHOLE");
   const [wcPct, setWcPct] = React.useState("50");
@@ -202,15 +212,18 @@ function FruitPressForm({ blocks, vessels, materials, router, cycles, createCycl
   const yieldLPerTonne = totalKg > 0 && outL > 0 ? Math.round((outL / totalKg) * 1000 * 100) / 100 : null;
 
   const setDest = (key: number, patch: Partial<{ vesselId: string; volumeL: string }>) => setDests((ds) => ds.map((d) => (d.key === key ? { ...d, ...patch } : d)));
-  const addDest = () => setDests((ds) => [...ds, { key: Math.max(0, ...ds.map((d) => d.key)) + 1, vesselId: vessels[0]?.id ?? "", volumeL: "" }]);
+  const addDest = () => setDests((ds) => [...ds, { key: Math.max(0, ...ds.map((d) => d.key)) + 1, vesselId: "", volumeL: "" }]);
   const removeDest = (key: number) => setDests((ds) => (ds.length > 1 ? ds.filter((d) => d.key !== key) : ds));
 
   async function submit() {
     setError("");
     if (!block) return setError("Pick a block.");
     if (selected.length === 0) return setError("Enter consumed kg for at least one pick.");
+    if (dests.some((d) => Number(d.volumeL) > 0 && !d.vesselId)) return setError("Pick a destination vessel for every juice cut you entered a volume for.");
     const destinations = dests.filter((d) => Number(d.volumeL) > 0 && d.vesselId).map((d) => ({ vesselId: d.vesselId, volumeL: Number(d.volumeL) }));
     if (destinations.length === 0) return setError("Add at least one juice destination with a volume.");
+    const oversizedDest = oversizedFractionMessage(destinations.map((d) => ({ destVesselId: d.vesselId, volumeL: d.volumeL })), vessels);
+    if (oversizedDest) return setError(oversizedDest);
     if (composition === "PARTIAL" && !(wholeClusterPct > 0 && wholeClusterPct < 100)) {
       return setError("For a partial press, enter a whole-cluster % between 1 and 99.");
     }
@@ -288,6 +301,7 @@ function FruitPressForm({ blocks, vessels, materials, router, cycles, createCycl
         {dests.map((d) => (
           <div key={d.key} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
             <select value={d.vesselId} onChange={(e) => setDest(d.key, { vesselId: e.target.value })} aria-label="Destination vessel" style={{ ...field, flex: "1 1 200px" }}>
+              <option value="">— pick —</option>
               {vessels.map((v) => (
                 <option key={v.id} value={v.id}>{v.code} ({v.capacityL} L)</option>
               ))}

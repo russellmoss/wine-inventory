@@ -72,7 +72,49 @@ export function stalePinnedPressSource(task: PressGuidanceTask, positions: Press
   };
 }
 
+/**
+ * The destination a press fraction STARTS on.
+ *
+ * Honours the manager's planned destination when there is one, and otherwise returns "" — the
+ * operator must pick. It used to fall back to `vessels[0]`, which is the alphabetically first
+ * ACTIVE vessel, which in a real cellar is barrel B1. So a press with no planned destination
+ * silently pointed a multi-thousand-litre free-run cut at a 225 L barrel, the picker rendered
+ * nothing but "B1", and the only thing that ever said so was the ledger capacity guard, after the
+ * round-trip, phrased as "That would exceed B1's 225 L capacity". The reporter read that as the
+ * system mistaking his tank for a barrel (feedback cmsf3y8090000l1049jg251nx). A destination is a
+ * decision; never guess it.
+ */
 export function initialPressFractionDestination(vessels: PressGuidanceVessel[], plannedDestVesselId: string | null): string {
   if (plannedDestVesselId && vessels.some((v) => v.id === plannedDestVesselId)) return plannedDestVesselId;
-  return vessels[0]?.id ?? "";
+  return "";
+}
+
+export type PressCapacityVessel = { id: string; code: string; capacityL: number };
+export type PressFractionCheck = { label?: string; destVesselId: string; volumeL: number };
+
+/**
+ * Client-side capacity guard for press/saignée fractions. Returns the first violation's message,
+ * or null when every fraction fits.
+ *
+ * Deliberately checks against the destination's TOTAL capacity, not its headroom: the press form
+ * does not load current vessel contents, and a cut larger than the whole vessel cannot fit whatever
+ * it already holds. That makes this a strict SUBSET of the server's headroom check in
+ * `src/lib/ledger/write.ts` — it can only flag things the ledger would also reject, so it can never
+ * produce a false rejection. The server stays the authority; this just says it before the round-trip,
+ * while the operator is still looking at the picker they need to change.
+ */
+export function oversizedFractionMessage(
+  fractions: PressFractionCheck[],
+  vessels: PressCapacityVessel[],
+): string | null {
+  for (const f of fractions) {
+    if (!f.destVesselId || !(f.volumeL > 0)) continue;
+    const vessel = vessels.find((v) => v.id === f.destVesselId);
+    if (!vessel || !(vessel.capacityL > 0)) continue;
+    if (f.volumeL > vessel.capacityL + 1e-6) {
+      const which = f.label?.trim() ? `Fraction "${f.label.trim()}"` : "That fraction";
+      return `${which} is ${f.volumeL} L, but ${vessel.code} only holds ${vessel.capacityL} L. Pick a bigger destination.`;
+    }
+  }
+  return null;
 }

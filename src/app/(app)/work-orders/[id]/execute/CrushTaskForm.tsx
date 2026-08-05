@@ -28,7 +28,10 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const blocks = data?.blocks ?? [];
   const vessels = data?.vessels ?? [];
   const plannedDestVesselId = typeof task.destVesselId === "string" && task.destVesselId ? task.destVesselId : typeof planned.destVesselId === "string" ? planned.destVesselId : "";
-  const initialDestVesselId = plannedDestVesselId && vessels.some((v) => v.id === plannedDestVesselId) ? plannedDestVesselId : vessels[0]?.id ?? "";
+  // Honour the manager's pinned destination; otherwise leave it EMPTY. Falling back to `vessels[0]`
+  // silently pre-picked the alphabetically first active vessel, which is a barrel in a real cellar
+  // (feedback cmsf3y8090000l1049jg251nx, filed against the press twin of this form).
+  const initialDestVesselId = plannedDestVesselId && vessels.some((v) => v.id === plannedDestVesselId) ? plannedDestVesselId : "";
   const plannedNote = typeof planned.note === "string" && planned.note.trim() ? planned.note.trim() : "";
 
   const [blockId, setBlockId] = React.useState(blocks[0]?.blockId ?? "");
@@ -62,6 +65,9 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
     if (selectedPicks.length === 0) return setError("Enter consumed kg for at least one pick.");
     if (!(outL > 0)) return setError("Enter the measured must volume (liters).");
     if (!destVesselId) return setError("Pick a destination vessel.");
+    if (dest && dest.capacityL > 0 && outL > dest.capacityL + 1e-6) {
+      return setError(`${outL} L won't fit — ${dest.code} only holds ${dest.capacityL} L. Pick a bigger vessel.`);
+    }
     if (effMode === "ADD" && !addLotId) return setError("Pick the must lot to add into.");
     for (const { pick, kg } of selectedPicks) {
       if (kg > pick.remainingKg + 1e-6) return setError(`Pick ${pick.pickDate}: only ${pick.remainingKg} kg remain.`);
@@ -141,6 +147,7 @@ export function CrushTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
         <label style={lbl}>Destination vessel
           <select style={big} value={destVesselId} onChange={(e) => setDestVesselId(e.target.value)}>
+            <option value="">— pick —</option>
             {vessels.map((v) => <option key={v.id} value={v.id}>{v.code} ({v.capacityL} L)</option>)}
           </select>
         </label>

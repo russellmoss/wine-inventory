@@ -32,7 +32,10 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
   const [blockId, setBlockId] = React.useState(blocks[0]?.blockId ?? "");
   const block = blocks.find((b) => b.blockId === blockId);
   const [consumed, setConsumed] = React.useState<Record<string, string>>({});
-  const [destVesselId, setDestVesselId] = React.useState(vessels[0]?.id ?? "");
+  // Empty, not `vessels[0]`: the first ACTIVE vessel by code is a barrel in a real cellar, so the
+  // old default silently aimed a whole crush at 225 L and only the ledger capacity guard ever said
+  // so, after the round-trip (feedback cmsf3y8090000l1049jg251nx, filed against the press twin).
+  const [destVesselId, setDestVesselId] = React.useState("");
   const dest = vessels.find((v) => v.id === destVesselId);
   const [mode, setMode] = React.useState<"NEW" | "ADD">("NEW");
   const [addLotId, setAddLotId] = React.useState("");
@@ -66,7 +69,11 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
   async function submit() {
     setError("");
     if (selectedPicks.length === 0) return setError("Enter consumed kg for at least one pick.");
+    if (!destVesselId) return setError("Pick a destination vessel.");
     if (!(outL > 0)) return setError("Enter the measured must volume (liters).");
+    if (dest && dest.capacityL > 0 && outL > dest.capacityL + 1e-6) {
+      return setError(`${outL} L won't fit — ${dest.code} only holds ${dest.capacityL} L. Pick a bigger vessel.`);
+    }
     if (effMode === "ADD" && !addLotId) return setError("Pick the must lot to add into.");
     if (effMode === "NEW" && !(wcPct >= 0 && wcPct <= 100)) return setError("Whole-cluster % must be between 0 and 100.");
     // Over-consume guard (UI-side; the core re-checks against live LotHarvestSource).
@@ -143,6 +150,7 @@ export function CrushClient({ blocks, vessels, materials }: { blocks: CrushBlock
         <div style={{ flex: "1 1 240px" }}>
           <label style={label}>Destination vessel</label>
           <select aria-label="Destination vessel" value={destVesselId} onChange={(e) => setDestVesselId(e.target.value)} style={{ ...field, width: "100%" }}>
+            <option value="">— pick —</option>
             {vessels.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.code} ({v.capacityL} L)
