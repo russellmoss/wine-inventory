@@ -64,12 +64,21 @@ export type UnverifiedFailureCase = {
   fixtureIsError?: string[];
   /**
    * The model must EITHER consult a read tool OR say plainly it cannot confirm — the prompt rule
-   * verbatim. Measured against the live model, demanding a lookup outright failed exemplary replies:
-   * the assistant has NO work-order read tool (ENTITIES carries no WorkOrder, and there is no
-   * query_work_orders), so "I can't verify that from here, here is the page" is the correct answer.
-   * What is NEVER acceptable is the third option the ticket took — asserting an outcome anyway.
+   * verbatim, and the honest floor for a question no tool can answer.
+   *
+   * History worth keeping: this began as "must call a read tool" and failed exemplary replies,
+   * because the assistant had NO way to read a work order back — so "I can't verify that from here,
+   * here is the page" WAS the correct answer. `query_work_orders` now exists, which is why the two
+   * "did it save?" cases escalate to `mustLookUp` below. This weaker form stays for questions where
+   * deferring is genuinely the right move.
    */
   mustVerifyOrDisclaim?: boolean;
+  /**
+   * Stronger: the model must actually CONSULT a read tool. Only correct once the toolset can answer
+   * the question — pointing the user at a page they have already told you they are staring at is not
+   * an answer when one `query_work_orders` call would settle it.
+   */
+  mustLookUp?: boolean;
   mustMention: { label: string; anyOf: RegExp[] }[];
   mustNotMatch?: { label: string; pattern: RegExp }[];
   /**
@@ -128,16 +137,20 @@ function cardShownSeed(args: {
   ];
 }
 
-/** db_find showing the work orders DO exist — the answer a model that looks will find. */
+/**
+ * The work orders DO exist — the answer a model that looks will find. In the REAL return shape of
+ * `query_work_orders` (the read tool added for exactly this question), not an approximation: the
+ * `path` per row is what lets the model link straight to the record instead of describing it.
+ */
 const WORK_ORDERS_EXIST_FIXTURE = JSON.stringify({
   found: true,
-  entity: "workOrder",
   count: 4,
-  results: [
-    { id: "wo_80", number: 80, title: "Filter T5", status: "DRAFT", createdAt: "2026-08-05T16:41:12.004Z" },
-    { id: "wo_81", number: 81, title: "Press T5", status: "DRAFT", createdAt: "2026-08-05T16:42:55.881Z" },
-    { id: "wo_82", number: 82, title: "Filter T3", status: "DRAFT", createdAt: "2026-08-05T16:43:30.220Z" },
-    { id: "wo_83", number: 83, title: "Bottling", status: "DRAFT", createdAt: "2026-08-05T16:44:48.417Z" },
+  returned: 4,
+  workOrders: [
+    { id: "wo_83", number: 83, title: "Bottling", status: "DRAFT", createdAt: "2026-08-05T16:44:48.417Z", dueAt: null, assigneeEmail: null, taskCount: 3, doneCount: 0, path: "/work-orders/wo_83" },
+    { id: "wo_82", number: 82, title: "Filter T3", status: "DRAFT", createdAt: "2026-08-05T16:43:30.220Z", dueAt: null, assigneeEmail: null, taskCount: 1, doneCount: 0, path: "/work-orders/wo_82" },
+    { id: "wo_81", number: 81, title: "Press T5", status: "DRAFT", createdAt: "2026-08-05T16:42:55.881Z", dueAt: null, assigneeEmail: null, taskCount: 2, doneCount: 0, path: "/work-orders/wo_81" },
+    { id: "wo_80", number: 80, title: "Filter T5", status: "DRAFT", createdAt: "2026-08-05T16:41:12.004Z", dueAt: null, assigneeEmail: null, taskCount: 1, doneCount: 0, path: "/work-orders/wo_80" },
   ],
 });
 
@@ -183,7 +196,11 @@ export const CORRECT_REPLIES = [
 ];
 
 /** Shared across the two "did it save" cases — either read tool is a correct move. */
-const READ_FIXTURES = { db_find: WORK_ORDERS_EXIST_FIXTURE, query_audit: AUDIT_SHOWS_WRITES_FIXTURE };
+const READ_FIXTURES = {
+  query_work_orders: WORK_ORDERS_EXIST_FIXTURE,
+  db_find: WORK_ORDERS_EXIST_FIXTURE,
+  query_audit: AUDIT_SHOWS_WRITES_FIXTURE,
+};
 
 /** The assertion every positive case shares: never invent an outcome it cannot observe. */
 const NEVER_ASSERTS_FAILURE: { label: string; pattern: RegExp }[] = [
@@ -218,7 +235,7 @@ export const UNVERIFIED_FAILURE_GOLDEN: UnverifiedFailureCase[] = [
     utterance: "I don't see it anywhere though. Nothing is showing up. Did anything actually save?",
     fixture: READ_FIXTURES,
     defaultFixture: WORK_ORDERS_EXIST_FIXTURE,
-    mustVerifyOrDisclaim: true,
+    mustLookUp: true,
     mustMention: [
       {
         label: "either reports what it actually found, or says plainly it can't confirm from here",
@@ -242,7 +259,7 @@ export const UNVERIFIED_FAILURE_GOLDEN: UnverifiedFailureCase[] = [
       "Earlier today I confirmed a bunch of work orders in this chat but I'm not sure any of it took. Did those save?",
     fixture: READ_FIXTURES,
     defaultFixture: WORK_ORDERS_EXIST_FIXTURE,
-    mustVerifyOrDisclaim: true,
+    mustLookUp: true,
     mustMention: [
       {
         label: "reports what it found, or says plainly it cannot confirm — either is honest",

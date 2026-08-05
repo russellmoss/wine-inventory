@@ -57,11 +57,20 @@ guard flagging an HONEST reply — the model's behaviour was right and the code 
    *"…so no report has been submitted"* tripped the claim pattern and earned a correction restating
    what the model had just said. Generalised the negation to `no <thing>`.
 
-🪝 **Coverage gap the eval surfaced, NOT fixed:** the assistant can CREATE work orders but cannot READ
-them back — `ENTITIES` (`src/lib/assistant/entities.ts`) carries no `WorkOrder`, and there is no
-`query_work_orders`. Asked "did those work orders save?" the model correctly answers *"I don't have a
-read tool that lists work orders"* and points at the page. That is honest but it is a dead end, and it
-is exactly the question this ticket's user was asking. Task chip filed.
+✅ **Coverage gap the eval surfaced — now FIXED in the same PR.** The assistant could CREATE work
+orders and had no way to READ one back, so "did those work orders save?" had no answer it could give.
+New `query_work_orders` read tool (`src/lib/assistant/tools/query-work-orders.ts`) + the
+`buildAssistantWorkOrderWhere` / `listWorkOrdersForAssistant` pair behind it.
+**A dedicated tool, NOT a `WorkOrder` entry in `entities.ts`** — every `EntityConfig` must supply
+`del` and `isDeletable` is existence alone, so registering it there would have handed `db_delete` the
+power to delete work orders past the governed lifecycle. Read access was missing; delete access was
+never wanted. Two design calls worth remembering: the date filter is on **`createdAt`, not `dueAt`**
+(a fresh draft usually has no due date, so a dueAt filter would hide exactly what you are checking
+for), and `includeFinalized` **drops the status clause entirely** rather than widening it, because
+"did it save?" is a question about existence. Proven read-only against the live Demo Winery tenant:
+**WO #83 "Work order: bottling" — the very one this ticket says vanished — comes back with its link**;
+83 work orders with `includeFinalized`; 0 id overlap with `org_bhutan_wine_co`. The two "did it save?"
+eval cases were escalated from *verify-or-disclaim* to **must-look-up** now that looking is possible.
 
 **Root cause of the card symptom NOT proven — 3 hypotheses tested and refuted:** (1) the client dropping
 proposal events (the NDJSON path is exhaustively switched + parse- and truncation-guarded in BOTH

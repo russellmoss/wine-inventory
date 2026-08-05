@@ -6,7 +6,15 @@ import { materialDisplayName } from "@/lib/cellar/materials-shared";
 import { bucketWorkOrders, type BucketedItem } from "@/lib/work-orders/buckets";
 import { getWineryTimeZone } from "@/lib/settings/data";
 import { computeDeviations, hasSignificantDeviation, type Deviation } from "@/lib/work-orders/deviation";
-import { buildArchiveWhere, buildOpenWhere, ARCHIVE_PAGE_SIZE, type ArchiveFilters, type WorkOrderFilters } from "@/lib/work-orders/archive-filters";
+import {
+  buildArchiveWhere,
+  buildOpenWhere,
+  buildAssistantWorkOrderWhere,
+  ARCHIVE_PAGE_SIZE,
+  type ArchiveFilters,
+  type WorkOrderFilters,
+  type AssistantWorkOrderFilters,
+} from "@/lib/work-orders/archive-filters";
 import { computeDoseTotal, resolveDoseUnit, RATE_BASIS_LABELS, type RateBasis } from "@/lib/cellar/additions-math";
 import { deriveGroupRackProgress, type BatchAttemptLite, type PlannedGroupRack } from "@/lib/work-orders/group-rack-progress";
 import { parseGroupActivityPayload } from "@/lib/work-orders/group-activity";
@@ -537,6 +545,80 @@ export async function getWorkOrderArchive(
       };
     });
     return { rows: list, total, page: safePage, pageSize };
+  });
+}
+
+/** One work order as the ASSISTANT reports it. Serializable; `path` is the real detail route, so the
+ *  model can link straight to it instead of sending the user to hunt through a list. */
+export type AssistantWorkOrderRow = {
+  id: string;
+  number: number;
+  title: string;
+  status: string;
+  createdAt: string;
+  dueAt: string | null;
+  assigneeEmail: string | null;
+  taskCount: number;
+  doneCount: number;
+  path: string;
+};
+
+export const ASSISTANT_WO_DEFAULT_LIMIT = 10;
+export const ASSISTANT_WO_MAX_LIMIT = 50;
+
+/**
+ * The read behind `query_work_orders` (assistant coverage for feedback ticket `cmsgbjgov`).
+ *
+ * Until this existed the assistant could CREATE work orders and had no way to read one back, so
+ * "did those work orders save?" — the exact question that ticket's user asked — had no answer it
+ * could give except "I can't check from here". Ordered newest-FIRST by `createdAt`, because the
+ * question is almost always about work just made, and returns the total alongside the page so the
+ * model can be honest about truncation rather than implying it listed everything.
+ *
+ * K12-safe like every reader in this file: tenantId is an EXPLICIT argument, reads wrapped in
+ * runAsTenant — never the ALS tenant, so it stays correct if it is ever wrapped in cache().
+ */
+export async function listWorkOrdersForAssistant(
+  tenantId: string,
+  filters: AssistantWorkOrderFilters = {},
+  limit = ASSISTANT_WO_DEFAULT_LIMIT,
+): Promise<{ rows: AssistantWorkOrderRow[]; total: number }> {
+  const take = Math.min(Math.max(Math.trunc(limit) || ASSISTANT_WO_DEFAULT_LIMIT, 1), ASSISTANT_WO_MAX_LIMIT);
+  return runAsTenant(tenantId, async () => {
+    const where = buildAssistantWorkOrderWhere(filters) as Prisma.WorkOrderWhereInput;
+    const [total, rows] = await Promise.all([
+      prisma.workOrder.count({ where }),
+      prisma.workOrder.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { number: "desc" }],
+        take,
+        select: {
+          id: true,
+          number: true,
+          title: true,
+          status: true,
+          createdAt: true,
+          dueAt: true,
+          assigneeEmail: true,
+          tasks: { select: { status: true } },
+        },
+      }),
+    ]);
+    return {
+      total,
+      rows: rows.map((r) => ({
+        id: r.id,
+        number: r.number,
+        title: r.title,
+        status: r.status,
+        createdAt: r.createdAt.toISOString(),
+        dueAt: r.dueAt ? r.dueAt.toISOString() : null,
+        assigneeEmail: r.assigneeEmail,
+        taskCount: r.tasks.length,
+        doneCount: r.tasks.filter((t) => t.status === "APPROVED" || t.status === "DONE").length,
+        path: `/work-orders/${r.id}`,
+      })),
+    };
   });
 }
 
