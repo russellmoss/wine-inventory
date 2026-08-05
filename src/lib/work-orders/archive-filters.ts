@@ -103,6 +103,42 @@ export function buildArchiveWhere(f: WorkOrderFilters): ArchiveWhere {
 }
 
 /**
+ * Filters for the ASSISTANT's read of work orders (`query_work_orders`). The two views above each
+ * pin a status set — open or finalized — and neither can answer "did the work order I just made
+ * save?", which spans both and is the question feedback ticket `cmsgbjgov` was really asking.
+ */
+export type AssistantWorkOrderFilters = WorkOrderFilters & {
+  /** Include APPROVED/CANCELLED too. Default false — open work is what people ask about. */
+  includeFinalized?: boolean;
+  /** ISO date; matched against `createdAt`, NOT `dueAt`. See the note on the builder below. */
+  createdFrom?: string;
+};
+
+/**
+ * Build the Prisma `where` for the assistant's work-order read.
+ *
+ * Two deliberate differences from the dashboard/archive builders:
+ *
+ * 1. **No status floor unless asked.** With `includeFinalized` the status clause is omitted entirely,
+ *    so a WO that was approved or cancelled minutes ago is still findable. "Did it save?" is a
+ *    question about EXISTENCE, and a status filter that hides the answer defeats the tool.
+ * 2. **The date range applies to `createdAt`, not `dueAt`.** The user asking "did those four save?"
+ *    is asking about when they were MADE. Filtering their freshly-created drafts by due date would
+ *    silently drop every one with no due date set — which is most of what the assistant creates.
+ */
+export function buildAssistantWorkOrderWhere(f: AssistantWorkOrderFilters): ArchiveWhere {
+  const where: ArchiveWhere = {};
+  if (f.status) where.status = f.status;
+  else if (!f.includeFinalized) where.status = { in: [...OPEN_STATUSES] };
+  if (f.createdFrom) {
+    const d = new Date(f.createdFrom);
+    if (!Number.isNaN(d.getTime())) where.createdAt = { gte: d };
+  }
+  applyCommonFilters(where, f);
+  return where;
+}
+
+/**
  * Build the Prisma `where` for the OPEN dashboard (status ∈ {ISSUED, IN_PROGRESS, PENDING_APPROVAL}; a
  * status filter narrows to one). Date range applies to `dueAt` (open work is planned by due date).
  */

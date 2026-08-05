@@ -54,6 +54,7 @@ import { queryTransfersTool } from "./tools/query-transfers";
 import { queryCellarContentsTool } from "./tools/query-cellar-contents";
 import { queryMeasurementsTool } from "./tools/query-measurements";
 import { queryOperationsTool } from "./tools/query-operations";
+import { queryWorkOrdersTool } from "./tools/query-work-orders";
 import { estimatePackagingNeedsTool } from "./tools/estimate-packaging-needs";
 import { queryVineyardStatusTool } from "./tools/query-vineyard-status";
 import { queryNdviStatsTool } from "./tools/query-ndvi-stats";
@@ -151,6 +152,7 @@ const ALL_TOOLS: AssistantTool[] = [
   queryCellarContentsTool,
   queryMeasurementsTool,
   queryOperationsTool,
+  queryWorkOrdersTool,
   queryMaterialsTool,
   queryVendorsTool,
   estimatePackagingNeedsTool,

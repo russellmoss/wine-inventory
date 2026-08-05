@@ -77,6 +77,34 @@ describe("claimsUnverifiedWriteFailure (feedback cmsgbjgov — under-claimed wri
     ).toBe(false);
   });
 
+  it("does NOT fire when the reply EXPLAINS the confirmation contract, even in another sentence", () => {
+    // Found by the golden eval, not by hand. `cardShown` does not mean anything persisted — a card is
+    // a proposal, and the commit is an out-of-band POST the run loop never sees — so "nothing was
+    // saved" is TRUE of every pending card. The tier is only sound against a reply that asserts it
+    // WITHOUT explaining why. Whole-text, because the claim and its justification are different
+    // sentences and the per-sentence split separates them.
+    const real =
+      "I can't see your screen, so I can't tell whether the card rendered — but I can tell you nothing " +
+      "was saved. A work-order card is only a preview; it doesn't create anything until you confirm it.";
+    expect(claimsUnverifiedWriteFailure(real, CARD_SHOWN)).toBe(false);
+    expect(
+      claimsUnverifiedWriteFailure("Nothing was saved. It isn't written until you confirm.", CARD_SHOWN),
+    ).toBe(false);
+    // ...but the bare assertion, with no contract explained anywhere, still fires.
+    expect(claimsUnverifiedWriteFailure("Nothing was saved.", CARD_SHOWN)).toBe(true);
+  });
+
+  it("keeps the client-state tier unsuppressible — no wording grants sight of the browser", () => {
+    // The contract suppressor must NOT rescue a screen diagnosis. Explaining how confirmation works
+    // says nothing about whether a card rendered, and that tier is the one the live ticket tripped.
+    expect(
+      claimsUnverifiedWriteFailure(
+        "That's a display problem on our end. Nothing is written until you confirm anyway.",
+        CARD_SHOWN,
+      ),
+    ).toBe(true);
+  });
+
   it("does NOT fire on questions, conditionals, or offers to check", () => {
     expect(claimsUnverifiedWriteFailure("Did the card not appear?", CARD_SHOWN)).toBe(false);
     expect(

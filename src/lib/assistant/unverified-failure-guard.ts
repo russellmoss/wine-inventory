@@ -98,6 +98,29 @@ const HEDGE =
   /\?\s*$|\bif\b|\byet\b|\b(?:until|unless) you\b|\b(?:want me to|shall i|should i|tell me to|say the word|let me know)\b|\b(?:the user|they|you|she|he) (?:reports?|reported|says?|said|mentions?|mentioned|told me|is seeing|are seeing|is reporting)\b|\b(?:according to|reportedly|per your)\b/;
 
 /**
+ * The confirmation contract, stated ANYWHERE in the reply — a WHOLE-TEXT suppressor for the
+ * non-persistence tier only.
+ *
+ * Found by the golden eval (`assistant-unverified-failure.eval.test.ts`), which is the whole reason
+ * that file earns its keep: handed a pending card, the model replied *"I can't see your screen, so I
+ * can't tell whether the card rendered — but I can tell you nothing was saved. A work-order card is
+ * only a preview; it doesn't create anything until you confirm it."* Every word of that is TRUE, and
+ * the per-sentence check flagged it anyway, because the sentence making the claim and the sentence
+ * justifying it were different sentences.
+ *
+ * The deeper point: `cardShown` does NOT mean anything persisted. A card is a PROPOSAL, and the
+ * confirmation that commits it is an out-of-band `POST /api/assistant/confirm` the run loop never
+ * observes. So "nothing was saved" is genuinely true of every pending card, and the tier is only
+ * sound against a reply that asserts non-persistence WITHOUT explaining that contract. That is
+ * exactly what this suppressor encodes.
+ *
+ * Deliberately NOT applied to CLIENT_STATE_CLAIM: nothing the model can say elsewhere gives it sight
+ * of the user's browser, so that tier stays per-sentence and unsuppressible.
+ */
+const CONFIRM_CONTRACT =
+  /\b(?:until|unless) you (?:confirm|tap|press|apply|hit|approve)\b|\bonly a preview\b|\bjust a preview\b|\bdoesn['’]?t (?:create|save|write) anything until\b|\bnot saved until\b|\bhaven['’]?t confirmed\b|\bawaiting (?:your )?confirmation\b/;
+
+/**
  * High-precision: does the text assert a write outcome the run gives it no basis to assert?
  *
  * Evaluated PER SENTENCE, same technique as `claimsWriteWithoutCard` and `claimsNoKbCoverage` — a
@@ -110,11 +133,13 @@ export function claimsUnverifiedWriteFailure(
   evidence: WriteOutcomeEvidence,
 ): boolean {
   if (evidence.observedFailure) return false;
+  // Whole-text, so it survives the per-sentence split that separates the claim from its justification.
+  const explainsContract = CONFIRM_CONTRACT.test(assistantText.toLowerCase());
   for (const raw of sentences(assistantText)) {
     const sentence = raw.toLowerCase();
     if (HEDGE.test(sentence)) continue;
     if (CLIENT_STATE_CLAIM.some((re) => re.test(sentence))) return true;
-    if (evidence.cardShown && NON_PERSISTENCE_CLAIM.some((re) => re.test(sentence))) return true;
+    if (evidence.cardShown && !explainsContract && NON_PERSISTENCE_CLAIM.some((re) => re.test(sentence))) return true;
   }
   return false;
 }

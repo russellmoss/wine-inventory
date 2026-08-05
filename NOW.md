@@ -42,8 +42,35 @@ the browser; non-persistence claims ("nothing got saved") fire ONLY when a card 
 guard can never contradict `OVERCLAIM_CORRECTION`. Stands down entirely when a tool actually errored.
 Prompt rule added, and `file_feedback` now stamps an UNVERIFIED caveat on an assistant-authored body
 that asserts client state — this ticket's "no confirmation card rendered" is what sent triage after a
-phantom. 25 tests; ablating the predicate fails 8. **This fixes the LIE, not the cause — the card
+phantom. 25 tests; ablating the predicate fails 8. The **golden eval** followed in
+[#599](https://github.com/russellmoss/wine-inventory/pull/599) and immediately earned its keep — run
+live it found TWO false positives in shipped guards (see below). **This fixes the LIE, not the cause — the card
 symptom below is still unproven and still blocked on Mike.**
+
+🔬 **What the golden eval found once pointed at the live model** (`npm run eval:assistant-unverified-failure`,
+gated on `ASSISTANT_EVAL=1` + a key; 4 cases × 5 runs, 20/20 across two runs). Every one of these was a
+guard flagging an HONEST reply — the model's behaviour was right and the code was wrong:
+1. **`unverified-failure-guard`**: `cardShown` does NOT mean anything persisted. A card is a proposal;
+   the commit is an out-of-band `POST /api/assistant/confirm` the run loop never sees. So *"nothing was
+   saved"* is TRUE of every pending card. Fixed with a whole-text `CONFIRM_CONTRACT` suppressor.
+2. **`overclaim-guard`** (pre-existing, since #217): only *"no card"* was disclaimed, so an honest
+   *"…so no report has been submitted"* tripped the claim pattern and earned a correction restating
+   what the model had just said. Generalised the negation to `no <thing>`.
+
+✅ **Coverage gap the eval surfaced — now FIXED in the same PR.** The assistant could CREATE work
+orders and had no way to READ one back, so "did those work orders save?" had no answer it could give.
+New `query_work_orders` read tool (`src/lib/assistant/tools/query-work-orders.ts`) + the
+`buildAssistantWorkOrderWhere` / `listWorkOrdersForAssistant` pair behind it.
+**A dedicated tool, NOT a `WorkOrder` entry in `entities.ts`** — every `EntityConfig` must supply
+`del` and `isDeletable` is existence alone, so registering it there would have handed `db_delete` the
+power to delete work orders past the governed lifecycle. Read access was missing; delete access was
+never wanted. Two design calls worth remembering: the date filter is on **`createdAt`, not `dueAt`**
+(a fresh draft usually has no due date, so a dueAt filter would hide exactly what you are checking
+for), and `includeFinalized` **drops the status clause entirely** rather than widening it, because
+"did it save?" is a question about existence. Proven read-only against the live Demo Winery tenant:
+**WO #83 "Work order: bottling" — the very one this ticket says vanished — comes back with its link**;
+83 work orders with `includeFinalized`; 0 id overlap with `org_bhutan_wine_co`. The two "did it save?"
+eval cases were escalated from *verify-or-disclaim* to **must-look-up** now that looking is possible.
 
 **Root cause of the card symptom NOT proven — 3 hypotheses tested and refuted:** (1) the client dropping
 proposal events (the NDJSON path is exhaustively switched + parse- and truncation-guarded in BOTH

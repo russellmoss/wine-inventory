@@ -23,6 +23,22 @@ describe("claimsWriteWithoutCard (feedback cmri7ympe — over-claimed write back
     expect(claimsWriteWithoutCard("I wasn't able to file that.")).toBe(false);
   });
 
+  // Found by the UNVERIFIED_FAILURE golden eval, against the live model. Only "no card" was
+  // disclaimed, so an honest "…so no report has been submitted" tripped the "report … has been
+  // submitted" claim pattern and earned a correction restating what the model had just said.
+  it("does NOT fire on an honest negated claim about something other than a card", () => {
+    expect(
+      claimsWriteWithoutCard(
+        "No — I haven't filed anything. I asked whether you wanted me to file it as a bug, and I " +
+          "haven't heard back yet, so no report has been submitted.",
+      ),
+    ).toBe(false);
+    expect(claimsWriteWithoutCard("No bug was filed.")).toBe(false);
+    expect(claimsWriteWithoutCard("No work order was created.")).toBe(false);
+    // The positive claim still fires — the disclaimer must not have blunted the guard.
+    expect(claimsWriteWithoutCard("The report has been submitted.")).toBe(true);
+  });
+
   it("does NOT fire on ordinary read answers", () => {
     expect(claimsWriteWithoutCard("The latest Brix for Block 3 is 24.2, recorded on 2026-09-15.")).toBe(false);
     expect(claimsWriteWithoutCard("Tank T4 holds 8,300 L across two lots.")).toBe(false);
