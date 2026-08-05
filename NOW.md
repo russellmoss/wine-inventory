@@ -83,8 +83,39 @@ not rendering in assistant panel" (assistant — possibly related to the #203 ca
 worth checking first), `cmsgc9bw80000la04b42ftqvy` "blends", `cmsgbp71b0000l2049stzp37z` "eqipment"
 (feature request).
 
-**Still open, NOT this bug:** `cmsg2aphb0000kz04ivugdcn1` "transfer error" — its trail shows a **500 on
-`POST /work-orders/new`**.
+## ✅ "TRANSFER ERROR" (`cmsg2aphb…`) — FIXED, LIVE, CLOSED OUT (2026-08-05)
+
+[#589](https://github.com/russellmoss/wine-inventory/pull/589) squash-merged as `7c36ea27`; production
+deploy succeeded **18:43:10Z**. Ticket RESOLVED/DEFECT, Mike DMed (`cmsgfr3s30000d1zotwz4zbcm`).
+**That closes every bug he reported in this batch** (4 assistant + capacity + transfer).
+
+**The gate was refusing the write for a GOOD reason, in plain English, and throwing the sentence away.**
+`gateWorkOrderReadinessForWrite` threw a raw `Error`; `settleAction` converts **only** `ActionError`
+into `{ok:false,error}` and rethrows the rest → Next.js replaces the message with an opaque digest →
+HTTP 500. That digest is "the weird error at the bottom". What it wanted to say: *"Task #1: a
+transfer's source and destination must be different vessels (both are Tank T5)"* — he had picked the
+same tank at both ends.
+
+⛔ **Never rack-specific.** The gate guards **five** write paths, all `safeAction` — both creates, the
+edit, the composer, and the assistant's confirm (`assertFreshReadiness`). ANY blocker or stale
+fingerprint on ANY of them was an unexplained 500. All three refusals are now `ActionError`.
+
+**RULE (now in memory):** inside a `safeAction`, the error CLASS is the delivery mechanism. If a human
+is meant to read it, it must be an `ActionError`; a raw `Error` is for real bugs you WANT redacted.
+
+## 🪝 Off-path — two findings from that investigation, NOT fixed
+
+1. ⚠️ **The Sentry → GitHub issue automation looks DEAD.** This production 500 (Aug 5) opened no
+   issue; the newest `[sentry]`-labelled issue is **#450, Jul 21**. That absence is why nobody knew.
+   Same shape as the assistant P0: *the error path that says nothing IS the defect.* Worth its own look.
+2. ⚠️ **`draftWorkOrderFromTextAction` has the identical bug** — wrapped in `action(...)` not
+   `safeAction(...)`, and `nl-resolve.ts` throws ~30 raw `Error`s with user-facing text ("That vessel
+   no longer exists."). Every one is an opaque 500 in the "describe the job" NL box today. Deferred:
+   converting it changes the action's return type and all its call sites.
+
+**Mike's three NEW reports (Aug 5, untriaged):** `cmsgbjgov000fl704f36c47p7` "Confirmation card not
+rendering in assistant panel", `cmsgc9bw80000la04b42ftqvy` "blends", `cmsgbp71b0000l2049stzp37z`
+"eqipment" (feature request).
 
 ✅ **Red on main from `#584 fix/authorization-fences` — [#585](https://github.com/russellmoss/wine-inventory/pull/585) in flight.**
 The new `vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)` job has failed on every run since
