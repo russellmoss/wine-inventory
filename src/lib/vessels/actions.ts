@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
-import { action, ActionError } from "@/lib/actions";
+import { adminAction, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 
 const PATH = "/vessels";
@@ -62,7 +62,13 @@ function parseInput(formData: FormData) {
   return { code, type, capacityL, meta };
 }
 
-export const createVessel = action(async ({ actor }, formData: FormData) => {
+// Tenant-GLOBAL catalog rows: `entities.ts` marks `Vessel` `vineyardScoped: false`, so the assistant's
+// db_create/db_update refuse it for a non-admin ("Only an admin or developer can change global records.").
+// These GUI writes used a bare `action(…)`, so any authenticated user could add, rename or deactivate a
+// tank or barrel the assistant would not let them touch. `adminAction` is that same rule.
+// NOTE this is the vessel CATALOG only. Operational vessel work — racking, transfers, topping, group
+// ops — lives in other modules and stays non-admin, exactly as the assistant's dedicated tools do.
+export const createVessel = adminAction(async ({ actor }, formData: FormData) => {
   const { code, type, capacityL, meta } = parseInput(formData);
   if (await prisma.vessel.findFirst({ where: { type, code } })) {
     throw new ActionError(conflictMessage(type, code), "CONFLICT");
@@ -81,7 +87,7 @@ export const createVessel = action(async ({ actor }, formData: FormData) => {
   revalidatePath(PATH);
 });
 
-export const updateVessel = action(async ({ actor }, id: string, formData: FormData) => {
+export const updateVessel = adminAction(async ({ actor }, id: string, formData: FormData) => {
   const { code, type, capacityL, meta } = parseInput(formData);
   const v = await prisma.vessel.findUnique({ where: { id }, include: { components: true } });
   if (!v) throw new ActionError("Vessel not found.");
@@ -109,7 +115,7 @@ export const updateVessel = action(async ({ actor }, id: string, formData: FormD
   revalidatePath(PATH);
 });
 
-export const setVesselActive = action(async ({ actor }, id: string, isActive: boolean) => {
+export const setVesselActive = adminAction(async ({ actor }, id: string, isActive: boolean) => {
   const v = await prisma.vessel.findUnique({ where: { id }, include: { _count: { select: { components: true } } } });
   if (!v) throw new ActionError("Vessel not found.");
   if (!isActive && v._count.components > 0) {

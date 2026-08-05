@@ -27,6 +27,19 @@ jobs:
       # PrismaPromise — it would be evaluated after the ALS scope exits (under the OUTER tenant when
       # one is live). Pure static AST scan, no DB.
       - run: npm run verify:tenant-callbacks
+      # REDIRECT-1: the `require*` gates in dal.ts signal by THROWING Next's NEXT_REDIRECT. A catch-all
+      # around one converts that control flow into an app error, so the user sees the raw
+      # "NEXT_REDIRECT;replace;/login;307;" digest instead of being bounced to /login. Every such catch
+      # must lead with `unstable_rethrow(e)`. Pure static AST scan, no DB.
+      - run: npm run verify:redirect-passthrough
+      # VINEYARD-1: D9 vineyard-membership scoping is an INTRA-tenant fence and Postgres does not enforce
+      # it (RLS scopes by tenant), so it holds only where the action layer applies it. Every exported
+      # action in a vineyard-scoped module must reach a gate. Pure static AST scan, no DB.
+      - run: npm run verify:vineyard-scope
+      # GLOBAL-1: the other branch of the same rule — the six entities marked
+      # `vineyardScoped: false` in entities.ts are admin-only to create or edit in the assistant,
+      # so the GUI catalog writes must be too. Operational stock/vessel work stays open.
+      - run: npm run verify:global-catalog-admin
       - run: npm run verify:feedback
       - run: npm run verify:feedback-idempotency
       - run: npm run verify:feedback-security
@@ -133,6 +146,56 @@ jobs:
         run: |
           git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/changed.txt
           CHANGED_PATHS="$(cat /tmp/changed.txt)" npx tsx scripts/verify-feedback-domain.ts
+
+  # VINEYARD-1 runtime proof: the D9 fence against a REAL Postgres, run AS the NOBYPASSRLS app_rls role.
+  # The `check` job's verify:vineyard-scope is a STATIC scan — it proves every action reaches a gate, not
+  # that the gate resolves the right vineyard or that a manager's membership set loads at all. The latter
+  # is the piece that regressed once already (security register 2026-07-26: vineyardIds was silently []
+  # under app_rls because it was selected off the GLOBAL user model), and an empty set makes every deny
+  # check vacuously pass — so it has to be observed against a database, as the app role.
+  # The script creates and deletes its OWN throwaway tenant, so it needs no seed.
+  vineyard-scope-db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16 # postgres:16 + pgvector (the schema needs CREATE EXTENSION vector)
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wine_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Apply migrations (as the owner)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wine_ci
+          DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/wine_ci
+        run: npx prisma migrate deploy
+      - name: Give app_rls a password (set out-of-band in prod; here for CI auth)
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d wine_ci -v ON_ERROR_STOP=1 -c "ALTER ROLE app_rls WITH LOGIN PASSWORD 'app_rls_ci_pw';"
+      # DATABASE_URL is app_rls (NOBYPASSRLS) — the role the web app actually runs as, and the only role
+      # this proof is meaningful under. DATABASE_URL_UNPOOLED stays the owner, which is what runAsSystem
+      # uses to create the throwaway tenant's GLOBAL rows (organization/user/member carry no RLS).
+      - name: Write .env (the script loads env via tsx --env-file)
+        run: |
+          {
+            echo 'DATABASE_URL=postgresql://app_rls:app_rls_ci_pw@localhost:5432/wine_ci'
+            echo 'DATABASE_URL_UNPOOLED=postgresql://postgres:postgres@localhost:5432/wine_ci'
+          } > .env
+      - name: VINEYARD-1 runtime proof (as app_rls)
+        run: npm run verify:vineyard-scope-db
 
   # Tenant-isolation proof against a real Postgres, run AS the NOBYPASSRLS app_rls role — the live RLS
   # check the local dev loop can't run offline. Gated suite (TENANT_ISOLATION_DB=1) incl. the plan-029

@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { action, safeAction, ActionError } from "@/lib/actions";
+// D9 vineyard-membership scoping — a planting area IS vineyard-scoped (vineyard_planting_area.vineyardId),
+// and every block it creates or splits inherits that vineyard.
+import { requireVineyardAccess, requireBlockAccess, requirePlantingAreaAccess } from "@/lib/vineyard/scope";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 import type { VineyardPolygon } from "@/lib/gis/geometry";
 import type { MigrationProposal } from "./migration-core";
@@ -31,6 +34,7 @@ function toActionError<T>(fn: () => Promise<T>): Promise<T> {
 /** Create a planting area (drawn or imported). */
 export const createPlantingArea = action(
   async ({ actor }, input: { vineyardId: string; name: string; geometry: VineyardPolygon; source?: "DRAW" | "IMPORT"; code?: string }) => {
+    await requireVineyardAccess(input.vineyardId);
     const vineyard = await prisma.vineyard.findUnique({ where: { id: input.vineyardId }, select: { id: true, name: true } });
     if (!vineyard) throw new ActionError("Vineyard not found.");
     const result = await toActionError(() =>
@@ -62,6 +66,7 @@ export const createPlantingArea = action(
 /** Edit a planting area's geometry (IoU-gated). Row-locks the subject + carries a stale-write guard. */
 export const updatePlantingGeometry = action(
   async ({ actor }, input: { plantingAreaId: string; geometry: VineyardPolygon; expectedVersion?: number }) => {
+    await requirePlantingAreaAccess(input.plantingAreaId);
     const before = await prisma.vineyardPlantingArea.findUnique({ where: { id: input.plantingAreaId }, select: { id: true, name: true, geometryVersion: true } });
     if (!before) throw new ActionError("Planting area not found.");
     const result = await toActionError(() =>
@@ -94,6 +99,7 @@ export const updatePlantingGeometry = action(
 /** Create one block from the whole planting geometry. */
 export const oneBlockFromPlanting = action(
   async ({ actor }, input: { plantingAreaId: string; blockLabel?: string; code?: string }) => {
+    await requirePlantingAreaAccess(input.plantingAreaId);
     const result = await toActionError(() =>
       runInTenantTx(async (tx) => {
         const out = await oneBlockFromPlantingCore(tx, { plantingAreaId: input.plantingAreaId, blockLabel: input.blockLabel, code: input.code });
@@ -116,6 +122,7 @@ export const oneBlockFromPlanting = action(
 /** Split a planting area into N blocks via a true blade. */
 export const splitPlantingIntoBlocks = action(
   async ({ actor }, input: { plantingAreaId: string; lineCoords: number[][]; labels?: string[] }) => {
+    await requirePlantingAreaAccess(input.plantingAreaId);
     const result = await toActionError(() =>
       runInTenantTx(async (tx) => {
         const out = await splitIntoBlocksCore(tx, { plantingAreaId: input.plantingAreaId, lineCoords: input.lineCoords, labels: input.labels });
@@ -138,6 +145,10 @@ export const splitPlantingIntoBlocks = action(
 /** Assign a legacy block to a planting area (warn-only on outside-parent). */
 export const assignBlockToPlanting = action(
   async ({ actor }, input: { blockId: string; plantingAreaId: string }) => {
+    // BOTH sides: this links a block to a parent area, so an out-of-scope either end would let a manager
+    // re-parent their block under another vineyard's planting area (or adopt a foreign block into theirs).
+    await requireBlockAccess(input.blockId);
+    await requirePlantingAreaAccess(input.plantingAreaId);
     const result = await toActionError(() =>
       runInTenantTx(async (tx) => {
         const out = await assignBlockToPlantingCore(tx, input);
@@ -160,6 +171,7 @@ export const assignBlockToPlanting = action(
 /** READ: propose migration parents from existing block polygons (review before confirm). */
 export const proposePlantingMigration = action(
   async (_ctx, vineyardId: string): Promise<{ proposals: MigrationProposal[]; blocksWithoutGeometry: string[] }> => {
+    await requireVineyardAccess(vineyardId);
     return proposePlantingAreasFromBlocksCore(vineyardId);
   },
 );
@@ -167,6 +179,7 @@ export const proposePlantingMigration = action(
 /** Confirm migration (all-or-nothing per vineyard). Never mutates source block polygons. */
 export const confirmPlantingMigration = action(
   async ({ actor }, input: { vineyardId: string; proposals: Array<{ name: string; geometry: VineyardPolygon; memberBlockIds: string[] }> }) => {
+    await requireVineyardAccess(input.vineyardId);
     const result = await toActionError(() =>
       runInTenantTx(async (tx) => {
         const out = await confirmProposedPlantingAreasCore(tx, { vineyardId: input.vineyardId, proposals: input.proposals, createdBy: actor.actorEmail });
@@ -190,6 +203,7 @@ export const confirmPlantingMigration = action(
  *  polygons and confirm them in one step. The grouping is road-safe (blocks only join within 1 m), so no
  *  review is needed for the common case. All-or-nothing per vineyard; never mutates source block polygons. */
 export const autoCreatePlantingAreasAction = safeAction(async ({ actor }, vineyardId: string) => {
+  await requireVineyardAccess(vineyardId);
   const { proposals } = await proposePlantingAreasFromBlocksCore(vineyardId);
   if (proposals.length === 0) {
     throw new ActionError("Draw at least one block boundary on the map first, then finish setup.", "VALIDATION");
@@ -219,6 +233,7 @@ export const autoCreatePlantingAreasAction = safeAction(async ({ actor }, vineya
 
 /** READ: planting/block structure for a vineyard (also the assistant tool's core). */
 export const getPlantingStructure = action(async (_ctx, vineyardId: string): Promise<PlantingStructure> => {
+  await requireVineyardAccess(vineyardId);
   return describePlantingStructureCore(vineyardId);
 });
 
@@ -234,6 +249,7 @@ export type PlantingAreaMapRow = {
 
 /** READ: serialized planting areas (with geometry) for the map overlay. */
 export const loadPlantingAreasForMap = action(async (_ctx, vineyardId: string): Promise<PlantingAreaMapRow[]> => {
+  await requireVineyardAccess(vineyardId);
   const rows = await prisma.vineyardPlantingArea.findMany({ where: { vineyardId }, orderBy: { sortOrder: "asc" } });
   return rows.map((r) => ({
     id: r.id,

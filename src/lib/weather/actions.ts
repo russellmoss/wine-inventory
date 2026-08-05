@@ -25,15 +25,33 @@ import { ROLLING_INGEST_DAYS } from "./backfill-window-core";
 import { resolveSiteTimeZone, siteTodayIso } from "./site-time-core";
 import { getWineryTimeZone, getUnitPrefs } from "@/lib/settings/data";
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
+// D9 vineyard-membership scoping — every action in this file is keyed to ONE vineyard, so the gate is
+// threaded through the two chokepoints below rather than repeated per action.
+import { requireVineyardAccess } from "@/lib/vineyard/scope";
 
 /**
  * Auth + resolve the session's active tenant. The weather WRITE path (ingest → requireTenantId() +
  * runInTenantTx) needs an ALS tenant context; plain "use server" actions don't set one, which is the
  * "No tenant context — wrap this call in runAsTenant()" bug. Callers wrap their body in
  * `runAsTenant(tenantId, …)`. Throws (caught by each action's try/catch) when there's no active org.
+ *
+ * ⚠️ WHY EVERY CATCH IN THIS FILE STARTS WITH `unstable_rethrow(e)`: `requireReadyUser()` does NOT
+ * return a decision — it calls Next's `redirect()`, which signals by THROWING `NEXT_REDIRECT`. The
+ * gate below sits inside each action's `try`, so a catch-all `return { ok: false, error: e.message }`
+ * swallowed that control-flow throw and the browser rendered the literal string
+ * "NEXT_REDIRECT;replace;/login;307;" as an error message — the user with an expired session was never
+ * bounced to /login. `getCurrentUser()` also reads `headers()`, whose request-time bailout throws the
+ * same way. `unstable_rethrow` re-throws exactly the framework-controlled errors (redirect /
+ * permanentRedirect / notFound / dynamic-API bailouts) and falls through for real app errors, so the
+ * `{ ok: false }` contract is unchanged. It MUST be the first statement in the catch (Next docs:
+ * node_modules/next/dist/docs/01-app/03-api-reference/04-functions/unstable_rethrow.md).
  */
-async function requireTenant(): Promise<string> {
-  await requireReadyUser();
+async function requireTenant(vineyardId?: string): Promise<string> {
+  // Pass the vineyard whenever the caller has one: D9 scoping is per-vineyard, and a tenant-only gate let
+  // a manager assigned to vineyard A rewrite vineyard B's weather config, station pick and history.
+  if (vineyardId) await requireVineyardAccess(vineyardId);
+  else await requireReadyUser();
   const tenantId = await resolveActiveTenantId();
   if (!tenantId) throw new Error("No active organization on your session — sign in to a winery first.");
   return tenantId;
@@ -47,6 +65,23 @@ async function siteTodayFor(vineyardId: string): Promise<string> {
   const cfg = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { timeZone: true } });
   const wineryTz = await getWineryTimeZone().catch(() => null);
   return siteTodayIso(resolveSiteTimeZone(cfg?.timeZone, wineryTz));
+}
+
+/**
+ * D9 gate in the RETURN-don't-throw idiom: hands back this module's `{ ok:false, error }` on denial, or
+ * `null` to proceed. Needed for the actions whose gate cannot sit inside an existing `try` — a thrown
+ * `ActionError` escapes to Next, which redacts it in production, so the user would see an opaque string
+ * instead of "You can only work with your assigned vineyard." `unstable_rethrow` first, so a redirect
+ * from the session gate underneath stays a redirect (REDIRECT-1).
+ */
+async function gateVineyard(vineyardId: string): Promise<{ ok: false; error: string } | null> {
+  try {
+    await requireVineyardAccess(vineyardId);
+    return null;
+  } catch (e) {
+    unstable_rethrow(e);
+    return { ok: false, error: e instanceof Error ? e.message : "You can only work with your assigned vineyard." };
+  }
 }
 
 /** A nearby station option for the map picker. */
@@ -69,7 +104,8 @@ async function resolveChosenStation(vineyardId: string, lat: number, lon: number
 
 /** List nearby ACIS stations for a vineyard's map picker (nearest first). */
 export async function listNearbyStations(vineyardId: string): Promise<{ ok: true; stations: StationOption[]; center: { lat: number; lon: number } } | { ok: false; error: string }> {
-  await requireReadyUser();
+  const denied = await gateVineyard(vineyardId);
+  if (denied) return denied;
   const centroid = await resolveVineyardCentroid(vineyardId);
   if (!centroid) return { ok: false, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
   try {
@@ -80,6 +116,7 @@ export async function listNearbyStations(vineyardId: string): Promise<{ ok: true
       stations: stations.map((s) => ({ sid: s.sid, name: s.name, lat: s.lat, lon: s.lon, distanceKm: Math.round(s.distanceM / 100) / 10, elevM: s.elevM })),
     };
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -87,7 +124,7 @@ export async function listNearbyStations(vineyardId: string): Promise<{ ok: true
 /** Pick a specific station (map click): store the choice, make it primary, and re-ingest from it. */
 export async function setVineyardStation(vineyardId: string, station: StationOption): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
   try {
-    const tenantId = await requireTenant();
+    const tenantId = await requireTenant(vineyardId);
     return await runAsTenant(tenantId, async () => {
     const centroid = await resolveVineyardCentroid(vineyardId);
     if (!centroid) return { ok: false, error: "This vineyard has no planting-area geometry yet." };
@@ -122,6 +159,7 @@ export async function setVineyardStation(vineyardId: string, station: StationOpt
     return { ok: true, rows: res.rowsWritten };
     });
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -139,7 +177,7 @@ async function resolveVineyardDisplaySystem(vineyardId: string, configUnitSystem
 
 /** Read the composed climate summary for a vineyard (offline — no live provider call). Null if not set up. */
 export async function loadVineyardClimateSummary(vineyardId: string, today?: string): Promise<ClimateSummary | null> {
-  await requireReadyUser();
+  await requireVineyardAccess(vineyardId);
   const centroid = await resolveVineyardCentroid(vineyardId);
   const configRow = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId } });
   if (!configRow || !centroid) return null;
@@ -208,7 +246,8 @@ export async function setVineyardPrimarySource(
   vineyardId: string,
   providerKey: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireReadyUser();
+  const denied = await gateVineyard(vineyardId);
+  if (denied) return denied;
   const config = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { id: true } });
   if (!config) return { ok: false, error: "This vineyard has no weather set up yet — refresh its weather first." };
 
@@ -240,7 +279,7 @@ export async function loadVineyardForecast(
   | { ok: false; error: string }
 > {
   try {
-    await requireReadyUser();
+    await requireVineyardAccess(vineyardId);
     const configRow = await prisma.vineyardWeatherConfig.findFirst({
       where: { vineyardId },
       select: {
@@ -303,6 +342,7 @@ export async function loadVineyardForecast(
     const activeAlerts = Array.isArray(configRow.activeAlertsJson) ? (configRow.activeAlertsJson as unknown as NwsActiveAlert[]) : [];
     return { ok: true, view, unitSystem, stale, activeAlerts };
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -327,7 +367,7 @@ export async function loadVineyardForecastHours(
   | { ok: false; error: string }
 > {
   try {
-    await requireReadyUser();
+    await requireVineyardAccess(vineyardId);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return { ok: false, error: "Invalid date." };
     const configRow = await prisma.vineyardWeatherConfig.findFirst({
       where: { vineyardId },
@@ -366,6 +406,7 @@ export async function loadVineyardForecastHours(
     const unitSystem = await resolveVineyardDisplaySystem(vineyardId, configRow?.unitSystem);
     return { ok: true, day, unitSystem, thresholds, nowLocalHour };
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -373,7 +414,7 @@ export async function loadVineyardForecastHours(
 /** Refresh a vineyard's 7-day forecast from live providers (on-view when stale >6h, or manual). */
 export async function refreshVineyardForecast(vineyardId: string): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
   try {
-    const tenantId = await requireTenant();
+    const tenantId = await requireTenant(vineyardId);
     return await runAsTenant(tenantId, async () => {
       const centroid = await resolveVineyardCentroid(vineyardId);
       if (!centroid) return { ok: false as const, error: "This vineyard has no location yet — draw its boundary or drop a GPS pin first." };
@@ -395,6 +436,7 @@ export async function refreshVineyardForecast(vineyardId: string): Promise<{ ok:
       return { ok: true as const, rows: res.rowsWritten };
     });
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -410,7 +452,7 @@ export async function loadVineyardRainfallRange(
   endIso: string,
 ): Promise<{ ok: true; range: RainfallRangeResult; unitSystem: string } | { ok: false; error: string }> {
   try {
-    await requireReadyUser();
+    await requireVineyardAccess(vineyardId);
     const configRow = await prisma.vineyardWeatherConfig.findFirst({
       where: { vineyardId },
       select: { primaryProviderKey: true, primaryProviderOverride: true, unitSystem: true, coverageState: true },
@@ -436,6 +478,7 @@ export async function loadVineyardRainfallRange(
     const unitSystem = await resolveVineyardDisplaySystem(vineyardId, configRow.unitSystem);
     return { ok: true, range, unitSystem };
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -449,7 +492,8 @@ export async function setVineyardUnitSystem(
   vineyardId: string,
   unitSystem: "METRIC" | "IMPERIAL" | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireReadyUser();
+  const denied = await gateVineyard(vineyardId);
+  if (denied) return denied;
   if (unitSystem !== null && unitSystem !== "METRIC" && unitSystem !== "IMPERIAL") return { ok: false, error: "Unknown unit system." };
   const config = await prisma.vineyardWeatherConfig.findFirst({ where: { vineyardId }, select: { id: true } });
   if (!config) return { ok: false, error: "This vineyard has no weather set up yet — refresh its weather first." };
@@ -460,7 +504,7 @@ export async function setVineyardUnitSystem(
 
 /** Refresh a vineyard's weather from live providers (resolves the centroid, runs ingest). */
 export async function refreshVineyardWeather(vineyardId: string, startIso: string, endIso: string): Promise<IngestResult> {
-  const tenantId = await requireTenant();
+  const tenantId = await requireTenant(vineyardId);
   return runAsTenant(tenantId, async () => {
     const centroid = await resolveVineyardCentroid(vineyardId);
     if (!centroid) throw new Error("Vineyard has no planting-area geometry yet — draw its boundary first.");
@@ -474,7 +518,7 @@ export async function backfillVineyardWeatherHistory(
   years = 20,
 ): Promise<{ ok: true; rows: number; fromYear: number; toYear: number } | { ok: false; error: string }> {
   try {
-    const tenantId = await requireTenant();
+    const tenantId = await requireTenant(vineyardId);
     return await runAsTenant(tenantId, async () => {
       const centroid = await resolveVineyardCentroid(vineyardId);
       if (!centroid) return { ok: false as const, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
@@ -488,6 +532,7 @@ export async function backfillVineyardWeatherHistory(
       return { ok: true as const, rows: res.rowsWritten, fromYear: res.fromYear, toYear: res.toYear };
     });
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, error: (e as Error).message };
   }
 }
@@ -495,7 +540,7 @@ export async function backfillVineyardWeatherHistory(
 /** Refresh the CURRENT growing season (season start → today) — the button on the climate card. */
 export async function refreshVineyardWeatherCurrentSeason(vineyardId: string): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
   try {
-    const tenantId = await requireTenant();
+    const tenantId = await requireTenant(vineyardId);
     return await runAsTenant(tenantId, async () => {
       const centroid = await resolveVineyardCentroid(vineyardId);
       if (!centroid) return { ok: false as const, error: "This vineyard has no planting-area geometry yet — draw its boundary first." };
@@ -513,6 +558,7 @@ export async function refreshVineyardWeatherCurrentSeason(vineyardId: string): P
       return { ok: true as const, rows: res.rowsWritten };
     });
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, error: (e as Error).message };
   }
 }

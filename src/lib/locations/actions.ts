@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { runInTenantTx } from "@/lib/tenant/tx";
-import { action, ActionError } from "@/lib/actions";
+import { adminAction, ActionError } from "@/lib/actions";
 import { writeAudit, summarize, diff } from "@/lib/audit";
 
 const PATH = "/locations";
@@ -15,7 +15,11 @@ function cleanName(raw: unknown): string {
   return name;
 }
 
-export const createLocation = action(async ({ actor }, formData: FormData) => {
+// Tenant-GLOBAL catalog rows: `entities.ts` marks this entity `vineyardScoped: false`, so the
+// assistant's db_create/db_update refuse it for a non-admin ("Only an admin or developer can change
+// global records."). These GUI writes used a bare `action(…)`, so any authenticated user could edit
+// the tenant catalog the assistant would not let them touch. `adminAction` is that same rule.
+export const createLocation = adminAction(async ({ actor }, formData: FormData) => {
   const name = cleanName(formData.get("name"));
   const existing = await prisma.location.findFirst({ where: { name } });
   if (existing) throw new ActionError("A location with that name already exists.", "CONFLICT");
@@ -34,7 +38,7 @@ export const createLocation = action(async ({ actor }, formData: FormData) => {
   revalidatePath(PATH);
 });
 
-export const renameLocation = action(async ({ actor }, id: string, formData: FormData) => {
+export const renameLocation = adminAction(async ({ actor }, id: string, formData: FormData) => {
   const name = cleanName(formData.get("name"));
   const loc = await prisma.location.findUnique({ where: { id } });
   if (!loc) throw new ActionError("Location not found.");
@@ -60,7 +64,7 @@ export const renameLocation = action(async ({ actor }, id: string, formData: For
   revalidatePath(PATH);
 });
 
-export const setLocationActive = action(async ({ actor }, id: string, isActive: boolean) => {
+export const setLocationActive = adminAction(async ({ actor }, id: string, isActive: boolean) => {
   const loc = await prisma.location.findUnique({ where: { id } });
   if (!loc) throw new ActionError("Location not found.");
   if (loc.isSystem) throw new ActionError("The Winery location is reserved and cannot be deactivated.");

@@ -11,6 +11,11 @@ import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
+// D9 vineyard-membership scoping. A spray pass may legitimately span sites, so the write gates check
+// EVERY block named in the payload and the read gates check every vineyard a record touches.
+import { requireBlocksAccess, requireSprayApplicationAccess, requireSprayBlockLineAccess, currentVineyardScope, narrowVineyardFilter } from "@/lib/vineyard/scope";
+import { isTenantAdminLike } from "@/lib/access";
 import { recordSprayApplicationCore, type SprayRecordResult } from "./record-core";
 import { correctSprayApplicationCore, voidSprayApplicationCore, correctabilityOf, type Correctability } from "./correction-core";
 import { createProductFactsResolver, createJurisdictionResolver } from "@/lib/pesticide/product-facts";
@@ -30,6 +35,17 @@ type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 // The callback receives the resolved tenantId so the write paths can build S2b's tenant-bound
 // product-facts resolver. Existing zero-arg callers stay assignable.
+//
+// ⚠️ `unstable_rethrow(e)` is load-bearing and must stay the FIRST statement in the catch.
+// `requireReadyUser()` does NOT return a decision — it calls Next's `redirect()`, which signals by
+// THROWING `NEXT_REDIRECT`. Because the gate runs inside this `try`, the catch-all below used to
+// swallow that control-flow throw and hand the browser the literal string
+// "NEXT_REDIRECT;replace;/login;307;" as `error` — so a user whose session had expired saw that
+// gibberish on the sprays page instead of being bounced to /login. `getCurrentUser()` also reads
+// `headers()`, whose request-time bailout throws the same way. `unstable_rethrow` re-throws only the
+// framework-controlled errors (redirect / permanentRedirect / notFound / dynamic-API bailouts) and
+// falls through for genuine app errors, so the `{ ok: false }` contract is unchanged.
+// Ref: node_modules/next/dist/docs/01-app/03-api-reference/04-functions/unstable_rethrow.md
 async function withTenant<T>(fn: (tenantId: string) => Promise<T>): Promise<ActionResult<T>> {
   try {
     await requireReadyUser();
@@ -38,6 +54,7 @@ async function withTenant<T>(fn: (tenantId: string) => Promise<T>): Promise<Acti
     const data = await runAsTenant(tenantId, async () => await fn(tenantId));
     return { ok: true, data };
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, error: e instanceof Error ? e.message : "Something went wrong." };
   }
 }
@@ -45,6 +62,21 @@ async function withTenant<T>(fn: (tenantId: string) => Promise<T>): Promise<Acti
 async function actor() {
   const user = await requireReadyUser();
   return { userId: user.id ?? null, email: user.email };
+}
+
+/**
+ * Admin gate in this module's return-don't-throw idiom: hands back a failure RESULT to pass straight
+ * through, or `null` to proceed. Deliberately not a throw — every action here returns `ActionResult` so
+ * the message survives Next's production redaction (the file header's reason), and a thrown ActionError
+ * from outside `withTenant` would bypass that. Called OUTSIDE any try, so `requireReadyUser`'s redirect
+ * stays a redirect (REDIRECT-1).
+ */
+async function requireTenantAdmin(): Promise<{ ok: false; error: string } | null> {
+  const user = await requireReadyUser();
+  if (!isTenantAdminLike(user)) {
+    return { ok: false, error: "Only an admin or developer can change tenant-wide product facts." };
+  }
+  return null;
 }
 
 // ── row coercion (Prisma Decimals → numbers, at the boundary) ──
@@ -110,8 +142,13 @@ export interface SpraySeasonRow {
 /** The season list: CURRENT revisions first-class; superseded/voided reachable from the detail. */
 export async function loadSpraySeasonList(vineyardId?: string | null): Promise<ActionResult<SpraySeasonRow[]>> {
   return withTenant(async () => {
+    // D9: an explicit vineyardId must be IN scope (narrowVineyardFilter throws FORBIDDEN otherwise, so a
+    // crafted id cannot widen the read); an absent one means "every vineyard I reach" — a LIST read
+    // filters rather than throws, or a manager's season board would blank entirely.
+    const { scope } = await currentVineyardScope();
+    const only = narrowVineyardFilter(scope, vineyardId);
     const apps = await prisma.sprayApplication.findMany({
-      where: vineyardId ? { vineyardId } : {},
+      where: only === null ? {} : { vineyardId: { in: only } },
       orderBy: { startedAt: "desc" },
       take: 200,
     });
@@ -165,6 +202,7 @@ export interface SprayDetail {
 
 export async function loadSprayDetail(applicationId: string): Promise<ActionResult<SprayDetail>> {
   return withTenant(async () => {
+    await requireSprayApplicationAccess(applicationId);
     const app = await prisma.sprayApplication.findUnique({ where: { id: applicationId } });
     if (!app) throw new Error("Spray record not found.");
     const [materialsRaw, blocksRaw, mixRaw] = await Promise.all([
@@ -233,8 +271,12 @@ export async function loadSprayFormBlocks(): Promise<
   ActionResult<{ id: string; label: string; vineyardId: string; vineyardName: string; defaultAreaHa: number | null }[]>
 > {
   return withTenant(async () => {
+    // The picker must not offer blocks the caller cannot spray — otherwise the form hands them a target
+    // that submitSprayRecord will (correctly) refuse, which reads as a broken screen rather than a denial.
+    const { scope } = await currentVineyardScope();
+    const only = narrowVineyardFilter(scope, null);
     const [blocks, vineyards] = await Promise.all([
-      prisma.vineyardBlock.findMany({ select: { id: true, blockLabel: true, code: true, vineyardId: true, rowSpacingM: true, vineSpacingM: true, vineCount: true }, orderBy: { sortOrder: "asc" } }),
+      prisma.vineyardBlock.findMany({ where: only === null ? {} : { vineyardId: { in: only } }, select: { id: true, blockLabel: true, code: true, vineyardId: true, rowSpacingM: true, vineSpacingM: true, vineCount: true }, orderBy: { sortOrder: "asc" } }),
       prisma.vineyard.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     ]);
     const { blockHectares } = await import("@/lib/vineyard/units");
@@ -263,12 +305,19 @@ export async function submitSprayRecord(input: RecordSprayInput): Promise<Action
   // port and both cores are untouched (KD-6, function-argument DI). Registering it back-fills
   // nothing: existing records keep their frozen snapshots, and a clerical correction still copies
   // the predecessor verbatim (S3a council G1).
-  const result = await withTenant((tenantId) =>
-    recordSprayApplicationCore(who, input, {
+  const result = await withTenant(async (tenantId) => {
+    // Gate on the BLOCKS, not the header vineyardId — the header is optional and merely "defaulted from
+    // the first block line" (KD-12), so trusting it would let a manager name their own vineyard in the
+    // header while spraying another site's blocks.
+    // INSIDE withTenant on purpose: its catch turns a FORBIDDEN ActionError into { ok:false, error },
+    // so the denial MESSAGE reaches the user. Thrown from out here it would escape this module's
+    // return-don't-throw contract and Next would redact it to an opaque string (the file header's rule).
+    await requireBlocksAccess(input.blockLines.map((l) => l.blockId));
+    return recordSprayApplicationCore(who, input, {
       factsResolver: createProductFactsResolver(tenantId),
       jurisdictionResolver: createJurisdictionResolver(tenantId),
-    }),
-  );
+    });
+  });
   if (result.ok) revalidatePath("/vineyards/sprays");
   return result;
 }
@@ -278,19 +327,27 @@ export async function submitSprayCorrection(
   input: RecordSprayInput & { correctionReason: string },
 ): Promise<ActionResult<{ applicationId: string }>> {
   const who = await actor();
-  const result = await withTenant((tenantId) =>
-    correctSprayApplicationCore(who, predecessorId, input, {
+  const result = await withTenant(async (tenantId) => {
+    // BOTH ends: the record being superseded and the blocks the replacement names. A correction can move
+    // block lines, so checking only the predecessor would let a manager retarget a pass onto another site.
+    // Inside withTenant so a denial returns { ok:false, error } instead of being redacted.
+    await requireSprayApplicationAccess(predecessorId);
+    await requireBlocksAccess(input.blockLines.map((l) => l.blockId));
+    return correctSprayApplicationCore(who, predecessorId, input, {
       factsResolver: createProductFactsResolver(tenantId),
       jurisdictionResolver: createJurisdictionResolver(tenantId),
-    }),
-  );
+    });
+  });
   if (result.ok) revalidatePath("/vineyards/sprays");
   return result;
 }
 
 export async function submitSprayVoid(applicationId: string, reason: string): Promise<ActionResult<{ applicationId: string }>> {
   const who = await actor();
-  const result = await withTenant(() => voidSprayApplicationCore(who, applicationId, reason));
+  const result = await withTenant(async () => {
+    await requireSprayApplicationAccess(applicationId); // inside: a denial must return, not throw
+    return voidSprayApplicationCore(who, applicationId, reason);
+  });
   if (result.ok) revalidatePath("/vineyards/sprays");
   return result;
 }
@@ -299,7 +356,10 @@ export async function submitDryingOverride(input: { blockLineId: string; value: 
   const who = await actor();
   const observedAt = new Date(input.observedAtIso);
   if (Number.isNaN(observedAt.getTime())) return { ok: false, error: "observedAt is not a valid instant." };
-  const result = await withTenant(() => recordDryingOverrideCore(who, { blockLineId: input.blockLineId, value: input.value, reason: input.reason, observedAt }));
+  const result = await withTenant(async () => {
+    await requireSprayBlockLineAccess(input.blockLineId); // inside: a denial must return, not throw
+    return recordDryingOverrideCore(who, { blockLineId: input.blockLineId, value: input.value, reason: input.reason, observedAt });
+  });
   if (result.ok) revalidatePath("/vineyards/sprays");
   return result.ok ? { ok: true, data: { id: result.data.id } } : result;
 }
@@ -315,6 +375,7 @@ export async function loadSprayFormInitial(applicationId: string): Promise<
   }>
 > {
   return withTenant(async () => {
+    await requireSprayApplicationAccess(applicationId);
     const app = await prisma.sprayApplication.findUnique({ where: { id: applicationId } });
     if (!app) throw new Error("Spray record not found.");
     const [materials, mix, blockLines] = await Promise.all([
@@ -447,7 +508,26 @@ function optNonNegativeNum(v: FormDataEntryValue | null, label: string): { value
   return { value, error: null };
 }
 
+/**
+ * ADMIN-ONLY (and it must stay that way). This writes the tenant's REGULATORY product facts —
+ * `worstCaseReiHours` (worker re-entry interval), `worstCasePhiDays` (pre-harvest interval),
+ * `minRepeatIntervalDays`, `maxApplicationsPerSeason`. Those are worker-safety and food-safety values,
+ * they are SNAPSHOTTED onto every spray record written afterwards, and they are what the app shows a
+ * crew deciding whether a block is safe to enter or pick.
+ *
+ * It was gated by `actor()` → `requireReadyUser()` alone, so any authenticated user in the tenant could
+ * set them. That is the authorization side of [[PEST-1]] ("a coverage gap never renders as no
+ * restriction", CRITICAL): PEST-1 stops the DATA path from turning an unknown into a clearance, but an
+ * unprivileged user could achieve the same thing by simply typing a number here. The invariant was
+ * enforced against bad data and not against bad authorization.
+ *
+ * `TenantProductFacts` has no vineyard column, so this is deliberately NOT a D9 / VINEYARD-1 gate — it
+ * is tenant-wide reference data, and the fence is the admin role. That exemption is recorded with its
+ * reason in the ALLOWED map of `scripts/check-vineyard-scope.ts`.
+ */
 export async function upsertTenantProductFacts(formData: FormData): Promise<ActionResult<{ id: string }>> {
+  const gate = await requireTenantAdmin();
+  if (gate) return gate;
   const who = await actor();
   const productRef = String(formData.get("productRef") ?? "").trim();
   const productName = String(formData.get("productName") ?? "").trim();
