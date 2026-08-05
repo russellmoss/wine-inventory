@@ -42,10 +42,33 @@ replayed a SHORT slice of the conversation. The 200-row cliff is invisible unles
 `listMessagesForReplay` against a conversation that actually crosses it. `getConversation` had the same
 bug on the UI read — a long thread reopened frozen weeks back, missing the user's own recent messages.
 
-**➡️ NEXT ACTION: none on this ticket.** Two of Mike's OTHER reports from the same days are still
-open and are NOT this bug: `cmsg2aphb0000kz04ivugdcn1` "transfer error" (its trail shows a **500 on
-`POST /work-orders/new`**) and `cmsf3y8090000l1049jg251nx` "capacity" (a work order on Tank 5, ~8,000 L,
-rejects volume as exceeding **225 L** — the system is reading a tank as a barrel).
+**➡️ NEXT ACTION: none on this ticket.**
+
+## 🟡 "CAPACITY" (`cmsf3y809…`) — ROOT-CAUSED AND FIXED, PR [#587](https://github.com/russellmoss/wine-inventory/pull/587) OPEN
+
+Mike: *"I select tank five, I get an error that says that exceeds the capacity of the vessel, which
+is only 225 liters. So somehow the system thinks that tank five is a barrel."* **It doesn't — it
+silently picked a barrel FOR him.** `initialPressFractionDestination` fell back to `vessels[0]`, and
+`loadPressFormData` orders by `code asc`, so the first ACTIVE vessel in a real cellar is **barrel B1
+(225 L)**. His task pinned no destination (`{op:"PRESS",taskKey:"t5_4f5m47"}`), so the free-run cut
+aimed at a 225 L barrel before he touched anything, the picker showed only `B1` (no capacity, no
+placeholder), and the ONLY component that objected was the ledger guard at `ledger/write.ts:213`, a
+round-trip later, naming a vessel he never chose.
+
+**FIVE pickers had the same silent default** — press-execute, standalone press fractions, whole-cluster
+juice split, crush, crush-execute. All five fixed: empty unless pinned, `— pick —` placeholder,
+capacity rendered in every option, and a volume-with-no-destination is now refused instead of silently
+dropped. New `oversizedFractionMessage` names the vessel before the round-trip; it checks TOTAL
+capacity (not headroom) on purpose, making it a strict subset of the ledger check — it can never
+produce a false rejection.
+
+⚠️ **An existing assertion encoded the bug** — `press-guidance.test.ts` asserted the `vessels[0]`
+fallback *existed* rather than asking whether guessing a destination was safe. A test can lock in a
+defect just as firmly as it can catch one. The new cases fail against the old code (`expected 'b1' to
+be ''`). Suite 5,802 green; browser QA NOT run (authed pane needs a human login).
+
+**Still open, NOT this bug:** `cmsg2aphb0000kz04ivugdcn1` "transfer error" — its trail shows a **500 on
+`POST /work-orders/new`**.
 
 ✅ **Red on main from `#584 fix/authorization-fences` — [#585](https://github.com/russellmoss/wine-inventory/pull/585) in flight.**
 The new `vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)` job has failed on every run since
