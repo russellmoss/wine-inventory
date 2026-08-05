@@ -89,6 +89,81 @@ export function initialPressFractionDestination(vessels: PressGuidanceVessel[], 
   return "";
 }
 
+// ---------------------------------------------------------------------------
+// Landing a fraction in a vessel that ALREADY holds wine
+// ---------------------------------------------------------------------------
+//
+// `press-core.ts` has always allowed this, by MERGING the fraction into the lot already in the vessel
+// instead of minting a child (`mergeIntoLotId`, legal exactly when the vessel holds ONE lot and that is
+// the one named). The work-order contract passes the field through too. But no screen ever set it — the
+// field existed in one form's state and payload with no control behind it — so from every UI the answer
+// to "can I press into a vessel that already has wine in it?" was no (feedback cmsgc9bw80000la04b42ftqvy).
+//
+// These helpers are the CLIENT half of that rule, kept pure so both press forms share one implementation
+// and the rule is unit-testable. They mirror press-core's checks exactly; the core stays the authority.
+
+export type PressResidentLot = { lotId: string; code: string; volumeL: number };
+export type PressDestination = { id: string; code: string; capacityL: number; residents?: PressResidentLot[] };
+
+/**
+ * What the UI must ask about a chosen destination.
+ *  - "free"        — empty, or the press's own source vessel (the parent is drawn down by the same
+ *                    operation, so it is not a foreign resident). Mint a child lot; ask nothing.
+ *  - "merge"       — exactly one resident. The fraction can ONLY land here by joining that lot, so the
+ *                    user must say so explicitly. Never assume it (see initialPressFractionDestination).
+ *  - "blocked"     — more than one resident. press-core refuses; merging is defined against a single lot.
+ */
+export function pressDestinationMode(
+  dest: PressDestination | undefined,
+  sourceVesselId: string | null | undefined,
+): "free" | "merge" | "blocked" {
+  if (!dest) return "free";
+  if (sourceVesselId && dest.id === sourceVesselId) return "free";
+  const residents = dest.residents ?? [];
+  if (residents.length === 0) return "free";
+  return residents.length === 1 ? "merge" : "blocked";
+}
+
+/**
+ * The message for a fraction whose destination is occupied and unresolved, or null when it is fine.
+ * Says what the vessel holds and names the two ways forward, in the core's own terms.
+ */
+export function occupiedDestinationMessage(
+  fraction: { label?: string; destVesselId: string; volumeL: number; mergeIntoLotId?: string | null },
+  vessels: PressDestination[],
+  sourceVesselId: string | null | undefined,
+): string | null {
+  if (!fraction.destVesselId || !(fraction.volumeL > 0)) return null;
+  const dest = vessels.find((v) => v.id === fraction.destVesselId);
+  if (!dest) return null;
+  const mode = pressDestinationMode(dest, sourceVesselId);
+  const which = fraction.label?.trim() ? `the "${fraction.label.trim()}" fraction` : "that fraction";
+  const residents = dest.residents ?? [];
+
+  if (mode === "blocked") {
+    return `${dest.code} holds ${residents.map((r) => r.code).join(" and ")}. A fraction can only join a vessel holding ONE lot — send ${which} to an empty vessel.`;
+  }
+  if (mode === "merge") {
+    const resident = residents[0];
+    if (fraction.mergeIntoLotId === resident.lotId) {
+      // Merging is the one case where headroom is fully known client-side: exactly one resident, and
+      // we have its volume. Still a strict subset of the ledger's check (which sums every resident),
+      // so it can only flag what the ledger would also refuse — but it says so before the round-trip.
+      if (dest.capacityL > 0 && resident.volumeL + fraction.volumeL > dest.capacityL + 1e-6) {
+        const room = Math.round((dest.capacityL - resident.volumeL) * 100) / 100;
+        return `${dest.code} holds ${resident.volumeL} L of ${resident.code} and takes ${dest.capacityL} L, so only ${room} L will fit — ${which} is ${fraction.volumeL} L.`;
+      }
+      return null; // resolved: it joins that wine, and it fits
+    }
+    return `${dest.code} already holds ${resident.code} (${resident.volumeL} L). Choose whether ${which} joins ${resident.code} and becomes part of that wine, or send it to an empty vessel.`;
+  }
+  // Free vessel: a merge target would be meaningless, and the core would reject it.
+  if (fraction.mergeIntoLotId) {
+    return `${dest.code} is empty, so ${which} can't be added into another lot. Clear the "add into" choice or pick the vessel that holds it.`;
+  }
+  return null;
+}
+
 export type PressCapacityVessel = { id: string; code: string; capacityL: number };
 export type PressFractionCheck = { label?: string; destVesselId: string; volumeL: number };
 

@@ -7,7 +7,7 @@ import type { WorkOrderTaskView } from "@/lib/work-orders/data";
 import type { PressFormData } from "@/lib/ferment/press-data";
 import { startTaskAction, completeTaskAction } from "@/lib/work-orders/actions";
 import { unwrap } from "@/lib/action-result";
-import { buildPressGuidance, initialPressFractionDestination, oversizedFractionMessage, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
+import { buildPressGuidance, initialPressFractionDestination, occupiedDestinationMessage, oversizedFractionMessage, pressDestinationMode, stalePinnedPressSource } from "@/lib/work-orders/press-guidance";
 
 // Plan 035 Unit 5: the native run-time press / saignée sub-form on the work-order execute screen. Mirrors
 // the standalone PressClient's must-lot path (pick the pressable position, PRESS vs SAIGNEE, the fraction
@@ -17,12 +17,18 @@ import { buildPressGuidance, initialPressFractionDestination, oversizedFractionM
 // pressCycle) prefill from plannedPayload.
 //
 // v1 SCOPE: press a MUST lot already in a vessel (the standalone whole-cluster FRUIT press path is out of
-// scope for the work-order block). Fractions merge-into is not exposed here (parity with PressLotForm).
+// scope for the work-order block).
+//
+// Fractions CAN land in a vessel that already holds wine, by joining the lot that is already there. The
+// engine always allowed it and this form's own contract always passed `mergeIntoLotId` through — but no
+// screen ever set the field, so the capability was unreachable and the answer to "can I press into a
+// vessel that already has wine in it?" was effectively no (feedback cmsgc9bw80000la04b42ftqvy). The
+// choice is now explicit per fraction, never assumed.
 
 const big: React.CSSProperties = { fontSize: 16, padding: "12px 12px", minHeight: 44, borderRadius: "var(--radius-md)", border: "1px solid var(--border)", background: "var(--surface)", width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 };
 
-type Fraction = { id: string; destVesselId: string; volumeL: string; label: string; estimated: boolean };
+type Fraction = { id: string; destVesselId: string; volumeL: string; label: string; estimated: boolean; mergeIntoLotId: string };
 const newFid = (): string => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
 // Parse a hand-typed volume tolerantly: strip thousands-separator commas (e.g. "1,200" → 1200) so a value
@@ -54,7 +60,7 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const [posKey, setPosKey] = React.useState(initialKey);
   const pos = positions.find((p) => `${p.vesselId}:${p.lotId}` === posKey);
   const [op, setOp] = React.useState<"PRESS" | "SAIGNEE">(String(planned.op) === "SAIGNEE" ? "SAIGNEE" : "PRESS");
-  const [fractions, setFractions] = React.useState<Fraction[]>([{ id: newFid(), destVesselId: initialDestVesselId, volumeL: "", label: "free-run", estimated: false }]);
+  const [fractions, setFractions] = React.useState<Fraction[]>([{ id: newFid(), destVesselId: initialDestVesselId, volumeL: "", label: "free-run", estimated: false, mergeIntoLotId: "" }]);
   const [pressCycle, setPressCycle] = React.useState(planned.pressCycle != null ? String(planned.pressCycle) : "");
   const [note, setNote] = React.useState("");
   const [pending, startTransition] = React.useTransition();
@@ -64,11 +70,13 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
   const available = pos?.volumeL ?? 0;
   const lees = Math.round((available - fractionTotal) * 100) / 100;
 
-  const setFraction = (i: number, patch: Partial<Fraction>) => setFractions((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
+  // Changing the destination invalidates any merge target: that lot lives in the vessel you just left.
+  const setFraction = (i: number, patch: Partial<Fraction>) =>
+    setFractions((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch, ...(patch.destVesselId !== undefined && patch.destVesselId !== f.destVesselId ? { mergeIntoLotId: "" } : {}) } : f)));
   // Empty destination, never `vessels[0]`. See initialPressFractionDestination — the first ACTIVE
   // vessel by code is a barrel in a real cellar, and a silently pre-picked 225 L barrel is what
   // turned a routine press into a bug report.
-  const addFraction = () => setFractions((fs) => [...fs, { id: newFid(), destVesselId: "", volumeL: "", label: "press", estimated: false }]);
+  const addFraction = () => setFractions((fs) => [...fs, { id: newFid(), destVesselId: "", volumeL: "", label: "press", estimated: false, mergeIntoLotId: "" }]);
   const removeFraction = (i: number) => setFractions((fs) => fs.filter((_, j) => j !== i));
 
   function complete() {
@@ -84,10 +92,20 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
     // Say it here, next to the picker, instead of letting the ledger say it after a round-trip.
     const oversized = oversizedFractionMessage(fr.map((f) => ({ label: f.label, destVesselId: f.destVesselId, volumeL: parseVol(f.volumeL) })), vessels);
     if (oversized) return setError(oversized);
+    // An occupied destination is legal ONLY by joining the lot already there. Ask here rather
+    // than letting the ledger refuse after a round-trip, and never assume the answer.
+    for (const f of fr) {
+      const occupied = occupiedDestinationMessage(
+        { label: f.label, destVesselId: f.destVesselId, volumeL: parseVol(f.volumeL), mergeIntoLotId: f.mergeIntoLotId || null },
+        vessels,
+        pos.vesselId,
+      );
+      if (occupied) return setError(occupied);
+    }
     const actualPayload: Record<string, unknown> = {
       parentLotId: pos.lotId,
       sourceVesselId: pos.vesselId,
-      fractions: fr.map((f) => ({ destVesselId: f.destVesselId, volumeL: parseVol(f.volumeL), label: f.label, estimated: f.estimated })),
+      fractions: fr.map((f) => ({ destVesselId: f.destVesselId, volumeL: parseVol(f.volumeL), label: f.label, estimated: f.estimated, mergeIntoLotId: f.mergeIntoLotId || null })),
       lossL: lees > 0 ? lees : 0,
       op,
       note: note.trim() || undefined,
@@ -168,6 +186,24 @@ export function PressTaskForm({ task, data, onDone }: { task: WorkOrderTaskView;
               {vessels.map((v) => <option key={v.id} value={v.id}>{v.code} ({v.capacityL} L)</option>)}
             </select>
             <input type="number" value={f.volumeL} onChange={(e) => setFraction(i, { volumeL: e.target.value })} inputMode="decimal" step="any" min="0" placeholder="L" aria-label="Fraction volume" style={{ ...big, width: 100, textAlign: "right" }} />
+            {/* Only when the chosen vessel already holds exactly one lot. Then joining that lot is the
+                ONLY legal way in (press-core), so the choice is surfaced rather than assumed. */}
+            {(() => {
+              const dest = vessels.find((v) => v.id === f.destVesselId);
+              if (pressDestinationMode(dest, pos?.vesselId) !== "merge") return null;
+              const resident = dest!.residents[0];
+              return (
+                <select
+                  value={f.mergeIntoLotId}
+                  onChange={(e) => setFraction(i, { mergeIntoLotId: e.target.value })}
+                  aria-label={`How the ${f.label || "unlabelled"} fraction joins ${dest!.code}`}
+                  style={{ ...big, width: 260 }}
+                >
+                  <option value="">— {dest!.code} holds {resident.code}: choose —</option>
+                  <option value={resident.lotId}>Add into {resident.code} ({resident.volumeL} L)</option>
+                </select>
+              );
+            })()}
             <label style={{ fontSize: 12.5, display: "flex", gap: 4, alignItems: "center", color: "var(--text-muted)" }}>
               <input type="checkbox" checked={f.estimated} onChange={(e) => setFraction(i, { estimated: e.target.checked })} /> est.
             </label>
