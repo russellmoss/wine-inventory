@@ -108,6 +108,28 @@ _"✓ VINEYARD-1 holds against a real database (31 checks)."_ **Main stays red u
 **🆕 Mike's other new report, still untriaged:** `cmsgbp71b0000l2049stzp37z` "eqipment" (feature
 request). "blends" (`cmsgc9bw8…`) is triaged — see the section below.
 
+## ✅ "PRESS" (`cmsf3vmlw…`) — FIXED, LIVE, CLOSED OUT (2026-08-05)
+
+[#598](https://github.com/russellmoss/wine-inventory/pull/598) squash-merged as `2d5641d2`; production
+deploy succeeded **20:41:35Z**. Ticket RESOLVED/PRODUCT_GAP, Mike DMed (`cmsgjzsmd0000d154g0v8ujwr`).
+**Not a defect** — no errors in his trail. Design feedback, and both halves were right.
+
+1. **Press and saignée are now two palette buttons**, each seeding `op`. Fixed at the PALETTE, not the
+   model (new `src/lib/work-orders/task-palette.ts`, pure + tested): one task type, many buttons. The
+   core, `opType`, ledger and every downstream reader are untouched. **The assistant already agreed** —
+   `nl-resolve.ts:752` has always titled the task "Press" or "Saignee". ⚠️ **Deliberately NOT split into
+   separate task types**: that is a domain-model change, `data_model_coalescence.md` records nothing on
+   press vs saignée, and it would need `/plan` + council. Mike was told this explicitly and invited to
+   push back if saignée must be its own ledger operation.
+2. **A press task can now pin its source** — optional `sourceVesselId` / `parentLotId` /
+   `plannedDestVesselId`. `pinnedPressPosition` (new) honours a PARTIAL pin, and a stale vessel-only pin
+   now warns instead of quietly pressing whatever was first in the cellar.
+
+🔁 **THE PATTERN — three tickets in a row, same shape.** `cmsf3y809` (vessel defaults), `cmsgc9bw8`
+(merge-into) and `cmsf3vmlw` (press source pin) were all *a capability that exists in the contract and
+on the ASSISTANT path but is unreachable from the manual UI*. Worth a deliberate sweep for the rest
+rather than finding them one bug report at a time. **Mike has been told that sweep is coming.**
+
 ## 🪝 Off-path — found, NOT fixed
 
 1. ⚠️ **The Sentry → GitHub issue automation looks DEAD.** This production 500 (Aug 5) opened no
