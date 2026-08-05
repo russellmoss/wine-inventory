@@ -2698,3 +2698,125 @@ stays OPEN on purpose. Two lessons worth keeping: (1) **an error path that logs 
 P0** — same shape as the OAuth/Sentry finding on 08-02, twice in one week; (2) **an `assistant-fix/*`
 or `claude/*` branch gets NO Vercel preview** — `vercel.json`'s `ignoreCommand` exits 0 for exactly
 those patterns and exit 0 means SKIP, so those branches are verifiable only after landing on main._
+
+_Last updated: 2026-08-05 — **REDIRECT-1 fixed in the working tree (not committed, not PR'd).** A
+broad code-health review flagged six findings; the owner picked finding 2. `requireReadyUser()` does
+not return a decision — it calls Next's `redirect()`, which signals by THROWING `NEXT_REDIRECT` — and
+21 actions ran that gate INSIDE a catch-all, so an expired session rendered the literal string
+`NEXT_REDIRECT;replace;/login;307;` instead of bouncing to /login. Fixed with `unstable_rethrow(e)` as
+the first statement of 10 catch blocks (`weather/actions.ts` ×8, and the duplicated `withTenant`
+wrappers in `spray/actions.ts` + `harvest/planned-harvest-actions.ts`). New guard
+`scripts/check-redirect-passthrough.ts` (`verify:redirect-passthrough`, static AST scan over
+`"use server"` files, wired into CI's `check` job) + register note REDIRECT-1 + the INVARIANTS.md
+narrative. **The guard was proven by reverting the fix — it flags 9 sites red and goes green when
+restored**; it also correctly IGNORES `listNearbyStations`, whose gate sits above the try. Local gate
+green: tsc clean, lint 0 errors, 464 files / 5,768 tests passing, all 9 CI static guards pass.
+Two things worth carrying forward: (1) the same three files each hand-rolled a `withTenant` +
+a local `ActionResult` type that drops the canonical `code` field and returns raw `e.message` to the
+browser — review finding 3, still open; (2) the review's **finding 1 is the bigger one and is
+untouched** — the D9 vineyard ACL (`canAccessVineyard`) is referenced in only 8 files, so weather,
+spray, soil, plantingArea, spatial and vineyard-block CRUD authorize to TENANT only. A manager scoped
+to vineyard A can delete a block in vineyard B, while the assistant's own `db_update` refuses exactly
+that ("You can only edit records in your assigned vineyard"). The LLM path is stricter than the GUI._
+
+_Last updated: 2026-08-05 (later) — **VINEYARD-1 closed in the working tree (not committed, not PR'd).**
+Review finding 1: `canAccessVineyard` (D9) is an INTRA-tenant fence and Postgres does not enforce it (RLS
+scopes by TENANT), so it held only in the 8 files that applied it — leaving **53 exported actions** across
+weather, spray, soil, planting areas, NDVI and block CRUD authorized to tenant only. A manager assigned to
+vineyard A could read AND mutate vineyard B. Owner chose the full scope (writes **and** reads) and
+fail-closed on an empty membership set. Shipped: new `src/lib/vineyard/scope.ts` (one authority, all FK
+paths documented) + gates on 66 exported actions across 10 modules, guard
+`scripts/check-vineyard-scope.ts` (`verify:vineyard-scope`, static AST, in CI's `check`), 13 unit tests,
+register note VINEYARD-1 + INVARIANTS.md narrative. Guard proven by reverting: **53 red, then green**.
+Three things worth carrying forward: (1) the proof it was a bug and not a policy was INTERNAL — `entities.ts`
+marks `Vineyard`/`VineyardBlock` `vineyardScoped: true` and `db_update` already refused out-of-scope edits,
+so the assistant path was stricter than the GUI path for the same rows; (2) **keyed actions throw, list reads
+filter** — a manager legitimately sees a subset, so throwing would blank a working board, while returning []
+on a keyed action would disguise a denial as "no data"; (3) spray gates on the **footprint** (every vineyard
+its block lines touch), never the header `vineyardId`, which is only "defaulted from the FIRST block line" —
+trusting it would let a manager name their own vineyard while spraying another site.
+⚠️ **BEHAVIOR CHANGE ON A LIVE TENANT, read before merging.** A non-admin with NO `user_vineyard` row now
+loses these surfaces (the security register notes the live DB holds ONE such row). That is the fail-closed
+direction plan 092 requires, but assign memberships to any real `role: "user"` account first, or they will
+hit "You can only work with your assigned vineyard." `runNdviSweepNowAction` is now admin-only (a
+tenant-wide job has no vineyard to scope by). This is an app-layer fence with ZERO DB enforcement and does
+NOT replace plan 092 / Phase 23, which moves it into a capability matrix + RESTRICTIVE RLS quad; when that
+lands, supersede VINEYARD-1 rather than deleting it. Local gate green: tsc clean, lint 0 errors,
+465 files / 5,781 tests, 12 CI static guards. Review finding 3 (duplicated `withTenant` + a local
+`ActionResult` that drops `code` and returns raw `e.message`) is still open._
+
+_Last updated: 2026-08-05 (later still) — **GLOBAL-1 closed: the SECOND branch of the VINEYARD-1 rule
+(not committed, not PR'd).** `assertScoped` (in BOTH `db-update.ts` and `db-create.ts`) reads
+`if (entity.vineyardScoped) { …membership… } else if (!isTenantAdminLike(user)) throw "Only an admin or
+developer can change global records."` — VINEYARD-1 closed the `if`, and the `else` was still open, so
+**13 GUI writes** let any authenticated user rename the tenant's varieties, add/deactivate locations,
+add/retire a tank, and create finished goods + categories that the assistant refused them. Fixed:
+`locations`/`vessels` → `adminAction`, `inventory` catalog paths (`importInventory`, which creates
+categories via ensureCategory, and `addFinishedGoodAction`) → admin, and `reference/actions.ts` gets a
+**per-kind** gate. Also folded in the regulatory one: **`upsertTenantProductFacts` wrote
+`worstCaseReiHours`/`worstCasePhiDays` (worker re-entry + pre-harvest intervals, snapshotted onto every
+later spray record) behind `requireReadyUser()` alone** — the authorization side of PEST-1 (critical):
+PEST-1 stops the DATA path rendering an unknown as a clearance, but an unprivileged user could type a
+number. New guard `verify:global-catalog-admin` (GLOBAL-1, in CI's `check`), 8 tests, register note +
+narrative. Guard proven by reverting: **13 red, then green.**
+Three things worth carrying forward: (1) **`reference/actions.ts` must stay polymorphic** — its `RefKind`
+is `"variety" | "vineyard"`, so a blanket `adminAction` would be wrong in the OTHER direction and lock
+managers out of their own vineyard; a test asserts it still uses the open `action` wrapper with the gate
+inside; (2) that same module mutates **Vineyard** rows, which the first VINEYARD-1 sweep MISSED because
+the module name gives no hint — it is now in that guard's list too (71 actions / 11 modules); (3) the
+CATALOG-vs-OPERATIONAL line is drawn from the assistant itself — `adjust-inventory`/`adjust-consumable`
+are not `adminOnly`, so stock movement stays open, and `findOrCreateWineSku` is deliberately untouched
+because it runs inside a bottling flow and gating it would block bottling for cellar staff.
+⚠️ **KNOWN UX FOLLOW-UP, deliberately not done:** `/vessels`, `/locations`, `/reference` and `/inventory`
+do NOT gate their edit UI on admin, so a non-admin now sees Add/Edit controls that fail with "Admins
+only." The server is correct; the buttons are cosmetically wrong. Hiding them is UI work across 4 pages
+(DESIGN.md applies) and was out of scope for an authorization fix — flagged for a decision.
+Same live-tenant caveat as VINEYARD-1: this is app-layer with ZERO DB enforcement and does not replace
+plan 092, which turns role checks into a capability matrix (`configure` on settings/reference). Local
+gate green: tsc clean, lint 0 errors, 466 files / 5,789 tests, 13 CI static guards. Review finding 3
+(duplicated `withTenant` + a local `ActionResult` that drops `code` and returns raw `e.message`, with
+only 6 captureException in all of src) is still open and is now the top remaining item._
+
+_Last updated: 2026-08-05 (evening) — **VINEYARD-1 runtime proof written and wired into CI; NOT yet
+executed against a real database (no .env / Postgres / Docker on this box).** Before this, the fence was
+verified only statically + by unit tests on pure logic — nobody had ever observed it deny anything, which
+is a weak claim for an authorization control. Added `scripts/verify-vineyard-scope-runtime.ts`
+(`verify:vineyard-scope-db`) + a new CI job `vineyard-scope-db` that runs it against a throwaway pgvector
+Postgres **as `app_rls` (NOBYPASSRLS)** — the role the app actually runs as, and the only role the proof
+is meaningful under. It creates and deletes its OWN throwaway tenant, so it needs no seed.
+The proof is now three parts, none sufficient alone: (1) static — every action reaches a gate;
+(2) runtime — the FK paths resolve to the right vineyard, a CROSS-SITE spray record reports BOTH its
+vineyards, and the membership set actually LOADS; (3) unit — the fail-closed decisions. Check (2)'s
+membership assertion is load-bearing: per the security register 2026-07-26 `vineyardIds` was silently
+`[]` for every user under app_rls, and **an empty set makes every deny-check vacuously pass**, so a
+totally broken fence looks identical to a working one.
+⚠️ **A refactor was required to make this possible, and it is the interesting part.** The gates reach
+`getActionUser()` → `@/lib/dal` → `next/navigation`, so importing `scope.ts` from a plain `tsx` process
+dies on `React.createContext is not a function` (Next's CLIENT router context) before touching a DB — i.e.
+the first version of this script could never have run, in CI or anywhere. Split into
+`src/lib/vineyard/scope-core.ts` (SCRIPT-SAFE: prisma + access + action-error only — the repo's existing
+`*-core.ts` convention) and `scope.ts` (the session gates, re-exporting the core so no call site changed).
+Verified locally as far as is possible without a DB: the script now loads, reaches its first query, fails
+LOUDLY with a clear error, exits 1, and does NOT print a success line. Local gate green after the split:
+tsc clean, lint 0 errors, 466 files / 5,789 tests, 10 static guards. **Still to do: run
+`npm run verify:vineyard-scope-db` once against a real Postgres** (or just let the new CI job run it on
+the PR) — that is the first time the fence will actually be observed denying anything._
+
+_Last updated: 2026-08-05 (late) — **self-review of the four changes found TWO defects in my own work;
+both fixed.** (1) **Gate placement broke the return-don't-throw contract.** In the three modules whose
+header says "actions RETURN { ok:false, error } rather than throwing — production redacts thrown errors",
+I had put the D9 gates OUTSIDE the error envelope: 4 spray + 2 planned-harvest gates sat before
+`withTenant(...)`, and 3 weather gates sat outside any `try`. Security was correct (denied either way) but
+the DENIAL MESSAGE was lost — a refused manager would have seen Next's opaque "An error occurred in the
+Server Components render" instead of "You can only work with your assigned vineyard." Fixed by moving the
+spray/planned-harvest gates INSIDE the `withTenant` callback (also more correct — the resolvers hit prisma
+and now run under an explicit `runAsTenant`) and adding a `gateVineyard()` denial helper to weather in that
+module's own idiom. `loadVineyardClimateSummary` and `refreshVineyardWeather` still throw, correctly: their
+signatures carry no error channel. (2) **The GLOBAL-1 guard had a silent hole** — its read-name heuristic
+skipped any export starting with get/find/check/search, so a future `getOrCreateVariety` or
+`findOrCreateSku` write would have bypassed the guard with NO warning. Now a read prefix only counts as a
+read if the name contains no write verb; verified `getOrCreateSku`/`findOrCreateWineSku`/`checkAndCreate`
+are all CHECKED again. Lesson worth keeping: **both defects were in the parts I wrote by scripted bulk edit
+and then only verified with green guards** — the guards passed the whole time, because neither of these is
+a thing they measure. Re-verified after the fixes: tsc clean, lint 0 errors / no new warnings, 466 files /
+5,789 tests, 10 static guards green, and a re-run of the gate-placement analysis reports 0 defects._
