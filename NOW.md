@@ -7,10 +7,15 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-> **Two threads are open.** The P0 assistant ticket below is **ROOT-CAUSED AND FIXED**, awaiting
-> merge. The other thing in flight is **plan 107** (assistant tool surface) — scroll to it.
+> **The P0 assistant ticket below is CLOSED — fixed, live, tickets resolved, reporter told.** The one
+> thing still in flight is **plan 107** (assistant tool surface) — scroll to it.
 
-## 🔴 P0 "USE OF ASSISTANT" — ROOT CAUSE FOUND. FIX IN [#583](https://github.com/russellmoss/wine-inventory/pull/583), NOT YET MERGED.
+## ✅ P0 "USE OF ASSISTANT" — FIXED, LIVE, AND CLOSED OUT (2026-08-05)
+
+[#583](https://github.com/russellmoss/wine-inventory/pull/583) squash-merged as `89cb62dc`;
+production deploy succeeded **17:01:17Z**. All four tickets written back **RESOLVED / DEFECT** by
+Russell, and Mike has been DMed in plain language (thread `cmrmlwpkm0000l604gictimj9`, message
+`cmsgc4is40000d1iokvcmckmw`) — **he read it 14 seconds after it landed.**
 
 **Four of Mike's tickets are ONE defect** — `cmsdem5xo…` (Aug 3 "error message"), `cmsdy4uom…`
 (Aug 4 "use of assistant"), `cmsevmt6v…` (Aug 4 "assistant doesn't work"), `cmsg2dir6…`
@@ -37,11 +42,20 @@ replayed a SHORT slice of the conversation. The 200-row cliff is invisible unles
 `listMessagesForReplay` against a conversation that actually crosses it. `getConversation` had the same
 bug on the UI read — a long thread reopened frozen weeks back, missing the user's own recent messages.
 
-**➡️ NEXT ACTION: land #583**, then write the four tickets back as one cluster (RESOLVED on merge).
+**➡️ NEXT ACTION: none on this ticket.** Two of Mike's OTHER reports from the same days are still
+open and are NOT this bug: `cmsg2aphb0000kz04ivugdcn1` "transfer error" (its trail shows a **500 on
+`POST /work-orders/new`**) and `cmsf3y8090000l1049jg251nx` "capacity" (a work order on Tank 5, ~8,000 L,
+rejects volume as exceeding **225 L** — the system is reading a tank as a barrel).
 
-_Last updated: 2026-08-05 — P0 root-caused. The detector that found it: run the REAL
+⚠️ **Unrelated red on main, not from this PR:** the CI run for `#584 fix/authorization-fences`
+(merged 16:47Z) FAILED — `vineyard-scope-db / VINEYARD-1 runtime proof (as app_rls)`, where the test
+fixture's cleanup cannot DELETE `spray_block_line` (the append-only KD-1/C15 guard refuses it and the
+teardown never sets `app.allow_spray_purge`). Needs its own look.
+
+_Last updated: 2026-08-05 — P0 closed. The detector that found it: run the REAL
 `listMessagesForReplay` against a conversation that crosses `REPLAY_LIMIT`, then assert the rebuilt
-array's tail role. Everything short of that passes._
+array's tail role. Everything short of that passes — a `take`-bound bug cannot reproduce on a
+fixture smaller than the bound._
 
 **Defect 1 — assistant failures recorded NOTHING server-side.** `run.ts:399` catches its own errors,
 emits the message to the user and returns normally; the route's catch was bare. Neither captured to
