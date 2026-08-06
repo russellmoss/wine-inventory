@@ -14,13 +14,24 @@
 > **[#593](https://github.com/russellmoss/wine-inventory/pull/593) ("blends") landed** — merged
 > `d65b8cdf`, 2026-08-05 20:00Z. Mike's whole batch is now fixed, live, written back and reported to
 > him (#583 assistant · #587 capacity · #589 transfer · #593 blends), and #584's fallout is closed
-> (#585 CI · #586 admin UI). One ticket is **waiting on Mike**, not on us — see below.
+> (#585 CI · #586 admin UI). **Mike's batch is now fully closed out** — the last one open,
+> `cmsgbjgov` ("confirmation card"), was RESOLVED 00:58Z on the harm, with the card cause recorded as
+> still unproven and a REOPEN condition written into the outcome note. Nothing is waiting on Mike to
+> land; his Talk-button answer would only settle the unproven half.
 >
 > ⚠️ **Other sessions have been landing work fast today** (#596–#600 all merged after the archive
 > split), so treat this line as authoritative only for the lane it names. The next thing unstarted
 > *here* is **plan 107** (assistant tool surface).
 
-## 🟠 "CONFIRMATION CARD NOT RENDERING" (`cmsgbjgov…`) — TRIAGED/UNCLEAR, **BLOCKED ON MIKE**
+## ✅ "CONFIRMATION CARD NOT RENDERING" (`cmsgbjgov…`) — **RESOLVED** 2026-08-06 00:58Z (card cause still unproven)
+
+✅ **Closed via `closeFeedbackItemCore`** (the console's own Resolve path, never a raw status write):
+`TRIAGED → RESOLVED`, notes `v2 → v3`, the pending `AWAITING_APPROVAL` automation run auto-skipped to
+`SKIPPED`, and Mike got the native `TICKET_REPLY` notice. `triageClass` deliberately LEFT at `UNCLEAR` —
+we never proved the class, and rewriting it to look tidy would be the same over-claim this ticket is about.
+**Resolved on the HARM, not on the reported symptom**, and the outcome note says so in those words: the
+false "nothing got saved" is fixed and live; *why no card appeared* is still unproven and the voice
+auto-confirm lead below is still the strongest. **REOPEN if it recurs with Talk off.**
 
 ⛔ **The ticket's premise is WRONG, and that matters more than the reported bug. All seven writes were
 APPLIED.** `assistant_confirmation` nonce burns exist for all 7 (that row is written ONLY by
@@ -78,8 +89,8 @@ the time, so it does NOT mention the work-order lookup — that was still undepl
 `inbox_notification` `cmsgrovrp0001d1ew61xdajmf` exists and is unread. Tells him he can now just ask
 *"did that bottling work order save?"* / *"show me WO #83"* and it will look it up and link it, and
 re-asks the Talk-button question. Deliberately does NOT claim the card bug is fixed — it isn't.
-The ticket stays **TRIAGED/UNCLEAR**, not resolved — the card symptom is still
-unproven and still blocked on his answer.
+The ticket has since been **RESOLVED** (see the heading) — on the harm, not the symptom. The card
+symptom is still unproven; his Talk-button answer is still the thing that would settle it.
 
 ⚠️ **Gotcha that cost time here: the DM tables carry per-user RLS on top of tenant RLS.** A plain
 `runAsTenant(tenant, …)` read of `direct_message` / `direct_message_thread` returns **zero rows**, which
@@ -301,3 +312,11 @@ already carry `mustLookUp: true` — enforced, not inert (`assistant-unverified-
 with `LOOKUP_TOOLS` derived from `kind === "read"` so it cannot drift. Only real gap was the coverage
 register, now fixed (`d4d97c67`). Lesson worth keeping: **the task described work that was already done —
 reconcile against git before building.**_
+
+_Last updated: 2026-08-06 (00:58Z) — `cmsgbjgov` RESOLVED via `closeFeedbackItemCore`, not a raw status
+write: v2→v3, the `AWAITING_APPROVAL` run auto-skipped, Mike notified by `TICKET_REPLY`. Resolved **on
+the harm, not the symptom** — the false "nothing got saved" is fixed and live; why no card rendered is
+still unproven, `triageClass` left at UNCLEAR, and the outcome note carries an explicit REOPEN condition
+(recurs with Talk off). The judgement worth keeping: closing a ticket whose ROOT CAUSE is unproven is
+fine as long as the record says so — what would have been wrong is tidying `triageClass` to match the
+closure._
