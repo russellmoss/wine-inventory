@@ -74,9 +74,18 @@ about what production is serving. Check the deployment, not the merge.
 told plainly that all seven writes DID save, that the assistant can no longer claim otherwise, and
 asked the one blocking question — **was the Talk button on?** Deliberately scoped to what was live at
 the time, so it does NOT mention the work-order lookup — that was still undeployed when it went out.
-It has since shipped, so a one-line follow-up telling him he can now just ask *"did that work order
-save?"* is still owed. The ticket stays **TRIAGED/UNCLEAR**, not resolved — the card symptom is still
+✅ **That follow-up is now SENT** — message `cmsgrovdn0000d1ewy6pve9fc`, same thread, 00:18:04Z; Mike's
+`inbox_notification` `cmsgrovrp0001d1ew61xdajmf` exists and is unread. Tells him he can now just ask
+*"did that bottling work order save?"* / *"show me WO #83"* and it will look it up and link it, and
+re-asks the Talk-button question. Deliberately does NOT claim the card bug is fixed — it isn't.
+The ticket stays **TRIAGED/UNCLEAR**, not resolved — the card symptom is still
 unproven and still blocked on his answer.
+
+⚠️ **Gotcha that cost time here: the DM tables carry per-user RLS on top of tenant RLS.** A plain
+`runAsTenant(tenant, …)` read of `direct_message` / `direct_message_thread` returns **zero rows**, which
+reads exactly like "the DM was never sent" — it briefly looked like the note above was an over-claim, and
+it wasn't. Pass `{ userId }` (as the send recipe already does) or read as owner. Ground truth when the
+local pooler is cold: the Neon MCP (`run_sql` against `muddy-shape-80817041`) bypasses both.
 
 ✅ **Coverage gap the eval surfaced — now FIXED in the same PR.** The assistant could CREATE work
 orders and had no way to READ one back, so "did those work orders save?" had no answer it could give.
