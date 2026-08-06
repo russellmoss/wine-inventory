@@ -350,3 +350,14 @@ still unproven, `triageClass` left at UNCLEAR, and the outcome note carries an e
 (recurs with Talk off). The judgement worth keeping: closing a ticket whose ROOT CAUSE is unproven is
 fine as long as the record says so — what would have been wrong is tidying `triageClass` to match the
 closure._
+
+_Last updated: 2026-08-06 — **VINEYARD-1 blast radius is now measurable, and finding 3 is half closed.**
+`npm run audit:vineyard-memberships` (read-only) reports who D9 actually locks out — needed because both
+fences are LIVE, D9 fails closed, and the live DB reportedly held one `user_vineyard` row. **Not yet
+run** (no DB locally); it may well report zero. It grants nothing on purpose — who reaches which vineyard
+is a business call, and `setUserVineyards` REPLACES the whole set (the 2026-07-26 data-loss shape).
+Finding 3: new `settleWithCapture` — `unstable_rethrow` → `ActionError` verbatim (not captured; a refusal
+isn't a bug) → everything else captured to Sentry with a GENERIC message. Both hand-rolled `withTenant`
+wrappers migrated (~13 actions). `captureException` 5→7, raw `e.message` returns 40→38, local
+`ActionResult` redefinitions 2→0. Remaining 38 are route handlers returning `Response.json` — a different
+shape wanting a sibling helper, plus a shrink-only guard (the FK-1 ratchet)._

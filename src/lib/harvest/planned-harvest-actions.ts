@@ -10,7 +10,9 @@ import { requireReadyUser } from "@/lib/dal";
 import { runAsTenant } from "@/lib/tenant/context";
 import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { revalidatePath } from "next/cache";
-import { unstable_rethrow } from "next/navigation";
+import { settleWithCapture } from "@/lib/action-settle";
+import { ActionError } from "@/lib/action-error";
+import type { ActionResult } from "@/lib/action-result";
 // D9 vineyard-membership scoping. harvest/actions.ts gates every one of its mutations with
 // requireBlockAccess; this sibling module in the SAME domain gated none, which is the inconsistency.
 import { requireBlockAccess, currentVineyardScope, narrowVineyardFilter } from "@/lib/vineyard/scope";
@@ -21,29 +23,22 @@ import {
   type CurrentPlannedHarvestDate,
 } from "./planned-harvest-core";
 
-type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
-
-// ⚠️ `unstable_rethrow(e)` is load-bearing and must stay the FIRST statement in the catch.
-// `requireReadyUser()` does NOT return a decision — it calls Next's `redirect()`, which signals by
-// THROWING `NEXT_REDIRECT`. Because the gate runs inside this `try`, the catch-all below used to
-// swallow that control-flow throw and hand the browser the literal string
-// "NEXT_REDIRECT;replace;/login;307;" as `error` — so a user whose session had expired saw that
-// gibberish on the planned-harvest board instead of being bounced to /login. `getCurrentUser()` also
-// reads `headers()`, whose request-time bailout throws the same way. `unstable_rethrow` re-throws only
-// the framework-controlled errors (redirect / permanentRedirect / notFound / dynamic-API bailouts) and
-// falls through for genuine app errors, so the `{ ok: false }` contract is unchanged.
-// Ref: node_modules/next/dist/docs/01-app/03-api-reference/04-functions/unstable_rethrow.md
+// Settles through `settleWithCapture`: an expected ActionError comes back verbatim with its code, an
+// unexpected one is captured to Sentry and replaced with a generic message rather than leaking
+// `e.message` to the browser. `unstable_rethrow` runs first inside the helper, so a redirect from
+// `requireReadyUser` stays a redirect (REDIRECT-1).
 async function withTenant<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
-  try {
-    await requireReadyUser();
-    const tenantId = await resolveActiveTenantId();
-    if (!tenantId) return { ok: false, error: "No active organization on your session — sign in to a winery first." };
-    const data = await runAsTenant(tenantId, async () => await fn());
-    return { ok: true, data };
-  } catch (e) {
-    unstable_rethrow(e);
-    return { ok: false, error: e instanceof Error ? e.message : "Something went wrong." };
-  }
+  return settleWithCapture(
+    async () => {
+      await requireReadyUser();
+      const tenantId = await resolveActiveTenantId();
+      if (!tenantId) {
+        throw new ActionError("No active organization on your session — sign in to a winery first.", "FORBIDDEN");
+      }
+      return runAsTenant(tenantId, async () => await fn());
+    },
+    { action: "plannedHarvest.withTenant", area: "harvest" },
+  );
 }
 
 export interface PlannedHarvestBlockRow {
