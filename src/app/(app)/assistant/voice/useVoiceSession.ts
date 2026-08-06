@@ -24,6 +24,7 @@ import { clampHistoryForSend } from "@/lib/assistant/message-window";
 import { readDraftGaps } from "@/lib/assistant/proposal-card";
 import { browserTimeZone } from "@/lib/work-orders/due-at";
 import { RESOLVED_CARD_LINGER_MS, admitProposal, releaseProposal } from "@/lib/assistant/card-lifecycle";
+import { classifyUtterance, announceArmedProposal } from "@/lib/voice/confirm-grammar";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
 import { useEarcons } from "./useEarcons";
@@ -66,8 +67,10 @@ export type PendingProposal = {
   result?: string;
 };
 
-const CONFIRM_RE = /\b(confirm|yes|yep|do it|go ahead|approve|apply)\b/i;
-const CANCEL_RE = /\b(cancel|no|nope|stop|never ?mind|discard)\b/i;
+// Confirm/cancel grammar + the armed-write announcement live in `@/lib/voice/confirm-grammar` so
+// they are unit-testable — the components are not (vitest runs `environment: "node"`).
+// Do NOT re-loosen the confirm pattern here: `test/voice-confirm-grammar.test.ts` asserts that
+// `yes` / `yep` / `do it` / `go ahead` / `apply` stay OUT of it (feedback cmsgbjgov).
 
 async function loadVoiceSettings(): Promise<VoiceSettingsView | null> {
   try {
@@ -415,6 +418,13 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
               return;
             case "proposal": {
               const draft = evt.draft === true;
+              // How many cards are already waiting, measured BEFORE this one is admitted — it is
+              // what the announcement needs to say ("there's one more after it").
+              const queuedBefore =
+                proposalQueueRef.current.length +
+                (proposalRef.current && (proposalRef.current.status === "pending" || proposalRef.current.status === "applying")
+                  ? 1
+                  : 0);
               admit({
                 tool: evt.tool,
                 preview: evt.preview,
@@ -436,6 +446,14 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
                       ? `I've put a draft on screen. It still needs ${gaps.labels.join(" and ")}. Have a look at the card.`
                       : "I've put a draft on screen — it isn't ready to issue yet. Have a look at the card.",
                 );
+              } else {
+                // A COMMITTABLE card is announced too — this used to be silent, which is how seven
+                // writes were applied while the reporter believed no card had ever appeared
+                // (feedback cmsgbjgov). Voice mode is hands-free by design, so a card being on
+                // screen is not consent; the user has to HEAR that a write is armed, and be told
+                // the word that commits it. Speaking here is safe — we are inside the turn that
+                // produced the event, which is the same scope the Draft branch above speaks from.
+                speak(announceArmedProposal(evt.preview, queuedBefore));
               }
               return;
             }
@@ -574,13 +592,14 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
 
       // Voice confirm/cancel of a pending write, gated to the pending proposal.
       if (proposalRef.current?.status === "pending") {
-        if (CONFIRM_RE.test(transcript) && !CANCEL_RE.test(transcript)) {
+        const verdict = classifyUtterance(transcript);
+        if (verdict === "confirm") {
           pushCaption("user", transcript);
           confirmProposal();
           startListening();
           return;
         }
-        if (CANCEL_RE.test(transcript)) {
+        if (verdict === "cancel") {
           pushCaption("user", transcript);
           cancelProposal();
           startListening();
