@@ -11,7 +11,9 @@ import { runAsTenant } from "@/lib/tenant/context";
 import { runInTenantTx } from "@/lib/tenant/tx";
 import { resolveActiveTenantId } from "@/lib/tenant/resolve";
 import { revalidatePath } from "next/cache";
-import { unstable_rethrow } from "next/navigation";
+import { settleWithCapture } from "@/lib/action-settle";
+import { ActionError } from "@/lib/action-error";
+import type { ActionResult } from "@/lib/action-result";
 // D9 vineyard-membership scoping. A spray pass may legitimately span sites, so the write gates check
 // EVERY block named in the payload and the read gates check every vineyard a record touches.
 import { requireBlocksAccess, requireSprayApplicationAccess, requireSprayBlockLineAccess, currentVineyardScope, narrowVineyardFilter } from "@/lib/vineyard/scope";
@@ -31,32 +33,27 @@ import type {
   SprayMobilityClass,
 } from "./types";
 
-type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
-
 // The callback receives the resolved tenantId so the write paths can build S2b's tenant-bound
 // product-facts resolver. Existing zero-arg callers stay assignable.
 //
-// ⚠️ `unstable_rethrow(e)` is load-bearing and must stay the FIRST statement in the catch.
-// `requireReadyUser()` does NOT return a decision — it calls Next's `redirect()`, which signals by
-// THROWING `NEXT_REDIRECT`. Because the gate runs inside this `try`, the catch-all below used to
-// swallow that control-flow throw and hand the browser the literal string
-// "NEXT_REDIRECT;replace;/login;307;" as `error` — so a user whose session had expired saw that
-// gibberish on the sprays page instead of being bounced to /login. `getCurrentUser()` also reads
-// `headers()`, whose request-time bailout throws the same way. `unstable_rethrow` re-throws only the
-// framework-controlled errors (redirect / permanentRedirect / notFound / dynamic-API bailouts) and
-// falls through for genuine app errors, so the `{ ok: false }` contract is unchanged.
-// Ref: node_modules/next/dist/docs/01-app/03-api-reference/04-functions/unstable_rethrow.md
+// Settling goes through `settleWithCapture` rather than a local catch-all, which fixes two things this
+// wrapper used to get wrong at once: it returned raw `e.message` to the browser (leaking whatever a
+// Prisma or provider error happened to say), and it sent NOTHING to Sentry, so a real bug here was
+// invisible. An expected ActionError still comes back verbatim with its code; an unexpected one is
+// captured and replaced with a generic message. `unstable_rethrow` still runs first inside the helper,
+// so a redirect from `requireReadyUser` stays a redirect (REDIRECT-1).
 async function withTenant<T>(fn: (tenantId: string) => Promise<T>): Promise<ActionResult<T>> {
-  try {
-    await requireReadyUser();
-    const tenantId = await resolveActiveTenantId();
-    if (!tenantId) return { ok: false, error: "No active organization on your session — sign in to a winery first." };
-    const data = await runAsTenant(tenantId, async () => await fn(tenantId));
-    return { ok: true, data };
-  } catch (e) {
-    unstable_rethrow(e);
-    return { ok: false, error: e instanceof Error ? e.message : "Something went wrong." };
-  }
+  return settleWithCapture(
+    async () => {
+      await requireReadyUser();
+      const tenantId = await resolveActiveTenantId();
+      if (!tenantId) {
+        throw new ActionError("No active organization on your session — sign in to a winery first.", "FORBIDDEN");
+      }
+      return runAsTenant(tenantId, async () => await fn(tenantId));
+    },
+    { action: "spray.withTenant", area: "spray" },
+  );
 }
 
 async function actor() {
@@ -71,10 +68,10 @@ async function actor() {
  * from outside `withTenant` would bypass that. Called OUTSIDE any try, so `requireReadyUser`'s redirect
  * stays a redirect (REDIRECT-1).
  */
-async function requireTenantAdmin(): Promise<{ ok: false; error: string } | null> {
+async function requireTenantAdmin(): Promise<{ ok: false; error: string; code: "FORBIDDEN" } | null> {
   const user = await requireReadyUser();
   if (!isTenantAdminLike(user)) {
-    return { ok: false, error: "Only an admin or developer can change tenant-wide product facts." };
+    return { ok: false, error: "Only an admin or developer can change tenant-wide product facts.", code: "FORBIDDEN" };
   }
   return null;
 }
@@ -355,7 +352,7 @@ export async function submitSprayVoid(applicationId: string, reason: string): Pr
 export async function submitDryingOverride(input: { blockLineId: string; value: boolean; reason: string; observedAtIso: string }): Promise<ActionResult<{ id: string }>> {
   const who = await actor();
   const observedAt = new Date(input.observedAtIso);
-  if (Number.isNaN(observedAt.getTime())) return { ok: false, error: "observedAt is not a valid instant." };
+  if (Number.isNaN(observedAt.getTime())) return { ok: false, error: "observedAt is not a valid instant.", code: "VALIDATION" };
   const result = await withTenant(async () => {
     await requireSprayBlockLineAccess(input.blockLineId); // inside: a denial must return, not throw
     return recordDryingOverrideCore(who, { blockLineId: input.blockLineId, value: input.value, reason: input.reason, observedAt });
@@ -532,9 +529,9 @@ export async function upsertTenantProductFacts(formData: FormData): Promise<Acti
   const productRef = String(formData.get("productRef") ?? "").trim();
   const productName = String(formData.get("productName") ?? "").trim();
   const factGroup = String(formData.get("factGroup") ?? "") as "REGULATORY" | "AGRONOMIC";
-  if (!productRef) return { ok: false, error: "A product reference is required — this is the handle you'll cite on a spray record." };
-  if (!productName) return { ok: false, error: "A product name is required." };
-  if (factGroup !== "REGULATORY" && factGroup !== "AGRONOMIC") return { ok: false, error: "Choose which group of facts this is: REGULATORY or AGRONOMIC." };
+  if (!productRef) return { ok: false, error: "A product reference is required — this is the handle you'll cite on a spray record.", code: "VALIDATION" };
+  if (!productName) return { ok: false, error: "A product name is required.", code: "VALIDATION" };
+  if (factGroup !== "REGULATORY" && factGroup !== "AGRONOMIC") return { ok: false, error: "Choose which group of facts this is: REGULATORY or AGRONOMIC.", code: "VALIDATION" };
 
   const epaRegistrationNumber = String(formData.get("epaRegistrationNumber") ?? "").trim() || null;
   const mobilityClassRaw = String(formData.get("mobilityClass") ?? "").trim();
@@ -554,7 +551,7 @@ export async function upsertTenantProductFacts(formData: FormData): Promise<Acti
   const maxApps = optNonNegativeNum(formData.get("maxApplicationsPerSeason"), "Max applications per season");
   const rainfast = optNonNegativeNum(formData.get("rainfastHours"), "Rainfast");
   const firstError = [phi, rei, repeat, maxApps, rainfast].find((r) => r.error)?.error;
-  if (firstError) return { ok: false, error: firstError };
+  if (firstError) return { ok: false, error: firstError, code: "VALIDATION" };
 
   const data = {
     productRef,
