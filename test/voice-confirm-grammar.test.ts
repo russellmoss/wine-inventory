@@ -3,6 +3,8 @@ import {
   CONFIRM_RE,
   classifyUtterance,
   announceArmedProposal,
+  announceQueuedProposal,
+  mayVoiceConfirm,
 } from "@/lib/voice/confirm-grammar";
 import { admitProposal, releaseProposal } from "@/lib/assistant/card-lifecycle";
 
@@ -58,15 +60,55 @@ describe("every armed write is announced, and names the word that commits it", (
     expect(line.toLowerCase()).toContain("say confirm");
   });
 
-  it("tells the user another write is waiting, so two announcements aren't heard as one repeat", () => {
-    expect(announceArmedProposal("Filter Tank T5", 1)).toContain("one more after it");
-    expect(announceArmedProposal("Filter Tank T5", 3)).toContain("3 more after it");
+  it("a QUEUED card is announced without a call to action — it is not the armed one", () => {
+    const queued = announceQueuedProposal("Filter Tank T5", 1);
+    expect(queued).toContain("Filter Tank T5");
+    expect(queued).toContain("waiting");
+    // The load-bearing assertion. Saying "say confirm" over a queued card would commit the card
+    // AHEAD of it — the bug the first cut of this shipped with.
+    expect(queued.toLowerCase()).not.toContain("say confirm");
+  });
+
+  it("a queued card says where it is in line", () => {
+    expect(announceQueuedProposal("Filter Tank T5", 1)).toContain("next");
+    expect(announceQueuedProposal("Filter Tank T5", 3)).toContain("number 3 in line");
   });
 
   it("survives markdown, multi-line and over-long previews", () => {
     expect(announceArmedProposal("- **Press** Tank T5\nsecond line")).toContain("Press Tank T5");
     expect(announceArmedProposal("x".repeat(300)).length).toBeLessThan(200);
     expect(announceArmedProposal("")).toContain("a change");
+  });
+});
+
+describe("per-card assent — an unheard card cannot be confirmed by voice", () => {
+  it("blocks confirm until the card has been announced as armed", () => {
+    expect(mayVoiceConfirm({ status: "pending" })).toBe(false); // promoted, not yet announced
+    expect(mayVoiceConfirm({ status: "pending", announced: true })).toBe(true);
+  });
+
+  it("a card that is not pending is never voice-confirmable, announced or not", () => {
+    for (const status of ["applying", "done", "error"]) {
+      expect(mayVoiceConfirm({ status, announced: true })).toBe(false);
+    }
+    expect(mayVoiceConfirm(null)).toBe(false);
+    expect(mayVoiceConfirm(undefined)).toBe(false);
+  });
+
+  it("the cascade is closed: card 2 is promoted un-announced, so 'confirm' does not reach it", () => {
+    type P = { id: string; status: "pending" | "done"; announced?: boolean };
+    let slot = { current: null as P | null, queued: [] as P[] };
+    slot = admitProposal(slot, { id: "a", status: "pending", announced: true }); // heard
+    slot = admitProposal(slot, { id: "b", status: "pending" });                  // queued, unheard
+
+    expect(mayVoiceConfirm(slot.current)).toBe(true);                            // "confirm" -> a
+    slot = { ...slot, current: { ...slot.current!, status: "done" } };
+    slot = releaseProposal(slot);
+
+    expect(slot.current?.id).toBe("b");
+    expect(mayVoiceConfirm(slot.current)).toBe(false);   // a second "confirm" does NOT commit b
+    slot = { ...slot, current: { ...slot.current!, announced: true } };  // after it is announced
+    expect(mayVoiceConfirm(slot.current)).toBe(true);
   });
 });
 

@@ -41,6 +41,24 @@ export const CANCEL_RE = /\b(cancel|no|nope|stop|never ?mind|discard)\b/i;
 export type UtteranceVerdict = "confirm" | "cancel" | "neither";
 
 /**
+ * May a spoken "confirm" commit THIS card?
+ *
+ * Only if the user has been told, out loud, that this specific card is the one now armed. A card
+ * promoted out of the queue is armed but not yet announced, and in that window "confirm" must do
+ * nothing — otherwise a user answering the card they just heard about commits the next one behind
+ * it, sight unseen. That is the exact shape of feedback cmsgbjgov: seven writes, no cards seen.
+ *
+ * Cancelling is NOT gated on this. Discarding a write the user never heard about is always safe,
+ * and refusing to cancel would be its own trap.
+ *
+ * Tapping Confirm on the card is likewise ungated — a tap is proof they can see it.
+ */
+export function mayVoiceConfirm(card: { status: string; announced?: boolean } | null | undefined): boolean {
+  if (!card) return false;
+  return card.status === "pending" && card.announced === true;
+}
+
+/**
  * How a transcript acts on the card currently armed. Cancel is tested first so a sentence carrying
  * both ("confirm — no, wait") never commits.
  */
@@ -63,17 +81,23 @@ function spokenSummary(preview: string): string {
 }
 
 /**
- * What to say when a committable card takes the slot. Every armed write gets one of these — the
- * user is told what it is and, critically, the exact word that commits it.
+ * What to say when a card becomes THE ARMED ONE — the card that "confirm" will commit right now.
  *
- * `queuedBehind` is how many other cards are already waiting; it is spoken so a user who hears two
- * announcements knows a second write exists rather than assuming the assistant repeated itself.
+ * Only ever spoken for the card actually holding the slot. Saying this over a card that is merely
+ * queued would be worse than silence: the user hears "say confirm to apply it" about card B while
+ * the word "confirm" would in fact commit card A.
  */
-export function announceArmedProposal(preview: string, queuedBehind = 0): string {
+export function announceArmedProposal(preview: string): string {
+  return `Ready to apply: ${spokenSummary(preview)}. Say confirm to apply it, or cancel.`;
+}
+
+/**
+ * What to say when a card arrives BEHIND one the user still has to answer. Deliberately carries no
+ * call to action — it exists so a second write is never a surprise, while making clear the user is
+ * not being asked about it yet. `position` is its place in the waiting line (1 = next up).
+ */
+export function announceQueuedProposal(preview: string, position: number): string {
   const what = spokenSummary(preview);
-  if (queuedBehind > 0) {
-    const others = queuedBehind === 1 ? "one more after it" : `${queuedBehind} more after it`;
-    return `Ready to apply: ${what}. Say confirm to apply it, or cancel. There's ${others}.`;
-  }
-  return `Ready to apply: ${what}. Say confirm to apply it, or cancel.`;
+  const when = position <= 1 ? "next" : `number ${position} in line`;
+  return `I've also got ${what} waiting — that's ${when}. I'll ask about it once you've dealt with this one.`;
 }

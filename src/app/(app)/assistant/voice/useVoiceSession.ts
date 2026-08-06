@@ -24,7 +24,12 @@ import { clampHistoryForSend } from "@/lib/assistant/message-window";
 import { readDraftGaps } from "@/lib/assistant/proposal-card";
 import { browserTimeZone } from "@/lib/work-orders/due-at";
 import { RESOLVED_CARD_LINGER_MS, admitProposal, releaseProposal } from "@/lib/assistant/card-lifecycle";
-import { classifyUtterance, announceArmedProposal } from "@/lib/voice/confirm-grammar";
+import {
+  classifyUtterance,
+  announceArmedProposal,
+  announceQueuedProposal,
+  mayVoiceConfirm,
+} from "@/lib/voice/confirm-grammar";
 import { useMicCapture } from "./useMicCapture";
 import { useAudioPlayback } from "./useAudioPlayback";
 import { useEarcons } from "./useEarcons";
@@ -65,6 +70,14 @@ export type PendingProposal = {
   details?: unknown;
   status: "pending" | "applying" | "done" | "error";
   result?: string;
+  /**
+   * Has the user been told OUT LOUD that this card is the one now armed?
+   *
+   * Gates spoken confirm only (`mayVoiceConfirm`). A card promoted out of the queue is armed but
+   * not yet announced; until it is, "confirm" must do nothing, or answering the card you just heard
+   * about commits the one behind it. Tap-to-confirm is never gated — a tap proves you can see it.
+   */
+  announced?: boolean;
 };
 
 // Confirm/cancel grammar + the armed-write announcement live in `@/lib/voice/confirm-grammar` so
@@ -222,6 +235,41 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
     // The visible card is finished with: clear it and promote whoever was behind it.
     // Without this a confirmed card stayed pinned above the composer for the rest of the
     // session, and the flow read as stuck on a card the user had already dealt with.
+    /**
+     * Say a line OUTSIDE a turn. The turn-scoped `speak` closes over that turn's abort signal and
+     * supersede check, so it cannot be reached from the retire timer — but a card promoted out of
+     * the queue still has to be announced before voice may commit it (plan: per-card assent).
+     *
+     * Deliberately conservative. It only speaks from `listening`, which means: the previous turn is
+     * over, the queue has drained, and `onDrained` will loop us back to listening when the clip
+     * ends. Anywhere else we stay silent and simply leave the card un-announced — spoken confirm
+     * stays blocked and the user taps the card instead. Failing closed costs a tap; failing open
+     * costs an unheard write.
+     */
+    const announceOutsideTurn = (line: string, onSpoken: () => void) => {
+      if (!activeRef.current) return;
+      if (stateRef.current !== "listening") return;
+      go("speaking");
+      mic.beginBargeIn(() => implRef.current.interrupt(), {
+        getOutputLevel: () => playback.levelRef.current,
+      });
+      const clip = fetch("/api/assistant/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: line }),
+      }).then((r) => {
+        if (!r.ok) throw new Error("speak failed");
+        return r.arrayBuffer();
+      });
+      // Mark it heard only once the audio is actually queued. A failed fetch leaves the card
+      // un-announced, which is the safe side of this.
+      void clip.then(
+        () => onSpoken(),
+        () => {},
+      );
+      playback.enqueue(clip);
+    };
+
     const retireProposal = () => {
       if (retireTimerRef.current !== null) {
         clearTimeout(retireTimerRef.current);
@@ -230,6 +278,14 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
       const next = releaseProposal({ current: proposalRef.current, queued: proposalQueueRef.current });
       proposalQueueRef.current = next.queued;
       setProp(next.current);
+      // A promoted card is armed but has never been announced as armed. Say it now, and only then
+      // does spoken confirm apply to it.
+      const promoted = next.current;
+      if (promoted && promoted.status === "pending" && !promoted.announced && !promoted.draft) {
+        announceOutsideTurn(announceArmedProposal(promoted.preview), () => {
+          if (proposalRef.current === promoted) setProp({ ...promoted, announced: true });
+        });
+      }
     };
     const retireAfterLinger = () => {
       if (retireTimerRef.current !== null) clearTimeout(retireTimerRef.current);
@@ -418,13 +474,16 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
               return;
             case "proposal": {
               const draft = evt.draft === true;
-              // How many cards are already waiting, measured BEFORE this one is admitted — it is
-              // what the announcement needs to say ("there's one more after it").
-              const queuedBefore =
-                proposalQueueRef.current.length +
-                (proposalRef.current && (proposalRef.current.status === "pending" || proposalRef.current.status === "applying")
-                  ? 1
-                  : 0);
+              // Does this card TAKE the slot, or queue behind one the user still owes an answer?
+              // It decides which of two very different things we say — and the distinction is
+              // load-bearing: telling the user "say confirm to apply it" about a card that is
+              // merely queued is worse than saying nothing, because "confirm" would commit the
+              // card ahead of it instead. (That is precisely the bug the first cut of this shipped
+              // with — it announced every card as if it were armed.)
+              const slotBusy =
+                !!proposalRef.current &&
+                (proposalRef.current.status === "pending" || proposalRef.current.status === "applying");
+              const queuePosition = proposalQueueRef.current.length + 1;
               admit({
                 tool: evt.tool,
                 preview: evt.preview,
@@ -446,14 +505,21 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
                       ? `I've put a draft on screen. It still needs ${gaps.labels.join(" and ")}. Have a look at the card.`
                       : "I've put a draft on screen — it isn't ready to issue yet. Have a look at the card.",
                 );
+              } else if (slotBusy) {
+                // Queued, NOT armed. Say it exists so a second write is never a surprise, but give
+                // it no call to action — the user is still answering the card ahead of it. It is
+                // announced properly, and becomes voice-confirmable, when it reaches the slot.
+                speak(announceQueuedProposal(evt.preview, queuePosition));
               } else {
-                // A COMMITTABLE card is announced too — this used to be silent, which is how seven
+                // Armed right now. This used to be silent — only Drafts spoke — which is how seven
                 // writes were applied while the reporter believed no card had ever appeared
-                // (feedback cmsgbjgov). Voice mode is hands-free by design, so a card being on
-                // screen is not consent; the user has to HEAR that a write is armed, and be told
-                // the word that commits it. Speaking here is safe — we are inside the turn that
-                // produced the event, which is the same scope the Draft branch above speaks from.
-                speak(announceArmedProposal(evt.preview, queuedBefore));
+                // (feedback cmsgbjgov). Hands-free is the point of voice mode, so a card being on
+                // screen is not consent: the user has to HEAR that a write is armed and be told the
+                // word that commits it. Safe to speak here — we are inside the turn that produced
+                // the event, the same scope the Draft branch above speaks from.
+                speak(announceArmedProposal(evt.preview));
+                // Mark it heard, which is what unlocks spoken confirm for this card.
+                setProp({ ...(proposalRef.current as PendingProposal), announced: true });
               }
               return;
             }
@@ -593,7 +659,11 @@ export function useVoiceSession(opts: VoiceSessionOptions): VoiceSession {
       // Voice confirm/cancel of a pending write, gated to the pending proposal.
       if (proposalRef.current?.status === "pending") {
         const verdict = classifyUtterance(transcript);
-        if (verdict === "confirm") {
+        // Cancel is allowed on any pending card; confirm needs the card to have been announced as
+        // the armed one (`mayVoiceConfirm`). An un-announced card falls through to the normal turn,
+        // so the user's words are treated as a question — never as assent to a write they have not
+        // heard about. The card stays on screen and is still one tap away.
+        if (verdict === "confirm" && mayVoiceConfirm(proposalRef.current)) {
           pushCaption("user", transcript);
           confirmProposal();
           startListening();
