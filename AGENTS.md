@@ -30,6 +30,24 @@ npm run db:studio    # open Prisma Studio
 npm run db:generate  # regenerate Prisma client
 ```
 
+## Merging
+
+**Squash-only.** `allow_merge_commit` and `allow_rebase_merge` are both **off** (set 2026-08-05), so
+squash is the only button GitHub offers. Land with:
+
+```bash
+gh pr merge <n> --squash --delete-branch
+```
+
+Set after two PRs went in as merge commits in one day — not anyone's mistake, merge commits were
+simply still enabled, so the button was there. `--squash` is now pinned in every merge command
+`/bug-triage` and `/merge-check` hand a human; the bug-triage *workflow* already used it.
+
+⚠️ In this multi-worktree checkout `gh pr merge` can print
+`fatal: 'main' is already used by worktree at …` **after the merge has already succeeded** — that
+error is gh's post-merge local checkout, not the merge. Check `gh pr view <n> --json state` before
+retrying, or you risk acting on a PR that is already MERGED.
+
 ## Environment
 
 Secrets live in `.env` (gitignored). Template is `.env.example`.
