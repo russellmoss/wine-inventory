@@ -394,3 +394,24 @@ guards · 5,975 tests green. **Next stage: the cost roll-up** — `src/lib/cost/
 (`round8(totalCost + extended)`) and `ingest/landed-cost.ts` hand-rolls a residual sweep that
 `Amount.allocateByWeights` already does exactly. Rebased onto #611 (`5382a993`); the doc/config
 conflicts were the predicted ones and the register recount is now 64 notes / 59 guarded._
+
+_Last updated: 2026-08-06 (evening) — **LEDGER-9 investigated: the ledger was right, the REGISTER was
+wrong.** Three ways an invariant register can lie while every gate stays green. (a) `verify:` pointed at
+`verify:reverse` — a 264-line **reversal-semantics** proof with zero references to rounding, decimals,
+balance or floats, whose only fractional literals in the whole file are `0.5` and `13.5`. It could not fail
+this way, and `verify:invariants` only checks the named script EXISTS ("detection only"). **A guard that
+cannot fail is worse than a missing one — it reads as coverage.** (b) The narrative credited **`round2`** as
+a "centiliter-integer / `Prisma.Decimal` helper"; it is `Math.round(n * 100) / 100`, IEEE-754, 287 call
+sites. `computeProportionalDraw` is the exact one; `round2` merely normalises to the grain. (c) `isBalanced`
+was `|Σ| < 1e-6` — **four orders looser than the 0.01 storage grain it had to protect** — so it could accept
+`[3.3333, 3.3333, 3.3334, -10]` (Σ=0) which stores as **−0.01 L**, breaking LEDGER-6 silently and forever,
+since Postgres rounds on insert, a CHECK can't see a cross-row sum, and nothing re-reads the op.
+**The substance HELD.** A probe asserting ≤2dp on every `deltaL` ran the full suite: **0 trips in 5,992
+tests**. `computeProportionalDraw` really is centilitre-exact, every N-way split goes through it, and the
+~50 hand-written `round2` calls really do hold. What was missing was **enforcement** — LEDGER-6 rested on
+fifty call sites each remembering, with no chokepoint check. Same shape as MONEY-1's structural defect.
+Fixed: `assertBalanced` now checks grain-then-conservation in integer centilitres, exactly. New
+`verify:ledger-grain` (41 tests) drives the REAL planners with base-10-hostile inputs — thirds, sevenths,
+primes, 13-way splits. **Ablated: reverting the fix fails 3 of its tests; `verify:reverse` scores 0
+matches on the same regression.** `appliesTo` no longer claims `src/lib/cost/` (float throughout — that is
+MONEY-1's remit and its open stage). Stacked on #612._

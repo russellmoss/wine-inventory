@@ -45,14 +45,61 @@ export type VesselLotBalance = { vesselId: string; lotId: string; volumeL: numbe
 
 export const balanceKey = (vesselId: string, lotId: string) => `${vesselId}::${lotId}`;
 
-/** True if an operation's lines conserve volume (signed deltas sum to ~0). */
+/**
+ * LEDGER-9 / LEDGER-6 — conservation is checked in INTEGER CENTILITRES, the grain the column stores.
+ *
+ * WHY NOT A TOLERANCE. This used to be `Math.abs(Σ deltaL) < 1e-6`, which is four orders of magnitude
+ * LOOSER than the `Decimal(10,2)` storage grain of 0.01 — so it could accept a set of lines that does
+ * not conserve once stored. Postgres rounds each `deltaL` to 2dp on insert and the residuals need not
+ * cancel:
+ *
+ *     lines  [3.3333, 3.3333, 3.3334, -10]   ->  Σ = 0            accepted under a 1e-6 tolerance
+ *     stored [3.33,   3.33,   3.33,   -10]   ->  Σ = -0.01 L      LEDGER-6 broken IN THE DATABASE
+ *
+ * Nothing re-checked after the round, and the DB cannot enforce a cross-row sum, so this function was
+ * the only thing standing between a fractional split and a permanently unbalanced operation. It held in
+ * practice only because ~50 line-construction sites each remember to call `round2` — real discipline,
+ * but unenforced, and a new call site that forgot would have failed silently.
+ *
+ * Two checks, in this order, because the second is only meaningful once the first passes:
+ *   1. every `deltaL` already sits ON the storage grain (≤ 2dp), so nothing is lost on insert;
+ *   2. the centilitre integers sum to EXACTLY zero — no epsilon, because integers need none.
+ *
+ * Centilitre integers rather than `Prisma.Decimal` deliberately: it is the same representation
+ * `computeProportionalDraw` allocates in, so the check speaks the invariant's own language, stays pure,
+ * and is exact for any volume this cellar will ever hold (2^53 cL is 9×10¹³ L).
+ */
+const CL_PER_L = 100;
+
+/** Liters → integer centilitres, the `Decimal(10,2)` storage grain. */
+const toCentilitres = (l: number): number => Math.round(l * CL_PER_L);
+
+/** True when `l` carries more precision than the column can store. The epsilon absorbs the binary
+ *  representation of an exact 2dp value (3.33 × 100 is 333.00000000000006), not real extra digits. */
+const finerThanStorageGrain = (l: number): boolean => Math.abs(l * CL_PER_L - toCentilitres(l)) > 1e-6;
+
+/** True if an operation's lines conserve volume EXACTLY at the storage grain. */
 export function isBalanced(lines: LedgerLine[]): boolean {
-  return Math.abs(lines.reduce((a, l) => a + l.deltaL, 0)) < 1e-6;
+  return lines.reduce((a, l) => a + toCentilitres(l.deltaL), 0) === 0;
 }
 
 export function assertBalanced(lines: LedgerLine[]): void {
+  // Check 1 — precision the column cannot hold. Refuse rather than round on the caller's behalf: a
+  // deltaL at 3+ dp means an upstream split skipped the centilitre helpers, and silently rounding it
+  // here would absorb that mistake into a plausible-looking operation.
+  const overPrecise = lines.filter((l) => finerThanStorageGrain(l.deltaL));
+  if (overPrecise.length > 0) {
+    throw new Error(
+      `Ledger line volume is finer than the centiliter storage grain: ` +
+        `${overPrecise.map((l) => `${l.deltaL} L`).join(", ")}. Volume math must go through the ` +
+        `centiliter helpers (computeProportionalDraw / round2) before it reaches a ledger line — ` +
+        `Decimal(10,2) would round this on insert and the operation could stop conserving.`,
+    );
+  }
+
+  // Check 2 — conservation, exactly.
   if (!isBalanced(lines)) {
-    const total = round2(lines.reduce((a, l) => a + l.deltaL, 0));
+    const total = round2(lines.reduce((a, l) => a + toCentilitres(l.deltaL), 0) / CL_PER_L);
     throw new Error(`Ledger operation is not balanced: lines sum to ${total} L, expected 0.`);
   }
 }
