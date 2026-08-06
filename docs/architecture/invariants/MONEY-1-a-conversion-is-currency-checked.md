@@ -99,17 +99,29 @@ alongside the base figure rather than deriving it back.
 
 ## What the guard does NOT prove
 
-It is a tripwire on the FX boundary, not a proof that all money math is decimal. Still float, and
-deliberately out of scope as the next stage of workstream B:
+It is a tripwire on the FX boundary, not a proof that all money math is decimal. `src/lib/cost/`,
+`src/lib/ingest/landed-cost.ts` and `src/lib/accounting/` remain float. Widening this guard's scope with
+a large allow-list would make it *read* as covered when it isn't.
 
-- **`src/lib/cost/`** — `round8(totalCost + extended)`, `round8(sum)`, `round8(amt * f)`,
-  `round8(remaining - take)`. **Accumulation** is where drift compounds, so this is the bigger fish.
-- **`src/lib/ingest/landed-cost.ts`** — allocates freight across lines with float `round2` plus a residual
-  swept onto the last priced line, to make Σ(landedLineTotal) tie exactly. That is precisely what
-  `Amount.allocateByWeights` already does in exact decimal; the hand-rolled version is a direct swap.
-- **`src/lib/accounting/`** — the A/P and posting paths.
-
-Widening this guard's scope with a large allow-list would make it *read* as covered when it isn't.
+> [!warning] Correction, 2026-08-06 — an earlier version of this section was wrong
+> It said `src/lib/cost/` was "the bigger fish" because "accumulation is where drift compounds", and that
+> `landed-cost.ts` was "a direct swap" for `Amount.allocateByWeights`. **Both claims were assumptions
+> carried over from the FX work, and measurement contradicts them.** Sweeps found no material drift
+> anywhere in the cost path:
+>
+> | path | result |
+> | --- | --- |
+> | `rollupCost`, N-way split (3 → 200 children) | conserved to ~1e-13; parent keeps ~1e-8 dust |
+> | `planDepletion` FIFO, 800 cases | **0** disagreements with exact decimal |
+> | `allocateLandedCost`, adversarial charges | **exact** at the cent grain, every case |
+> | `bottlingCostPerBottle` | recomposes **exactly** |
+>
+> The FX defect was real and measured (447 of 1,400,000 pairs a cent light). The cost defect was
+> extrapolated from it and does not exist. `landed-cost.ts`'s hand-rolled residual sweep is *correct*;
+> swapping it would be a style change on a critical path.
+>
+> What the cost path actually needed was **enforcement**, not decimals — see
+> [[COST-1-cost-conservation]], whose only pure conservation check turned out to be a tautology.
 
 The `convertToBase` allow-list is shrink-only and currently **empty** — the one historical call site was
 migrated in the same change. The guard also fails on a stale entry, so the ratchet can only tighten.

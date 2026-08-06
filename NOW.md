@@ -394,3 +394,24 @@ guards · 5,975 tests green. **Next stage: the cost roll-up** — `src/lib/cost/
 (`round8(totalCost + extended)`) and `ingest/landed-cost.ts` hand-rolls a residual sweep that
 `Amount.allocateByWeights` already does exactly. Rebased onto #611 (`5382a993`); the doc/config
 conflicts were the predicted ones and the register recount is now 64 notes / 59 guarded._
+
+_Last updated: 2026-08-06 (late) — **cost roll-up stage: the measurements refuted my own premise, so the
+work changed shape.** I had recorded (in MONEY-1 and INVARIANTS.md) that `src/lib/cost/` was "the bigger
+fish" because "accumulation is where drift compounds", and that `landed-cost.ts` was "a direct swap" for
+`Amount.allocateByWeights`. **Both were extrapolated from the FX defect, not measured, and both are
+wrong.** `rollupCost` conserves to ~1e-13 across 3→200-way splits; `planDepletion` disagreed with exact
+decimal in **0 of 800** cases; `allocateLandedCost` is **exact** at the cent grain on every adversarial
+input; `bottlingCostPerBottle` recomposes exactly. Converting this path to Decimal would be churn on a
+critical path. **Both claims are now retracted in place, with the numbers.**
+**What the measuring DID find is worse than drift.** COST-1 is `severity: critical`, and (a) its only
+PURE conservation check, `transferImbalance`, was a **tautology** — `moved` added to both sides, so it
+returned 0 for any input including transfers taking **120%** of a parent, while the test asserting on it
+was titled "conservation invariant (D10)"; and (b) its only guard, `verify:cost`, needs `--env-file=.env`,
+so a critical invariant **never ran in CI's required job**. **Third instance of "a guard that cannot fail"**
+after LEDGER-9 — that is a pattern now, not a coincidence.
+Fixed: `costConservationResidual` states the real identity (Σ DIRECT == Σ totalCost + Σ expensed),
+`transferImbalance` now measures the per-op rounding residual its name implies, and the new pure
+`verify:cost-conservation` (19 tests, in CI) covers N-way splits, abnormal loss and a 12-generation
+split/merge chain. Ablated 3 ways — breaking the parent debit fails 8 tests, deleting the write-off fails
+2, restoring the tautology fails 1. tsc · lint · 14 guards · 6,012 tests green. Branch
+`fix/cost-decimal-rollup` (the name is now a misnomer — it decimals nothing)._

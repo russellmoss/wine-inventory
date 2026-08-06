@@ -52,6 +52,12 @@ jobs:
       # currency it wasn't quoted for; and src/lib/money carries no float rounding (the old float path was
       # a cent light on 447 of 1,400,000 measured pairs). Static scan, no DB.
       - run: npm run verify:money-fx
+      # COST-1 (critical): cost is neither created nor destroyed —
+      # Σ(DIRECT capitalized) == Σ(totalCost) + Σ(expensed). Its only guard was `verify:cost`, which needs
+      # a real database and so never ran in THIS job; the one pure check that existed, `transferImbalance`,
+      # was a tautology returning 0 for any input including a 120% over-transfer. This is the pure half:
+      # N-way splits, abnormal loss, and a 12-generation split/merge chain. No DB.
+      - run: npm run verify:cost-conservation
       # FK-1: composite (tenantId, refId) FKs are invisible to Prisma, so 291 of them lived only in
       # hand-written migration SQL. prisma/fk-registry.json is that graph, replayed from the migration
       # history; this asserts every reference column in schema.prisma is declared as a Prisma relation,
