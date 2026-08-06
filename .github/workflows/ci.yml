@@ -52,6 +52,13 @@ jobs:
       # currency it wasn't quoted for; and src/lib/money carries no float rounding (the old float path was
       # a cent light on 447 of 1,400,000 measured pairs). Static scan, no DB.
       - run: npm run verify:money-fx
+      # LEDGER-9: ledger volumes are Decimal(10,2) — integer centilitres. Postgres rounds each deltaL on
+      # insert, cannot enforce a cross-row sum, and nothing re-reads the operation, so a planner that emits
+      # finer precision leaves an operation permanently unbalanced (LEDGER-6). The old check was a 1e-6
+      # tolerance — four orders LOOSER than the 0.01 grain it had to protect — and LEDGER-9's declared guard
+      # was a reversal proof that never used a fractional volume. This drives the real planners with
+      # base-10-hostile inputs (thirds, sevenths, primes). Pure, no DB.
+      - run: npm run verify:ledger-grain
       # FK-1: composite (tenantId, refId) FKs are invisible to Prisma, so 291 of them lived only in
       # hand-written migration SQL. prisma/fk-registry.json is that graph, replayed from the migration
       # history; this asserts every reference column in schema.prisma is declared as a Prisma relation,
