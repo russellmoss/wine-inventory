@@ -60,19 +60,23 @@ guard flagging an HONEST reply — the model's behaviour was right and the code 
    *"…so no report has been submitted"* tripped the claim pattern and earned a correction restating
    what the model had just said. Generalised the negation to `no <thing>`.
 
-⏳ **[#599](https://github.com/russellmoss/wine-inventory/pull/599) is MERGED (`7484f87e`) but NOT
-DEPLOYED — Vercel returned `Deployment rate limited — retry in 24 hours` at 22:16Z.** Main's CI is
-green (`check` · `db-proofs` · `tenant-isolation`); production is still serving `46c163a0` (20:46:37Z).
-**So the two guard false-positive fixes and `query_work_orders` are on main, NOT live.** #596's guard
-(`28cbbd9b`, deployed 20:15:25Z) IS live — that is the half Mike's ticket was about.
-**➡️ NEXT ACTION: once the Vercel window opens, redeploy `7484f87e` and confirm, then tell Mike he can
-ask the assistant to look a work order up.** Do not assume it shipped because it merged.
+✅ **[#599](https://github.com/russellmoss/wine-inventory/pull/599) (`7484f87e`) is now LIVE.** It
+merged at 22:16Z into a **Vercel rate limit** (`Deployment rate limited — retry in 24 hours`), so for
+about two hours main was ahead of production. The window reopened on its own: production deployment
+`700ca347` succeeded **00:08:14Z**, and `7484f87e` is an ancestor of it (checked with `merge-base
+--is-ancestor`, not assumed from the merge). So the two guard false-positive fixes AND
+`query_work_orders` are in the deployed build.
+⚠️ **Lesson worth keeping: merged ≠ deployed.** The merge said success and the deploy silently didn't
+happen; the only way to know was `deployments?environment=Production` — a green PR tells you nothing
+about what production is serving. Check the deployment, not the merge.
 
 📬 **Mike has been DMed** (thread `cmrmlwpkm0000l604gictimj9`, message `cmsgqvdw70000d1h0j62flwid`):
 told plainly that all seven writes DID save, that the assistant can no longer claim otherwise, and
-asked the one blocking question — **was the Talk button on?** Deliberately scoped to what is LIVE; it
-does not promise the work-order lookup, because that is not deployed yet. The ticket stays
-**TRIAGED/UNCLEAR**, not resolved — the card symptom is still unproven.
+asked the one blocking question — **was the Talk button on?** Deliberately scoped to what was live at
+the time, so it does NOT mention the work-order lookup — that was still undeployed when it went out.
+It has since shipped, so a one-line follow-up telling him he can now just ask *"did that work order
+save?"* is still owed. The ticket stays **TRIAGED/UNCLEAR**, not resolved — the card symptom is still
+unproven and still blocked on his answer.
 
 ✅ **Coverage gap the eval surfaced — now FIXED in the same PR.** The assistant could CREATE work
 orders and had no way to READ one back, so "did those work orders save?" had no answer it could give.
