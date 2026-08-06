@@ -103,6 +103,7 @@ Decision rule:
 
 ## Step 5 — Act only on confirmation
 
-Never merge automatically. If the verdict is ✅ and the user says go, then run the
-`gh pr merge` command. Otherwise just report. When in doubt, lean toward
+Never merge automatically. If the verdict is ✅ and the user says go, then run
+`gh pr merge <n> --squash --delete-branch` — always `--squash`, matching the repo's
+squash-only setting and `/bug-triage`. Otherwise just report. When in doubt, lean toward
 **REVIEW RECOMMENDED** — a false "safe" is far costlier than a false "review".
