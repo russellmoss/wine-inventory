@@ -127,6 +127,7 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 | Complete a task (rack/add/top/filt/obs/note/maint) | `completeTaskCore` | ✅ `complete_task` |
 | Complete a crush/press task | `completeTaskCore` (transform) | ✅ `complete_task` (simple by chat; complex → deep-links the execute form) |
 | Approve / reject | `approveTaskCore`, `rejectTaskCore` | ✅ `review_task` (admin; reject reverses via plan-024) |
+| **Read a WO back** (does it exist, what state, whose) | `listWorkOrdersForAssistant` | ✅ `query_work_orders` (read-only; by number / status / assignee / title / recency). Deliberately NOT an `entities.ts` registration: every `EntityConfig` must supply `del`, so registering `WorkOrder` would hand `db_delete` the power to delete work orders past the governed lifecycle. Read was the gap; delete is not. |
 | Bulk-approve | `bulkApproveTasksCore` | ❌ (later — needs "today's racks" resolution) |
 | Recurring WO generation | `generateRecurringInstanceCore` | ❌ |
 
@@ -149,7 +150,14 @@ Legend: ✅ tool exists · 🟨 partial · ❌ missing
 
 ### Reads (query tools present)
 `query_brix`, `query_yield`, `query_recent_harvests`, `query_transfers`, `query_vineyard_status`,
-`query_field_reports`, `query_audit`, `report_anomalies`, `get_field_report_form`, plus the template reads.
+`query_field_reports`, `query_audit`, `query_work_orders`, `report_anomalies`, `get_field_report_form`,
+plus the template reads.
+
+> **Standing rule this section exists to enforce:** a core the assistant can WRITE to needs a way to
+> READ the result back. A write tool with no read counterpart means the assistant can act and then
+> cannot answer "did that save?" — the failure mode behind feedback ticket `cmsgbjgov`, where the
+> honest answer was still a dead end until `query_work_orders` existed. When adding a write tool,
+> check its read side here.
 
 ### Winemaking calculator — read/compute (plan 040, ✅ shipped)
 Pure-compute tools over `src/lib/winemaking-calc/*`; `kind: "read"`, **no ledger write, no confirm gate**,

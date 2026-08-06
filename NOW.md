@@ -88,6 +88,11 @@ for), and `includeFinalized` **drops the status clause entirely** rather than wi
 **WO #83 "Work order: bottling" — the very one this ticket says vanished — comes back with its link**;
 83 work orders with `includeFinalized`; 0 id overlap with `org_bhutan_wine_co`. The two "did it save?"
 eval cases were escalated from *verify-or-disclaim* to **must-look-up** now that looking is possible.
+↳ **Addendum (`d4d97c67`):** the one thing #599 missed — `docs/architecture/assistant-coverage.md`
+never got the row, so the register still read as if the WO core had writes and no read. Added the read
+row + the `entities.ts` rationale, and wrote down the standing rule the section exists to enforce
+(**a core the assistant can write to needs a way to read the result back**) so the next write tool gets
+checked for its read side. `verify:ai-native` green; the eval's 7 deterministic cases pass.
 
 **Root cause of the card symptom NOT proven — 3 hypotheses tested and refuted:** (1) the client dropping
 proposal events (the NDJSON path is exhaustively switched + parse- and truncation-guarded in BOTH
@@ -275,3 +280,11 @@ float money math is **measurably wrong** — `round2(1.005)` → `1`, `Math.roun
 ⚠️ **`Lot.origin*Id` needs a decision** (dangling reference, not a snapshot — vineyards ARE deletable and
 bulk intake writes no `lot_vineyard` row). ⚠️ **Attribution: #584/#588 were wrongly amended to author
 `russellmoss`; awerth is a different contributor.** Left as-is rather than rewriting published history._
+
+_Last updated: 2026-08-05 (later) — checked the "assistant can't read work orders back" gap and found it
+**already shipped** in `7484f87e` (#599, HEAD of this branch): `query_work_orders` exists, is registered,
+is tenant-scoped via `runAsTenant` + explicit `tenantId` (K12-safe), and BOTH "did it save?" golden cases
+already carry `mustLookUp: true` — enforced, not inert (`assistant-unverified-failure.eval.test.ts:243`),
+with `LOOKUP_TOOLS` derived from `kind === "read"` so it cannot drift. Only real gap was the coverage
+register, now fixed (`d4d97c67`). Lesson worth keeping: **the task described work that was already done —
+reconcile against git before building.**_
