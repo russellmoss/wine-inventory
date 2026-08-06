@@ -33,9 +33,9 @@ three things that run without you:
 
 ## Coverage snapshot
 
-**63 invariant notes: 58 guarded, 4 planned, 1 deferred.** (Counted from the directory, not
-remembered — this line claimed 30/29/0/1 while the real figures had moved twice, then 58/53/4/1 after
-REDIRECT-1, VINEYARD-1, GLOBAL-1, FK-1 and ERRCAP-1 landed.) The 58 guarded ones (ledger DB +
+**64 invariant notes: 59 guarded, 4 planned, 1 deferred.** (Counted from the directory, not
+remembered — this line claimed 30/29/0/1 while the real figures had moved twice, and 58/53/4/1 before
+REDIRECT-1, VINEYARD-1, GLOBAL-1, FK-1, ERRCAP-1 and MONEY-1 landed.) The 59 guarded ones (ledger DB +
 pure + correction, tenancy, cost, compliance, work-orders, naming NAMING-1/2, bond +
 tax-class BOND-1/TAXCLASS-1/TAXPAID-1/AMEND-1, migration MIGRATE-1, and the inbox
 INBOX-1 recipient-isolation guard `verify:inbox-isolation`) are asserted by

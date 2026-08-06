@@ -28,7 +28,7 @@
 // HALF_UP here rounds away from zero to `-1`. Reversals, credits and refunds are negative, so this is
 // not a corner case — it is the correction path. Pinned in test/money-amount.test.ts.
 import { Prisma } from "@prisma/client";
-import { type CurrencyCode, coerceCurrency } from "./currency";
+import { type CurrencyCode, requireCurrency } from "./currency";
 
 const D = Prisma.Decimal;
 type Dec = Prisma.Decimal;
@@ -91,7 +91,7 @@ export class Amount {
           `cent scale. Something wrote an unsettled Rate result here.`,
       );
     }
-    return new Amount(d.toDecimalPlaces(AMOUNT_SCALE), coerceCurrency(currency));
+    return new Amount(d.toDecimalPlaces(AMOUNT_SCALE), requireCurrency(currency, "Amount.fromStored"));
   }
 
   static zero(currency: CurrencyCode): Amount {
@@ -249,7 +249,7 @@ export class Rate {
   static fromStored(value: DecimalLike, currency: unknown): Rate {
     const d = toDec(value);
     assertFinite(d, "Rate.fromStored");
-    return new Rate(d.toDecimalPlaces(RATE_SCALE), coerceCurrency(currency));
+    return new Rate(d.toDecimalPlaces(RATE_SCALE), requireCurrency(currency, "Rate.fromStored"));
   }
 
   /** rate × quantity. Returns an UNROUNDED value — settle it explicitly. */
