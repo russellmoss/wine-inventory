@@ -552,3 +552,36 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   so a name-based rule would have excused the real ones.
   **85 columns sit on a shrink-only baseline** (`prisma/fk-baseline.json`) — each a pending decision, not
   an accepted state. The guard fails on a stale entry too, so the ratchet can only tighten.
+
+## Observability — a returned error is a reported error (ERRCAP-1)
+
+> Machine-readable note: [[ERRCAP-1-a-returned-error-is-a-reported-error]]. Guarded by `npm run verify:error-capture`.
+
+- **A `catch` that RETURNS the caught error's message must also CAPTURE it (ERRCAP-1, high,
+  app-code).** 40 sites did `catch (e) { return { error: e.message } }` and there were **5**
+  `captureException` calls in the whole of `src/`. It reads like careful defensive hygiene; it is the
+  opposite — the caller gets a string, the incident leaves no trace, and no engineer ever learns it
+  happened. `NOW.md` records the consequence **twice in one week** — *"an error path that logs nothing
+  is itself the P0"* — once for the assistant, where a turn that died server-side left only an ABSENCE
+  as evidence, and once for the OAuth/Sentry tunnel.
+  **The rule is capture, not redact**, and deliberately so. Leaking internals is a real second defect,
+  but a blanket redaction rule would be wrong in both directions: a **cron** body lands in cron logs
+  where the message is the only diagnostic an on-call human gets, while a **browser-facing** route must
+  never emit a Prisma error that names tables, columns and constraints. What is invariant across both
+  is that the error reaches Sentry — so that is what the guard asserts, and redaction stays a
+  per-surface choice expressed by picking a helper: `settleWithCapture` (server actions, redacts),
+  `routeError` (browser routes, redacts, 500) or `cronError` (cron, keeps the message). All three lead
+  with `unstable_rethrow` (REDIRECT-1) and pass an **expected** `ActionError` through verbatim without
+  capturing — a refusal is not a bug, and capturing refusals buries the real failures in noise.
+  **This makes `Error` vs `ActionError` load-bearing rather than stylistic**, because the helpers branch
+  on it. The upload and assistant routes had thrown both classes as plain `Error` into one `catch` and
+  answered `400` for both, so a blob-store outage was reported to the user as a validation problem and
+  to Sentry not at all; the 19 deliberate, user-facing throws behind them are now `ActionError`s with
+  codes, and `routeError` maps the code to the status it implies (`FORBIDDEN` → 403, `CONFLICT` → 409).
+  **16 sites sit on a shrink-only baseline** (`prisma/error-capture-baseline.json`), down from the 34 it
+  opened at — anchored on **file → count**, not `file:line`, because line anchors churn on every
+  unrelated edit above a baselined catch and a guard whose diff nobody reads is a guard that stops
+  working. `cronAuthorized` landed with it: the constant-time bearer gate had been **inlined
+  identically in all 13 cron routes**, and every copy being correct is exactly what made it dangerous —
+  nothing forced a 14th route to include one, and a cron endpoint without the gate is an
+  unauthenticated way to trigger a tenant-wide sweep.

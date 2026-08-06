@@ -361,3 +361,19 @@ isn't a bug) → everything else captured to Sentry with a GENERIC message. Both
 wrappers migrated (~13 actions). `captureException` 5→7, raw `e.message` returns 40→38, local
 `ActionResult` redefinitions 2→0. Remaining 38 are route handlers returning `Response.json` — a different
 shape wanting a sibling helper, plus a shrink-only guard (the FK-1 ratchet)._
+
+_Last updated: 2026-08-06 (later) — **finding 3 is now fully closed: ERRCAP-1 is guarded and the 18 route
+handlers are migrated.** `verify:error-capture` (in CI's `check` job) fails any new
+`catch (e) { return { error: e.message } }`; baseline 34 sites/24 files → **16/6**, anchored on file→count
+rather than file:line so ordinary edits don't churn it. New `src/lib/route-settle.ts`: `routeError`
+(browser, redacts, maps `ActionError.code` → status) and `cronError` (cron, KEEPS the message — the body
+lands in cron logs and is the only diagnostic an on-call human gets). **The rule is capture, not redact**,
+because redaction is right on one surface and wrong on the other. `cronAuthorized` is now the ONE copy of
+a bearer gate that had been inlined identically in all 13 cron routes — every copy correct, which is what
+made it dangerous: nothing forced a 14th route to include one. **Knock-on worth knowing: `Error` vs
+`ActionError` is now load-bearing, not stylistic** — the uploads/assistant threw both classes as plain
+`Error` into one catch and answered 400 for both, so a blob outage read to the user as a validation
+problem; 19 deliberate throws are now coded `ActionError`s (`BETTER_AUTH_SECRET is not set` deliberately
+left plain so it gets captured). tsc · lint · 10 guards · 5,952 tests green. **Not started: workstream B's
+FX/`convertToBase` stage.** Remaining ERRCAP sites: `weather/actions.ts` 9, `ingest-invoice-core.ts` 3,
+one each in `action-result.ts` / `ferment/panel-core.ts` / `process-scene-core.ts` / `extract-invoice.ts`._

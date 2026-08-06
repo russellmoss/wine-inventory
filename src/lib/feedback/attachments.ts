@@ -12,6 +12,7 @@ import {
   putPrivateImage,
   getPrivateBlob,
 } from "@/lib/attachments/blob";
+import { ActionError } from "@/lib/action-error";
 
 // Plan 068 Unit 3: the image validation + private-blob put/get now live in the shared
 // src/lib/attachments/blob.ts (DRY with DM attachments). Re-exported here so the feedback routes /
@@ -40,7 +41,7 @@ export async function storeFeedbackAttachment(input: {
   const existing = await runAsTenant(input.tenantId, async () =>
     await prisma.feedbackAttachment.count({ where: parentWhere }),
   );
-  if (existing >= MAX_ATTACHMENTS_PER_ITEM) throw new Error("Too many attachments for this item.");
+  if (existing >= MAX_ATTACHMENTS_PER_ITEM) throw new ActionError("Too many attachments for this item.", "VALIDATION");
 
   const filename = safeFilename(input.filename);
   const blob = await putPrivateImage("feedback", input.tenantId, filename, input.image);

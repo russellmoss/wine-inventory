@@ -99,6 +99,7 @@
     "verify:redirect-passthrough": "tsx scripts/check-redirect-passthrough.ts",
     "verify:vineyard-scope": "tsx scripts/check-vineyard-scope.ts",
     "verify:global-catalog-admin": "tsx scripts/check-global-catalog-admin.ts",
+    "verify:error-capture": "tsx scripts/check-error-capture.ts",
     "gen:fk-registry": "tsx scripts/gen-fk-registry.ts",
     "verify:fk-registry": "tsx scripts/check-fk-registry.ts",
     "audit:vineyard-memberships": "tsx --conditions=react-server --env-file=.env scripts/audit-vineyard-memberships.ts",

@@ -2,6 +2,7 @@ import { FeedbackTicketKind } from "@prisma/client";
 import { getCurrentUser } from "@/lib/dal";
 import { createFeedbackTicket } from "@/lib/feedback/tickets";
 import { clampDebugContext } from "@/lib/feedback/debug-context";
+import { routeError } from "@/lib/route-settle";
 
 export const runtime = "nodejs";
 
@@ -49,6 +50,6 @@ export async function POST(req: Request) {
     });
     return Response.json({ ok: true, id: ticket.id, modeAtSubmission: ticket.modeAtSubmission });
   } catch (e) {
-    return Response.json({ error: e instanceof Error ? e.message : "Could not create ticket." }, { status: 400 });
+    return routeError(e, { route: "feedback.tickets", area: "feedback" });
   }
 }

@@ -1,6 +1,7 @@
 import { FeedbackAttachmentCaptureSource } from "@prisma/client";
 import { getCurrentUser } from "@/lib/dal";
 import { storeFeedbackAttachment, validateAndStripImage } from "@/lib/feedback/attachments";
+import { routeError } from "@/lib/route-settle";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,6 @@ export async function POST(req: Request) {
     });
     return Response.json({ ok: true, attachment });
   } catch (e) {
-    return Response.json({ error: e instanceof Error ? e.message : "Upload failed." }, { status: 400 });
+    return routeError(e, { route: "feedback.attachments", area: "feedback" });
   }
 }

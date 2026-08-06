@@ -8,6 +8,7 @@ import {
   putPrivateImage,
   safeAttachmentName,
 } from "@/lib/attachments/blob";
+import { ActionError } from "@/lib/action-error";
 
 // Plan 068 Unit 3 — DM attachments. Uploaded AFTER the message exists (keyed by messageId, like the
 // feedback ticket→attachment flow) so the client never handles a blobUrl. Only the message's sender
@@ -28,10 +29,10 @@ export async function storeDirectMessageAttachment(input: {
         where: { id: input.messageId },
         select: { id: true, senderUserId: true },
       });
-      if (!msg) throw new Error("Message not found.");
-      if (msg.senderUserId !== input.userId) throw new Error("You can only attach to your own messages.");
+      if (!msg) throw new ActionError("Message not found.", "VALIDATION");
+      if (msg.senderUserId !== input.userId) throw new ActionError("You can only attach to your own messages.", "FORBIDDEN");
       const existing = await prisma.directMessageAttachment.count({ where: { messageId: input.messageId } });
-      if (existing >= MAX_ATTACHMENTS_PER_ITEM) throw new Error("Too many attachments for this message.");
+      if (existing >= MAX_ATTACHMENTS_PER_ITEM) throw new ActionError("Too many attachments for this message.", "VALIDATION");
 
       const filename = safeAttachmentName(input.filename);
       const blob = await putPrivateImage("inbox-dm", input.tenantId, filename, input.image);
