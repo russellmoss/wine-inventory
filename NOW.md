@@ -11,11 +11,14 @@
 
 ## 🎯 Current objective  (ONE thing)
 
-> **Land [#593](https://github.com/russellmoss/wine-inventory/pull/593) ("blends") — it is open and
-> CI-green.** Everything else from Mike's batch is fixed, live, written back and reported to him
-> (#583 assistant · #587 capacity · #589 transfer), #584's fallout is closed (#585 CI · #586 admin
-> UI), and main is green. One ticket is **waiting on Mike**, not on us — see below.
-> After #593, the next unstarted thing is **plan 107** (assistant tool surface).
+> **[#593](https://github.com/russellmoss/wine-inventory/pull/593) ("blends") landed** — merged
+> `d65b8cdf`, 2026-08-05 20:00Z. Mike's whole batch is now fixed, live, written back and reported to
+> him (#583 assistant · #587 capacity · #589 transfer · #593 blends), and #584's fallout is closed
+> (#585 CI · #586 admin UI). One ticket is **waiting on Mike**, not on us — see below.
+>
+> ⚠️ **Other sessions have been landing work fast today** (#596–#600 all merged after the archive
+> split), so treat this line as authoritative only for the lane it names. The next thing unstarted
+> *here* is **plan 107** (assistant tool surface).
 
 ## 🟠 "CONFIRMATION CARD NOT RENDERING" (`cmsgbjgov…`) — TRIAGED/UNCLEAR, **BLOCKED ON MIKE**
 
@@ -86,7 +89,7 @@ landed **1.77s BEFORE** the assistant message asking him to confirm it. If a voi
 ordinary winery-floor speech ("yes", "apply", "do it") would silently commit every pending card.
 **BLOCKED ON one fact: was the Talk button on?** Asked him directly; do not guess a fix before he answers.
 
-## 🟢 "BLENDS" (`cmsgc9bw8…`) — PR [#593](https://github.com/russellmoss/wine-inventory/pull/593) OPEN, CI GREEN
+## ✅ "BLENDS" (`cmsgc9bw8…`) — [#593](https://github.com/russellmoss/wine-inventory/pull/593) MERGED (`d65b8cdf`)
 
 Three claims in one ticket, and they land differently:
 
@@ -233,7 +236,7 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
 
-_Last updated: 2026-08-05 (later) — NOW.md archived, then reconciled with the concurrent "blends" triage (#593). It had reached 3,132 lines against a one-screen
+_Last updated: 2026-08-05 (evening) — #593 landed (`d65b8cdf`); NOW.md archived earlier today. It had reached 3,132 lines against a one-screen
 convention; the whole of it is preserved verbatim in `docs/NOW-archive-2026-08.md` and this is a
 rebuilt spine holding only what is genuinely open. Nothing was summarised away — the archive is a
 copy of the previous file, not a digest of it._
