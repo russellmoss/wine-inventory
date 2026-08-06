@@ -58,9 +58,27 @@ state of any vessel/lot is the fold of all lines over time, materialized in `Ves
    is a bug, not a tolerated state.
 8. **No fabricated volume.** A residual at/below `FUNCTIONAL_ZERO_L` (0.01 L, centiliter
    granularity) is swept to zero (the row drops); balances never accumulate "dust".
-9. **Decimal-safe math.** All volume arithmetic uses centiliter-integer / `Prisma.Decimal`
-   helpers (`computeProportionalDraw`, `round2`) — never raw `parseFloat`/IEEE-754, which
-   would randomly break invariant #6.
+9. **Decimal-safe math (LEDGER-9).** Every `deltaL` reaching a ledger line sits ON the
+   `Decimal(10,2)` storage grain — integer centiliters — and `assertBalanced` checks conservation
+   EXACTLY at that grain, not within a tolerance. Volume shares are allocated by
+   **`computeProportionalDraw`** (centiliter-integer, largest-remainder), never by dividing floats.
+   **Why the grain is a conservation question:** Postgres rounds each `deltaL` to 2dp on insert, a
+   `CHECK` cannot see a cross-row sum, and nothing re-reads the operation — so lines at finer
+   precision leave an operation permanently unbalanced. `[3.3333, 3.3333, 3.3334, -10]` sums to 0 and
+   stores as **−0.01 L**, breaking invariant #6 silently and forever.
+   ⚠️ **Corrected 2026-08-06, and each correction is a way this register can lie while every gate stays
+   green.** (a) `verify:` pointed at `verify:reverse` — a reversal-semantics proof with **no** reference
+   to rounding, decimals, balance or floats, whose only fractional literals are `0.5` and `13.5`. It
+   could not fail this way, and `verify:invariants` only checks that the named script EXISTS. (b) This
+   line used to credit **`round2`** as a "centiliter-integer / `Prisma.Decimal` helper"; it is
+   `Math.round(n * 100) / 100`, plain IEEE-754, across 287 call sites. It *normalises to the grain*,
+   which is necessary but is not exact arithmetic — `computeProportionalDraw` is the exact one. (c)
+   `isBalanced` was `|Σ| < 1e-6`, **four orders looser than the 0.01 grain it had to protect**.
+   The substance HELD: a probe asserting ≤2dp on every `deltaL` produced **zero trips across 5,992
+   tests**. What was missing was enforcement — LEDGER-6 rested on ~50 call sites each remembering to
+   round, with no chokepoint check and no guard. Same shape as MONEY-1's structural defect, same fix.
+   Now guarded by `npm run verify:ledger-grain`, which drives the real planners with base-10-hostile
+   inputs (thirds, sevenths, primes) — reverting the fix fails it.
 
 ### Correction semantics — D6 / D15
 10. **Operations are immutable.** Undo is never a row reversion or a delete; it is a new
