@@ -184,7 +184,7 @@ ERP-standards reviewer** on the rest. Each orphan PR lands in one bucket:
 | **merge** | A complete, correct change that clears the **same tight gate** (fence-only, CI green, root/docs/chore, merge-safe, small, ERP-ok, mergeable) | **Auto-merged** — un-drafting a *finished* draft first (a draft only qualifies if it's genuinely done: green CI, coherent diff, no WIP markers). If it ties to a feedback item, that item is written **RESOLVED** too |
 | **close** | Superseded, a duplicate of another open PR, or stale-and-conflicting/abandoned | **Recommend only** — the sweep **never auto-closes**. You get the reason + the ready `gh pr close` command |
 | **fix-first** | Wanted, but CI is failing or the branch conflicts | Queued with `/investigate then fix` |
-| **needs-human** | Out-of-fence, large, a real feature (auth/schema), or anything needing eyes | Queued with the ready `gh pr merge` command |
+| **needs-human** | Out-of-fence, large, a real feature (auth/schema), or anything needing eyes | Queued with the ready `gh pr merge --squash` command |
 
 The un-draft-and-merge behavior is the point: it clears the built-but-unresolved backlog. It stays
 **conservative** — an incomplete draft, a failing check, a conflict, an out-of-fence diff, or any
@@ -402,14 +402,14 @@ Claude Code instance with the task's `do:` command (`/work <planUrl>`, `/investi
      dismiss or human.
    - **Queued for human** — the ranked list with each PR's verdict and, when the fix
      was cosmetic, the **deeper issue** to fix properly (candidates for `/investigate`
-     or `/plan`) + the ready `gh pr merge` command.
+     or `/plan`) + the ready `gh pr merge --squash` command.
    - **🧹 PR sweep** (`sweep`, counts `prsScanned`/`prsSweptMerged`/`prsCloseRecommend`/
      `prsFixFirst`/`prsNeedsHuman`) — the open-PR-backlog cleanup, the answer to "what should be
      merged to main and cleared out." Report: **auto-merged** (`sweep.merged` — PR # + any feedback
      item resolved), **recommend close** (`sweep.closeRecommend` — superseded/duplicate/stale, with
      the reason + ready `gh pr close` command; **the user confirms these — they are never
      auto-closed**), **fix-first** (`sweep.fixFirst` — failing/conflicting), and **needs-human**
-     (`sweep.needsHuman` — out-of-fence/large/feature, with a ready `gh pr merge`). Surface the
+     (`sweep.needsHuman` — out-of-fence/large/feature, with a ready `gh pr merge --squash`). Surface the
      recommend-close list prominently — that's usually the bulk of the pileup.
    - **🚢 Already shipped** (`sweep.mergedReconciled`, counts `mergedPrsScanned`/
      `alreadyShippedReconciled`/`alreadyShippedSkipped`/`rankedItemsSupersededByShipped`) — tickets
@@ -472,6 +472,11 @@ A PR auto-merges **only if ALL** hold (any miss → queued):
   queue, never silently dropped.
 - **Tight auto-merge, never `--admin`.** Branch protection on `main` is the backstop —
   a merge protection refuses is queued, never forced.
+- **Always `--squash`, never a merge commit.** The workflow already merges with
+  `--squash --delete-branch`, and every command this skill hands a human carries the flag too, so
+  the automated and manual paths land identically. The repo now allows squash only
+  (`allow_merge_commit` and `allow_rebase_merge` are both off, 2026-08-05) — a bare `gh pr merge`
+  was how #584 and #600 went in as merge commits while merge commits were still enabled.
 - **Cosmetic ≠ done.** A band-aid is never auto-merged; it's queued with the deeper
   issue named, so a symptom-silencer can't close a real bug.
 - **Standard-for-an-ERP is a gate, not a footnote.** Every actionable item and every open PR is
