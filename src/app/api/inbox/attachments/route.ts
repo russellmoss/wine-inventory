@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/dal";
 import { storeDirectMessageAttachment } from "@/lib/inbox/attachments";
 import { validateAndStripImage, hasBlobCredentials } from "@/lib/attachments/blob";
+import { routeError } from "@/lib/route-settle";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,6 @@ export async function POST(req: Request) {
     });
     return Response.json({ ok: true, attachment });
   } catch (e) {
-    return Response.json({ error: e instanceof Error ? e.message : "Upload failed." }, { status: 400 });
+    return routeError(e, { route: "inbox.attachments", area: "inbox" });
   }
 }

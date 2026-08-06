@@ -1,5 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
 import { runQboVendorPullSweep } from "@/lib/vendors/qbo-vendor-pull";
+import { cronAuthorized, cronUnauthorized, cronError } from "@/lib/route-settle";
 
 // Plan 075 Unit 7 — the QBO vendor-import poll cron. Vercel Cron hits this with `Authorization: Bearer
 // $CRON_SECRET`. Constant-time gate, ignores any caller-supplied tenant (enumerates internally). Pulls each
@@ -9,21 +9,14 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-function authorized(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const a = Buffer.from(req.headers.get("authorization") ?? "");
-  const b = Buffer.from(`Bearer ${secret}`);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 async function handle(req: Request) {
-  if (!authorized(req)) return Response.json({ error: "Unauthorized." }, { status: 401 });
+  if (!cronAuthorized(req)) return cronUnauthorized();
   try {
     const summary = await runQboVendorPullSweep();
     return Response.json({ ok: true, ...summary });
   } catch (e) {
-    return Response.json({ ok: false, error: e instanceof Error ? e.message : "QBO vendor poll failed." }, { status: 500 });
+    return cronError(e, { route: "cron.qbo-vendor-poll" }, "QBO vendor poll failed.");
   }
 }
 

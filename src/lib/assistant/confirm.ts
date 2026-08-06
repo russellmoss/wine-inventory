@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac, timingSafeEqual, randomUUID } from "crypto";
+import { ActionError } from "@/lib/action-error";
 
 // A write tool returns a signed, short-TTL proposal token instead of mutating.
 // The token is integrity-protected (HMAC over the payload) and single-use (the
@@ -55,7 +56,7 @@ export function signResume(tool: string, input: Record<string, unknown>, ttlMs: 
 /** Verify signature + expiry and return the payload. Throws on any problem. */
 export function verifyProposal(token: string): ProposalPayload {
   const dot = token.lastIndexOf(".");
-  if (dot <= 0) throw new Error("Malformed confirmation token.");
+  if (dot <= 0) throw new ActionError("Malformed confirmation token.", "VALIDATION");
   const body = token.slice(0, dot);
   const sig = token.slice(dot + 1);
 
@@ -63,14 +64,14 @@ export function verifyProposal(token: string): ProposalPayload {
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) {
-    throw new Error("Invalid confirmation token.");
+    throw new ActionError("Invalid confirmation token.", "VALIDATION");
   }
 
   let payload: ProposalPayload;
   try {
     payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as ProposalPayload;
   } catch {
-    throw new Error("Corrupt confirmation token.");
+    throw new ActionError("Corrupt confirmation token.", "VALIDATION");
   }
 
   if (
@@ -80,10 +81,10 @@ export function verifyProposal(token: string): ProposalPayload {
     typeof payload.args !== "object" ||
     payload.args === null
   ) {
-    throw new Error("Corrupt confirmation token.");
+    throw new ActionError("Corrupt confirmation token.", "VALIDATION");
   }
   if (Date.now() > payload.exp) {
-    throw new Error("This confirmation has expired. Please ask again.");
+    throw new ActionError("This confirmation has expired. Please ask again.", "VALIDATION");
   }
   return payload;
 }

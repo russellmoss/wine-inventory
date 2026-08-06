@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/dal";
 import { commitProposal } from "@/lib/assistant/commit";
+import { routeError } from "@/lib/route-settle";
 
 // The ONLY commit path for assistant writes. Verifies the signed proposal,
 // burns its single-use nonce, then calls the real server action (which re-runs
@@ -29,9 +30,6 @@ export async function POST(req: Request) {
     const result = await commitProposal(user, token);
     return Response.json({ ok: true, message: result.message, navigate: result.navigate });
   } catch (e) {
-    return Response.json(
-      { ok: false, error: e instanceof Error ? e.message : "Could not apply the change." },
-      { status: 400 },
-    );
+    return routeError(e, { route: "assistant.confirm", area: "assistant" });
   }
 }

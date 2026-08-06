@@ -81,6 +81,7 @@ import { commitTransferConsumable } from "./tools/transfer-consumable";
 import { commitAddEquipment } from "./tools/add-equipment";
 import { commitAddInvoice } from "./tools/add-invoice";
 import { commitReceiveFinishedGood } from "./tools/receive-finished-good";
+import { ActionError } from "@/lib/action-error";
 
 // Static map of tool name -> committer. No side-effect registration, no import
 // cycle: commit.ts imports the tool modules; the tool modules never import commit.ts.
@@ -169,15 +170,15 @@ export function committerToolNames(): string[] {
  */
 function resolveCommitTenantId(user: AppUser): string {
   if (user.supportOrganizationId) return user.supportOrganizationId;
-  if (!user.activeOrganizationId) throw new Error("Your account isn't attached to a winery.");
+  if (!user.activeOrganizationId) throw new ActionError("Your account isn't attached to a winery.", "FORBIDDEN");
   return user.activeOrganizationId;
 }
 
 export async function commitProposal(user: AppUser, token: string): Promise<CommitResult> {
   const payload = verifyProposal(token);
-  if (payload.kind === "resume") throw new Error("That's a selection token, not a confirmation.");
+  if (payload.kind === "resume") throw new ActionError("That's a selection token, not a confirmation.", "VALIDATION");
   const committer = COMMITTERS[payload.tool];
-  if (!committer) throw new Error("That action can no longer be applied.");
+  if (!committer) throw new ActionError("That action can no longer be applied.", "VALIDATION");
 
   // Establish the tenant context for the whole confirm.
   //
@@ -205,7 +206,7 @@ export async function commitProposal(user: AppUser, token: string): Promise<Comm
         });
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-          throw new Error("This change was already confirmed.");
+          throw new ActionError("This change was already confirmed.", "CONFLICT");
         }
         throw e;
       }

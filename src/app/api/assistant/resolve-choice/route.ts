@@ -2,6 +2,7 @@ import { getCurrentUser } from "@/lib/dal";
 import { verifyProposal } from "@/lib/assistant/confirm";
 import { getToolsFor } from "@/lib/assistant/registry";
 import { asProposal, isDraftProposal } from "@/lib/assistant/assistant-events";
+import { routeError } from "@/lib/route-settle";
 
 // Deterministic picker resume: a disambiguation tap POSTs its signed `resume` token here. We re-run the
 // SAME tool with the record pinned by id (the token's args) and return the resulting confirm proposal —
@@ -46,9 +47,6 @@ export async function POST(req: Request) {
       details: proposal.details,
     });
   } catch (e) {
-    return Response.json(
-      { ok: false, error: e instanceof Error ? e.message : "Could not resolve that selection." },
-      { status: 400 },
-    );
+    return routeError(e, { route: "assistant.resolve-choice", area: "assistant" });
   }
 }

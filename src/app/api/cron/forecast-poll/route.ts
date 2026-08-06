@@ -1,6 +1,6 @@
-import { timingSafeEqual } from "node:crypto";
 import * as Sentry from "@sentry/nextjs";
 import { runForecastSweep } from "@/lib/weather/forecast-sweep";
+import { cronAuthorized, cronUnauthorized, cronError } from "@/lib/route-settle";
 
 // Plan 096 Phase 2 Unit 15 — the forecast cron (DAILY on Vercel: a sub-daily schedule fails
 // deployment on the Hobby cron allowance — the #516/#517 deploy breaker; intra-day freshness comes
@@ -12,16 +12,9 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-function authorized(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const a = Buffer.from(req.headers.get("authorization") ?? "");
-  const b = Buffer.from(`Bearer ${secret}`);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 async function handle(req: Request) {
-  if (!authorized(req)) return Response.json({ error: "Unauthorized." }, { status: 401 });
+  if (!cronAuthorized(req)) return cronUnauthorized();
   try {
     const summary = await runForecastSweep();
     // U24: per-vineyard errors are SWALLOWED into the summary by design (one bad vineyard never
@@ -32,8 +25,7 @@ async function handle(req: Request) {
     }
     return Response.json({ ok: true, ...summary });
   } catch (e) {
-    Sentry.captureException(e); // belt — onRequestError auto-captures thrown route errors, but be explicit at the cron edge
-    return Response.json({ ok: false, error: e instanceof Error ? e.message : "Forecast sweep failed." }, { status: 500 });
+    return cronError(e, { route: "cron.forecast-poll" }, "Forecast sweep failed.");
   }
 }
 

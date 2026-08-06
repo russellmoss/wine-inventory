@@ -40,6 +40,12 @@ jobs:
       # `vineyardScoped: false` in entities.ts are admin-only to create or edit in the assistant,
       # so the GUI catalog writes must be too. Operational stock/vessel work stays open.
       - run: npm run verify:global-catalog-admin
+      # ERRCAP-1: `catch (e) { return { error: e.message } }` answers the caller and tells Sentry
+      # NOTHING — the shape NOW.md records twice in one week as the reason a failure was invisible
+      # ("an error path that logs nothing is itself the P0"). Every catch that RETURNS a caught error's
+      # message must also capture it, directly or via settleWithCapture / routeError / cronError.
+      # Shrink-only baseline (per file, not per line) for the sites that predate it. Static scan, no DB.
+      - run: npm run verify:error-capture
       # FK-1: composite (tenantId, refId) FKs are invisible to Prisma, so 291 of them lived only in
       # hand-written migration SQL. prisma/fk-registry.json is that graph, replayed from the migration
       # history; this asserts every reference column in schema.prisma is declared as a Prisma relation,

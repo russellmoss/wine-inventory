@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { get, put } from "@vercel/blob";
+import { ActionError } from "@/lib/action-error";
 
 // Plan 068 Unit 3 (review decision 2) — the shared private-blob helper, factored out of
 // feedback/attachments.ts so feedback AND direct-message attachments share ONE upload/validate path.
@@ -99,14 +100,14 @@ function stripJpegMetadata(input: Buffer): Buffer {
 /** Validate that the bytes are a real PNG/JPEG within limits, strip metadata, return normalized image. */
 export function validateAndStripImage(input: Buffer): ValidatedImage {
   if (input.length === 0 || input.length > MAX_ATTACHMENT_BYTES) {
-    throw new Error("Image must be 5 MB or smaller.");
+    throw new ActionError("Image must be 5 MB or smaller.", "VALIDATION");
   }
   const png = readPng(input);
   const jpeg = png ? null : readJpeg(input);
   const dims = png ?? jpeg;
-  if (!dims) throw new Error("Only real PNG or JPEG images are accepted.");
+  if (!dims) throw new ActionError("Only real PNG or JPEG images are accepted.", "VALIDATION");
   if (dims.width < 1 || dims.height < 1 || dims.width > MAX_IMAGE_DIMENSION || dims.height > MAX_IMAGE_DIMENSION) {
-    throw new Error("Image dimensions are too large.");
+    throw new ActionError("Image dimensions are too large.", "VALIDATION");
   }
   const contentType = png ? "image/png" : "image/jpeg";
   const bytes = png ? stripPngMetadata(input) : stripJpegMetadata(input);
@@ -167,9 +168,9 @@ export function validateDocument(input: Buffer, declaredType?: string | null): V
   if (looksPdf) {
     // A PDF must actually be a PDF by magic bytes — a mismatched content-type hint can't smuggle
     // arbitrary bytes past the guard.
-    if (!isPdf(input)) throw new Error("Only real PDF files are accepted.");
+    if (!isPdf(input)) throw new ActionError("Only real PDF files are accepted.", "VALIDATION");
     if (input.length === 0 || input.length > MAX_DOCUMENT_BYTES) {
-      throw new Error("PDF must be 10 MB or smaller.");
+      throw new ActionError("PDF must be 10 MB or smaller.", "VALIDATION");
     }
     return {
       bytes: input,

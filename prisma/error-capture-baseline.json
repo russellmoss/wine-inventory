@@ -1,0 +1,12 @@
+{
+  "$comment": "SHRINK-ONLY baseline for verify:error-capture (ERRCAP-1). Per FILE, how many catch blocks return the caught error's message without capturing it to Sentry. Fix by routing through settleWithCapture / routeError / cronError. Anchored on file+count, not line, so ordinary edits do not churn it. Lower a number when you fix one; NEVER raise one.",
+  "total": 16,
+  "uncapturedByFile": {
+    "src/lib/action-result.ts": 1,
+    "src/lib/ferment/panel-core.ts": 1,
+    "src/lib/gis/satellite/process-scene-core.ts": 1,
+    "src/lib/ingest/extract-invoice.ts": 1,
+    "src/lib/ingest/ingest-invoice-core.ts": 3,
+    "src/lib/weather/actions.ts": 9
+  }
+}
