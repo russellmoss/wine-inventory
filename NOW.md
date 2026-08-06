@@ -16,8 +16,9 @@
 > him (#583 assistant · #587 capacity · #589 transfer · #593 blends), and #584's fallout is closed
 > (#585 CI · #586 admin UI). **Mike's batch is now fully closed out** — the last one open,
 > `cmsgbjgov` ("confirmation card"), was RESOLVED 00:58Z on the harm, with the card cause recorded as
-> still unproven and a REOPEN condition written into the outcome note. Nothing is waiting on Mike to
-> land; his Talk-button answer would only settle the unproven half.
+> still unproven and a REOPEN condition written into the outcome note. **The voice mechanism behind it
+> is now FIXED AND LIVE** (`b4dabffd`, #607 + #608) — reading the code showed it was a defect whoever
+> was using it, so it never needed his answer. Nothing is waiting on Mike at all.
 >
 > ⚠️ **Other sessions have been landing work fast today** (#596–#600 all merged after the archive
 > split), so treat this line as authoritative only for the lane it names. The next thing unstarted
@@ -130,7 +131,35 @@ deliberately does **not** persist a user message. That matches the DB signature 
 no user turns explaining them, each landing 1–2s after its tool call — and the `file_feedback` commit
 landed **1.77s BEFORE** the assistant message asking him to confirm it. If a voice session was live,
 ordinary winery-floor speech ("yes", "apply", "do it") would silently commit every pending card.
-**BLOCKED ON one fact: was the Talk button on?** Asked him directly; do not guess a fix before he answers.
+
+✅ **NO LONGER BLOCKED — FIXED AND LIVE 2026-08-06.** The old note said "do not guess a fix before he
+answers"; that was right at the time and is now overtaken. Reading the code settled the part his answer
+was needed for: **the mechanism is a defect whoever was using it**, so it did not need the Talk-button
+answer. Two properties combined — the loose grammar above, and the fact that a *committable* card was
+admitted **silently** (`speak()` fired only for Drafts, so the one card that CANNOT write announced
+itself and the one that can said nothing). Because the slot is a queue, the model narrates a turn once
+while cards arm one at a time underneath it.
+
+Three fixes, all merged and serving in production (`b4dabffd`):
+- **Announce every armed card** — what it is, and the word that commits it.
+  ([#607](https://github.com/russellmoss/wine-inventory/pull/607))
+- **`confirm|approve` only** — `yes`/`yep`/`do it`/`go ahead`/`apply` no longer commit. Cancel stays
+  deliberately loose and wins ties: a false cancel is cheap, a false confirm writes to the ledger.
+- **Per-card assent** — a card promoted out of the queue cannot be voice-confirmed until it has been
+  announced as armed. Fails closed: no announcement → no voice confirm, tap still works.
+  ([#608](https://github.com/russellmoss/wine-inventory/pull/608))
+
+Grammar + announcements live in `src/lib/voice/confirm-grammar.ts` (pure, 18 tests) because the voice
+components are not unit-testable here. **Mike has been told, and told he no longer needs to answer.**
+
+⚠️ **Still NOT browser-verified** — voice needs a mic and a human, and #608 adds a `speaking`
+transition *outside* a turn. Hands-on pass worth doing: two writes in one turn, confirm the first by
+voice, check the second is announced before it accepts "confirm".
+
+⚠️ **A defect I shipped in #607 was live 03:40Z–11:43Z** (8 hours): a *queued* card was announced with
+the armed card's wording, so "confirm" could name the wrong write. Fixed in #608. Measured before
+apologising — **zero** assistant messages from Mike and **zero** nonce burns by anyone in that window,
+so nobody was exposed.
 
 ## ✅ "BLENDS" (`cmsgc9bw8…`) — [#593](https://github.com/russellmoss/wine-inventory/pull/593) MERGED (`d65b8cdf`)
 
@@ -279,7 +308,8 @@ All detail moved to `TODOS.md` (2026-07-20). One line each:
   and 1 orphaned plan issue (#365). None triaged in depth this run.
 
 
-_Last updated: 2026-08-05 (evening) — #593 landed (`d65b8cdf`); NOW.md archived earlier today. It had reached 3,132 lines against a one-screen
+_Last updated: 2026-08-06 — the voice confirm-safety fixes are merged and LIVE (`b4dabffd`), which
+retires the "do not guess a fix before Mike answers" block above; NOW.md archived 2026-08-05. It had reached 3,132 lines against a one-screen
 convention; the whole of it is preserved verbatim in `docs/NOW-archive-2026-08.md` and this is a
 rebuilt spine holding only what is genuinely open. Nothing was summarised away — the archive is a
 copy of the previous file, not a digest of it._
