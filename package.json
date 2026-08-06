@@ -102,6 +102,7 @@
     "verify:error-capture": "tsx scripts/check-error-capture.ts",
     "verify:money-fx": "tsx scripts/check-money-fx.ts",
     "verify:ledger-grain": "vitest run test/ledger-storage-grain.test.ts",
+    "verify:cost-conservation": "vitest run test/cost-conservation.test.ts",
     "gen:fk-registry": "tsx scripts/gen-fk-registry.ts",
     "verify:fk-registry": "tsx scripts/check-fk-registry.ts",
     "audit:vineyard-memberships": "tsx --conditions=react-server --env-file=.env scripts/audit-vineyard-memberships.ts",

@@ -263,8 +263,13 @@ describe("bottlingCostPerBottle — yield + residual (D15, D9)", () => {
   });
 });
 
-describe("transferImbalance — conservation invariant (D10)", () => {
-  it("cost moved out of parents equals cost moved into children (≈0)", () => {
+describe("transferImbalance — per-op rounding residual (D10)", () => {
+  // ⚠️ This block used to be titled "conservation invariant (D10)" and asserted `toBe(0)` on an
+  // implementation that returned 0 for EVERY input — including transfers taking 120% of a parent — so it
+  // could not fail. The real whole-fold conservation statement now lives in test/cost-conservation.test.ts
+  // (`costConservationResidual`, guarded by `npm run verify:cost-conservation`); what this function
+  // measures is the narrower thing its name implies: the dust an N-way split leaves on the parent.
+  it("is 0 when each parent has a single transfer and nothing needs rounding", () => {
     const before = new Map([
       ["A", 100],
       ["B", 400],
@@ -277,5 +282,15 @@ describe("transferImbalance — conservation invariant (D10)", () => {
       before,
     );
     expect(imbalance).toBe(0);
+  });
+
+  it("reports a non-zero residual when a split does NOT divide evenly", () => {
+    // The case the old tautology was blind to.
+    const imbalance = transferImbalance(
+      [1, 2, 3].map((i) => ({ fromLotId: "P", toLotId: `C${i}`, transferredVolumeL: 1, parentPreOpVolumeL: 3 })),
+      new Map([["P", 100]]),
+    );
+    expect(imbalance).not.toBe(0);
+    expect(Math.abs(imbalance)).toBeLessThan(1e-6); // dust, below the stranded/VARIANCE threshold
   });
 });

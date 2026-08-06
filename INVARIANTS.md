@@ -131,10 +131,27 @@ state of any vessel/lot is the fold of all lines over time, materialized in `Ves
   fabricated lineage; **`BottlingSource.lotId` is not backfilled** on historical rows.
 
 ## Cost roll-up — Phase 8 (D5/D9/D10/D13/D14/D17/D19)
-The cost engine is a projection over the ledger; it never invents or loses money. Proven end-to-end by
-`npm run verify:cost` (runs in the Demo Winery tenant).
-- **Cost conservation.** Across blend/split/loss/bottle/reversal, `Σ(cost out) + stranded == cost removed
-  from parents`; nothing is created or destroyed except explicit VARIANCE lines. Zero volume ⇒ zero cost.
+The cost engine is a projection over the ledger; it never invents or loses money. Proven purely by
+`npm run verify:cost-conservation` (no DB, runs in CI) and end-to-end by `npm run verify:cost` (needs the
+Demo Winery tenant).
+- **Cost conservation (COST-1, critical).** Across blend/split/loss/bottle/reversal, nothing is created or
+  destroyed except explicit VARIANCE lines. Zero volume ⇒ zero cost. Stated so it can be checked:
+  `Σ(DIRECT amounts capitalized) == Σ(every lot's totalCost) + Σ(every lot's expensed)` — everything else
+  is movement, and `stranded` is a *report* of cost on a drained lot, not a separate term.
+  ⚠️ **Two guard defects fixed 2026-08-06.** (a) The only PURE conservation check, `transferImbalance`,
+  was a **tautology** — it computed `moved` once and added it to both sides, returning 0 for any input
+  including transfers taking 120% of a parent, while the test asserting on it was titled "conservation
+  invariant (D10)". (b) COST-1's only guard, `verify:cost`, needs `--env-file=.env` (a database), so a
+  *critical* invariant never ran in CI's required job. Both closed: `costConservationResidual` is the real
+  identity, `transferImbalance` now measures the per-op rounding residual its name implies, and
+  `verify:cost-conservation` is pure. **Third instance of "a guard that cannot fail"** after LEDGER-9 and
+  the same pattern — worth watching for.
+  📏 **Precision is float, measured and deliberately kept.** The identity holds to ~1e-13, not exactly the
+  way LEDGER-6 does; the guard's tolerance is 1e-9. Sweeps found no material drift: `rollupCost` conserves
+  across 3→200-way splits (parent keeps ~1e-8 dust, below the VARIANCE threshold), `planDepletion`
+  disagreed with exact decimal in **0 of 800** cases, `allocateLandedCost` is **exact** at the cent grain,
+  and `bottlingCostPerBottle` recomposes exactly. Converting to `Decimal` would be churn on a critical
+  path. Money PRECISION is MONEY-1's remit; this is about CONSERVATION.
 - **Transferred-volume cost, not lineage fraction (D10).** A blend/split moves `parentTotalCost ×
   transferredL / parentPreOpL` via an immutable `OperationCostTransfer`, never the ambiguous lineage %.
 - **Normal vs abnormal loss (D13).** Normal loss reallocates onto surviving volume (per-L rises); abnormal
@@ -636,10 +653,14 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   amounts it round-trips wrong **0 times at 1.085, 7,538 times at 0.6231** (an ordinary USD-per-NZD), and
   **19,870 times at 0.00654** — where small amounts convert to `0.00` and are simply gone. It is exact at
   some rates and lossy at others, so "it worked when I tried it" proves nothing.
-  ⚠️ **NOT covered, and deliberately so — the next stage of workstream B.** `src/lib/cost/` is float
-  throughout (`round8(totalCost + extended)`, `round8(sum)`, `round8(amt * f)`) and **accumulation** is
-  where drift compounds, so it is the bigger fish. `src/lib/ingest/landed-cost.ts` allocates freight with
-  float `round2` plus a residual swept onto the last priced line to make Σ tie — which is exactly what
-  `Amount.allocateByWeights` already does exactly, so it is a direct swap. `src/lib/accounting/` likewise.
-  The `convertToBase` allow-list is shrink-only and currently **empty**, and the guard fails on a stale
-  entry too.
+  ⚠️ **NOT covered:** `src/lib/cost/`, `src/lib/ingest/landed-cost.ts` and `src/lib/accounting/` are
+  still float. The `convertToBase` allow-list is shrink-only and currently **empty**, and the guard fails
+  on a stale entry too.
+  🔄 **Correction (2026-08-06) — this bullet used to claim `src/lib/cost/` was "the bigger fish" because
+  "accumulation is where drift compounds", and that `landed-cost.ts` was "a direct swap" for
+  `Amount.allocateByWeights`. Both were ASSUMPTIONS extrapolated from the FX defect, and measurement
+  refutes them.** `rollupCost` conserves to ~1e-13 across 3→200-way splits; `planDepletion` disagreed with
+  exact decimal in **0 of 800** cases; `allocateLandedCost` is **exact** at the cent grain on every
+  adversarial input; `bottlingCostPerBottle` recomposes exactly. The FX defect was real and measured; the
+  cost one was inferred and does not exist. What the cost path actually needed was **enforcement** — see
+  COST-1, whose only pure conservation check was a tautology.

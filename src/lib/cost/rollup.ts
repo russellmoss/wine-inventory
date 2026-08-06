@@ -224,22 +224,77 @@ export function bottlingCostPerBottle(input: BottlingCostInput): BottlingCostRes
   return { totalRunCost, costPerBottle, residualToVariance };
 }
 
+/** The volume fraction a transfer moves off its parent — the ONE place this is derived (council C2). */
+function transferFraction(transferredVolumeL: number, parentPreOpVolumeL: number): number {
+  if (!(parentPreOpVolumeL > VOL_EPS)) return 0;
+  return Math.min(1, Math.max(0, transferredVolumeL / parentPreOpVolumeL));
+}
+
 /**
- * Conservation check for a single transfer op (D10 invariant): the cost moved off the parents equals
- * the cost moved onto the children. Given the pre-op parent costs and the transfer events for one op,
- * returns the signed imbalance (≈0 when conserved). Used by tests + verify:cost.
+ * Per-op transfer rounding residual (COST-1 / D10).
+ *
+ * ⚠️ THIS FUNCTION USED TO BE A TAUTOLOGY. It computed `moved` once, added it to BOTH `movedOut` and
+ * `movedIn`, and returned the difference — which is 0 by construction, for ANY input. It returned 0 for
+ * a set of transfers taking 120% of a parent, and the test named "transferImbalance — conservation
+ * invariant (D10)" asserted exactly that `toBe(0)`. A check for a CRITICAL invariant that cannot fail is
+ * worse than no check: it reads as coverage. (Its doc also claimed "used by verify:cost"; it never was.)
+ *
+ * What is actually worth measuring here is the ROUNDING RESIDUAL. `rollupCost` moves
+ * `round8(parentCost × fᵢ)` per transfer, so for a parent split N ways the amounts that leave it are
+ * Σ round8(cost × fᵢ), which need not equal cost × Σfᵢ. The difference is the dust a fully-drained
+ * parent keeps — reported as `stranded` and flushed to VARIANCE (D9) when it exceeds `COST_EPS`.
+ *
+ * Returns the SIGNED residual: positive when the parents gave away less than their fractions imply
+ * (dust retained), negative when they gave away more (dust fabricated). ≈0 when the split is exact.
+ *
+ * Note what this deliberately does NOT check: a set of transfers moving more than 100% of a parent's
+ * VOLUME. That is a ledger defect, caught exactly at the source by LEDGER-6/LEDGER-9's conservation of
+ * `deltaL`; re-deriving it from cost here would be a weaker second opinion on someone else's invariant.
+ * For the whole-fold statement of COST-1, use `costConservationResidual`.
  */
 export function transferImbalance(
   transfers: { fromLotId: string; toLotId: string; transferredVolumeL: number; parentPreOpVolumeL: number }[],
   parentCostBefore: Map<string, number>,
 ): number {
-  let movedOut = 0;
-  let movedIn = 0;
+  // What each parent's fractions SAY should leave it, versus what rounding actually moves.
+  const impliedByParent = new Map<string, number>();
+  const actualByParent = new Map<string, number>();
+
   for (const t of transfers) {
-    const f = t.parentPreOpVolumeL > VOL_EPS ? Math.min(1, Math.max(0, t.transferredVolumeL / t.parentPreOpVolumeL)) : 0;
-    const moved = (parentCostBefore.get(t.fromLotId) ?? 0) * f;
-    movedOut += moved;
-    movedIn += moved;
+    const before = parentCostBefore.get(t.fromLotId) ?? 0;
+    const f = transferFraction(t.transferredVolumeL, t.parentPreOpVolumeL);
+    impliedByParent.set(t.fromLotId, (impliedByParent.get(t.fromLotId) ?? 0) + before * f);
+    // round8 mirrors `rollupCost` exactly — this must measure what the fold DOES, not what it ought to.
+    actualByParent.set(t.fromLotId, round8((actualByParent.get(t.fromLotId) ?? 0) + round8(before * f)));
   }
-  return round8(movedOut - movedIn);
+
+  let residual = 0;
+  for (const [lotId, implied] of impliedByParent) {
+    residual += implied - (actualByParent.get(lotId) ?? 0);
+  }
+  return round8(residual);
+}
+
+/**
+ * THE COST-1 statement, over a whole fold: **cost is neither created nor destroyed.**
+ *
+ *     Σ(DIRECT amounts capitalized)  ==  Σ(every lot's totalCost)  +  Σ(every lot's expensed)
+ *
+ * Everything else is movement. A TRANSFER subtracts from a parent exactly what it adds to a child, and
+ * an ABNORMAL_LOSS moves cost from a lot's components into its `expensed` write-off — so neither side
+ * of the identity should shift. `stranded` is NOT a separate term: it is a REPORT of `totalCost` sitting
+ * on a ~zero-volume lot, already counted.
+ *
+ * Returns the signed residual in currency units. Measured across direct-only, N-way split, abnormal
+ * loss, and split→loss→reblend folds, this sits at ~1e-13 — float noise on values up to $100k, not
+ * drift. Pure: no DB, so unlike `verify:cost` this can run in the required CI job.
+ */
+export function costConservationResidual(events: CostEvent[], result: RollupResult): number {
+  let capitalized = 0;
+  for (const e of events) if (e.kind === "DIRECT") capitalized += e.amount;
+
+  let held = 0;
+  for (const l of result.lots.values()) held += l.totalCost + l.expensed;
+
+  return round8(capitalized - held);
 }
