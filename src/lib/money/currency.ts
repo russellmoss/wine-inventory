@@ -31,6 +31,26 @@ export function coerceCurrency(raw: unknown): CurrencyCode {
   return (SUPPORTED_CURRENCIES as readonly string[]).includes(up) ? (up as CurrencyCode) : DEFAULT_CURRENCY;
 }
 
+/**
+ * STRICT parse — throws on an unsupported code instead of defaulting to USD.
+ *
+ * Use this anywhere the code participates in ARITHMETIC rather than in a label. `coerceCurrency`'s
+ * forgiveness is right for a display symbol and wrong for money: silently mapping an OCR'd "CHF" to USD
+ * books a foreign amount 1:1 at a fabricated rate, which is the exact failure
+ * `ingest-invoice-core.ts` gates against by hand. That gate should not have to be re-hand-rolled at every
+ * arithmetic site.
+ */
+export function requireCurrency(raw: unknown, what = "currency"): CurrencyCode {
+  const up = String(raw ?? "").trim().toUpperCase();
+  if (!(SUPPORTED_CURRENCIES as readonly string[]).includes(up)) {
+    throw new Error(
+      `${what}: "${String(raw)}" is not a supported currency (${SUPPORTED_CURRENCIES.join(", ")}). ` +
+        "Refusing to default it — a wrong currency on a money value books at a fabricated rate.",
+    );
+  }
+  return up as CurrencyCode;
+}
+
 /** The display symbol/prefix for a currency (e.g. USD → "$", NZD → "NZ$"). Unknown coerces to the USD symbol. */
 export function currencySymbol(code: string | null | undefined): string {
   return CURRENCY_SYMBOLS[coerceCurrency(code)];

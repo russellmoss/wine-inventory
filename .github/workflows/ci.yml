@@ -46,6 +46,12 @@ jobs:
       # message must also capture it, directly or via settleWithCapture / routeError / cronError.
       # Shrink-only baseline (per file, not per line) for the sites that predate it. Static scan, no DB.
       - run: npm run verify:error-capture
+      # MONEY-1: `convertToBase(amount: number, rate: number)` cannot tell what currency the amount is in,
+      # so nothing stopped converting an already-base figure twice or applying a NZD→USD rate to a EUR one
+      # — and the result of either is a plausible number. Conversion goes through FxQuote, which refuses a
+      # currency it wasn't quoted for; and src/lib/money carries no float rounding (the old float path was
+      # a cent light on 447 of 1,400,000 measured pairs). Static scan, no DB.
+      - run: npm run verify:money-fx
       # FK-1: composite (tenantId, refId) FKs are invisible to Prisma, so 291 of them lived only in
       # hand-written migration SQL. prisma/fk-registry.json is that graph, replayed from the migration
       # history; this asserts every reference column in schema.prisma is declared as a Prisma relation,

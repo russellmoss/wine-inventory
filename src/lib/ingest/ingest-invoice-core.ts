@@ -13,9 +13,11 @@ import { receiveStockTx } from "@/lib/stock/movements";
 import { findOrCreateVendorCore } from "@/lib/vendors/vendors";
 import { allocateLandedCost, type InvoiceCharges } from "@/lib/ingest/landed-cost";
 import { normalizeLineToStock, parsePackagingUnit } from "@/lib/ingest/normalize-line";
-import { convertToBase, round8 } from "@/lib/money/fx/convert";
+import { round8 } from "@/lib/money/fx/convert";
+import { FxQuote } from "@/lib/money/fx/quote";
+import { Amount } from "@/lib/money/amount";
 import { getRate, type ResolvedRate } from "@/lib/money/fx/rate-service";
-import { coerceCurrency, SUPPORTED_CURRENCIES } from "@/lib/money/currency";
+import { coerceCurrency, requireCurrency, SUPPORTED_CURRENCIES } from "@/lib/money/currency";
 import { coerceStockUnit } from "@/lib/cellar/materials-shared";
 import { coerceFamily, coerceMaterialCategory, categoryOf } from "@/lib/cellar/material-taxonomy";
 import { dimensionOf, canonicalUnitFor, type ExtraUnits } from "@/lib/units/measure";
@@ -423,18 +425,33 @@ export async function applyIngestedInvoiceCore(
           error: `Invoice currency "${rawCurrency}" isn't a supported currency for conversion (supported: ${SUPPORTED_CURRENCIES.join(", ")}). Fix the currency on the review screen before applying.`,
         });
       }
-      const invoiceCurrency = isForeign ? rawCurrency! : baseCurrency;
+      const invoiceCurrency = isForeign ? requireCurrency(rawCurrency, "invoice currency") : baseCurrency;
 
       let fxRate = 1;
       let fxRateDate: Date | null = null;
       let fxRateSource: string | null = null;
+      // The currency-checked conversion every line below runs through (MONEY-1). For a DOMESTIC invoice
+      // this is the identity quote, so the conversion site needs no `isForeign` branch and therefore
+      // cannot forget one — and `convert` refuses an Amount that isn't in the invoice currency, which is
+      // what a bare `number × rate` could never notice.
+      let fxQuote: FxQuote = FxQuote.identity(baseCurrency, appliedAt);
       if (isForeign) {
-        const override = invoice.fxRate != null ? Number(invoice.fxRate) : null;
+        // `.toString()` not `Number()`: the override is a Decimal column, and the quote should carry the
+        // rate the human actually entered rather than a float round-trip of it.
+        const overrideExact = invoice.fxRate != null ? invoice.fxRate.toString() : null;
+        const override = overrideExact != null ? Number(overrideExact) : null;
         if (override != null && Number.isFinite(override) && override > 0) {
           // A human override on the review screen wins (a contracted/booked rate).
           fxRate = override;
           fxRateDate = invoice.fxRateDate ?? new Date();
           fxRateSource = invoice.fxRateSource?.trim() || "manual override";
+          fxQuote = FxQuote.of({
+            base: baseCurrency,
+            foreign: invoiceCurrency,
+            rate: overrideExact!,
+            rateDate: fxRateDate,
+            source: fxRateSource,
+          });
         } else {
           const resolve = deps?.getRate ?? getRate;
           const resolved = await resolve(baseCurrency, invoiceCurrency, new Date());
@@ -448,6 +465,15 @@ export async function applyIngestedInvoiceCore(
           fxRate = resolved.rate;
           fxRateDate = resolved.rateDate;
           fxRateSource = resolved.source;
+          fxQuote = FxQuote.of({
+            base: baseCurrency,
+            foreign: invoiceCurrency,
+            // `rateExact` when the source has it (the fx_rate Decimal column / the feed's own text);
+            // an injected stub that only supplies a float is exactly as precise as its own input.
+            rate: resolved.rateExact ?? resolved.rate,
+            rateDate: resolved.rateDate,
+            source: resolved.source,
+          });
         }
         // Snapshot the applied rate onto the staging invoice (audit + reload; locked once applied — council #3).
         await tx.ingestedInvoice.update({ where: { id: invoice.id }, data: { baseCurrency, fxRate, fxRateDate, fxRateSource } });
@@ -482,7 +508,7 @@ export async function applyIngestedInvoiceCore(
         // grain (round2) so the roll-up basis is single-currency + Σ base ties to QBO's derived GL (council #5).
         const foreignLanded = allocation[i].landedLineTotal;
         const landedLineTotal =
-          foreignLanded == null ? null : isForeign ? convertToBase(foreignLanded, fxRate, "cents") : foreignLanded;
+          foreignLanded == null ? null : fxQuote.convert(Amount.of(foreignLanded, invoiceCurrency)).toNumber();
 
         // ── EQUIPMENT_ASSET: capitalize N individually-tracked assets (council C5) ────────────────────
         if (target === "EQUIPMENT_ASSET") {

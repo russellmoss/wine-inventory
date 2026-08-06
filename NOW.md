@@ -377,3 +377,20 @@ problem; 19 deliberate throws are now coded `ActionError`s (`BETTER_AUTH_SECRET 
 left plain so it gets captured). tsc · lint · 10 guards · 5,952 tests green. **Not started: workstream B's
 FX/`convertToBase` stage.** Remaining ERRCAP sites: `weather/actions.ts` 9, `ingest-invoice-core.ts` 3,
 one each in `action-result.ts` / `ferment/panel-core.ts` / `process-scene-core.ts` / `extract-invoice.ts`._
+_Last updated: 2026-08-06 (later still) — **workstream B, FX stage: MONEY-1 is guarded.** Two defects, and
+only one was arithmetic. **Measured, not assumed:** over 1,400,000 realistic pairs (cent-scale amounts ×
+seven real ECB rates), the old `round2(amount * rate)` disagreed with exact decimal on **447 — 0.032%,
+~1 in 3,100** — always a cent light (`11 × 1.085` is 11.935 on the nose and came out 11.93). That is the
+grain reconciled against QBO's GL, so 1 line in 3,100 is an A/P reconciliation that silently fails to
+balance. ⚠️ **Honest correction to my own earlier claim: the `round8` per-unit grain showed 0 of 1,400,000
+disagreements** — the MAX_SAFE_INTEGER hazard needs n above ~90 MILLION, not ~90. Converted for
+uniformity, not for a bug. **The structural defect is the reason the type exists:** a bare `number × rate`
+cannot know its own currency, so nothing stopped a double conversion or a wrong-pair rate — and the result
+of either is a *plausible number*. New `FxQuote` (base, foreign, exact Decimal rate, date, source) refuses
+an Amount that isn't in `foreign` and names the double-conversion case by hand. `requireCurrency` now
+throws instead of defaulting an unsupported code to USD (that gate was hand-rolled in ingest). The one
+`convertToBase` call site is migrated; the allow-list is **empty**. Guard ablated 3 ways. tsc · lint · 12
+guards · 5,975 tests green. **Next stage: the cost roll-up** — `src/lib/cost/` accumulates in float
+(`round8(totalCost + extended)`) and `ingest/landed-cost.ts` hand-rolls a residual sweep that
+`Amount.allocateByWeights` already does exactly. Rebased onto #611 (`5382a993`); the doc/config
+conflicts were the predicted ones and the register recount is now 64 notes / 59 guarded._

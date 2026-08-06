@@ -585,3 +585,43 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   identically in all 13 cron routes**, and every copy being correct is exactly what made it dangerous —
   nothing forced a 14th route to include one, and a cron endpoint without the gate is an
   unauthenticated way to trigger a tenant-wide sweep.
+## Money — a currency conversion is currency-checked (MONEY-1)
+
+> Machine-readable note: [[MONEY-1-a-conversion-is-currency-checked]]. Guarded by `npm run verify:money-fx`.
+
+- **An FX conversion goes through `FxQuote`, and `src/lib/money/**` computes money in `Prisma.Decimal`
+  (MONEY-1, high, app-code).** Two defects, and only one of them was arithmetic.
+  **The float one, measured.** `convertToBase` was `round2(amountForeign * rate)`. Over a sweep of
+  **1,400,000** realistic pairs (cent-scale amounts × seven real ECB rates) the float path disagrees with
+  exact decimal on **447 — 0.032%, about 1 in 3,100** — always by a cent, always downward: `11 × 1.085`
+  is 11.935 on the nose and came out **11.93**. That is the "cents" grain, the one reconciled against
+  QBO's derived home GL debit, so one line in 3,100 is an A/P reconciliation that silently fails to
+  balance. ⚠️ **Stated honestly: the `round8` per-unit grain showed 0 of 1,400,000 disagreements** — the
+  `Math.round(n * 1e8)` MAX_SAFE_INTEGER hazard needs n above ~90,000,000 to bite. It was converted for
+  uniformity, not for an observed bug. The old code also imported `round2` from `@/lib/bottling/draw` —
+  money was borrowing the **volume** rounder, which is the tell the guard now forbids.
+  **The structural one, which is why the type exists.** `convertToBase(amount: number, rate: number)`
+  cannot tell what currency the amount is in, so nothing stopped converting an already-base figure twice
+  or applying a NZD→USD rate to a EUR one — and **the result of either is a plausible number**. No
+  exception, no bad total, just a wrong one. `FxQuote` carries base, foreign, an exact Decimal rate, the
+  quote date and the source; `convert` refuses anything not in `foreign` and names the double-conversion
+  case specifically, because that is the likely one.
+  **Three consequences worth knowing.** (a) An unsupported currency now THROWS (`requireCurrency`) rather
+  than defaulting to USD — `coerceCurrency`'s forgiveness is right for a display symbol and wrong for
+  arithmetic, and `ingest-invoice-core.ts` had to hand-roll that gate. (b) A same-currency quote must be
+  exactly 1 (a feed round-trip really returns `0.99999998` for X→X); `FxQuote.identity()` is a true
+  pass-through, which is what lets the ingest call site drop its `isForeign ?` ternary safely rather than
+  luckily. (c) **Σ round(line) ≠ round(Σ line) in exact decimal too** — `0.10 × 0.05` three times is 0.03
+  per line and 0.02 as one total. That is a posting decision, not a bug, so `convert` and
+  `convertUnsettled` are separate methods instead of one implicit default.
+  ⚠️ **`inverse()` is display-only, and the measurements are the argument**: over 20,000 cent-scale
+  amounts it round-trips wrong **0 times at 1.085, 7,538 times at 0.6231** (an ordinary USD-per-NZD), and
+  **19,870 times at 0.00654** — where small amounts convert to `0.00` and are simply gone. It is exact at
+  some rates and lossy at others, so "it worked when I tried it" proves nothing.
+  ⚠️ **NOT covered, and deliberately so — the next stage of workstream B.** `src/lib/cost/` is float
+  throughout (`round8(totalCost + extended)`, `round8(sum)`, `round8(amt * f)`) and **accumulation** is
+  where drift compounds, so it is the bigger fish. `src/lib/ingest/landed-cost.ts` allocates freight with
+  float `round2` plus a residual swept onto the last priced line to make Σ tie — which is exactly what
+  `Amount.allocateByWeights` already does exactly, so it is a direct swap. `src/lib/accounting/` likewise.
+  The `convertToBase` allow-list is shrink-only and currently **empty**, and the guard fails on a stale
+  entry too.

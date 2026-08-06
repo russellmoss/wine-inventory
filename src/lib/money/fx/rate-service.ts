@@ -13,9 +13,19 @@
 
 import { prisma } from "@/lib/prisma";
 import { fetchFrankfurterRate, type FrankfurterDeps } from "@/lib/money/fx/frankfurter";
+import { FxQuote } from "@/lib/money/fx/quote";
 
 export type ResolvedRate =
-  | { ok: true; rate: number; rateDate: Date; source: string }
+  | {
+      ok: true;
+      rate: number;
+      rateDate: Date;
+      source: string;
+      /** The rate as an EXACT decimal string, when the source can give one (the `fx_rate` Decimal column,
+       *  or the feed's own text). `rate` is a float for the legacy callers; this is what `getQuote` uses so
+       *  the quote never depends on a float round-trip. Optional so injected test stubs stay valid. */
+      rateExact?: string;
+    }
   | { ok: false; reason: string };
 
 export type RateServiceDeps = FrankfurterDeps & {
@@ -77,7 +87,13 @@ export async function getRate(
     where: { base_quote_rateDate: { base: foreign, quote: base, rateDate: effectiveDate } },
   });
   if (row) {
-    const hit: ResolvedRate = { ok: true, rate: Number(row.rate), rateDate: effectiveDate, source: row.source };
+    const hit: ResolvedRate = {
+      ok: true,
+      rate: Number(row.rate),
+      rateExact: row.rate.toString(),
+      rateDate: effectiveDate,
+      source: row.source,
+    };
     memo.set(key, hit);
     return hit;
   }
@@ -103,7 +119,52 @@ export async function getRate(
     });
 
   const actualRateDate = /^\d{4}-\d{2}-\d{2}$/.test(fetched.rateDate) ? dateOnly(fetched.rateDate) : effectiveDate;
-  const resolved: ResolvedRate = { ok: true, rate: fetched.rate, rateDate: actualRateDate, source: fetched.source };
+  const resolved: ResolvedRate = {
+    ok: true,
+    rate: fetched.rate,
+    rateExact: String(fetched.rate),
+    rateDate: actualRateDate,
+    source: fetched.source,
+  };
   memo.set(key, resolved);
   return resolved;
+}
+
+/** A resolved rate promoted to an `FxQuote` — currency-tagged, so conversion can refuse a mismatch. */
+export type ResolvedQuote = { ok: true; quote: FxQuote } | { ok: false; reason: string };
+
+/** The `getRate` signature, as injected by `ApplyDeps` and the verify stubs. */
+export type RateResolver = (base: string, foreign: string, at: Date) => Promise<ResolvedRate>;
+
+/**
+ * `getRate`, then promoted to an `FxQuote`. THIS is what callers doing arithmetic should use — the bare
+ * number cannot say what currency it is in, and `FxQuote.convert` refuses an Amount that isn't in the
+ * quote's foreign currency (MONEY-1).
+ *
+ * `resolve` is injectable so the ingest path can keep passing its deterministic stub. A stub that omits
+ * `rateExact` falls back to the float, which is exactly as good as the stub's own input.
+ *
+ * An unsupported currency code raises here rather than defaulting to USD — `FxQuote.of` parses strictly.
+ * That is a THROW, not an `{ ok: false }`, because it means the caller passed a code it never validated,
+ * which is a bug and not a feed miss.
+ */
+export async function getQuote(
+  base: string,
+  foreign: string,
+  at: Date,
+  deps: RateServiceDeps = {},
+  resolve: RateResolver = (b, f, t) => getRate(b, f, t, deps),
+): Promise<ResolvedQuote> {
+  const resolved = await resolve(base, foreign, at);
+  if (!resolved.ok) return { ok: false, reason: resolved.reason };
+  return {
+    ok: true,
+    quote: FxQuote.of({
+      base,
+      foreign,
+      rate: resolved.rateExact ?? resolved.rate,
+      rateDate: resolved.rateDate,
+      source: resolved.source,
+    }),
+  };
 }

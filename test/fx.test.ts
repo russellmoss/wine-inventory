@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { convertToBase, round8 } from "@/lib/money/fx/convert";
 import { parseRate, fetchFrankfurterRate } from "@/lib/money/fx/frankfurter";
-import { cetEffectiveDate } from "@/lib/money/fx/rate-service";
+import { cetEffectiveDate, getQuote, type ResolvedRate } from "@/lib/money/fx/rate-service";
 
 // Plan 073 — pure FX logic (no DB, no real network). The DB cache read-through + same-currency +
 // weekend + miss behavior of the rate service is proven against Neon in scripts/verify-fx.ts; here we
@@ -25,6 +25,38 @@ describe("convertToBase — base = foreign × rate, two rounding grains", () => 
     expect(() => convertToBase(100, -1, "cents")).toThrow();
     expect(() => convertToBase(100, NaN, "cents")).toThrow();
     expect(() => convertToBase(Infinity, 1.1, "cents")).toThrow();
+  });
+
+  // The float defect this function used to have, pinned. Each of these was measured wrong under
+  // `round2(amountForeign * rate)`: the exact product lands ON a half, the binary product lands a hair
+  // below it, and Math.round then rounds DOWN. Over a sweep of 1,400,000 realistic cent-scale amounts ×
+  // seven real ECB rates, 447 (0.032% — about 1 in 3,100) came out a cent light.
+  it.each([
+    [11, 1.085, 11.94], // 11 × 1.085 = 11.935 exactly; float gave 11.93
+    [15, 1.085, 16.28], // 16.2750 → 16.28; float gave 16.27
+    [37, 1.085, 40.15],
+    [65, 1.085, 70.53],
+    [950, 0.6231, 591.95], // 591.945 → 591.95; float gave 591.94
+    [1850, 0.6231, 1152.74],
+  ])("cents grain: %d × %d is exactly %d, not a cent light", (amount, rate, expected) => {
+    expect(convertToBase(amount, rate, "cents")).toBe(expected);
+  });
+
+  it("keeps every value the old float path already got right", () => {
+    // The fix must be behaviour-PRESERVING on the 99.968%. These are the fixtures the FX proofs assert on.
+    expect(convertToBase(547.99, 1.085, "cents")).toBe(594.57);
+    expect(convertToBase(219.17, 1.085, "cents")).toBe(237.8);
+    expect(convertToBase(200, 1.1, "cents")).toBe(220);
+    expect(convertToBase(110, 1.25, "cents")).toBe(137.5);
+  });
+
+  it("round8 is unchanged on realistic magnitudes — no defect was observed in the unit grain", () => {
+    // Stated plainly because it would be easy to over-claim: the same 1.4M-pair sweep found 0 unit-grain
+    // disagreements. `Math.round(n * 1e8)` does go inexact, but only above n ≈ 90,000,000, and a per-unit
+    // cost of ninety million dollars is not a thing. This was converted for uniformity, not for a bug.
+    expect(round8(0.123456789)).toBe(0.12345679);
+    expect(round8(90.071992547)).toBe(90.07199255);
+    expect(round8(1000.000000005)).toBe(1000.00000001);
   });
 });
 
@@ -85,6 +117,56 @@ describe("fetchFrankfurterRate — injectable fetch, typed result, backoff", () 
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toContain("ECONNRESET");
+  });
+});
+
+describe("getQuote — a resolved rate promoted to a currency-tagged FxQuote (MONEY-1)", () => {
+  const AT = new Date("2026-06-12T12:00:00.000Z");
+  const JUN = new Date("2026-06-12T00:00:00.000Z");
+
+  it("prefers rateExact over the float, so the quote never depends on a round-trip", async () => {
+    // This is the whole reason getQuote exists rather than each caller hand-rolling FxQuote.of: the
+    // `fx_rate` column is Decimal(18,8) and the feed's body is text, so an exact string IS available —
+    // and a hand-rolled construction would quietly reach for the convenient `rate` number instead.
+    const resolved: ResolvedRate = {
+      ok: true,
+      rate: 1.0873,
+      rateExact: "1.08730001",
+      rateDate: JUN,
+      source: "ECB via Frankfurter",
+    };
+    const r = await getQuote("USD", "EUR", AT, {}, async () => resolved);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.quote.rateString()).toBe("1.08730001");
+    expect(r.quote.base).toBe("USD");
+    expect(r.quote.foreign).toBe("EUR");
+  });
+
+  it("falls back to the float when a stub supplies no exact string", async () => {
+    // The injected stubs in verify-ingest / verify-fx-e2e only set `rate`. Falling back is exactly as
+    // precise as the stub's own input, which is the most that can be claimed.
+    const r = await getQuote("USD", "EUR", AT, {}, async () => ({
+      ok: true,
+      rate: 1.085,
+      rateDate: JUN,
+      source: "stub",
+    }));
+    expect(r.ok && r.quote.rateString()).toBe("1.085");
+  });
+
+  it("passes a miss through as { ok: false } — never a fabricated 1.0 (D14)", async () => {
+    const r = await getQuote("USD", "EUR", AT, {}, async () => ({ ok: false, reason: "HTTP 404" }));
+    expect(r).toEqual({ ok: false, reason: "HTTP 404" });
+  });
+
+  it("THROWS on an unsupported currency rather than returning a miss", async () => {
+    // Deliberately not an { ok: false }: a miss means "the feed had no rate", which invites a retry or a
+    // manual override. An unvalidated currency code is a caller bug, and papering over it is how a
+    // foreign amount gets booked 1:1.
+    await expect(
+      getQuote("USD", "CHF", AT, {}, async () => ({ ok: true, rate: 1.1, rateDate: JUN, source: "stub" })),
+    ).rejects.toThrow(/not a supported currency/);
   });
 });
 
