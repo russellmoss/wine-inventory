@@ -52,6 +52,19 @@ jobs:
       # currency it wasn't quoted for; and src/lib/money carries no float rounding (the old float path was
       # a cent light on 447 of 1,400,000 measured pairs). Static scan, no DB.
       - run: npm run verify:money-fx
+      # LEDGER-9: ledger volumes are Decimal(10,2) — integer centilitres. Postgres rounds each deltaL on
+      # insert, cannot enforce a cross-row sum, and nothing re-reads the operation, so a planner that emits
+      # finer precision leaves an operation permanently unbalanced (LEDGER-6). The old check was a 1e-6
+      # tolerance — four orders LOOSER than the 0.01 grain it had to protect — and LEDGER-9's declared guard
+      # was a reversal proof that never used a fractional volume. This drives the real planners with
+      # base-10-hostile inputs (thirds, sevenths, primes). Pure, no DB.
+      - run: npm run verify:ledger-grain
+      # COST-1 (critical): cost is neither created nor destroyed —
+      # Σ(DIRECT capitalized) == Σ(totalCost) + Σ(expensed). Its only guard was `verify:cost`, which needs
+      # a real database and so never ran in THIS job; the one pure check that existed, `transferImbalance`,
+      # was a tautology returning 0 for any input including a 120% over-transfer. This is the pure half:
+      # N-way splits, abnormal loss, and a 12-generation split/merge chain. No DB.
+      - run: npm run verify:cost-conservation
       # FK-1: composite (tenantId, refId) FKs are invisible to Prisma, so 291 of them lived only in
       # hand-written migration SQL. prisma/fk-registry.json is that graph, replayed from the migration
       # history; this asserts every reference column in schema.prisma is declared as a Prisma relation,
@@ -67,6 +80,12 @@ jobs:
       # tripwire's forbidden pattern (e.g. runAsSystem in src/app) present.
       - run: npm run verify:invariants
       - run: npm run verify:invariant-frontmatter
+      # REGISTER-1: `verify:invariants` proves each invariant's guard EXISTS — "detection only", as the
+      # register's own README says. A script can exist, pass, and never be executed by CI. LEDGER-9 pointed
+      # at a reversal proof that never tested it; COST-1 (critical) pointed at a DB script no CI job runs.
+      # This asserts every guarded invariant's declared guard is REACHED by a CI job, or is on the
+      # manual-proof baseline with a written reason. Shrink-only: a stale entry fails too. Pure, no DB.
+      - run: npm run verify:invariant-coverage
       - run: npm run verify:tripwires
       # Product-thesis gates (pure Node): the Capability-Parity register's `covered`
       # claims must resolve, and every domain core must be import-reachable from an

@@ -394,3 +394,60 @@ guards · 5,975 tests green. **Next stage: the cost roll-up** — `src/lib/cost/
 (`round8(totalCost + extended)`) and `ingest/landed-cost.ts` hand-rolls a residual sweep that
 `Amount.allocateByWeights` already does exactly. Rebased onto #611 (`5382a993`); the doc/config
 conflicts were the predicted ones and the register recount is now 64 notes / 59 guarded._
+
+_Last updated: 2026-08-06 (evening) — **LEDGER-9 investigated: the ledger was right, the REGISTER was
+wrong.** Three ways an invariant register can lie while every gate stays green. (a) `verify:` pointed at
+`verify:reverse` — a 264-line **reversal-semantics** proof with zero references to rounding, decimals,
+balance or floats, whose only fractional literals in the whole file are `0.5` and `13.5`. It could not fail
+this way, and `verify:invariants` only checks the named script EXISTS ("detection only"). **A guard that
+cannot fail is worse than a missing one — it reads as coverage.** (b) The narrative credited **`round2`** as
+a "centiliter-integer / `Prisma.Decimal` helper"; it is `Math.round(n * 100) / 100`, IEEE-754, 287 call
+sites. `computeProportionalDraw` is the exact one; `round2` merely normalises to the grain. (c) `isBalanced`
+was `|Σ| < 1e-6` — **four orders looser than the 0.01 storage grain it had to protect** — so it could accept
+`[3.3333, 3.3333, 3.3334, -10]` (Σ=0) which stores as **−0.01 L**, breaking LEDGER-6 silently and forever,
+since Postgres rounds on insert, a CHECK can't see a cross-row sum, and nothing re-reads the op.
+**The substance HELD.** A probe asserting ≤2dp on every `deltaL` ran the full suite: **0 trips in 5,992
+tests**. `computeProportionalDraw` really is centilitre-exact, every N-way split goes through it, and the
+~50 hand-written `round2` calls really do hold. What was missing was **enforcement** — LEDGER-6 rested on
+fifty call sites each remembering, with no chokepoint check. Same shape as MONEY-1's structural defect.
+Fixed: `assertBalanced` now checks grain-then-conservation in integer centilitres, exactly. New
+`verify:ledger-grain` (41 tests) drives the REAL planners with base-10-hostile inputs — thirds, sevenths,
+primes, 13-way splits. **Ablated: reverting the fix fails 3 of its tests; `verify:reverse` scores 0
+matches on the same regression.** `appliesTo` no longer claims `src/lib/cost/` (float throughout — that is
+MONEY-1's remit and its open stage). Stacked on #612._
+_Last updated: 2026-08-06 (late) — **cost roll-up stage: the measurements refuted my own premise, so the
+work changed shape.** I had recorded (in MONEY-1 and INVARIANTS.md) that `src/lib/cost/` was "the bigger
+fish" because "accumulation is where drift compounds", and that `landed-cost.ts` was "a direct swap" for
+`Amount.allocateByWeights`. **Both were extrapolated from the FX defect, not measured, and both are
+wrong.** `rollupCost` conserves to ~1e-13 across 3→200-way splits; `planDepletion` disagreed with exact
+decimal in **0 of 800** cases; `allocateLandedCost` is **exact** at the cent grain on every adversarial
+input; `bottlingCostPerBottle` recomposes exactly. Converting this path to Decimal would be churn on a
+critical path. **Both claims are now retracted in place, with the numbers.**
+**What the measuring DID find is worse than drift.** COST-1 is `severity: critical`, and (a) its only
+PURE conservation check, `transferImbalance`, was a **tautology** — `moved` added to both sides, so it
+returned 0 for any input including transfers taking **120%** of a parent, while the test asserting on it
+was titled "conservation invariant (D10)"; and (b) its only guard, `verify:cost`, needs `--env-file=.env`,
+so a critical invariant **never ran in CI's required job**. **Third instance of "a guard that cannot fail"**
+after LEDGER-9 — that is a pattern now, not a coincidence.
+Fixed: `costConservationResidual` states the real identity (Σ DIRECT == Σ totalCost + Σ expensed),
+`transferImbalance` now measures the per-op rounding residual its name implies, and the new pure
+`verify:cost-conservation` (19 tests, in CI) covers N-way splits, abnormal loss and a 12-generation
+split/merge chain. Ablated 3 ways — breaking the parent debit fails 8 tests, deleting the write-off fails
+2, restoring the tautology fails 1. tsc · lint · 14 guards · 6,012 tests green. Branch
+`fix/cost-decimal-rollup` (the name is now a misnomer — it decimals nothing)._
+
+_Last updated: 2026-08-07 — **REGISTER-1: the register now has to be honest about its own coverage.**
+`verify:invariants` only ever asserted that a guard SCRIPT EXISTS ("detection only", per its own README),
+which is how LEDGER-9 pointed at a reversal proof that never tested it and COST-1 (critical) pointed at a
+`--env-file` script **no CI job ran**. New `verify:invariant-coverage` (in CI): every guarded invariant's
+`verify:` must be REACHED by a CI job, or sit on `manual-proof-baseline.json` **with a written reason**.
+First run: **12 reached in CI, 48 baselined, 60 guarded total.** The 48 are mostly correct architecture —
+DB proofs, and `check` is deliberately pure — but nothing had ever said so out loud. ⚠️ **One entry is a
+real finding: TENANT-1 names a manual DB script while the invariant is actually proven every PR by the
+`tenant-isolation` job through PgBouncer — the register names the wrong artifact.** The check also PRINTS
+(without failing) guards standing in for ≥4 invariants: **`verify:reverse` covers 9**, and LEDGER-9 was one
+of them — treat it as an ablation queue. ⚠️ **Scope, stated plainly: this catches only ONE of the four ways
+a guard fails** (unreachable). Tautological, wrong-subject and blind-spot all still need a human asking
+"can this assertion ever be false?" — the practical form being an ablation. I found a hole in my own
+classifier while building it (env-gated suites EXECUTE in the plain `vitest run` and assert nothing) and
+closed it; crediting those would have been the same over-claim. tsc · lint · 14 guards · 5,992 tests._

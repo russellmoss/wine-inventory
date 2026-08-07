@@ -58,9 +58,27 @@ state of any vessel/lot is the fold of all lines over time, materialized in `Ves
    is a bug, not a tolerated state.
 8. **No fabricated volume.** A residual at/below `FUNCTIONAL_ZERO_L` (0.01 L, centiliter
    granularity) is swept to zero (the row drops); balances never accumulate "dust".
-9. **Decimal-safe math.** All volume arithmetic uses centiliter-integer / `Prisma.Decimal`
-   helpers (`computeProportionalDraw`, `round2`) — never raw `parseFloat`/IEEE-754, which
-   would randomly break invariant #6.
+9. **Decimal-safe math (LEDGER-9).** Every `deltaL` reaching a ledger line sits ON the
+   `Decimal(10,2)` storage grain — integer centiliters — and `assertBalanced` checks conservation
+   EXACTLY at that grain, not within a tolerance. Volume shares are allocated by
+   **`computeProportionalDraw`** (centiliter-integer, largest-remainder), never by dividing floats.
+   **Why the grain is a conservation question:** Postgres rounds each `deltaL` to 2dp on insert, a
+   `CHECK` cannot see a cross-row sum, and nothing re-reads the operation — so lines at finer
+   precision leave an operation permanently unbalanced. `[3.3333, 3.3333, 3.3334, -10]` sums to 0 and
+   stores as **−0.01 L**, breaking invariant #6 silently and forever.
+   ⚠️ **Corrected 2026-08-06, and each correction is a way this register can lie while every gate stays
+   green.** (a) `verify:` pointed at `verify:reverse` — a reversal-semantics proof with **no** reference
+   to rounding, decimals, balance or floats, whose only fractional literals are `0.5` and `13.5`. It
+   could not fail this way, and `verify:invariants` only checks that the named script EXISTS. (b) This
+   line used to credit **`round2`** as a "centiliter-integer / `Prisma.Decimal` helper"; it is
+   `Math.round(n * 100) / 100`, plain IEEE-754, across 287 call sites. It *normalises to the grain*,
+   which is necessary but is not exact arithmetic — `computeProportionalDraw` is the exact one. (c)
+   `isBalanced` was `|Σ| < 1e-6`, **four orders looser than the 0.01 grain it had to protect**.
+   The substance HELD: a probe asserting ≤2dp on every `deltaL` produced **zero trips across 5,992
+   tests**. What was missing was enforcement — LEDGER-6 rested on ~50 call sites each remembering to
+   round, with no chokepoint check and no guard. Same shape as MONEY-1's structural defect, same fix.
+   Now guarded by `npm run verify:ledger-grain`, which drives the real planners with base-10-hostile
+   inputs (thirds, sevenths, primes) — reverting the fix fails it.
 
 ### Correction semantics — D6 / D15
 10. **Operations are immutable.** Undo is never a row reversion or a delete; it is a new
@@ -113,10 +131,27 @@ state of any vessel/lot is the fold of all lines over time, materialized in `Ves
   fabricated lineage; **`BottlingSource.lotId` is not backfilled** on historical rows.
 
 ## Cost roll-up — Phase 8 (D5/D9/D10/D13/D14/D17/D19)
-The cost engine is a projection over the ledger; it never invents or loses money. Proven end-to-end by
-`npm run verify:cost` (runs in the Demo Winery tenant).
-- **Cost conservation.** Across blend/split/loss/bottle/reversal, `Σ(cost out) + stranded == cost removed
-  from parents`; nothing is created or destroyed except explicit VARIANCE lines. Zero volume ⇒ zero cost.
+The cost engine is a projection over the ledger; it never invents or loses money. Proven purely by
+`npm run verify:cost-conservation` (no DB, runs in CI) and end-to-end by `npm run verify:cost` (needs the
+Demo Winery tenant).
+- **Cost conservation (COST-1, critical).** Across blend/split/loss/bottle/reversal, nothing is created or
+  destroyed except explicit VARIANCE lines. Zero volume ⇒ zero cost. Stated so it can be checked:
+  `Σ(DIRECT amounts capitalized) == Σ(every lot's totalCost) + Σ(every lot's expensed)` — everything else
+  is movement, and `stranded` is a *report* of cost on a drained lot, not a separate term.
+  ⚠️ **Two guard defects fixed 2026-08-06.** (a) The only PURE conservation check, `transferImbalance`,
+  was a **tautology** — it computed `moved` once and added it to both sides, returning 0 for any input
+  including transfers taking 120% of a parent, while the test asserting on it was titled "conservation
+  invariant (D10)". (b) COST-1's only guard, `verify:cost`, needs `--env-file=.env` (a database), so a
+  *critical* invariant never ran in CI's required job. Both closed: `costConservationResidual` is the real
+  identity, `transferImbalance` now measures the per-op rounding residual its name implies, and
+  `verify:cost-conservation` is pure. **Third instance of "a guard that cannot fail"** after LEDGER-9 and
+  the same pattern — worth watching for.
+  📏 **Precision is float, measured and deliberately kept.** The identity holds to ~1e-13, not exactly the
+  way LEDGER-6 does; the guard's tolerance is 1e-9. Sweeps found no material drift: `rollupCost` conserves
+  across 3→200-way splits (parent keeps ~1e-8 dust, below the VARIANCE threshold), `planDepletion`
+  disagreed with exact decimal in **0 of 800** cases, `allocateLandedCost` is **exact** at the cent grain,
+  and `bottlingCostPerBottle` recomposes exactly. Converting to `Decimal` would be churn on a critical
+  path. Money PRECISION is MONEY-1's remit; this is about CONSERVATION.
 - **Transferred-volume cost, not lineage fraction (D10).** A blend/split moves `parentTotalCost ×
   transferredL / parentPreOpL` via an immutable `OperationCostTransfer`, never the ambiguous lineage %.
 - **Normal vs abnormal loss (D13).** Normal loss reallocates onto surviving volume (per-L rises); abnormal
@@ -618,10 +653,39 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   amounts it round-trips wrong **0 times at 1.085, 7,538 times at 0.6231** (an ordinary USD-per-NZD), and
   **19,870 times at 0.00654** — where small amounts convert to `0.00` and are simply gone. It is exact at
   some rates and lossy at others, so "it worked when I tried it" proves nothing.
-  ⚠️ **NOT covered, and deliberately so — the next stage of workstream B.** `src/lib/cost/` is float
-  throughout (`round8(totalCost + extended)`, `round8(sum)`, `round8(amt * f)`) and **accumulation** is
-  where drift compounds, so it is the bigger fish. `src/lib/ingest/landed-cost.ts` allocates freight with
-  float `round2` plus a residual swept onto the last priced line to make Σ tie — which is exactly what
-  `Amount.allocateByWeights` already does exactly, so it is a direct swap. `src/lib/accounting/` likewise.
-  The `convertToBase` allow-list is shrink-only and currently **empty**, and the guard fails on a stale
-  entry too.
+  ⚠️ **NOT covered:** `src/lib/cost/`, `src/lib/ingest/landed-cost.ts` and `src/lib/accounting/` are
+  still float. The `convertToBase` allow-list is shrink-only and currently **empty**, and the guard fails
+  on a stale entry too.
+  🔄 **Correction (2026-08-06) — this bullet used to claim `src/lib/cost/` was "the bigger fish" because
+  "accumulation is where drift compounds", and that `landed-cost.ts` was "a direct swap" for
+  `Amount.allocateByWeights`. Both were ASSUMPTIONS extrapolated from the FX defect, and measurement
+  refutes them.** `rollupCost` conserves to ~1e-13 across 3→200-way splits; `planDepletion` disagreed with
+  exact decimal in **0 of 800** cases; `allocateLandedCost` is **exact** at the cent grain on every
+  adversarial input; `bottlingCostPerBottle` recomposes exactly. The FX defect was real and measured; the
+  cost one was inferred and does not exist. What the cost path actually needed was **enforcement** — see
+  COST-1, whose only pure conservation check was a tautology.
+
+## Governance — a declared guard actually runs (REGISTER-1)
+
+> Machine-readable note: [[REGISTER-1-a-declared-guard-actually-runs]]. Guarded by `npm run verify:invariant-coverage`.
+
+- **Every `status: guarded` invariant's `verify:` must be REACHED by a CI job, or be on
+  `manual-proof-baseline.json` with a written reason (REGISTER-1, high, app-code).** `verify:invariants`
+  asserts only that the named script **exists** — "detection only", as the register's own README says. A
+  script can exist, pass, and never run. Two cases found a day apart proved the gap is real: **LEDGER-9**
+  pointed at `verify:reverse`, a 264-line reversal-semantics proof whose only fractional literals are
+  `0.5` and `13.5`; and **COST-1 (critical)** pointed at a `--env-file` script **no CI job ran**, whose one
+  pure check was a tautology returning 0 for a 120% over-transfer. Both were invisible because **a guard
+  that cannot fail is indistinguishable from a passing one** — a MISSING guard is visible, this class is not.
+  **Four ways a guard fails to guard:** *tautological* (true by construction — `transferImbalance`),
+  *wrong subject* (LEDGER-9), *unreachable* (COST-1), *blind spot* (GLOBAL-1's read-name heuristic once
+  skipped `getOrCreateX`). ⚠️ **This guard catches only the THIRD.** The other three need a human asking
+  "can this assertion ever be false?" — in practice an **ablation**: break the code deliberately and
+  confirm the guard screams. Every invariant added since is ablated; make that the expectation.
+  **The 48-entry baseline is architecture, not backlog** — those are DB proofs and the required `check` job
+  is deliberately pure. Each entry carries a reason written per PROOF, because a generated one-liner would
+  recreate "detection only" in a new field. Shrink-only; a stale entry fails too. ⚠️ **One entry is a real
+  finding: TENANT-1 names a manual DB script, while the invariant is actually proven every PR by the
+  `tenant-isolation` job through PgBouncer — the register names the wrong artifact.**
+  The check also PRINTS (without failing) any guard standing in for ≥4 invariants — `verify:reverse` covers
+  **9**, and LEDGER-9 was one of them. Treat that list as an ablation queue.
