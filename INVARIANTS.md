@@ -664,3 +664,28 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   adversarial input; `bottlingCostPerBottle` recomposes exactly. The FX defect was real and measured; the
   cost one was inferred and does not exist. What the cost path actually needed was **enforcement** — see
   COST-1, whose only pure conservation check was a tautology.
+
+## Governance — a declared guard actually runs (REGISTER-1)
+
+> Machine-readable note: [[REGISTER-1-a-declared-guard-actually-runs]]. Guarded by `npm run verify:invariant-coverage`.
+
+- **Every `status: guarded` invariant's `verify:` must be REACHED by a CI job, or be on
+  `manual-proof-baseline.json` with a written reason (REGISTER-1, high, app-code).** `verify:invariants`
+  asserts only that the named script **exists** — "detection only", as the register's own README says. A
+  script can exist, pass, and never run. Two cases found a day apart proved the gap is real: **LEDGER-9**
+  pointed at `verify:reverse`, a 264-line reversal-semantics proof whose only fractional literals are
+  `0.5` and `13.5`; and **COST-1 (critical)** pointed at a `--env-file` script **no CI job ran**, whose one
+  pure check was a tautology returning 0 for a 120% over-transfer. Both were invisible because **a guard
+  that cannot fail is indistinguishable from a passing one** — a MISSING guard is visible, this class is not.
+  **Four ways a guard fails to guard:** *tautological* (true by construction — `transferImbalance`),
+  *wrong subject* (LEDGER-9), *unreachable* (COST-1), *blind spot* (GLOBAL-1's read-name heuristic once
+  skipped `getOrCreateX`). ⚠️ **This guard catches only the THIRD.** The other three need a human asking
+  "can this assertion ever be false?" — in practice an **ablation**: break the code deliberately and
+  confirm the guard screams. Every invariant added since is ablated; make that the expectation.
+  **The 50-entry baseline is architecture, not backlog** — those are DB proofs and the required `check` job
+  is deliberately pure. Each entry carries a reason written per PROOF, because a generated one-liner would
+  recreate "detection only" in a new field. Shrink-only; a stale entry fails too. ⚠️ **One entry is a real
+  finding: TENANT-1 names a manual DB script, while the invariant is actually proven every PR by the
+  `tenant-isolation` job through PgBouncer — the register names the wrong artifact.**
+  The check also PRINTS (without failing) any guard standing in for ≥4 invariants — `verify:reverse` covers
+  **9**, and LEDGER-9 was one of them. Treat that list as an ablation queue.
