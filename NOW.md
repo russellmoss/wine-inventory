@@ -394,3 +394,19 @@ guards · 5,975 tests green. **Next stage: the cost roll-up** — `src/lib/cost/
 (`round8(totalCost + extended)`) and `ingest/landed-cost.ts` hand-rolls a residual sweep that
 `Amount.allocateByWeights` already does exactly. Rebased onto #611 (`5382a993`); the doc/config
 conflicts were the predicted ones and the register recount is now 64 notes / 59 guarded._
+
+_Last updated: 2026-08-07 — **REGISTER-1: the register now has to be honest about its own coverage.**
+`verify:invariants` only ever asserted that a guard SCRIPT EXISTS ("detection only", per its own README),
+which is how LEDGER-9 pointed at a reversal proof that never tested it and COST-1 (critical) pointed at a
+`--env-file` script **no CI job ran**. New `verify:invariant-coverage` (in CI): every guarded invariant's
+`verify:` must be REACHED by a CI job, or sit on `manual-proof-baseline.json` **with a written reason**.
+First run: **10 reached in CI, 50 baselined, 60 guarded total.** The 50 are mostly correct architecture —
+DB proofs, and `check` is deliberately pure — but nothing had ever said so out loud. ⚠️ **One entry is a
+real finding: TENANT-1 names a manual DB script while the invariant is actually proven every PR by the
+`tenant-isolation` job through PgBouncer — the register names the wrong artifact.** The check also PRINTS
+(without failing) guards standing in for ≥4 invariants: **`verify:reverse` covers 9**, and LEDGER-9 was one
+of them — treat it as an ablation queue. ⚠️ **Scope, stated plainly: this catches only ONE of the four ways
+a guard fails** (unreachable). Tautological, wrong-subject and blind-spot all still need a human asking
+"can this assertion ever be false?" — the practical form being an ablation. I found a hole in my own
+classifier while building it (env-gated suites EXECUTE in the plain `vitest run` and assert nothing) and
+closed it; crediting those would have been the same over-claim. tsc · lint · 14 guards · 5,992 tests._

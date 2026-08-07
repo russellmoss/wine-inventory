@@ -108,6 +108,7 @@
     "verify:vineyard-scope-db": "tsx --conditions=react-server --env-file=.env scripts/verify-vineyard-scope-runtime.ts",
     "verify:invariants": "node scripts/verify-invariant-guards.mjs",
     "verify:invariant-frontmatter": "node scripts/verify-invariant-frontmatter.mjs",
+    "verify:invariant-coverage": "tsx scripts/check-invariant-guard-coverage.ts",
     "verify:tripwires": "node scripts/verify-tripwire-guards.mjs",
     "verify:parity": "node scripts/verify-parity-guards.mjs",
     "verify:ai-native": "node scripts/verify-ai-native.mjs",

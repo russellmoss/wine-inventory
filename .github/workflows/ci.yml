@@ -67,6 +67,12 @@ jobs:
       # tripwire's forbidden pattern (e.g. runAsSystem in src/app) present.
       - run: npm run verify:invariants
       - run: npm run verify:invariant-frontmatter
+      # REGISTER-1: `verify:invariants` proves each invariant's guard EXISTS — "detection only", as the
+      # register's own README says. A script can exist, pass, and never be executed by CI. LEDGER-9 pointed
+      # at a reversal proof that never tested it; COST-1 (critical) pointed at a DB script no CI job runs.
+      # This asserts every guarded invariant's declared guard is REACHED by a CI job, or is on the
+      # manual-proof baseline with a written reason. Shrink-only: a stale entry fails too. Pure, no DB.
+      - run: npm run verify:invariant-coverage
       - run: npm run verify:tripwires
       # Product-thesis gates (pure Node): the Capability-Parity register's `covered`
       # claims must resolve, and every domain core must be import-reachable from an
