@@ -441,7 +441,7 @@ _Last updated: 2026-08-07 — **REGISTER-1: the register now has to be honest ab
 which is how LEDGER-9 pointed at a reversal proof that never tested it and COST-1 (critical) pointed at a
 `--env-file` script **no CI job ran**. New `verify:invariant-coverage` (in CI): every guarded invariant's
 `verify:` must be REACHED by a CI job, or sit on `manual-proof-baseline.json` **with a written reason**.
-First run: **10 reached in CI, 50 baselined, 60 guarded total.** The 50 are mostly correct architecture —
+First run: **12 reached in CI, 48 baselined, 60 guarded total.** The 48 are mostly correct architecture —
 DB proofs, and `check` is deliberately pure — but nothing had ever said so out loud. ⚠️ **One entry is a
 real finding: TENANT-1 names a manual DB script while the invariant is actually proven every PR by the
 `tenant-isolation` job through PgBouncer — the register names the wrong artifact.** The check also PRINTS

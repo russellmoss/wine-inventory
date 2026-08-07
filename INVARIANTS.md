@@ -682,7 +682,7 @@ Machine-readable notes: [[WORKORDER-1-op-is-immutable-approval-is-task-state]],
   skipped `getOrCreateX`). ⚠️ **This guard catches only the THIRD.** The other three need a human asking
   "can this assertion ever be false?" — in practice an **ablation**: break the code deliberately and
   confirm the guard screams. Every invariant added since is ablated; make that the expectation.
-  **The 50-entry baseline is architecture, not backlog** — those are DB proofs and the required `check` job
+  **The 48-entry baseline is architecture, not backlog** — those are DB proofs and the required `check` job
   is deliberately pure. Each entry carries a reason written per PROOF, because a generated one-liner would
   recreate "detection only" in a new field. Shrink-only; a stale entry fails too. ⚠️ **One entry is a real
   finding: TENANT-1 names a manual DB script, while the invariant is actually proven every PR by the

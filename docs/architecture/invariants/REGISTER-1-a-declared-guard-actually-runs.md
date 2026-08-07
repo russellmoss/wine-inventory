@@ -63,14 +63,21 @@ env-gated suite counts only when a CI job names the file — which the `tenant-i
 
 ## The baseline is architecture, not backlog
 
-**50 of 59** guarded invariants sit on `manual-proof-baseline.json`, and that is mostly *correct*: they are
+**48 of 60** guarded invariants sit on `manual-proof-baseline.json`, and that is mostly *correct*: they are
 DB proofs, and CI's required `check` job is deliberately pure. They run against the Demo Winery tenant;
 two (`verify:fk-registry-db`, `verify:vineyard-scope-db`) run in the `db-proofs` job; `verify:work-orders`
 and `verify:chemistry` also run in the label-gated `feedback-domain-verify` job.
 
 Each entry carries a **written reason**, per proof rather than per invariant, so the text says what the
-proof does and where it runs. A generated one-liner would recreate the "detection only" problem in a new
-field. Shrink-only: the guard fails on a **stale** entry too, so the ratchet can only tighten.
+proof does and where it runs. A generated one-liner would recreate the "detection only" problem in
+a new field.
+
+> [!tip] The ratchet's first catch, before this even merged
+> The baseline was generated against `main`, where COST-1 and LEDGER-9 still pointed at DB-only guards.
+> Combining this change with the two that repointed them at pure, CI-runnable guards
+> (`verify:cost-conservation`, `verify:ledger-grain`) made both entries **stale**, and the guard failed
+> until they were removed — 50 → 48. Neither branch could have seen that alone. That is the shrink-only
+> direction doing its job: the register cannot quietly keep claiming a manual proof it no longer needs.
 
 One entry is a genuine finding rather than an architecture note — **TENANT-1**. Its declared
 `verify:tenant-isolation` is a manual DB script that no CI job runs, yet the invariant *is* proven on every
