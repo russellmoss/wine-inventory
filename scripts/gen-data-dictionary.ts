@@ -33,21 +33,25 @@ const OUT = join(ROOT, "docs", "architecture");
 
 /** The seams the app already has. A model matches the first pattern that hits; the rest fall to "Other". */
 const DOMAINS: { name: string; blurb: string; match: RegExp }[] = [
+  // ORDER MATTERS — first match wins. Weather sits above "the land" because every weather table is also
+  // named Vineyard*, and a prefix match would otherwise swallow the lot of them. Same reason vendors/ingest
+  // sits above the ledger: LotDocument is an ingest artifact, not a cellar one.
   { name: "Identity & access", blurb: "Who can sign in, which winery they belong to, and what they may reach.", match: /^(User|Session|Account|Verification|Organization|Member|Invitation|UserVineyard|VoiceProfile|VoicePreference|AppSettings|Owner)$/ },
-  { name: "The land", blurb: "Vineyards, blocks, plantings, and the geospatial layers over them.", match: /^(Location|Variety|Grower|GrowerContact|Vineyard|Block|Subblock|Spatial|Cdse|FieldNote|FieldInput)/ },
-  { name: "Weather & climate", blurb: "Observed and forecast weather per vineyard, plus provider usage.", match: /^(VineyardClimate|VineyardWeather|VineyardForecast|WeatherProvider)/ },
+  { name: "Weather & climate", blurb: "Observed and forecast weather per vineyard, plus provider quota tracking.", match: /^(VineyardClimate|VineyardWeather|VineyardForecast|WeatherProvider)/ },
   { name: "Spray & pest", blurb: "The pesticide corpus, tenant product facts, and the append-only spray chain.", match: /^(Pesticide|Spray|TenantProductFacts|LegacySpray|LatentInfection|PlannedHarvest)/ },
+  { name: "The land", blurb: "Vineyards, blocks, plantings, and the geospatial layers over them.", match: /^(Location|Variety|Grower|GrowerContact|Vineyard|Block|Subblock|Spatial|Cdse|FieldNote|FieldInput)/ },
   { name: "Harvest", blurb: "Picks, weigh tags, and Brix readings coming off the vineyard.", match: /^(BrixLog|Harvest|WeighTag)/ },
-  { name: "The cellar ledger", blurb: "THE CORE. Lots, the append-only operation ledger, and the projections folded from it.", match: /^(Lot|Vessel|Press|Blend|Analysis|Sample|NamingTemplate|CellarMaterial)/ },
+  { name: "Vendors & ingest", blurb: "Vendors and the invoice/document ingestion staging tables.", match: /^(Vendor|Ingested|LotDocument)/ },
+  { name: "Lots & the operation ledger", blurb: "THE CORE. A lot is identity; its volume is the FOLD of an append-only operation ledger. vessel_lot and lot_vineyard are maintained projections, not source of truth.", match: /^(Lot|VesselLot|NamingTemplate)/ },
+  { name: "Vessels, analysis & trials", blurb: "Tanks and barrels, what is dissolved in them, lab readings, and blend trials.", match: /^(Vessel|Press|Blend|Analysis|Sample|CellarMaterial)/ },
   { name: "Materials & equipment", blurb: "Consumables, supply lots, barrels, and tracked equipment assets.", match: /^(SupplyLot|MaterialMovement|SupplyConsumption|Barrel|EquipmentAsset|CustomUnit|StockMovement)/ },
   { name: "Work orders", blurb: "The human process layer — tasks, attempts, templates, reservations.", match: /^(WorkOrder|Reservation|CalculationLog)/ },
   { name: "Bottling & finished goods", blurb: "Bottling runs, SKUs, and finished-goods inventory.", match: /^(WineSku|Bottling|Bottled|FinishedGood)/ },
-  { name: "Cost & accounting", blurb: "Cost roll-up, variance, A/P export, and the accounting connection.", match: /^(Cost|Operation|Accounting|AccountMapping|ApExport|Fx|Commerce7|SalesExport|BillableWine)/ },
+  { name: "Cost & accounting", blurb: "Cost roll-up, variance, A/P export, FX, and the accounting connection.", match: /^(Cost|Operation|Accounting|AccountMapping|ApExport|Fx|Commerce7|SalesExport|BillableWine)/ },
   { name: "Compliance & tax", blurb: "TTB reporting, bond isolation, tax class, and reminders.", match: /^(Compliance|Bond|ChangeOfTaxClass)/ },
-  { name: "Vendors & ingest", blurb: "Vendors and the invoice/document ingestion staging tables.", match: /^(Vendor|Ingested|LotDocument)/ },
   { name: "Assistant & feedback", blurb: "The AI assistant's conversations, confirmations, and the feedback loop.", match: /^(Assistant|Feedback|Automation)/ },
   { name: "Knowledge base", blurb: "The crawled corpus behind the assistant's domain answers.", match: /^(Knowledge|TrustedDomain|CandidateSource|OAuthState)/ },
-  { name: "Inbox", blurb: "Per-user notifications and direct messages (per-USER row security, not just per-tenant).", match: /^(Inbox|DirectMessage)/ },
+  { name: "Inbox", blurb: "Per-user notifications and direct messages. NOTE: per-USER row security on top of per-tenant — a tenant-only read returns zero rows.", match: /^(Inbox|DirectMessage)/ },
   { name: "Migration & audit", blurb: "Cutover import staging and the immutable audit log.", match: /^(Migration|Legacy|AuditLog)/ },
 ];
 
@@ -132,7 +136,17 @@ function parseModels(): Model[] {
 
       const colMap = /@map\("([^"]+)"\)/.exec(attrs);
       const dbType = /@db\.(\w+(?:\([^)]*\))?)/.exec(attrs);
-      const def = /@default\(([^)]*(?:\([^)]*\))?[^)]*)\)/.exec(attrs);
+      // Balanced scan, not a regex: `@default(autoincrement())` and `@default(dbgenerated("x"))` nest.
+      const def = ((): string => {
+        const at = attrs.indexOf("@default(");
+        if (at < 0) return "";
+        let depth = 0;
+        for (let i = at + 8; i < attrs.length; i++) {
+          if (attrs[i] === "(") depth++;
+          else if (attrs[i] === ")" && --depth === 0) return attrs.slice(at + 9, i);
+        }
+        return "";
+      })();
 
       fields.push({
         name: fname,
@@ -143,7 +157,7 @@ function parseModels(): Model[] {
         isId: /@id\b/.test(attrs),
         isUnique: /@unique\b/.test(attrs),
         dbType: dbType ? dbType[1] : "",
-        defaultTo: def ? def[1] : "",
+        defaultTo: def,
         description: clean([...pending, trailing ? trailing[1] : ""].filter(Boolean).join(" ")),
       });
       pending = [];
@@ -289,12 +303,22 @@ function erd(): string {
   L.push("One diagram per domain, because 188 tables in a single graph is unreadable. An edge to a table");
   L.push("outside the current domain is still drawn — that is where the seams are.");
   L.push("");
+  L.push("⚠️ **The universal `tenantId → organization` edge is omitted from the pictures.** All 188 tables");
+  L.push("carry it (158 constraints), so drawing it conveys nothing and turns `organization` into a hub that");
+  L.push("flattens every layout. It is still listed per table in [[data-dictionary]] — omitted from the");
+  L.push("picture, not from the record.");
+  L.push("");
 
   for (const d of [...DOMAINS, { name: "Other", blurb: "Tables that do not fit the other groupings.", match: /^$/ }]) {
     const inDomain = models.filter((m) => m.domain === d.name);
     if (inDomain.length === 0) continue;
     const tables = new Set(inDomain.map((m) => m.table));
-    const edges = fks.filter((f) => tables.has(f.table));
+    // DRAWN edges exclude the universal `tenantId -> organization` FK. Every one of the 188 tables has
+    // it, so drawing it 158 times says nothing and turns `organization` into a hub that flattens the
+    // whole layout into an unreadable strip (measured: 2384x249px before this filter). It is still
+    // listed in the dictionary's References section for every table — omitted from the PICTURE, not
+    // from the record.
+    const edges = fks.filter((f) => tables.has(f.table) && !(f.refTable === "organization" && f.columns.length === 1 && f.columns[0] === "tenantId"));
 
     L.push(`## ${d.name}`);
     L.push("");

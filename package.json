@@ -104,6 +104,7 @@
     "verify:ledger-grain": "vitest run test/ledger-storage-grain.test.ts",
     "verify:cost-conservation": "vitest run test/cost-conservation.test.ts",
     "gen:fk-registry": "tsx scripts/gen-fk-registry.ts",
+    "docs:data-dictionary": "tsx scripts/gen-data-dictionary.ts",
     "verify:fk-registry": "tsx scripts/check-fk-registry.ts",
     "audit:vineyard-memberships": "tsx --conditions=react-server --env-file=.env scripts/audit-vineyard-memberships.ts",
     "verify:fk-registry-db": "tsx --conditions=react-server --env-file=.env scripts/verify-fk-registry-db.ts",
